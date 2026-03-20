@@ -10,24 +10,678 @@ datasource db {
 }
 
 enum Role {
-  CLIENT
-  TEACHER
+  MASTER_ADMIN
   ADMIN
+  TEACHER
+  CLIENT
+}
+
+enum ProductType {
+  DROP_IN_CLASS
+  CLASS_PACK
+  UNLIMITED_MEMBERSHIP
+  INTRO_OFFER
+  PRIVATE_CLASS
+  WORKSHOP_PASS
+  GIFT_CARD
+}
+
+enum PriceType {
+  ONE_TIME
+  RECURRING
+}
+
+enum BillingInterval {
+  DAY
+  WEEK
+  MONTH
+  YEAR
+}
+
+enum EntitlementType {
+  SINGLE_USE
+  CREDIT_PACK
+  UNLIMITED_ACCESS
+  GIFT_VALUE
+}
+
+enum EntitlementScope {
+  COLLECTIVE_CLASSES
+  PRIVATE_CLASSES
+  WORKSHOPS
+  ALL_CLASSES
+}
+
+enum Weekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum StudioSessionStatus {
+  SCHEDULED
+  CANCELLED
+  COMPLETED
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+enum WaitlistStatus {
+  ACTIVE
+  PROMOTED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  CHECKED_IN
+  ATTENDED
+  NO_SHOW
+}
+
+enum OrderStatus {
+  DRAFT
+  PLACED
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CARD
+  BANK_TRANSFER
+  CASH
+  MANUAL
+}
+
+enum PaymentProvider {
+  STRIPE
+  MOLLIE
+  MANUAL
+  OTHER
+}
+
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  PAST_DUE
+}
+
+enum ClientEntitlementStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  REVOKED
+}
+
+enum CreditLedgerEntryType {
+  GRANT
+  CONSUME
+  RESTORE
+  EXPIRE
+  ADJUSTMENT
+}
+
+enum LoyaltyLedgerEntryType {
+  EARN
+  REDEEM
+  EXPIRE
+  ADJUSTMENT
+}
+
+enum ContactMessageStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  passwordHash  String?
-  emailVerified DateTime?
-  image         String?
-  role          Role      @default(CLIENT)
-  accounts      Account[]
-  sessions      Session[]
+  id                         String                 @id @default(cuid())
+  name                       String
+  email                      String                 @unique
+  passwordHash               String?
+  emailVerified              DateTime?
+  image                      String?
+  role                       Role                   @default(CLIENT)
+  isActive                   Boolean                @default(true)
+  isInactive                 Boolean                @default(false)
+  lastLoginAt                DateTime?
+  clientProfile              ClientProfile?
+  teacherProfile             TeacherProfile?
+  defaultTeachingTemplates   ClassTemplate[]        @relation("TemplateDefaultTeacher")
+  teachingStudioSessions     StudioSession[]        @relation("StudioSessionTeacher")
+  cancelledStudioSessions    StudioSession[]        @relation("StudioSessionCancelledBy")
+  clientBookings             Booking[]              @relation("BookingClient")
+  cancelledBookings          Booking[]              @relation("BookingCancelledBy")
+  waitlistEntries            WaitlistEntry[]        @relation("WaitlistClient")
+  markedAttendanceRecords    AttendanceRecord[]     @relation("AttendanceMarkedBy")
+  orders                     Order[]                @relation("OrderClient")
+  subscriptionContracts      SubscriptionContract[] @relation("SubscriptionClient")
+  clientEntitlements         ClientEntitlement[]    @relation("ClientEntitlementClient")
+  clientCreditLedgerEntries  CreditLedgerEntry[]    @relation("CreditLedgerEntryClient")
+  createdCreditLedgerEntries CreditLedgerEntry[]    @relation("CreditLedgerEntryCreatedBy")
+  clientLoyaltyLedgerEntries LoyaltyLedgerEntry[]   @relation("LoyaltyLedgerEntryClient")
+  createdLoyaltyEntries      LoyaltyLedgerEntry[]   @relation("LoyaltyLedgerEntryCreatedBy")
+  auditLogsAsActor           AuditLog[]             @relation("AuditLogActor")
+  adminNotesAuthored         AdminNote[]            @relation("AdminNoteAuthor")
+  adminNotesAboutClient      AdminNote[]            @relation("AdminNoteClient")
+  contactMessages            ContactMessage[]       @relation("ContactMessageClient")
+  resolvedContactMessages    ContactMessage[]       @relation("ContactMessageResolvedBy")
+  accounts                   Account[]
+  sessions                   Session[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([role])
+  @@index([isActive, isInactive])
+  @@index([lastLoginAt])
+}
+
+model ClientProfile {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  phone                 String?
+  dateOfBirth           DateTime?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  notes                 String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([phone])
+}
+
+model TeacherProfile {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  phone                 String?
+  dateOfBirth           DateTime?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  bio                   String?
+  specialties           String[]
+  certifications        String[]
+  hireDate              DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([phone])
+}
+
+model Product {
+  id                    String                 @id @default(cuid())
+  name                  String
+  slug                  String                 @unique
+  description           String?
+  productType           ProductType
+  isActive              Boolean                @default(true)
+  isArchived            Boolean                @default(false)
+  sortOrder             Int                    @default(0)
+  prices                Price[]
+  entitlementRules      EntitlementRule[]
+  clientEntitlements    ClientEntitlement[]
+  orderItems            OrderItem[]
+  subscriptionContracts SubscriptionContract[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@index([productType, isActive])
+  @@index([sortOrder])
+}
+
+model Price {
+  id                    String                 @id @default(cuid())
+  productId             String
+  lookupKey             String                 @unique
+  name                  String
+  priceType             PriceType
+  currencyCode          String
+  unitAmountMinor       Int
+  billingInterval       BillingInterval?
+  billingIntervalCount  Int?
+  isActive              Boolean                @default(true)
+  isArchived            Boolean                @default(false)
+  startsAt              DateTime?
+  endsAt                DateTime?
+  orderItems            OrderItem[]
+  subscriptionContracts SubscriptionContract[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([productId, isActive])
+  @@index([priceType, billingInterval])
+  @@index([startsAt, endsAt])
+}
+
+model EntitlementRule {
+  id               String           @id @default(cuid())
+  productId        String
+  entitlementType  EntitlementType
+  entitlementScope EntitlementScope
+  quantity         Int?
+  validForDays     Int?
+  giftValueMinor   Int?
+  notes            String?
+  isActive         Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, entitlementType, entitlementScope])
+  @@index([entitlementType, entitlementScope])
+  @@index([isActive])
+}
+
+model ClassCategory {
+  id          String      @id @default(cuid())
+  name        String
+  slug        String      @unique
+  description String?
+  isActive    Boolean     @default(true)
+  sortOrder   Int         @default(0)
+  classTypes  ClassType[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+model ClassType {
+  id                     String          @id @default(cuid())
+  categoryId             String
+  name                   String
+  slug                   String          @unique
+  description            String?
+  defaultDurationMinutes Int
+  defaultCapacity        Int
+  isActive               Boolean         @default(true)
+  sortOrder              Int             @default(0)
+  category               ClassCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  templates              ClassTemplate[]
+  studioSessions         StudioSession[]
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  @@index([categoryId, isActive, sortOrder])
+}
+
+model ClassTemplate {
+  id                     String          @id @default(cuid())
+  classTypeId            String
+  defaultTeacherId       String
+  title                  String
+  slug                   String          @unique
+  description            String?
+  location               String?
+  defaultCapacity        Int
+  defaultDurationMinutes Int
+  isActive               Boolean         @default(true)
+  isPublished            Boolean         @default(true)
+  classType              ClassType       @relation(fields: [classTypeId], references: [id], onDelete: Restrict)
+  defaultTeacher         User            @relation("TemplateDefaultTeacher", fields: [defaultTeacherId], references: [id], onDelete: Restrict)
+  recurringRules         RecurringRule[]
+  studioSessions         StudioSession[]
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  @@index([classTypeId, isActive, isPublished])
+  @@index([defaultTeacherId])
+}
+
+model RecurringRule {
+  id              String          @id @default(cuid())
+  classTemplateId String
+  weekday         Weekday
+  startTime       String
+  startDate       DateTime
+  endDate         DateTime?
+  isActive        Boolean         @default(true)
+  classTemplate   ClassTemplate   @relation(fields: [classTemplateId], references: [id], onDelete: Cascade)
+  studioSessions  StudioSession[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([classTemplateId, weekday, startTime, startDate])
+  @@index([classTemplateId, isActive])
+  @@index([weekday, startDate, endDate])
+}
+
+model StudioSession {
+  id              String              @id @default(cuid())
+  classTemplateId String
+  recurringRuleId String?
+  classTypeId     String
+  teacherId       String
+  title           String
+  description     String?
+  location        String?
+  startsAt        DateTime
+  endsAt          DateTime
+  capacity        Int
+  status          StudioSessionStatus @default(SCHEDULED)
+  cancelledAt     DateTime?
+  cancelledReason String?
+  cancelledById   String?
+  isPublished     Boolean             @default(true)
+  classTemplate   ClassTemplate       @relation(fields: [classTemplateId], references: [id], onDelete: Restrict)
+  recurringRule   RecurringRule?      @relation(fields: [recurringRuleId], references: [id], onDelete: SetNull)
+  classType       ClassType           @relation(fields: [classTypeId], references: [id], onDelete: Restrict)
+  teacher         User                @relation("StudioSessionTeacher", fields: [teacherId], references: [id], onDelete: Restrict)
+  cancelledBy     User?               @relation("StudioSessionCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  bookings        Booking[]
+  waitlistEntries WaitlistEntry[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@unique([classTemplateId, startsAt])
+  @@index([startsAt, status, isPublished])
+  @@index([teacherId, startsAt])
+  @@index([classTypeId, startsAt])
+  @@index([classTemplateId, startsAt])
+  @@index([recurringRuleId, startsAt])
+}
+
+model Booking {
+  id                  String              @id @default(cuid())
+  clientId            String
+  studioSessionId     String
+  status              BookingStatus       @default(CONFIRMED)
+  bookedAt            DateTime            @default(now())
+  cancelledAt         DateTime?
+  cancellationReason  String?
+  cancelledById       String?
+  client              User                @relation("BookingClient", fields: [clientId], references: [id], onDelete: Restrict)
+  studioSession       StudioSession       @relation(fields: [studioSessionId], references: [id], onDelete: Restrict)
+  cancelledBy         User?               @relation("BookingCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  attendanceRecord    AttendanceRecord?
+  creditLedgerEntries CreditLedgerEntry[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@unique([clientId, studioSessionId])
+  @@index([clientId, status])
+  @@index([studioSessionId, status])
+  @@index([cancelledById])
+}
+
+model WaitlistEntry {
+  id              String         @id @default(cuid())
+  clientId        String
+  studioSessionId String
+  status          WaitlistStatus @default(ACTIVE)
+  position        Int
+  joinedAt        DateTime       @default(now())
+  promotedAt      DateTime?
+  client          User           @relation("WaitlistClient", fields: [clientId], references: [id], onDelete: Restrict)
+  studioSession   StudioSession  @relation(fields: [studioSessionId], references: [id], onDelete: Restrict)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([clientId, studioSessionId])
+  @@index([studioSessionId, status, position])
+  @@index([clientId, status])
+}
+
+model AttendanceRecord {
+  id         String           @id @default(cuid())
+  bookingId  String           @unique
+  status     AttendanceStatus
+  markedAt   DateTime         @default(now())
+  markedById String
+  notes      String?
+  booking    Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  markedBy   User             @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: Restrict)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@index([markedById, markedAt])
+  @@index([status, markedAt])
+}
+
+model Order {
+  id                   String               @id @default(cuid())
+  clientId             String
+  subtotalAmountMinor  Int
+  discountAmountMinor  Int                  @default(0)
+  totalAmountMinor     Int
+  currencyCode         String
+  status               OrderStatus          @default(PLACED)
+  placedAt             DateTime             @default(now())
+  notes                String?
+  client               User                 @relation("OrderClient", fields: [clientId], references: [id], onDelete: Restrict)
+  items                OrderItem[]
+  payments             Payment[]
+  clientEntitlements   ClientEntitlement[]
+  creditLedgerEntries  CreditLedgerEntry[]
+  loyaltyLedgerEntries LoyaltyLedgerEntry[]
+  adminNotes           AdminNote[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@index([clientId, status, placedAt])
+  @@index([placedAt])
+}
+
+model OrderItem {
+  id                      String   @id @default(cuid())
+  orderId                 String
+  productId               String
+  priceId                 String
+  quantity                Int      @default(1)
+  productNameSnapshot     String
+  priceNameSnapshot       String
+  unitAmountMinor         Int
+  lineSubtotalAmountMinor Int
+  lineDiscountAmountMinor Int      @default(0)
+  lineTotalAmountMinor    Int
+  currencyCode            String
+  order                   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product                 Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  price                   Price    @relation(fields: [priceId], references: [id], onDelete: Restrict)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([priceId])
+}
+
+model Payment {
+  id                String          @id @default(cuid())
+  orderId           String
+  status            PaymentStatus
+  method            PaymentMethod
+  provider          PaymentProvider
+  providerReference String?
+  amountMinor       Int
+  currencyCode      String
+  authorizedAt      DateTime?
+  capturedAt        DateTime?
+  failedAt          DateTime?
+  refundedAt        DateTime?
+  failureReason     String?
+  order             Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([orderId, status, createdAt])
+  @@index([provider, providerReference])
+}
+
+model SubscriptionContract {
+  id                            String              @id @default(cuid())
+  clientId                      String
+  productId                     String
+  priceId                       String
+  status                        SubscriptionStatus
+  startsAt                      DateTime
+  currentPeriodStart            DateTime
+  currentPeriodEnd              DateTime
+  cancelAtPeriodEnd             Boolean             @default(false)
+  cancelledAt                   DateTime?
+  endedAt                       DateTime?
+  provider                      PaymentProvider
+  providerSubscriptionReference String?
+  client                        User                @relation("SubscriptionClient", fields: [clientId], references: [id], onDelete: Restrict)
+  product                       Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
+  price                         Price               @relation(fields: [priceId], references: [id], onDelete: Restrict)
+  clientEntitlements            ClientEntitlement[]
+  createdAt                     DateTime            @default(now())
+  updatedAt                     DateTime            @updatedAt
+
+  @@index([clientId, status, currentPeriodEnd])
+  @@index([productId, status])
+  @@index([provider, providerSubscriptionReference])
+}
+
+model ClientEntitlement {
+  id                     String                  @id @default(cuid())
+  clientId               String
+  productId              String
+  orderId                String?
+  subscriptionContractId String?
+  entitlementType        EntitlementType
+  entitlementScope       EntitlementScope
+  status                 ClientEntitlementStatus @default(ACTIVE)
+  activatedAt            DateTime?
+  expiresAt              DateTime?
+  notes                  String?
+  client                 User                    @relation("ClientEntitlementClient", fields: [clientId], references: [id], onDelete: Restrict)
+  product                Product                 @relation(fields: [productId], references: [id], onDelete: Restrict)
+  order                  Order?                  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  subscriptionContract   SubscriptionContract?   @relation(fields: [subscriptionContractId], references: [id], onDelete: Restrict)
+  creditLedgerEntries    CreditLedgerEntry[]
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  @@index([clientId, status, expiresAt])
+  @@index([productId, status])
+  @@index([orderId])
+  @@index([subscriptionContractId])
+}
+
+model CreditLedgerEntry {
+  id            String                @id @default(cuid())
+  clientId      String
+  entryType     CreditLedgerEntryType
+  amount        Int
+  happenedAt    DateTime              @default(now())
+  entitlementId String?
+  bookingId     String?
+  orderId       String?
+  createdById   String?
+  notes         String?
+  client        User                  @relation("CreditLedgerEntryClient", fields: [clientId], references: [id], onDelete: Restrict)
+  entitlement   ClientEntitlement?    @relation(fields: [entitlementId], references: [id], onDelete: SetNull)
+  booking       Booking?              @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  order         Order?                @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdBy     User?                 @relation("CreditLedgerEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([clientId, happenedAt])
+  @@index([clientId, entryType, happenedAt])
+  @@index([entitlementId])
+  @@index([bookingId])
+  @@index([orderId])
+}
+
+model LoyaltyLedgerEntry {
+  id          String                 @id @default(cuid())
+  clientId    String
+  entryType   LoyaltyLedgerEntryType
+  amount      Int
+  happenedAt  DateTime               @default(now())
+  orderId     String?
+  createdById String?
+  notes       String?
+  client      User                   @relation("LoyaltyLedgerEntryClient", fields: [clientId], references: [id], onDelete: Restrict)
+  order       Order?                 @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdBy   User?                  @relation("LoyaltyLedgerEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@index([clientId, happenedAt])
+  @@index([clientId, entryType, happenedAt])
+  @@index([orderId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actionType String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  actor      User?    @relation("AuditLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([actionType, createdAt])
+  @@index([entityType, entityId])
+}
+
+model AdminNote {
+  id        String   @id @default(cuid())
+  authorId  String
+  clientId  String?
+  orderId   String?
+  body      String
+  author    User     @relation("AdminNoteAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  client    User?    @relation("AdminNoteClient", fields: [clientId], references: [id], onDelete: SetNull)
+  order     Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([authorId, createdAt])
+  @@index([clientId, createdAt])
+  @@index([orderId, createdAt])
+}
+
+model ContactMessage {
+  id           String               @id @default(cuid())
+  clientId     String?
+  name         String
+  email        String
+  subject      String
+  message      String
+  status       ContactMessageStatus @default(OPEN)
+  resolvedAt   DateTime?
+  resolvedById String?
+  client       User?                @relation("ContactMessageClient", fields: [clientId], references: [id], onDelete: SetNull)
+  resolvedBy   User?                @relation("ContactMessageResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([status, createdAt])
+  @@index([email])
+  @@index([clientId, status, createdAt])
+  @@index([resolvedById, resolvedAt])
 }
 
 model Account {

@@ -14,8 +14,8 @@ const credentialsSchema = z.object({
 
 type AuthUser = {
   id: string;
-  email: string | null;
-  name: string | null;
+  email: string;
+  name: string;
   role: Role;
 };
 
