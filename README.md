@@ -235,3 +235,28 @@ src/
     unit/
     integration/
     e2e/
+## Integration Test Database
+
+- Copy `.env.test.example` to `.env.test`.
+- Set `DATABASE_URL` in `.env.test` to a dedicated test database (do not reuse development or production databases).
+- Integration tests load `.env.test` explicitly and include a guard that requires `DATABASE_URL` to point to a database name containing `test`.
+- Run tests with:
+
+```bat
+npm run test
+```
+
+## Test Database Setup
+
+1. Create a Postgres database named `studio_test`.
+2. Run:
+
+```bat
+npm run db:test:setup
+```
+
+3. Run tests:
+
+```bat
+npm run test
+```

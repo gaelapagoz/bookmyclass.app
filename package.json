@@ -7,8 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest",
     "prisma:generate": "prisma generate",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "db:test:setup": "dotenv -e .env.test -- prisma migrate deploy",
+    "db:test:reset": "dotenv -e .env.test -- prisma migrate reset --force"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
@@ -24,17 +27,24 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^20.19.37",
     "@types/pg": "^8.18.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
+    "dotenv": "^17.3.1",
+    "dotenv-cli": "^11.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.0",
+    "jsdom": "^29.0.1",
     "prisma": "^7.5.0",
     "tailwindcss": "^4",
-    "tsx": "^4.20.3",
-    "typescript": "^5"
+    "tsx": "^4.21.0",
+    "typescript": "^5",
+    "vitest": "^4.1.0"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
