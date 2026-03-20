@@ -14,18 +14,14 @@ type SessionSlot = {
 
 type SlotListProps = {
   selectedDate: string | null;
-  selectedSlotId: string | null;
   serviceSlug: string;
   slots: SessionSlot[];
-  onSelectSlot: (slotId: string) => void;
 };
 
 export function SlotList({
   serviceSlug,
   selectedDate,
   slots,
-  selectedSlotId,
-  onSelectSlot,
 }: SlotListProps) {
   if (!selectedDate) {
     return (
@@ -44,14 +40,8 @@ export function SlotList({
       ) : (
         <ul className="mt-4 space-y-3">
           {slots.map((slot) => {
-            const isSelected = selectedSlotId === slot.id;
             return (
-              <li
-                key={slot.id}
-                className={`rounded-lg border p-3 ${
-                  isSelected ? "border-[#7b2d2d] bg-[#f2ede7]" : "border-[#d8cec6] bg-white"
-                }`}
-              >
+              <li key={slot.id} className="rounded-lg border border-[#d8cec6] bg-white p-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-[#6f2b2b]">
@@ -65,27 +55,18 @@ export function SlotList({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={!slot.isAvailable}
-                      onClick={() => onSelectSlot(slot.id)}
+                    <Link
+                      href={`/book-a-class/${serviceSlug}/book?sessionId=${slot.id}`}
+                      aria-disabled={!slot.isAvailable}
                       className={`rounded-md px-3 py-1 text-sm ${
                         slot.isAvailable
                           ? "bg-[#7b2d2d] text-[#f4eee8] hover:opacity-90"
-                          : "cursor-not-allowed bg-[#eee8e1] text-[#a68f83]"
+                          : "pointer-events-none cursor-not-allowed bg-[#eee8e1] text-[#a68f83]"
                       }`}
-                      aria-label={`Select slot ${slot.startTime} to ${slot.endTime}`}
+                      aria-label={`Book slot ${slot.startTime} to ${slot.endTime}`}
                     >
-                      {slot.isAvailable ? "Select" : "Full"}
-                    </button>
-                    {isSelected ? (
-                      <Link
-                        href={`/book-a-class/${serviceSlug}/book?sessionId=${slot.id}`}
-                        className="text-sm font-medium text-[#7b2d2d] underline underline-offset-4 hover:opacity-80"
-                      >
-                        Continue
-                      </Link>
-                    ) : null}
+                      {slot.isAvailable ? "Book" : "Full"}
+                    </Link>
                   </div>
                 </div>
               </li>

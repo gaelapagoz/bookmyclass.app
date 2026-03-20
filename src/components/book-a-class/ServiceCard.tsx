@@ -1,10 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
 
 type Service = {
-  description: string;
   durationMinutes: number;
   id: string;
   imageUrl: string | null;
@@ -26,9 +24,6 @@ const pricingModeLabel: Record<Service["pricingMode"], string> = {
 };
 
 export function ServiceCard({ service }: ServiceCardProps) {
-  const [showDescription, setShowDescription] = useState(false);
-  const descriptionId = `service-description-${service.id}`;
-
   return (
     <article className="flex h-full flex-col overflow-hidden rounded-xl border border-[#d8cec6] bg-white shadow-sm">
       <div className="relative h-48 w-full bg-[#eadfd5]">
@@ -70,20 +65,6 @@ export function ServiceCard({ service }: ServiceCardProps) {
             <dd>{pricingModeLabel[service.pricingMode]}</dd>
           </div>
         </dl>
-
-        <button
-          type="button"
-          className="mt-4 w-fit text-sm font-medium text-[#7b2d2d] underline underline-offset-4 hover:opacity-80"
-          onClick={() => setShowDescription((previous) => !previous)}
-          aria-expanded={showDescription}
-          aria-controls={descriptionId}
-          aria-label={`${showDescription ? "Hide" : "Show"} full description for ${service.title}`}
-        >
-          Description
-        </button>
-        <div id={descriptionId} className="min-h-[2.5rem]">
-          {showDescription ? <p className="mt-2 text-sm text-[#5f4040]">{service.description}</p> : null}
-        </div>
 
         <div className="mt-auto flex flex-wrap items-center gap-3 pt-6">
           <Link

@@ -74,6 +74,17 @@ enum BookingStatus {
   CANCELLED
 }
 
+enum BookingIntent {
+  SINGLE_BOOKING
+  USE_PLAN
+}
+
+enum BookingPaymentSelection {
+  SINGLE_SESSION
+  EXISTING_PLAN
+  NEW_PLAN_PURCHASE
+}
+
 enum ServicePricingMode {
   SINGLE_ONLY
   PLAN_ONLY
@@ -273,6 +284,7 @@ model Price {
   startsAt              DateTime?
   endsAt                DateTime?
   orderItems            OrderItem[]
+  selectedByBookings    Booking[]              @relation("BookingSelectedPrice")
   subscriptionContracts SubscriptionContract[]
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
@@ -417,32 +429,46 @@ model StudioSession {
 }
 
 model Booking {
-  id                  String              @id @default(cuid())
-  clientId            String?
-  studioSessionId     String
-  orderId             String?
-  status              BookingStatus       @default(CONFIRMED)
-  bookedAt            DateTime            @default(now())
-  customerName        String?
-  customerEmail       String?
-  customerPhone       String?
-  customerMessage     String?
-  cancelledAt         DateTime?
-  cancellationReason  String?
-  cancelledById       String?
-  client              User?               @relation("BookingClient", fields: [clientId], references: [id], onDelete: SetNull)
-  studioSession       StudioSession       @relation(fields: [studioSessionId], references: [id], onDelete: Restrict)
-  order               Order?              @relation("BookingOrder", fields: [orderId], references: [id], onDelete: SetNull)
-  cancelledBy         User?               @relation("BookingCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
-  attendanceRecord    AttendanceRecord?
-  creditLedgerEntries CreditLedgerEntry[]
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  id                     String                   @id @default(cuid())
+  clientId               String?
+  studioSessionId        String
+  orderId                String?
+  status                 BookingStatus            @default(CONFIRMED)
+  bookingIntent          BookingIntent            @default(SINGLE_BOOKING)
+  paymentSelection       BookingPaymentSelection?
+  selectedEntitlementId  String?
+  selectedPriceId        String?
+  draftAmountMinor       Int?
+  draftCurrencyCode      String?
+  bookedAt               DateTime                 @default(now())
+  customerName           String?
+  customerEmail          String?
+  customerPhone          String?
+  customerMessage        String?
+  consentTermsAccepted   Boolean                  @default(false)
+  consentPrivacyAccepted Boolean                  @default(false)
+  consentAcceptedAt      DateTime?
+  cancelledAt            DateTime?
+  cancellationReason     String?
+  cancelledById          String?
+  client                 User?                    @relation("BookingClient", fields: [clientId], references: [id], onDelete: SetNull)
+  studioSession          StudioSession            @relation(fields: [studioSessionId], references: [id], onDelete: Restrict)
+  order                  Order?                   @relation("BookingOrder", fields: [orderId], references: [id], onDelete: SetNull)
+  selectedEntitlement    ClientEntitlement?       @relation("BookingSelectedEntitlement", fields: [selectedEntitlementId], references: [id], onDelete: SetNull)
+  selectedPrice          Price?                   @relation("BookingSelectedPrice", fields: [selectedPriceId], references: [id], onDelete: SetNull)
+  payments               Payment[]                @relation("BookingPayment")
+  cancelledBy            User?                    @relation("BookingCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  attendanceRecord       AttendanceRecord?
+  creditLedgerEntries    CreditLedgerEntry[]
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
 
   @@unique([clientId, studioSessionId])
   @@index([clientId, status, bookedAt])
   @@index([studioSessionId, status])
   @@index([orderId])
+  @@index([selectedEntitlementId])
+  @@index([selectedPriceId])
   @@index([customerEmail, bookedAt])
   @@index([studioSessionId, customerEmail])
   @@index([cancelledById])
@@ -533,7 +559,8 @@ model OrderItem {
 
 model Payment {
   id                String          @id @default(cuid())
-  orderId           String
+  orderId           String?
+  bookingId         String?
   status            PaymentStatus
   method            PaymentMethod
   provider          PaymentProvider
@@ -545,11 +572,13 @@ model Payment {
   failedAt          DateTime?
   refundedAt        DateTime?
   failureReason     String?
-  order             Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order             Order?          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  booking           Booking?        @relation("BookingPayment", fields: [bookingId], references: [id], onDelete: SetNull)
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
   @@index([orderId, status, createdAt])
+  @@index([bookingId, status, createdAt])
   @@index([provider, providerReference])
 }
 
@@ -596,6 +625,7 @@ model ClientEntitlement {
   order                  Order?                  @relation(fields: [orderId], references: [id], onDelete: Restrict)
   subscriptionContract   SubscriptionContract?   @relation(fields: [subscriptionContractId], references: [id], onDelete: Restrict)
   creditLedgerEntries    CreditLedgerEntry[]
+  selectedByBookings     Booking[]               @relation("BookingSelectedEntitlement")
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
 

@@ -1,6 +1,10 @@
 import Link from "next/link";
+import { auth } from "../../../../../auth";
+import { BookingDraftForm } from "../../../../../components/book-a-class/service-detail/BookingDraftForm";
+import { prisma } from "../../../../../lib/db";
+import { getBookingSessionSummary } from "../../../../../lib/public-booking/booking-draft-service";
 
-export default async function BookingFormPlaceholderPage({
+export default async function BookingFormPage({
   params,
   searchParams,
 }: {
@@ -9,29 +13,69 @@ export default async function BookingFormPlaceholderPage({
 }) {
   const { serviceSlug } = await params;
   const { sessionId } = await searchParams;
+  const session = await auth();
+
+  const user = session?.user?.id
+    ? await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: {
+          name: true,
+          email: true,
+          clientProfile: {
+            select: {
+              phone: true,
+            },
+          },
+        },
+      })
+    : null;
+
+  if (!sessionId) {
+    return (
+      <section className="mx-auto w-full max-w-3xl px-6 py-14">
+        <h1 className="text-3xl font-semibold text-[#6f2b2b]">Booking Form</h1>
+        <p className="mt-3 text-sm text-[#7b2d2d]">Missing sessionId. Please choose a slot first.</p>
+        <Link
+          href={`/book-a-class/${serviceSlug}`}
+          className="mt-6 inline-block text-sm font-medium text-[#7b2d2d] underline underline-offset-4 hover:opacity-80"
+        >
+          Back to availability
+        </Link>
+      </section>
+    );
+  }
+
+  const summary = await getBookingSessionSummary({
+    serviceSlug,
+    sessionId,
+  });
+
+  if (!summary) {
+    return (
+      <section className="mx-auto w-full max-w-3xl px-6 py-14">
+        <h1 className="text-3xl font-semibold text-[#6f2b2b]">Booking Form</h1>
+        <p className="mt-3 text-sm text-[#7b2d2d]">
+          The selected session is invalid, full, or no longer available.
+        </p>
+        <Link
+          href={`/book-a-class/${serviceSlug}`}
+          className="mt-6 inline-block text-sm font-medium text-[#7b2d2d] underline underline-offset-4 hover:opacity-80"
+        >
+          Back to availability
+        </Link>
+      </section>
+    );
+  }
 
   return (
-    <section className="mx-auto w-full max-w-3xl px-6 py-14">
-      <h1 className="text-3xl font-semibold text-[#6f2b2b]">Booking Form (Next Block)</h1>
-      <p className="mt-3 text-sm text-[#7f5a5a]">
-        The booking creation form and checkout are connected in the next implementation block.
-      </p>
-      <dl className="mt-6 space-y-2 rounded-lg border border-[#d8cec6] bg-white p-4 text-sm text-[#5f4040]">
-        <div className="flex gap-2">
-          <dt className="font-semibold">Service:</dt>
-          <dd>{serviceSlug}</dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="font-semibold">Session:</dt>
-          <dd>{sessionId ?? "Not selected"}</dd>
-        </div>
-      </dl>
-      <Link
-        href={`/book-a-class/${serviceSlug}`}
-        className="mt-6 inline-block text-sm font-medium text-[#7b2d2d] underline underline-offset-4 hover:opacity-80"
-      >
-        Back to availability
-      </Link>
-    </section>
+    <BookingDraftForm
+      session={summary}
+      isAuthenticated={Boolean(session?.user)}
+      initialValues={{
+        customerName: user?.name ?? "",
+        customerEmail: user?.email ?? "",
+        customerPhone: user?.clientProfile?.phone ?? "",
+      }}
+    />
   );
 }

@@ -1,3 +1,5 @@
+import { execSync } from "node:child_process";
+import { resolve } from "node:path";
 import { config } from "dotenv";
 
 config({ path: ".env.test" });
@@ -8,4 +10,18 @@ if (!process.env.DATABASE_URL) {
 
 if (!process.env.DATABASE_URL.includes("test")) {
   throw new Error("Test DB must contain 'test' in its name.");
+}
+
+const globalForTestSetup = globalThis as typeof globalThis & {
+  __integrationDbReady?: boolean;
+};
+
+if (!globalForTestSetup.__integrationDbReady) {
+  execSync("npx prisma migrate deploy", {
+    cwd: resolve(process.cwd()),
+    env: process.env,
+    stdio: "ignore",
+  });
+
+  globalForTestSetup.__integrationDbReady = true;
 }

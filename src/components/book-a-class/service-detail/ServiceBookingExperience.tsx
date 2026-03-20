@@ -69,7 +69,6 @@ export function ServiceBookingExperience({
   const [availabilityDays, setAvailabilityDays] = useState(initialAvailabilityDays);
   const [selectedDate, setSelectedDate] = useState<string | null>(initialSelectedDate);
   const [slots, setSlots] = useState(initialSlots);
-  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [isCalendarLoading, setIsCalendarLoading] = useState(false);
   const [isSlotsLoading, setIsSlotsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -92,7 +91,6 @@ export function ServiceBookingExperience({
 
       const nextDefaultDate = payload.days.find((day) => day.hasAvailability)?.date ?? null;
       setSelectedDate(nextDefaultDate);
-      setSelectedSlotId(null);
       if (nextDefaultDate) {
         await fetchSlots(nextDefaultDate);
       } else {
@@ -118,7 +116,6 @@ export function ServiceBookingExperience({
 
       const payload = (await response.json()) as SlotsResponse;
       setSlots(payload.slots);
-      setSelectedSlotId(null);
     } catch {
       setErrorMessage("Could not load slots for the selected day.");
       setSlots([]);
@@ -156,7 +153,6 @@ export function ServiceBookingExperience({
 
       setSelectedDate(payload.next.date);
       await fetchSlots(payload.next.date);
-      setSelectedSlotId(payload.next.id);
     } catch {
       setErrorMessage("Could not fetch next availability right now.");
     } finally {
@@ -219,8 +215,6 @@ export function ServiceBookingExperience({
               serviceSlug={service.slug}
               selectedDate={selectedDate}
               slots={slots}
-              selectedSlotId={selectedSlotId}
-              onSelectSlot={setSelectedSlotId}
             />
           )}
 
