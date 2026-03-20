@@ -69,8 +69,15 @@ enum StudioSessionStatus {
 }
 
 enum BookingStatus {
+  PENDING
   CONFIRMED
   CANCELLED
+}
+
+enum ServicePricingMode {
+  SINGLE_ONLY
+  PLAN_ONLY
+  SINGLE_OR_PLAN
 }
 
 enum WaitlistStatus {
@@ -312,22 +319,25 @@ model ClassCategory {
 }
 
 model ClassType {
-  id                     String          @id @default(cuid())
+  id                     String             @id @default(cuid())
   categoryId             String
   name                   String
-  slug                   String          @unique
+  slug                   String             @unique
   description            String?
+  imageUrl               String?
   defaultDurationMinutes Int
   defaultCapacity        Int
-  isActive               Boolean         @default(true)
-  sortOrder              Int             @default(0)
-  category               ClassCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  isActive               Boolean            @default(true)
+  isVisible              Boolean            @default(true)
+  pricingMode            ServicePricingMode @default(SINGLE_OR_PLAN)
+  sortOrder              Int                @default(0)
+  category               ClassCategory      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   templates              ClassTemplate[]
   studioSessions         StudioSession[]
-  createdAt              DateTime        @default(now())
-  updatedAt              DateTime        @updatedAt
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
 
-  @@index([categoryId, isActive, sortOrder])
+  @@index([categoryId, isActive, isVisible, sortOrder])
 }
 
 model ClassTemplate {
@@ -408,15 +418,21 @@ model StudioSession {
 
 model Booking {
   id                  String              @id @default(cuid())
-  clientId            String
+  clientId            String?
   studioSessionId     String
+  orderId             String?
   status              BookingStatus       @default(CONFIRMED)
   bookedAt            DateTime            @default(now())
+  customerName        String?
+  customerEmail       String?
+  customerPhone       String?
+  customerMessage     String?
   cancelledAt         DateTime?
   cancellationReason  String?
   cancelledById       String?
-  client              User                @relation("BookingClient", fields: [clientId], references: [id], onDelete: Restrict)
+  client              User?               @relation("BookingClient", fields: [clientId], references: [id], onDelete: SetNull)
   studioSession       StudioSession       @relation(fields: [studioSessionId], references: [id], onDelete: Restrict)
+  order               Order?              @relation("BookingOrder", fields: [orderId], references: [id], onDelete: SetNull)
   cancelledBy         User?               @relation("BookingCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
   attendanceRecord    AttendanceRecord?
   creditLedgerEntries CreditLedgerEntry[]
@@ -424,8 +440,11 @@ model Booking {
   updatedAt           DateTime            @updatedAt
 
   @@unique([clientId, studioSessionId])
-  @@index([clientId, status])
+  @@index([clientId, status, bookedAt])
   @@index([studioSessionId, status])
+  @@index([orderId])
+  @@index([customerEmail, bookedAt])
+  @@index([studioSessionId, customerEmail])
   @@index([cancelledById])
 }
 
@@ -476,6 +495,7 @@ model Order {
   client               User                 @relation("OrderClient", fields: [clientId], references: [id], onDelete: Restrict)
   items                OrderItem[]
   payments             Payment[]
+  bookings             Booking[]            @relation("BookingOrder")
   clientEntitlements   ClientEntitlement[]
   creditLedgerEntries  CreditLedgerEntry[]
   loyaltyLedgerEntries LoyaltyLedgerEntry[]

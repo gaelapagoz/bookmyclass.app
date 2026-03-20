@@ -1,10 +1,11 @@
-import {
+﻿import {
   EntitlementScope,
   EntitlementType,
   PriceType,
   PrismaClient,
   ProductType,
   Role,
+  ServicePricingMode,
 } from "@prisma/client";
 
 export async function createClient(prisma: PrismaClient) {
@@ -82,4 +83,54 @@ export async function getCreditBalance(prisma: PrismaClient, clientId: string) {
   });
 
   return result._sum.amount ?? 0;
+}
+
+export async function createClassCategory(
+  prisma: PrismaClient,
+  input: {
+    isActive?: boolean;
+    name: string;
+    slug: string;
+    sortOrder?: number;
+  },
+) {
+  return prisma.classCategory.create({
+    data: {
+      name: input.name,
+      slug: input.slug,
+      description: `${input.name} description`,
+      isActive: input.isActive ?? true,
+      sortOrder: input.sortOrder ?? 0,
+    },
+  });
+}
+
+export async function createClassType(
+  prisma: PrismaClient,
+  input: {
+    categoryId: string;
+    defaultDurationMinutes?: number;
+    isActive?: boolean;
+    isVisible?: boolean;
+    name: string;
+    pricingMode?: ServicePricingMode;
+    slug: string;
+    sortOrder?: number;
+  },
+) {
+  return prisma.classType.create({
+    data: {
+      categoryId: input.categoryId,
+      name: input.name,
+      slug: input.slug,
+      description: `${input.name} full description`,
+      imageUrl: "https://images.example.test/service.jpg",
+      defaultDurationMinutes: input.defaultDurationMinutes ?? 60,
+      defaultCapacity: 12,
+      isActive: input.isActive ?? true,
+      isVisible: input.isVisible ?? true,
+      pricingMode: input.pricingMode ?? ServicePricingMode.SINGLE_OR_PLAN,
+      sortOrder: input.sortOrder ?? 0,
+    },
+  });
 }

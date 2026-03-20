@@ -17,6 +17,7 @@ import {
   PrismaClient,
   ProductType,
   Role,
+  ServicePricingMode,
   SubscriptionStatus,
   StudioSessionStatus,
   WaitlistStatus,
@@ -33,6 +34,10 @@ if (!databaseUrl) {
 
 const pool = new Pool({ connectionString: databaseUrl });
 const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
+
+const SCHEDULE_WINDOW_START = new Date("2026-04-01T00:00:00.000Z");
+const SCHEDULE_WINDOW_END = new Date("2026-05-15T23:59:59.000Z");
+const SCHEDULE_BLACKOUT_DATES = new Set(["2026-04-12", "2026-05-01"]);
 
 function weekdayToJsDay(weekday: Weekday): number {
   switch (weekday) {
@@ -61,17 +66,31 @@ function parseTime(time: string): { hour: number; minute: number } {
   };
 }
 
-function nextOccurrences(weekday: Weekday, time: string, daysAhead: number): Date[] {
-  const now = new Date();
+function dateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function nextOccurrencesInWindow(params: {
+  weekday: Weekday;
+  time: string;
+  windowStart: Date;
+  windowEnd: Date;
+  extraSkipDates?: string[];
+}): Date[] {
+  const { weekday, time, windowStart, windowEnd, extraSkipDates = [] } = params;
   const jsDay = weekdayToJsDay(weekday);
   const { hour, minute } = parseTime(time);
+  const skipDates = new Set([...SCHEDULE_BLACKOUT_DATES, ...extraSkipDates]);
   const result: Date[] = [];
 
-  for (let offset = 0; offset <= daysAhead; offset += 1) {
-    const candidate = new Date(now);
-    candidate.setDate(now.getDate() + offset);
+  const cursor = new Date(windowStart);
+  cursor.setUTCHours(0, 0, 0, 0);
 
-    if (candidate.getDay() !== jsDay) {
+  while (cursor <= windowEnd) {
+    const candidate = new Date(cursor);
+
+    if (candidate.getUTCDay() !== jsDay) {
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
       continue;
     }
 
@@ -87,9 +106,16 @@ function nextOccurrences(weekday: Weekday, time: string, daysAhead: number): Dat
       ),
     );
 
-    if (startsAt > now) {
+    if (startsAt < windowStart || startsAt > windowEnd || skipDates.has(dateKey(startsAt))) {
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+      continue;
+    }
+
+    if (startsAt >= windowStart) {
       result.push(startsAt);
     }
+
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
   return result;
@@ -507,101 +533,125 @@ async function upsertEntitlementRule(input: {
 }
 
 async function seedCatalog() {
-  const dropInYoga = await upsertProduct({
-    slug: "drop-in-yoga",
-    name: "Drop-in Yoga",
-    description: "Single class access for a collective yoga session.",
+  const collectiveDropIn = await upsertProduct({
+    slug: "collective-drop-in",
+    name: "Collective Class Drop-In",
+    description: "Single booking access for yoga, pilates, and functional collective classes.",
     productType: ProductType.DROP_IN_CLASS,
     sortOrder: 10,
   });
   await upsertPrice({
-    productId: dropInYoga.id,
-    lookupKey: "drop-in-yoga-eur-once-v1",
-    name: "Drop-in Yoga - One Time",
+    productId: collectiveDropIn.id,
+    lookupKey: "collective-drop-in-eur-once-v1",
+    name: "Collective Drop-In - One Time",
     priceType: PriceType.ONE_TIME,
     currencyCode: "EUR",
-    unitAmountMinor: 1800,
+    unitAmountMinor: 2200,
   });
   await upsertEntitlementRule({
-    productId: dropInYoga.id,
+    productId: collectiveDropIn.id,
     entitlementType: EntitlementType.SINGLE_USE,
     entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
     quantity: 1,
     validForDays: 30,
-    notes: "Single booking entitlement for one collective class.",
+    notes: "Single collective class booking entitlement.",
   });
 
-  const classPack = await upsertProduct({
-    slug: "10-class-pack",
-    name: "10-Class Pack",
-    description: "Ten credits for collective studio classes.",
+  const tenClassPack = await upsertProduct({
+    slug: "collective-10-class-pack",
+    name: "10-Class Collective Pack",
+    description: "Ten class credits usable for all collective yoga, pilates, and functional sessions.",
     productType: ProductType.CLASS_PACK,
     sortOrder: 20,
   });
   await upsertPrice({
-    productId: classPack.id,
-    lookupKey: "10-class-pack-eur-once-v1",
+    productId: tenClassPack.id,
+    lookupKey: "collective-10-pack-eur-once-v1",
     name: "10-Class Pack - One Time",
     priceType: PriceType.ONE_TIME,
     currencyCode: "EUR",
-    unitAmountMinor: 14900,
+    unitAmountMinor: 18900,
   });
   await upsertEntitlementRule({
-    productId: classPack.id,
+    productId: tenClassPack.id,
     entitlementType: EntitlementType.CREDIT_PACK,
     entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
     quantity: 10,
-    validForDays: 180,
-    notes: "Ten credits usable across collective classes.",
+    validForDays: 120,
+    notes: "Ten credits valid for collective classes.",
   });
 
-  const monthlyUnlimited = await upsertProduct({
-    slug: "monthly-unlimited",
-    name: "Monthly Unlimited",
-    description: "Unlimited collective classes during active billing period.",
+  const monthlyUnlimitedCollective = await upsertProduct({
+    slug: "monthly-unlimited-collective",
+    name: "Monthly Unlimited Collective",
+    description: "Unlimited collective classes with monthly billing.",
     productType: ProductType.UNLIMITED_MEMBERSHIP,
     sortOrder: 30,
   });
   await upsertPrice({
-    productId: monthlyUnlimited.id,
-    lookupKey: "monthly-unlimited-eur-monthly-v1",
-    name: "Monthly Unlimited - Monthly",
+    productId: monthlyUnlimitedCollective.id,
+    lookupKey: "monthly-unlimited-collective-eur-monthly-v1",
+    name: "Monthly Unlimited Collective - Monthly",
     priceType: PriceType.RECURRING,
     currencyCode: "EUR",
-    unitAmountMinor: 9900,
+    unitAmountMinor: 12900,
     billingInterval: BillingInterval.MONTH,
     billingIntervalCount: 1,
   });
   await upsertEntitlementRule({
-    productId: monthlyUnlimited.id,
+    productId: monthlyUnlimitedCollective.id,
     entitlementType: EntitlementType.UNLIMITED_ACCESS,
     entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
     validForDays: 30,
-    notes: "Unlimited collective classes for active monthly period.",
+    notes: "Unlimited collective access for active monthly period.",
   });
 
-  const introOffer = await upsertProduct({
-    slug: "intro-offer-3-classes",
-    name: "Intro Offer - 3 Classes",
-    description: "Starter offer for new clients, limited validity.",
+  const introPass = await upsertProduct({
+    slug: "intro-pass-3-classes",
+    name: "Intro Pass - 3 Classes",
+    description: "New client starter pass with short validity window.",
     productType: ProductType.INTRO_OFFER,
     sortOrder: 40,
   });
   await upsertPrice({
-    productId: introOffer.id,
-    lookupKey: "intro-offer-3-classes-eur-once-v1",
-    name: "Intro Offer - One Time",
+    productId: introPass.id,
+    lookupKey: "intro-pass-3-classes-eur-once-v1",
+    name: "Intro Pass - One Time",
     priceType: PriceType.ONE_TIME,
     currencyCode: "EUR",
-    unitAmountMinor: 3900,
+    unitAmountMinor: 4900,
   });
   await upsertEntitlementRule({
-    productId: introOffer.id,
+    productId: introPass.id,
     entitlementType: EntitlementType.CREDIT_PACK,
     entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
     quantity: 3,
-    validForDays: 30,
-    notes: "Intro pack for new clients only.",
+    validForDays: 21,
+    notes: "Introductory pass for first-time clients.",
+  });
+
+  const privateReformerSingle = await upsertProduct({
+    slug: "private-reformer-single",
+    name: "Private Reformer - Single Session",
+    description: "One-on-one private reformer coaching session.",
+    productType: ProductType.PRIVATE_CLASS,
+    sortOrder: 50,
+  });
+  await upsertPrice({
+    productId: privateReformerSingle.id,
+    lookupKey: "private-reformer-single-eur-once-v1",
+    name: "Private Reformer - One Time",
+    priceType: PriceType.ONE_TIME,
+    currencyCode: "EUR",
+    unitAmountMinor: 6800,
+  });
+  await upsertEntitlementRule({
+    productId: privateReformerSingle.id,
+    entitlementType: EntitlementType.SINGLE_USE,
+    entitlementScope: EntitlementScope.PRIVATE_CLASSES,
+    quantity: 1,
+    validForDays: 60,
+    notes: "Single-use private class entitlement.",
   });
 }
 
@@ -634,8 +684,11 @@ async function upsertClassType(input: {
   categoryId: string;
   name: string;
   description: string;
+  imageUrl: string;
   defaultDurationMinutes: number;
   defaultCapacity: number;
+  pricingMode: ServicePricingMode;
+  isVisible?: boolean;
   sortOrder: number;
 }) {
   return prisma.classType.upsert({
@@ -644,9 +697,12 @@ async function upsertClassType(input: {
       categoryId: input.categoryId,
       name: input.name,
       description: input.description,
+      imageUrl: input.imageUrl,
       defaultDurationMinutes: input.defaultDurationMinutes,
       defaultCapacity: input.defaultCapacity,
+      pricingMode: input.pricingMode,
       isActive: true,
+      isVisible: input.isVisible ?? true,
       sortOrder: input.sortOrder,
     },
     create: {
@@ -654,9 +710,12 @@ async function upsertClassType(input: {
       categoryId: input.categoryId,
       name: input.name,
       description: input.description,
+      imageUrl: input.imageUrl,
       defaultDurationMinutes: input.defaultDurationMinutes,
       defaultCapacity: input.defaultCapacity,
+      pricingMode: input.pricingMode,
       isActive: true,
+      isVisible: input.isVisible ?? true,
       sortOrder: input.sortOrder,
     },
   });
@@ -795,187 +854,337 @@ async function seedScheduling(params: {
   primaryTeacherId: string;
   assistantTeacherId: string;
 }) {
+  await prisma.attendanceRecord.deleteMany();
+  await prisma.waitlistEntry.deleteMany();
+  await prisma.booking.deleteMany();
+  await prisma.studioSession.deleteMany();
+  await prisma.recurringRule.deleteMany();
+  await prisma.classTemplate.deleteMany();
+  await prisma.classType.deleteMany();
+  await prisma.classCategory.deleteMany();
+
   const yogaCategory = await upsertClassCategory({
-    slug: "yoga",
-    name: "Yoga",
-    description: "Mind-body collective classes.",
+    slug: "yoga-collective-classes",
+    name: "Yoga Collective Classes",
+    description: "Dynamic and restorative yoga classes for collective groups.",
     sortOrder: 10,
   });
-  const combatCategory = await upsertClassCategory({
-    slug: "combat-sports",
-    name: "Combat Sports",
-    description: "Striking and combat skill classes.",
+  const pilatesCategory = await upsertClassCategory({
+    slug: "pilates-collective-classes",
+    name: "Pilates Collective Classes",
+    description: "Mat and reformer-inspired pilates sessions in small groups.",
     sortOrder: 20,
   });
-  const conditioningCategory = await upsertClassCategory({
-    slug: "conditioning",
-    name: "Conditioning",
-    description: "Strength, cardio and mobility sessions.",
+  const fitnessCategory = await upsertClassCategory({
+    slug: "fitness-functional",
+    name: "Fitness & Functional",
+    description: "Strength, mobility, and conditioning sessions.",
     sortOrder: 30,
   });
+  const privateReformerCategory = await upsertClassCategory({
+    slug: "private-reformer-coach",
+    name: "Private Reformer Coach",
+    description: "Private reformer coaching and technique refinement.",
+    sortOrder: 40,
+  });
 
-  const yogaFlowType = await upsertClassType({
-    slug: "yoga-flow-60",
+  const vinyasaYoga = await upsertClassType({
+    slug: "vinyasa-yoga",
     categoryId: yogaCategory.id,
-    name: "Yoga Flow 60",
-    description: "Moderate-intensity yoga flow class.",
+    name: "Vinyasa Yoga",
+    description: "Breath-led flowing yoga for strength and mobility.",
+    imageUrl: "/images/classes/vinyasa-yoga.jpg",
     defaultDurationMinutes: 60,
-    defaultCapacity: 20,
+    defaultCapacity: 22,
+    pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
     sortOrder: 10,
   });
-  const muayThaiType = await upsertClassType({
-    slug: "muay-thai-all-levels-75",
-    categoryId: combatCategory.id,
-    name: "Muay Thai All Levels 75",
-    description: "Technique and pad-work session.",
+  const rocketYoga = await upsertClassType({
+    slug: "rocket-yoga",
+    categoryId: yogaCategory.id,
+    name: "Rocket Yoga",
+    description: "High-energy yoga sequencing with progressive options.",
+    imageUrl: "/images/classes/rocket-yoga.jpg",
     defaultDurationMinutes: 75,
     defaultCapacity: 16,
+    pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
     sortOrder: 20,
   });
-  const conditioningType = await upsertClassType({
-    slug: "strength-conditioning-45",
-    categoryId: conditioningCategory.id,
-    name: "Strength & Conditioning 45",
-    description: "High-energy conditioning block.",
-    defaultDurationMinutes: 45,
+  const hathaYoga = await upsertClassType({
+    slug: "hatha-yoga",
+    categoryId: yogaCategory.id,
+    name: "Hatha Yoga",
+    description: "Slower paced foundational yoga and alignment practice.",
+    imageUrl: "/images/classes/hatha-yoga.jpg",
+    defaultDurationMinutes: 60,
     defaultCapacity: 18,
+    pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
     sortOrder: 30,
   });
-
-  const yogaTemplate = await upsertClassTemplate({
-    slug: "morning-yoga-flow",
-    classTypeId: yogaFlowType.id,
-    defaultTeacherId: params.primaryTeacherId,
-    title: "Morning Yoga Flow",
-    description: "Start the day with mobility and breath-led flow.",
-    location: "Studio A",
-    defaultCapacity: 20,
-    defaultDurationMinutes: 60,
-  });
-  const muayThaiTemplate = await upsertClassTemplate({
-    slug: "evening-muay-thai",
-    classTypeId: muayThaiType.id,
-    defaultTeacherId: params.primaryTeacherId,
-    title: "Evening Muay Thai",
-    description: "Technique drills and conditioning intervals.",
-    location: "Studio B",
-    defaultCapacity: 16,
-    defaultDurationMinutes: 75,
-  });
-  const conditioningTemplate = await upsertClassTemplate({
-    slug: "lunch-conditioning",
-    classTypeId: conditioningType.id,
-    defaultTeacherId: params.assistantTeacherId,
-    title: "Lunch Conditioning",
-    description: "Fast-paced conditioning circuit.",
-    location: "Studio C",
+  const matPilates = await upsertClassType({
+    slug: "mat-pilates",
+    categoryId: pilatesCategory.id,
+    name: "Mat Pilates",
+    description: "Core-driven pilates session suitable for all levels.",
+    imageUrl: "/images/classes/mat-pilates.jpg",
+    defaultDurationMinutes: 50,
     defaultCapacity: 18,
+    pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
+    sortOrder: 10,
+  });
+  const reformerFoundations = await upsertClassType({
+    slug: "reformer-foundations",
+    categoryId: pilatesCategory.id,
+    name: "Reformer Foundations",
+    description: "Small group reformer fundamentals for technique and control.",
+    imageUrl: "/images/classes/reformer-foundations.jpg",
+    defaultDurationMinutes: 55,
+    defaultCapacity: 10,
+    pricingMode: ServicePricingMode.PLAN_ONLY,
+    sortOrder: 20,
+  });
+  const functionalStrength = await upsertClassType({
+    slug: "functional-strength",
+    categoryId: fitnessCategory.id,
+    name: "Functional Strength",
+    description: "Strength and conditioning with athletic movement patterns.",
+    imageUrl: "/images/classes/functional-strength.jpg",
     defaultDurationMinutes: 45,
+    defaultCapacity: 14,
+    pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
+    sortOrder: 10,
+  });
+  const privateReformerCoaching = await upsertClassType({
+    slug: "private-reformer-coaching",
+    categoryId: privateReformerCategory.id,
+    name: "Private Reformer Coaching",
+    description: "Private 1:1 or duo coaching on the reformer.",
+    imageUrl: "/images/classes/private-reformer-coaching.jpg",
+    defaultDurationMinutes: 50,
+    defaultCapacity: 2,
+    pricingMode: ServicePricingMode.SINGLE_ONLY,
+    sortOrder: 10,
   });
 
-  const yogaMonRule = await upsertRecurringRule({
-    classTemplateId: yogaTemplate.id,
-    weekday: Weekday.MONDAY,
-    startTime: "07:00",
-    startDate: new Date("2026-01-01T00:00:00.000Z"),
+  const vinyasaTemplate = await upsertClassTemplate({
+    slug: "vinyasa-flow-brussels",
+    classTypeId: vinyasaYoga.id,
+    defaultTeacherId: params.primaryTeacherId,
+    title: "Vinyasa Flow Brussels",
+    description:
+      "A full-spectrum vinyasa class combining warm-up, standing sequences, and mindful cooldown.",
+    location: "Ixelles Studio A",
+    defaultCapacity: vinyasaYoga.defaultCapacity,
+    defaultDurationMinutes: vinyasaYoga.defaultDurationMinutes,
   });
-  const yogaWedRule = await upsertRecurringRule({
-    classTemplateId: yogaTemplate.id,
-    weekday: Weekday.WEDNESDAY,
-    startTime: "07:00",
-    startDate: new Date("2026-01-01T00:00:00.000Z"),
+  const rocketTemplate = await upsertClassTemplate({
+    slug: "rocket-yoga-power-sequence",
+    classTypeId: rocketYoga.id,
+    defaultTeacherId: params.primaryTeacherId,
+    title: "Rocket Yoga Power Sequence",
+    description:
+      "Progressive rocket yoga with options for inversion prep and core stability.",
+    location: "Ixelles Studio B",
+    defaultCapacity: rocketYoga.defaultCapacity,
+    defaultDurationMinutes: rocketYoga.defaultDurationMinutes,
   });
-  const muayThaiTueRule = await upsertRecurringRule({
-    classTemplateId: muayThaiTemplate.id,
-    weekday: Weekday.TUESDAY,
-    startTime: "18:30",
-    startDate: new Date("2026-01-01T00:00:00.000Z"),
+  const hathaTemplate = await upsertClassTemplate({
+    slug: "hatha-reset-weekend",
+    classTypeId: hathaYoga.id,
+    defaultTeacherId: params.assistantTeacherId,
+    title: "Hatha Reset Weekend",
+    description:
+      "A grounding hatha class focused on posture quality, breath rhythm, and recovery.",
+    location: "Ixelles Studio A",
+    defaultCapacity: hathaYoga.defaultCapacity,
+    defaultDurationMinutes: hathaYoga.defaultDurationMinutes,
+  });
+  const matPilatesTemplate = await upsertClassTemplate({
+    slug: "mat-pilates-core-lab",
+    classTypeId: matPilates.id,
+    defaultTeacherId: params.assistantTeacherId,
+    title: "Mat Pilates Core Lab",
+    description:
+      "Core and glute-focused mat pilates with structured progressions and prop work.",
+    location: "Etterbeek Studio C",
+    defaultCapacity: matPilates.defaultCapacity,
+    defaultDurationMinutes: matPilates.defaultDurationMinutes,
+  });
+  const reformerTemplate = await upsertClassTemplate({
+    slug: "reformer-foundations-small-group",
+    classTypeId: reformerFoundations.id,
+    defaultTeacherId: params.primaryTeacherId,
+    title: "Reformer Foundations Small Group",
+    description:
+      "Technique-first reformer foundations for beginners and returning clients.",
+    location: "Ixelles Reformer Room",
+    defaultCapacity: reformerFoundations.defaultCapacity,
+    defaultDurationMinutes: reformerFoundations.defaultDurationMinutes,
+  });
+  const functionalTemplate = await upsertClassTemplate({
+    slug: "functional-strength-express",
+    classTypeId: functionalStrength.id,
+    defaultTeacherId: params.assistantTeacherId,
+    title: "Functional Strength Express",
+    description:
+      "High-focus functional strength class with mobility warm-up and interval blocks.",
+    location: "Etterbeek Performance Room",
+    defaultCapacity: functionalStrength.defaultCapacity,
+    defaultDurationMinutes: functionalStrength.defaultDurationMinutes,
+  });
+  const privateReformerTemplate = await upsertClassTemplate({
+    slug: "private-reformer-coaching-slot",
+    classTypeId: privateReformerCoaching.id,
+    defaultTeacherId: params.primaryTeacherId,
+    title: "Private Reformer Coaching",
+    description:
+      "Private coaching slot tailored to injuries, goals, and postural priorities.",
+    location: "Ixelles Private Studio",
+    defaultCapacity: privateReformerCoaching.defaultCapacity,
+    defaultDurationMinutes: privateReformerCoaching.defaultDurationMinutes,
   });
 
-  const yogaMonStarts = nextOccurrences(Weekday.MONDAY, "07:00", 21);
-  const yogaWedStarts = nextOccurrences(Weekday.WEDNESDAY, "07:00", 21);
-  const muayThaiTueStarts = nextOccurrences(Weekday.TUESDAY, "18:30", 21);
-
-  for (let i = 0; i < yogaMonStarts.length; i += 1) {
-    const startsAt = yogaMonStarts[i];
-    const endsAt = new Date(startsAt.getTime() + yogaTemplate.defaultDurationMinutes * 60 * 1000);
-    const isCancelled = i === 1;
-
-    await upsertStudioSession({
-      classTemplateId: yogaTemplate.id,
-      recurringRuleId: yogaMonRule.id,
-      classTypeId: yogaFlowType.id,
+  const recurringDefinitions = [
+    {
+      template: vinyasaTemplate,
+      classType: vinyasaYoga,
+      weekday: Weekday.MONDAY,
+      startTime: "07:00",
       teacherId: params.primaryTeacherId,
-      title: yogaTemplate.title,
-      description: yogaTemplate.description ?? undefined,
-      location: yogaTemplate.location ?? undefined,
-      startsAt,
-      endsAt,
-      capacity: yogaTemplate.defaultCapacity,
-      status: isCancelled ? StudioSessionStatus.CANCELLED : StudioSessionStatus.SCHEDULED,
-      cancelledAt: isCancelled ? new Date(startsAt.getTime() - 6 * 60 * 60 * 1000) : undefined,
-      cancelledReason: isCancelled ? "Teacher unavailable for this occurrence." : undefined,
-      cancelledById: isCancelled ? params.masterAdminId : undefined,
-      isPublished: true,
-    });
-  }
-
-  for (const startsAt of yogaWedStarts) {
-    const endsAt = new Date(startsAt.getTime() + yogaTemplate.defaultDurationMinutes * 60 * 1000);
-
-    await upsertStudioSession({
-      classTemplateId: yogaTemplate.id,
-      recurringRuleId: yogaWedRule.id,
-      classTypeId: yogaFlowType.id,
+      cancellationIndex: 1,
+    },
+    {
+      template: vinyasaTemplate,
+      classType: vinyasaYoga,
+      weekday: Weekday.WEDNESDAY,
+      startTime: "18:30",
       teacherId: params.primaryTeacherId,
-      title: yogaTemplate.title,
-      description: yogaTemplate.description ?? undefined,
-      location: yogaTemplate.location ?? undefined,
-      startsAt,
-      endsAt,
-      capacity: yogaTemplate.defaultCapacity,
-      status: StudioSessionStatus.SCHEDULED,
-      isPublished: true,
+    },
+    {
+      template: rocketTemplate,
+      classType: rocketYoga,
+      weekday: Weekday.SATURDAY,
+      startTime: "09:00",
+      teacherId: params.primaryTeacherId,
+    },
+    {
+      template: hathaTemplate,
+      classType: hathaYoga,
+      weekday: Weekday.SUNDAY,
+      startTime: "10:30",
+      teacherId: params.assistantTeacherId,
+    },
+    {
+      template: matPilatesTemplate,
+      classType: matPilates,
+      weekday: Weekday.TUESDAY,
+      startTime: "12:15",
+      teacherId: params.assistantTeacherId,
+    },
+    {
+      template: matPilatesTemplate,
+      classType: matPilates,
+      weekday: Weekday.THURSDAY,
+      startTime: "19:00",
+      teacherId: params.assistantTeacherId,
+    },
+    {
+      template: reformerTemplate,
+      classType: reformerFoundations,
+      weekday: Weekday.FRIDAY,
+      startTime: "17:30",
+      teacherId: params.primaryTeacherId,
+    },
+    {
+      template: functionalTemplate,
+      classType: functionalStrength,
+      weekday: Weekday.TUESDAY,
+      startTime: "07:00",
+      teacherId: params.assistantTeacherId,
+    },
+    {
+      template: functionalTemplate,
+      classType: functionalStrength,
+      weekday: Weekday.THURSDAY,
+      startTime: "07:00",
+      teacherId: params.assistantTeacherId,
+    },
+    {
+      template: privateReformerTemplate,
+      classType: privateReformerCoaching,
+      weekday: Weekday.WEDNESDAY,
+      startTime: "12:00",
+      teacherId: params.primaryTeacherId,
+    },
+    {
+      template: privateReformerTemplate,
+      classType: privateReformerCoaching,
+      weekday: Weekday.SATURDAY,
+      startTime: "11:30",
+      teacherId: params.primaryTeacherId,
+    },
+  ] as const;
+
+  for (const definition of recurringDefinitions) {
+    const recurringRule = await upsertRecurringRule({
+      classTemplateId: definition.template.id,
+      weekday: definition.weekday,
+      startTime: definition.startTime,
+      startDate: SCHEDULE_WINDOW_START,
+      endDate: SCHEDULE_WINDOW_END,
     });
+
+    const startsAtList = nextOccurrencesInWindow({
+      weekday: definition.weekday,
+      time: definition.startTime,
+      windowStart: SCHEDULE_WINDOW_START,
+      windowEnd: SCHEDULE_WINDOW_END,
+    });
+
+    for (let index = 0; index < startsAtList.length; index += 1) {
+      const startsAt = startsAtList[index];
+      const endsAt = new Date(
+        startsAt.getTime() + definition.template.defaultDurationMinutes * 60 * 1000,
+      );
+      const isCancelled = definition.cancellationIndex === index;
+
+      await upsertStudioSession({
+        classTemplateId: definition.template.id,
+        recurringRuleId: recurringRule.id,
+        classTypeId: definition.classType.id,
+        teacherId: definition.teacherId,
+        title: definition.template.title,
+        description: definition.template.description ?? undefined,
+        location: definition.template.location ?? undefined,
+        startsAt,
+        endsAt,
+        capacity: definition.template.defaultCapacity,
+        status: isCancelled ? StudioSessionStatus.CANCELLED : StudioSessionStatus.SCHEDULED,
+        cancelledAt: isCancelled ? new Date(startsAt.getTime() - 4 * 60 * 60 * 1000) : undefined,
+        cancelledReason: isCancelled
+          ? "Planned replacement due to teacher availability."
+          : undefined,
+        cancelledById: isCancelled ? params.masterAdminId : undefined,
+        isPublished: true,
+      });
+    }
   }
 
-  for (let i = 0; i < muayThaiTueStarts.length; i += 1) {
-    const startsAt = muayThaiTueStarts[i];
-    const endsAt = new Date(startsAt.getTime() + muayThaiTemplate.defaultDurationMinutes * 60 * 1000);
-
-    await upsertStudioSession({
-      classTemplateId: muayThaiTemplate.id,
-      recurringRuleId: muayThaiTueRule.id,
-      classTypeId: muayThaiType.id,
-      teacherId: i === 0 ? params.assistantTeacherId : params.primaryTeacherId,
-      title: muayThaiTemplate.title,
-      description: muayThaiTemplate.description ?? undefined,
-      location: muayThaiTemplate.location ?? undefined,
-      startsAt,
-      endsAt,
-      capacity: muayThaiTemplate.defaultCapacity,
-      status: StudioSessionStatus.SCHEDULED,
-      isPublished: true,
-    });
-  }
-
-  const oneOffStartsAt = new Date();
-  oneOffStartsAt.setUTCDate(oneOffStartsAt.getUTCDate() + 10);
-  oneOffStartsAt.setUTCHours(12, 15, 0, 0);
+  const oneOffStartsAt = new Date("2026-04-26T14:00:00.000Z");
   const oneOffEndsAt = new Date(
-    oneOffStartsAt.getTime() + conditioningTemplate.defaultDurationMinutes * 60 * 1000,
+    oneOffStartsAt.getTime() + functionalTemplate.defaultDurationMinutes * 60 * 1000,
   );
 
   await upsertStudioSession({
-    classTemplateId: conditioningTemplate.id,
-    classTypeId: conditioningType.id,
+    classTemplateId: functionalTemplate.id,
+    classTypeId: functionalStrength.id,
     teacherId: params.assistantTeacherId,
-    title: `${conditioningTemplate.title} (One-Off)`,
-    description: "Special one-off conditioning session outside recurrence.",
-    location: conditioningTemplate.location ?? undefined,
+    title: "Functional Strength Pop-Up",
+    description: "Special Sunday conditioning pop-up session.",
+    location: functionalTemplate.location ?? undefined,
     startsAt: oneOffStartsAt,
     endsAt: oneOffEndsAt,
-    capacity: conditioningTemplate.defaultCapacity,
+    capacity: 12,
     status: StudioSessionStatus.SCHEDULED,
     isPublished: true,
   });
@@ -986,6 +1195,11 @@ async function upsertBooking(input: {
   studioSessionId: string;
   status: BookingStatus;
   bookedAt: Date;
+  orderId?: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  customerMessage?: string;
   cancelledAt?: Date;
   cancellationReason?: string;
   cancelledById?: string;
@@ -1000,6 +1214,11 @@ async function upsertBooking(input: {
     update: {
       status: input.status,
       bookedAt: input.bookedAt,
+      orderId: input.orderId,
+      customerName: input.customerName,
+      customerEmail: input.customerEmail,
+      customerPhone: input.customerPhone,
+      customerMessage: input.customerMessage,
       cancelledAt: input.cancelledAt,
       cancellationReason: input.cancellationReason,
       cancelledById: input.cancelledById,
@@ -1009,6 +1228,11 @@ async function upsertBooking(input: {
       studioSessionId: input.studioSessionId,
       status: input.status,
       bookedAt: input.bookedAt,
+      orderId: input.orderId,
+      customerName: input.customerName,
+      customerEmail: input.customerEmail,
+      customerPhone: input.customerPhone,
+      customerMessage: input.customerMessage,
       cancelledAt: input.cancelledAt,
       cancellationReason: input.cancellationReason,
       cancelledById: input.cancelledById,
@@ -1095,6 +1319,19 @@ async function seedBookingOperations(params: {
     studioSessionId: scheduledSessions[0].id,
     status: BookingStatus.CONFIRMED,
     bookedAt: new Date("2026-03-20T09:00:00.000Z"),
+    customerName: "Client One",
+    customerEmail: "client1@onthematstudio.local",
+    customerPhone: "+32000000001",
+  });
+
+  await upsertBooking({
+    clientId: params.clientOneId,
+    studioSessionId: scheduledSessions[1].id,
+    status: BookingStatus.PENDING,
+    bookedAt: new Date("2026-03-20T09:05:00.000Z"),
+    customerName: "Client One",
+    customerEmail: "client1@onthematstudio.local",
+    customerPhone: "+32000000001",
   });
 
   await upsertBooking({
@@ -1102,6 +1339,9 @@ async function seedBookingOperations(params: {
     studioSessionId: scheduledSessions[1].id,
     status: BookingStatus.CANCELLED,
     bookedAt: new Date("2026-03-20T09:05:00.000Z"),
+    customerName: "Client One",
+    customerEmail: "client1@onthematstudio.local",
+    customerPhone: "+32000000001",
     cancelledAt: new Date("2026-03-21T08:00:00.000Z"),
     cancellationReason: "Client cancelled before cutoff.",
     cancelledById: params.masterAdminId,
@@ -1112,6 +1352,9 @@ async function seedBookingOperations(params: {
     studioSessionId: scheduledSessions[2].id,
     status: BookingStatus.CONFIRMED,
     bookedAt: new Date("2026-03-20T09:10:00.000Z"),
+    customerName: "Client Two",
+    customerEmail: "client2@onthematstudio.local",
+    customerPhone: "+32000000002",
   });
 
   await upsertBooking({
@@ -1119,7 +1362,82 @@ async function seedBookingOperations(params: {
     studioSessionId: scheduledSessions[3].id,
     status: BookingStatus.CONFIRMED,
     bookedAt: new Date("2026-03-20T09:15:00.000Z"),
+    customerName: "Client Three",
+    customerEmail: "client3@onthematstudio.local",
+    customerPhone: "+32000000003",
   });
+
+  const privateSession = await prisma.studioSession.findFirst({
+    where: {
+      status: StudioSessionStatus.SCHEDULED,
+      classType: { slug: "private-reformer-coaching" },
+    },
+    orderBy: { startsAt: "asc" },
+  });
+
+  if (privateSession) {
+    await upsertBooking({
+      clientId: params.clientTwoId,
+      studioSessionId: privateSession.id,
+      status: BookingStatus.CONFIRMED,
+      bookedAt: new Date("2026-03-20T09:35:00.000Z"),
+      customerName: "Client Two",
+      customerEmail: "client2@onthematstudio.local",
+      customerPhone: "+32000000002",
+    });
+
+    await upsertBooking({
+      clientId: params.clientThreeId,
+      studioSessionId: privateSession.id,
+      status: BookingStatus.CONFIRMED,
+      bookedAt: new Date("2026-03-20T09:40:00.000Z"),
+      customerName: "Client Three",
+      customerEmail: "client3@onthematstudio.local",
+      customerPhone: "+32000000003",
+    });
+
+    await upsertWaitlistEntry({
+      clientId: params.clientOneId,
+      studioSessionId: privateSession.id,
+      status: WaitlistStatus.ACTIVE,
+      position: 1,
+      joinedAt: new Date("2026-03-20T09:45:00.000Z"),
+    });
+  }
+
+  const existingGuestBooking = await prisma.booking.findFirst({
+    where: {
+      clientId: null,
+      studioSessionId: scheduledSessions[0].id,
+      customerEmail: "guest.walkin@example.com",
+    },
+  });
+
+  if (existingGuestBooking) {
+    await prisma.booking.update({
+      where: { id: existingGuestBooking.id },
+      data: {
+        status: BookingStatus.PENDING,
+        bookedAt: new Date("2026-03-20T09:25:00.000Z"),
+        customerName: "Guest Walk-in",
+        customerEmail: "guest.walkin@example.com",
+        customerPhone: "+32000000999",
+        customerMessage: "First class, beginner level preference.",
+      },
+    });
+  } else {
+    await prisma.booking.create({
+      data: {
+        studioSessionId: scheduledSessions[0].id,
+        status: BookingStatus.PENDING,
+        bookedAt: new Date("2026-03-20T09:25:00.000Z"),
+        customerName: "Guest Walk-in",
+        customerEmail: "guest.walkin@example.com",
+        customerPhone: "+32000000999",
+        customerMessage: "First class, beginner level preference.",
+      },
+    });
+  }
 
   await upsertWaitlistEntry({
     clientId: params.clientThreeId,
@@ -1148,9 +1466,9 @@ async function seedCommerce(params: {
     where: {
       lookupKey: {
         in: [
-          "drop-in-yoga-eur-once-v1",
-          "10-class-pack-eur-once-v1",
-          "monthly-unlimited-eur-monthly-v1",
+          "collective-drop-in-eur-once-v1",
+          "collective-10-pack-eur-once-v1",
+          "monthly-unlimited-collective-eur-monthly-v1",
         ],
       },
     },
@@ -1160,9 +1478,9 @@ async function seedCommerce(params: {
   });
 
   const priceByKey = new Map(prices.map((price) => [price.lookupKey, price]));
-  const dropInPrice = priceByKey.get("drop-in-yoga-eur-once-v1");
-  const classPackPrice = priceByKey.get("10-class-pack-eur-once-v1");
-  const membershipPrice = priceByKey.get("monthly-unlimited-eur-monthly-v1");
+  const dropInPrice = priceByKey.get("collective-drop-in-eur-once-v1");
+  const classPackPrice = priceByKey.get("collective-10-pack-eur-once-v1");
+  const membershipPrice = priceByKey.get("monthly-unlimited-collective-eur-monthly-v1");
 
   if (!dropInPrice || !classPackPrice || !membershipPrice) {
     throw new Error("Required catalog prices are missing for commerce seed.");
@@ -1586,6 +1904,46 @@ async function seedAdminSupport(params: {
   });
 }
 
+async function verifySeedCoverage() {
+  const [categoryCount, classTypeCount, futureSessionCount, purchasableOptionCount] =
+    await prisma.$transaction([
+      prisma.classCategory.count(),
+      prisma.classType.count(),
+      prisma.studioSession.count({
+        where: {
+          startsAt: { gte: SCHEDULE_WINDOW_START },
+          status: StudioSessionStatus.SCHEDULED,
+        },
+      }),
+      prisma.product.count({
+        where: {
+          isActive: true,
+          prices: {
+            some: {},
+          },
+        },
+      }),
+    ]);
+
+  if (categoryCount < 4) {
+    throw new Error(`Seed verification failed: expected at least 4 categories, got ${categoryCount}.`);
+  }
+
+  if (classTypeCount < 6) {
+    throw new Error(`Seed verification failed: expected at least 6 services/class types, got ${classTypeCount}.`);
+  }
+
+  if (futureSessionCount < 20) {
+    throw new Error(`Seed verification failed: expected at least 20 future sessions, got ${futureSessionCount}.`);
+  }
+
+  if (purchasableOptionCount < 3) {
+    throw new Error(
+      `Seed verification failed: expected at least 3 purchasable booking options, got ${purchasableOptionCount}.`,
+    );
+  }
+}
+
 async function main() {
   const masterAdmin = await seedMasterAdmin();
   const primaryTeacher = await seedTeacher();
@@ -1623,6 +1981,8 @@ async function main() {
     clientOneId: clientOne.id,
     clientTwoId: clientTwo.id,
   });
+
+  await verifySeedCoverage();
 }
 
 main()
