@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { auth } from "../../../../auth";
 import { ServiceBookingExperience } from "../../../../components/book-a-class/service-detail/ServiceBookingExperience";
 import {
   getPublicServiceDetailBySlug,
@@ -13,6 +14,7 @@ export default async function ServiceBookingPage({
   params: Promise<{ serviceSlug: string }>;
 }) {
   const { serviceSlug } = await params;
+  const session = await auth();
   const service = await getPublicServiceDetailBySlug(serviceSlug);
 
   if (!service) {
@@ -32,6 +34,7 @@ export default async function ServiceBookingPage({
 
   return (
     <ServiceBookingExperience
+      isAuthenticated={Boolean(session?.user)}
       service={service}
       initialMonthKey={currentMonthKey}
       initialAvailabilityDays={monthAvailability?.days ?? []}

@@ -1,4 +1,4 @@
-import "./helpers/setup-env";
+﻿import "./helpers/setup-env";
 import { BookingStatus, Role, StudioSessionStatus } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "./helpers/db";
@@ -131,8 +131,8 @@ function validDraftPayload(session: { serviceSlug: string; sessionId: string }) 
   return {
     serviceSlug: session.serviceSlug,
     sessionId: session.sessionId,
-    customerName: "Guest User",
-    customerEmail: "guest@example.test",
+    customerName: "Client User",
+    customerEmail: "client@example.test",
     customerPhone: "+32000000009",
     customerMessage: "Looking forward to class",
     bookingIntent: "SINGLE_BOOKING",
@@ -141,14 +141,50 @@ function validDraftPayload(session: { serviceSlug: string; sessionId: string }) 
   };
 }
 
+function authSessionForUser(user: { id: string; name: string; email: string }) {
+  return {
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+    },
+    expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  };
+}
+
+async function createAuthenticatedUser(email: string) {
+  const user = await prisma.user.create({
+    data: {
+      name: "Authenticated Client",
+      email,
+      role: Role.CLIENT,
+    },
+  });
+
+  vi.mocked(auth).mockResolvedValue(authSessionForUser(user));
+
+  return user;
+}
+
 describe("POST /api/bookings/draft", () => {
   beforeEach(async () => {
     vi.mocked(auth).mockResolvedValue(null);
     await resetDb();
   });
 
-  it("creates a pending booking draft for guest booking", async () => {
+  it("requires authentication", async () => {
     const fixture = await createSessionFixture();
+    vi.mocked(auth).mockResolvedValue(null);
+
+    const response = await createDraft(buildRequest(validDraftPayload(fixture)));
+
+    expect(response.status).toBe(401);
+  });
+
+  it("creates a pending booking draft for signed-in user", async () => {
+    const fixture = await createSessionFixture();
+    const user = await createAuthenticatedUser("auth.client@example.test");
+
     const response = await createDraft(buildRequest(validDraftPayload(fixture)));
     const body = (await response.json()) as {
       draft: { bookingId: string; status: string };
@@ -158,27 +194,13 @@ describe("POST /api/bookings/draft", () => {
     expect(body.draft.status).toBe("PENDING");
 
     const booking = await prisma.booking.findUnique({ where: { id: body.draft.bookingId } });
-    expect(booking?.clientId).toBeNull();
+    expect(booking?.clientId).toBe(user.id);
     expect(booking?.status).toBe(BookingStatus.PENDING);
   });
 
   it("attaches authenticated user id when available", async () => {
     const fixture = await createSessionFixture();
-    const user = await prisma.user.create({
-      data: {
-        name: "Authenticated Client",
-        email: "auth.client@example.test",
-        role: Role.CLIENT,
-      },
-    });
-    vi.mocked(auth).mockResolvedValue({
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-      },
-      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-    });
+    const user = await createAuthenticatedUser("auth.client.2@example.test");
 
     const response = await createDraft(buildRequest(validDraftPayload(fixture)));
     const body = (await response.json()) as {
@@ -192,8 +214,10 @@ describe("POST /api/bookings/draft", () => {
 
   it("rejects missing sessionId", async () => {
     const fixture = await createSessionFixture();
+    await createAuthenticatedUser("auth.client.3@example.test");
+
     const payload = validDraftPayload(fixture);
-    const invalidPayload = { ...payload };
+    const invalidPayload = { ...payload } as Partial<typeof payload>;
     delete invalidPayload.sessionId;
 
     const response = await createDraft(buildRequest(invalidPayload));
@@ -202,6 +226,8 @@ describe("POST /api/bookings/draft", () => {
 
   it("rejects invalid session", async () => {
     const fixture = await createSessionFixture();
+    await createAuthenticatedUser("auth.client.4@example.test");
+
     const response = await createDraft(
       buildRequest({
         ...validDraftPayload(fixture),
@@ -213,18 +239,24 @@ describe("POST /api/bookings/draft", () => {
 
   it("rejects past session", async () => {
     const fixture = await createSessionFixture({ inPast: true });
+    await createAuthenticatedUser("auth.client.5@example.test");
+
     const response = await createDraft(buildRequest(validDraftPayload(fixture)));
     expect(response.status).toBe(400);
   });
 
   it("rejects full session", async () => {
     const fixture = await createSessionFixture({ full: true });
+    await createAuthenticatedUser("auth.client.6@example.test");
+
     const response = await createDraft(buildRequest(validDraftPayload(fixture)));
     expect(response.status).toBe(400);
   });
 
   it("rejects missing required fields", async () => {
     const fixture = await createSessionFixture();
+    await createAuthenticatedUser("auth.client.7@example.test");
+
     const response = await createDraft(
       buildRequest({
         ...validDraftPayload(fixture),
@@ -236,6 +268,8 @@ describe("POST /api/bookings/draft", () => {
 
   it("rejects missing required consents", async () => {
     const fixture = await createSessionFixture();
+    await createAuthenticatedUser("auth.client.8@example.test");
+
     const response = await createDraft(
       buildRequest({
         ...validDraftPayload(fixture),
@@ -245,6 +279,3 @@ describe("POST /api/bookings/draft", () => {
     expect(response.status).toBe(400);
   });
 });
-
-
-

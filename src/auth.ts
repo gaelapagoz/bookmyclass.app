@@ -1,71 +1,17 @@
-import NextAuth from "next-auth";
+﻿import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import type { Role } from "@prisma/client";
 import Credentials from "next-auth/providers/credentials";
-import { compare } from "bcryptjs";
-import { z } from "zod";
 
 import { prisma } from "@/lib/db";
-
-const credentialsSchema = z.object({
-  email: z.string().trim().email(),
-  password: z.string().min(1),
-});
-
-type AuthUser = {
-  id: string;
-  email: string;
-  name: string;
-  role: Role;
-};
-
-async function authorizeCredentials(rawCredentials: unknown): Promise<AuthUser | null> {
-  const parsed = credentialsSchema.safeParse(rawCredentials);
-
-  if (!parsed.success) {
-    return null;
-  }
-
-  const email = parsed.data.email.toLowerCase();
-  const password = parsed.data.password;
-
-  const user = await prisma.user.findFirst({
-    where: {
-      email: {
-        equals: email,
-        mode: "insensitive",
-      },
-    },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      role: true,
-      passwordHash: true,
-    },
-  });
-
-  if (!user?.passwordHash) {
-    return null;
-  }
-
-  const isValidPassword = await compare(password, user.passwordHash);
-  if (!isValidPassword) {
-    return null;
-  }
-
-  return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: user.role,
-  };
-}
+import { authorizeCredentials, type AuthUser } from "@/lib/auth/credentials-authorize";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   secret: process.env.AUTH_SECRET,
   session: { strategy: "jwt" },
+  pages: {
+    signIn: "/sign-in",
+  },
   providers: [
     Credentials({
       name: "Email and Password",
@@ -107,3 +53,5 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
 });
+
+export { authorizeCredentials };

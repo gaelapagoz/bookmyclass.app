@@ -6,7 +6,7 @@ export async function requireAuth() {
   const session = await auth();
 
   if (!session?.user) {
-    redirect("/api/auth/signin");
+    redirect("/sign-in?callbackUrl=%2Fdashboard");
   }
 
   return session;

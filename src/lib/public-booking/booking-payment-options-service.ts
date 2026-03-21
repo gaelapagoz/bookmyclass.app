@@ -7,7 +7,9 @@ import {
   EntitlementType,
   PriceType,
   ProductType,
+  SubscriptionStatus,
   type BillingInterval,
+  StudioSessionStatus,
 } from "@prisma/client";
 import { prisma } from "../db";
 
@@ -23,6 +25,7 @@ type ExistingPlanOption = {
   entitlementType: EntitlementType;
   expiresAt: string | null;
   isUsable: boolean;
+  planSource: "CREDITS" | "SUBSCRIPTION";
   priceName: string | null;
   productId: string;
   productName: string;
@@ -92,6 +95,7 @@ type PlanSummary = {
   entitlementId: string;
   expiresAt: string | null;
   isUsable: boolean;
+  planSource: "CREDITS" | "SUBSCRIPTION";
   priceName: string | null;
   productId: string;
   productName: string;
@@ -101,6 +105,7 @@ type PlanSummary = {
 
 type BookingForOptions = {
   bookingIntent: "SINGLE_BOOKING" | "USE_PLAN";
+  clientId: string | null;
   classType: {
     categorySlug: string;
     serviceSlug: string;
@@ -112,6 +117,13 @@ type BookingForOptions = {
   selectedEntitlementId: string | null;
   selectedPriceId: string | null;
   status: BookingStatus;
+  session: {
+    capacity: number;
+    startsAt: Date;
+    status: StudioSessionStatus;
+    isPublished: boolean;
+    activeBookingCount: number;
+  };
 };
 
 type PlanOptionRecord = {
@@ -156,7 +168,9 @@ type SelectPaymentResult = {
 type OptionsErrorCode =
   | "BOOKING_NOT_FOUND"
   | "BOOKING_NOT_PENDING"
+  | "SESSION_NOT_BOOKABLE"
   | "NOT_AUTHENTICATED"
+  | "BOOKING_NOT_OWNED"
   | "PLAN_NOT_FOUND"
   | "PLAN_NOT_USABLE"
   | "PRICE_NOT_ELIGIBLE";
@@ -200,6 +214,7 @@ async function getBookingForOptions(bookingId: string): Promise<BookingForOption
     where: { id: bookingId },
     select: {
       id: true,
+      clientId: true,
       status: true,
       bookingIntent: true,
       paymentSelection: true,
@@ -209,6 +224,18 @@ async function getBookingForOptions(bookingId: string): Promise<BookingForOption
       draftCurrencyCode: true,
       studioSession: {
         select: {
+          capacity: true,
+          startsAt: true,
+          status: true,
+          isPublished: true,
+          bookings: {
+            where: {
+              status: {
+                in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
+              },
+            },
+            select: { id: true },
+          },
           classType: {
             select: {
               slug: true,
@@ -230,6 +257,7 @@ async function getBookingForOptions(bookingId: string): Promise<BookingForOption
 
   return {
     id: booking.id,
+    clientId: booking.clientId,
     status: booking.status,
     bookingIntent: booking.bookingIntent,
     paymentSelection: booking.paymentSelection,
@@ -237,6 +265,13 @@ async function getBookingForOptions(bookingId: string): Promise<BookingForOption
     selectedPriceId: booking.selectedPriceId,
     draftAmountMinor: booking.draftAmountMinor,
     draftCurrencyCode: booking.draftCurrencyCode,
+    session: {
+      capacity: booking.studioSession.capacity,
+      startsAt: booking.studioSession.startsAt,
+      status: booking.studioSession.status,
+      isPublished: booking.studioSession.isPublished,
+      activeBookingCount: booking.studioSession.bookings.length,
+    },
     classType: {
       serviceSlug: booking.studioSession.classType.slug,
       categorySlug: booking.studioSession.classType.category.slug,
@@ -313,6 +348,45 @@ async function getPlanBalance(input: {
   };
 }
 
+function planPriority(option: ExistingPlanOption): number {
+  if (option.planSource === "SUBSCRIPTION") {
+    return 2;
+  }
+
+  if (option.entitlementType === EntitlementType.CREDIT_PACK || option.entitlementType === EntitlementType.SINGLE_USE) {
+    return 0;
+  }
+
+  return 1;
+}
+
+function sortExistingPlans(options: ExistingPlanOption[]): ExistingPlanOption[] {
+  return [...options].sort((a, b) => {
+    const priorityDelta = planPriority(a) - planPriority(b);
+    if (priorityDelta !== 0) {
+      return priorityDelta;
+    }
+
+    if (a.remainingCredits !== null || b.remainingCredits !== null) {
+      return (b.remainingCredits ?? -1) - (a.remainingCredits ?? -1);
+    }
+
+    if (a.expiresAt && b.expiresAt) {
+      return new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime();
+    }
+
+    if (a.expiresAt && !b.expiresAt) {
+      return -1;
+    }
+
+    if (!a.expiresAt && b.expiresAt) {
+      return 1;
+    }
+
+    return a.productName.localeCompare(b.productName);
+  });
+}
+
 async function getExistingPlansByUserAndScope(params: {
   requiredScope: EntitlementScope;
   userId: string;
@@ -330,6 +404,7 @@ async function getExistingPlansByUserAndScope(params: {
       entitlementType: true,
       entitlementScope: true,
       expiresAt: true,
+      subscriptionContractId: true,
       product: {
         select: {
           id: true,
@@ -359,6 +434,11 @@ async function getExistingPlansByUserAndScope(params: {
         entitlementId: entitlement.id,
         entitlementType: entitlement.entitlementType,
         entitlementScope: entitlement.entitlementScope,
+        planSource:
+          entitlement.entitlementType === EntitlementType.CREDIT_PACK ||
+          entitlement.entitlementType === EntitlementType.SINGLE_USE
+            ? "CREDITS"
+            : "SUBSCRIPTION",
         productId: entitlement.product.id,
         productName: entitlement.product.name,
         priceName: entitlement.product.prices[0]?.name ?? null,
@@ -370,7 +450,69 @@ async function getExistingPlansByUserAndScope(params: {
     }),
   );
 
-  return options.filter((option) => option.isUsable);
+  const usableEntitlementOptions = options.filter((option) => option.isUsable);
+  const coveredSubscriptionIds = new Set(
+    entitlements
+      .map((entitlement) => entitlement.subscriptionContractId)
+      .filter((subscriptionContractId): subscriptionContractId is string => Boolean(subscriptionContractId)),
+  );
+
+  const now = new Date();
+  const activeSubscriptions = await prisma.subscriptionContract.findMany({
+    where: {
+      clientId: params.userId,
+      status: SubscriptionStatus.ACTIVE,
+      startsAt: { lte: now },
+      currentPeriodStart: { lte: now },
+      currentPeriodEnd: { gt: now },
+      OR: [{ endedAt: null }, { endedAt: { gt: now } }],
+      product: {
+        entitlementRules: {
+          some: {
+            isActive: true,
+            entitlementScope: {
+              in: [params.requiredScope, EntitlementScope.ALL_CLASSES],
+            },
+            entitlementType: EntitlementType.UNLIMITED_ACCESS,
+          },
+        },
+      },
+    },
+    select: {
+      id: true,
+      currentPeriodEnd: true,
+      product: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      price: {
+        select: {
+          name: true,
+        },
+      },
+    },
+    orderBy: [{ currentPeriodEnd: "asc" }, { updatedAt: "desc" }],
+  });
+
+  const subscriptionOptions: ExistingPlanOption[] = activeSubscriptions
+    .filter((subscription) => !coveredSubscriptionIds.has(subscription.id))
+    .map((subscription) => ({
+      entitlementId: `subscription:${subscription.id}`,
+      entitlementType: EntitlementType.UNLIMITED_ACCESS,
+      entitlementScope: EntitlementScope.ALL_CLASSES,
+      planSource: "SUBSCRIPTION",
+      productId: subscription.product.id,
+      productName: subscription.product.name,
+      priceName: subscription.price.name,
+      expiresAt: subscription.currentPeriodEnd.toISOString(),
+      remainingCredits: null,
+      isUsable: true,
+      reason: null,
+    }));
+
+  return sortExistingPlans([...usableEntitlementOptions, ...subscriptionOptions]);
 }
 
 async function getPlanPurchaseOptions(requiredScope: EntitlementScope): Promise<PlanOptionRecord[]> {
@@ -535,6 +677,30 @@ function assertPendingBooking(booking: BookingForOptions | null): asserts bookin
   }
 }
 
+function assertSessionStillBookable(booking: BookingForOptions) {
+  if (
+    booking.session.status !== StudioSessionStatus.SCHEDULED ||
+    !booking.session.isPublished ||
+    booking.session.startsAt <= new Date()
+  ) {
+    throw new BookingPaymentOptionsError("SESSION_NOT_BOOKABLE", "This session is no longer bookable.");
+  }
+
+  if (booking.session.activeBookingCount > booking.session.capacity) {
+    throw new BookingPaymentOptionsError("SESSION_NOT_BOOKABLE", "This session is no longer available.");
+  }
+}
+
+function assertBookingOwnedByUser(booking: BookingForOptions, userId: string | null) {
+  if (!userId) {
+    throw new BookingPaymentOptionsError("NOT_AUTHENTICATED", "Authentication required.");
+  }
+
+  if (!booking.clientId || booking.clientId !== userId) {
+    throw new BookingPaymentOptionsError("BOOKING_NOT_OWNED", "This booking does not belong to the signed-in user.");
+  }
+}
+
 function toPlanSummary(plan: ExistingPlanOption): PlanSummary {
   return {
     entitlementId: plan.entitlementId,
@@ -544,6 +710,7 @@ function toPlanSummary(plan: ExistingPlanOption): PlanSummary {
     expiresAt: plan.expiresAt,
     remainingCredits: plan.remainingCredits,
     isUsable: plan.isUsable,
+    planSource: plan.planSource,
     reason: plan.reason,
   };
 }
@@ -584,51 +751,19 @@ function computeRecommendedSelection(input: {
     };
   }
 
-  if (booking.bookingIntent === "SINGLE_BOOKING") {
-    if (singleSession) {
-      return {
-        recommended: {
-          mode: BookingPaymentSelection.SINGLE_SESSION,
-          entitlementId: null,
-          priceId: singleSession.priceId,
-          reason: "Booking intent is single-session; drop-in payment is preselected.",
-        },
-        requiresChoice: false,
-      };
-    }
-
-    return {
-      recommended: {
-        mode: null,
-        entitlementId: null,
-        priceId: null,
-        reason: "No single-session price is available for this class.",
-      },
-      requiresChoice: true,
-    };
-  }
-
-  if (existingPlans.length === 1) {
+  if (existingPlans.length > 0) {
+    const preferredPlan = existingPlans[0];
     return {
       recommended: {
         mode: BookingPaymentSelection.EXISTING_PLAN,
-        entitlementId: existingPlans[0]?.entitlementId ?? null,
+        entitlementId: preferredPlan?.entitlementId ?? null,
         priceId: null,
-        reason: "One eligible active plan found; it is preselected.",
+        reason:
+          preferredPlan?.planSource === "CREDITS"
+            ? "An eligible credit plan is preselected."
+            : "An active membership is preselected.",
       },
-      requiresChoice: false,
-    };
-  }
-
-  if (existingPlans.length > 1) {
-    return {
-      recommended: {
-        mode: null,
-        entitlementId: null,
-        priceId: null,
-        reason: "Multiple eligible plans found; choose which plan to use.",
-      },
-      requiresChoice: true,
+      requiresChoice: existingPlans.length > 1,
     };
   }
 
@@ -726,6 +861,8 @@ export async function getBookingPaymentOptions(params: {
 }): Promise<BookingPaymentOptions> {
   const booking = await getBookingForOptions(params.bookingId);
   assertPendingBooking(booking);
+  assertBookingOwnedByUser(booking, params.userId);
+  assertSessionStillBookable(booking);
 
   const requiredScope = toEntitlementScope(booking.classType.categorySlug);
   const [singleSession, newPlanOptions, existingPlans] = await Promise.all([
@@ -764,10 +901,11 @@ export async function getBookingPaymentOptions(params: {
 }
 
 export async function getBookingPaymentOptionsPreview(params: {
-  bookingIntent: "SINGLE_BOOKING" | "USE_PLAN";
+  bookingIntent?: "SINGLE_BOOKING" | "USE_PLAN";
   serviceSlug: string;
   userId: string | null;
 }): Promise<BookingPaymentOptionsPreview> {
+  const bookingIntent = params.bookingIntent ?? "USE_PLAN";
   const categorySlug = await getServiceCategorySlug(params.serviceSlug);
   if (!categorySlug) {
     throw new BookingPaymentOptionsError("BOOKING_NOT_FOUND", "Service was not found.");
@@ -789,7 +927,7 @@ export async function getBookingPaymentOptionsPreview(params: {
     booking: {
       id: "preview",
       status: BookingStatus.PENDING,
-      bookingIntent: params.bookingIntent,
+      bookingIntent,
       paymentSelection: null,
       selectedEntitlementId: null,
       selectedPriceId: null,
@@ -806,7 +944,7 @@ export async function getBookingPaymentOptionsPreview(params: {
   });
 
   return {
-    bookingIntent: params.bookingIntent,
+    bookingIntent,
     singleSession,
     newPlanOptions,
     existingPlans,
@@ -820,6 +958,76 @@ async function applyExistingPlanSelection(input: {
   requiredScope: EntitlementScope;
   userId: string;
 }): Promise<SelectPaymentResult> {
+  if (input.entitlementId.startsWith("subscription:")) {
+    const subscriptionId = input.entitlementId.replace("subscription:", "");
+    const now = new Date();
+    const subscription = await prisma.subscriptionContract.findFirst({
+      where: {
+        id: subscriptionId,
+        clientId: input.userId,
+        status: SubscriptionStatus.ACTIVE,
+        startsAt: { lte: now },
+        currentPeriodStart: { lte: now },
+        currentPeriodEnd: { gt: now },
+        OR: [{ endedAt: null }, { endedAt: { gt: now } }],
+        product: {
+          entitlementRules: {
+            some: {
+              isActive: true,
+              entitlementScope: {
+                in: [input.requiredScope, EntitlementScope.ALL_CLASSES],
+              },
+              entitlementType: EntitlementType.UNLIMITED_ACCESS,
+            },
+          },
+        },
+      },
+      select: {
+        id: true,
+        price: {
+          select: {
+            currencyCode: true,
+          },
+        },
+      },
+    });
+
+    if (!subscription) {
+      throw new BookingPaymentOptionsError("PLAN_NOT_USABLE", "Selected membership is not usable.");
+    }
+
+    const booking = await prisma.booking.update({
+      where: { id: input.bookingId },
+      data: {
+        status: BookingStatus.CONFIRMED,
+        paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
+        selectedEntitlementId: null,
+        selectedPriceId: null,
+        draftAmountMinor: 0,
+        draftCurrencyCode: subscription.price.currencyCode,
+      },
+      select: {
+        id: true,
+        status: true,
+        paymentSelection: true,
+        selectedEntitlementId: true,
+        selectedPriceId: true,
+        draftAmountMinor: true,
+        draftCurrencyCode: true,
+      },
+    });
+
+    return {
+      bookingId: booking.id,
+      bookingStatus: booking.status,
+      paymentSelection: booking.paymentSelection ?? BookingPaymentSelection.EXISTING_PLAN,
+      selectedEntitlementId: booking.selectedEntitlementId,
+      selectedPriceId: booking.selectedPriceId,
+      draftAmountMinor: booking.draftAmountMinor ?? 0,
+      draftCurrencyCode: booking.draftCurrencyCode ?? "EUR",
+    };
+  }
+
   const entitlement = await prisma.clientEntitlement.findFirst({
     where: {
       id: input.entitlementId,
@@ -996,6 +1204,8 @@ async function applyPriceSelection(input: {
 export async function selectBookingPaymentOption(input: SelectPaymentInput): Promise<SelectPaymentResult> {
   const booking = await getBookingForOptions(input.bookingId);
   assertPendingBooking(booking);
+  assertBookingOwnedByUser(booking, input.userId);
+  assertSessionStillBookable(booking);
 
   const requiredScope = toEntitlementScope(booking.classType.categorySlug);
 

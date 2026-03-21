@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { signOut } from "next-auth/react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 type BookingSessionSummary = {
@@ -30,9 +31,10 @@ type PaymentMode = "SINGLE_SESSION" | "NEW_PLAN_PURCHASE" | "EXISTING_PLAN";
 
 type PaymentOptionsResponse = {
   paymentOptions: {
-    bookingIntent: "SINGLE_BOOKING" | "USE_PLAN";
     existingPlans: Array<{
+      entitlementType: "CREDIT_PACK" | "SINGLE_USE" | "UNLIMITED_ACCESS";
       entitlementId: string;
+      planSource: "CREDITS" | "SUBSCRIPTION";
       productName: string;
       remainingCredits: number | null;
     }>;
@@ -132,7 +134,6 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
   const [customerEmail, setCustomerEmail] = useState(initialValues.customerEmail);
   const [customerPhone, setCustomerPhone] = useState(initialValues.customerPhone);
   const [customerMessage, setCustomerMessage] = useState("");
-  const [bookingIntent, setBookingIntent] = useState<"SINGLE_BOOKING" | "USE_PLAN">("SINGLE_BOOKING");
   const [consentTermsAccepted, setConsentTermsAccepted] = useState(false);
   const [consentPrivacyAccepted, setConsentPrivacyAccepted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -140,14 +141,6 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
   const [paymentOptions, setPaymentOptions] = useState<PaymentOptionsResponse["paymentOptions"] | null>(null);
   const [selectedOptionKey, setSelectedOptionKey] = useState<string>("");
   const [isLoadingPaymentOptions, setIsLoadingPaymentOptions] = useState(true);
-
-  const bookingMethodLabel = useMemo(
-    () =>
-      bookingIntent === "SINGLE_BOOKING"
-        ? "Single booking / drop-in"
-        : "Use existing plan / credits",
-    [bookingIntent],
-  );
 
   const selectableOptions = useMemo(() => {
     if (!paymentOptions) {
@@ -174,7 +167,10 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
         option: {
           mode: "EXISTING_PLAN",
           id: plan.entitlementId,
-          label: `Use existing plan - ${plan.productName}${plan.remainingCredits !== null ? ` (${plan.remainingCredits} credits)` : ""}`,
+          label:
+            plan.planSource === "SUBSCRIPTION"
+              ? `Use membership - ${plan.productName}`
+              : `Use existing credits - ${plan.productName}${plan.remainingCredits !== null ? ` (${plan.remainingCredits} credits)` : ""}`,
           amountMinor: 0,
           currencyCode: "EUR",
         },
@@ -210,7 +206,7 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
       try {
         const params = new URLSearchParams({
           serviceSlug: session.serviceSlug,
-          bookingIntent,
+          sessionId: session.sessionId,
         });
         const response = await fetch(`/api/bookings/payment-options-preview?${params.toString()}`);
         const payload = (await parseJsonResponse(response)) as PaymentOptionsResponse | ErrorResponse | null;
@@ -270,7 +266,7 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
     return () => {
       active = false;
     };
-  }, [bookingIntent, session.serviceSlug]);
+  }, [session.serviceSlug, session.sessionId]);
 
   const primaryCtaLabel = useMemo(() => {
     if (isSubmitting) {
@@ -285,8 +281,18 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
       return "Confirm Using Plan";
     }
 
-    return `Continue To Secure Checkout (${formatMoney(selectedPaymentOption.amountMinor, selectedPaymentOption.currencyCode)})`;
+      return `Continue To Secure Checkout (${formatMoney(selectedPaymentOption.amountMinor, selectedPaymentOption.currencyCode)})`;
   }, [isSubmitting, selectedPaymentOption]);
+
+  const selectedExistingPlan = useMemo(() => {
+    if (!selectedPaymentOption || selectedPaymentOption.mode !== "EXISTING_PLAN") {
+      return null;
+    }
+
+    return (
+      paymentOptions?.existingPlans.find((plan) => plan.entitlementId === selectedPaymentOption.id) ?? null
+    );
+  }, [paymentOptions?.existingPlans, selectedPaymentOption]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -312,7 +318,10 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
           customerEmail,
           customerPhone,
           customerMessage,
-          bookingIntent,
+          bookingIntent:
+            selectedPaymentOption.mode === "EXISTING_PLAN"
+              ? "USE_PLAN"
+              : "SINGLE_BOOKING",
           consentTermsAccepted,
           consentPrivacyAccepted,
         }),
@@ -390,8 +399,19 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
       <form onSubmit={handleSubmit} className="rounded-xl border border-[#d8cec6] bg-white p-5">
         <h1 className="text-2xl font-semibold text-[#6f2b2b]">Booking Details</h1>
         <p className="mt-1 text-sm text-[#7f5a5a]">
-          {isAuthenticated ? "Signed in" : "Guest booking"} - complete your details to continue.
+          {isAuthenticated
+            ? `Signed in as ${initialValues.customerName || initialValues.customerEmail || "your account"}.`
+            : "Guest booking - complete your details to continue."}
         </p>
+        {isAuthenticated ? (
+          <button
+            type="button"
+            onClick={() => void signOut({ callbackUrl: "/" })}
+            className="mt-2 text-sm font-medium text-[#7b2d2d] underline underline-offset-4 hover:opacity-80"
+          >
+            Not you? Log out
+          </button>
+        ) : null}
 
         <div className="mt-5 grid gap-4">
           <label className="text-sm text-[#5f4040]">
@@ -410,7 +430,12 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
               type="email"
               required
               value={customerEmail}
-              onChange={(event) => setCustomerEmail(event.target.value)}
+              readOnly={isAuthenticated}
+              onChange={(event) => {
+                if (!isAuthenticated) {
+                  setCustomerEmail(event.target.value);
+                }
+              }}
               className="mt-1 w-full rounded-md border border-[#d8cec6] px-3 py-2"
             />
           </label>
@@ -435,32 +460,6 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
             />
           </label>
         </div>
-
-        <fieldset className="mt-6">
-          <legend className="text-sm font-medium text-[#6f2b2b]">How do you plan to book?</legend>
-          <div className="mt-2 space-y-2 text-sm text-[#5f4040]">
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="bookingIntent"
-                value="SINGLE_BOOKING"
-                checked={bookingIntent === "SINGLE_BOOKING"}
-                onChange={() => setBookingIntent("SINGLE_BOOKING")}
-              />
-              Single booking / drop-in
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="bookingIntent"
-                value="USE_PLAN"
-                checked={bookingIntent === "USE_PLAN"}
-                onChange={() => setBookingIntent("USE_PLAN")}
-              />
-              Use existing plan / credits
-            </label>
-          </div>
-        </fieldset>
 
         <fieldset className="mt-6">
           <legend className="text-sm font-medium text-[#6f2b2b]">Payment Option</legend>
@@ -556,8 +555,8 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
             </dd>
           </div>
           <div className="flex justify-between gap-3">
-            <dt className="font-medium">Booking intent</dt>
-            <dd>{bookingMethodLabel}</dd>
+            <dt className="font-medium">Booking Type</dt>
+            <dd>Session booking</dd>
           </div>
         </dl>
 
@@ -566,9 +565,28 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
           {selectedPaymentOption ? (
             <>
               <p className="mt-2">{selectedPaymentOption.label}</p>
-              <p className="mt-1">
-                Total: {formatMoney(selectedPaymentOption.amountMinor, selectedPaymentOption.currencyCode)}
-              </p>
+              {selectedPaymentOption.mode === "EXISTING_PLAN" ? (
+                <>
+                  {selectedExistingPlan?.planSource === "SUBSCRIPTION" ? (
+                    <>
+                      <p className="mt-1">Covered by your membership.</p>
+                      <p className="mt-1">Membership: {selectedExistingPlan.productName}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="mt-1">Using 1 credit.</p>
+                      <p className="mt-1">
+                        Credits remaining: {selectedExistingPlan?.remainingCredits ?? "N/A"}
+                      </p>
+                      <p className="mt-1">No payment due now.</p>
+                    </>
+                  )}
+                </>
+              ) : (
+                <p className="mt-1">
+                  Total: {formatMoney(selectedPaymentOption.amountMinor, selectedPaymentOption.currencyCode)}
+                </p>
+              )}
             </>
           ) : (
             <p className="mt-2">Select a payment option to see total details.</p>

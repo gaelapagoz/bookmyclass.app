@@ -17,6 +17,8 @@ const draftSchema = z.object({
 
 function toStatusCode(code: BookingDraftError["code"]): number {
   switch (code) {
+    case "AUTH_REQUIRED":
+      return 401;
     case "INVALID_SESSION":
       return 404;
     case "PAST_SESSION":
@@ -92,12 +94,10 @@ export async function POST(request: Request) {
     );
   }
 
-  let authenticatedUserId: string | null = null;
-  try {
-    const session = await auth();
-    authenticatedUserId = session?.user?.id ?? null;
-  } catch {
-    authenticatedUserId = null;
+  const session = await auth();
+  const authenticatedUserId = session?.user?.id ?? null;
+  if (!authenticatedUserId) {
+    return Response.json({ error: "Authentication required." }, { status: 401 });
   }
 
   try {

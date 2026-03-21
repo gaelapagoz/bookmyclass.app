@@ -28,6 +28,7 @@ export type BookingSessionSummary = {
 };
 
 type DraftErrorCode =
+  | "AUTH_REQUIRED"
   | "CONSENT_REQUIRED"
   | "DUPLICATE_BOOKING"
   | "FULL_SESSION"
@@ -146,7 +147,7 @@ export async function getBookingSessionSummary(params: {
 }
 
 export async function createPendingBookingDraft(params: {
-  authenticatedUserId?: string | null;
+  authenticatedUserId: string;
   payload: BookingDraftPayload;
 }) {
   const { authenticatedUserId, payload } = params;
@@ -165,29 +166,27 @@ export async function createPendingBookingDraft(params: {
     throw new BookingDraftError("CONSENT_REQUIRED", "Required consents must be accepted.");
   }
 
-  if (authenticatedUserId) {
-    const existingBooking = await prisma.booking.findFirst({
-      where: {
-        clientId: authenticatedUserId,
-        studioSessionId: session.id,
-        status: {
-          in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
-        },
+  const existingBooking = await prisma.booking.findFirst({
+    where: {
+      clientId: authenticatedUserId,
+      studioSessionId: session.id,
+      status: {
+        in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
       },
-      select: { id: true },
-    });
+    },
+    select: { id: true },
+  });
 
-    if (existingBooking) {
-      throw new BookingDraftError(
-        "DUPLICATE_BOOKING",
-        "You already have an active booking draft or booking for this session.",
-      );
-    }
+  if (existingBooking) {
+    throw new BookingDraftError(
+      "DUPLICATE_BOOKING",
+      "You already have an active booking draft or booking for this session.",
+    );
   }
 
   const booking = await prisma.booking.create({
     data: {
-      clientId: authenticatedUserId ?? null,
+      clientId: authenticatedUserId,
       studioSessionId: session.id,
       status: BookingStatus.PENDING,
       bookingIntent: payload.bookingIntent,

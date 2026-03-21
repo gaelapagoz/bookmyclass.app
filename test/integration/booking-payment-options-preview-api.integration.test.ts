@@ -1,12 +1,14 @@
-﻿import "./helpers/setup-env";
+import "./helpers/setup-env";
 import {
   ClientEntitlementStatus,
   CreditLedgerEntryType,
   EntitlementScope,
   EntitlementType,
+  PaymentProvider,
   PriceType,
   ProductType,
   Role,
+  SubscriptionStatus,
 } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "./helpers/db";
@@ -189,5 +191,92 @@ describe("GET /api/bookings/payment-options-preview", () => {
     expect(response.status).toBe(200);
     expect(body.paymentOptions.existingPlans.length).toBeGreaterThan(0);
     expect(body.paymentOptions.existingPlans[0]?.entitlementId).toBe(entitlement.id);
+  });
+
+  it("returns active subscription as usable existing plan when no entitlement exists", async () => {
+    const { serviceSlug } = await seedCatalogue(`service-${Date.now()}`);
+    const client = await prisma.user.create({
+      data: {
+        name: "Subscriber",
+        email: `subscriber.preview.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    const product = await prisma.product.create({
+      data: {
+        name: "Monthly Unlimited Collective",
+        slug: `monthly-unlimited-${Date.now()}`,
+        productType: ProductType.UNLIMITED_MEMBERSHIP,
+        isActive: true,
+        isArchived: false,
+        sortOrder: 3,
+      },
+    });
+
+    const price = await prisma.price.create({
+      data: {
+        productId: product.id,
+        lookupKey: `monthly-unlimited-${Date.now()}`,
+        name: "Monthly Unlimited",
+        priceType: PriceType.RECURRING,
+        currencyCode: "EUR",
+        unitAmountMinor: 9900,
+        isActive: true,
+        isArchived: false,
+      },
+    });
+
+    await prisma.entitlementRule.create({
+      data: {
+        productId: product.id,
+        entitlementType: EntitlementType.UNLIMITED_ACCESS,
+        entitlementScope: EntitlementScope.ALL_CLASSES,
+        isActive: true,
+      },
+    });
+
+    const now = new Date();
+    await prisma.subscriptionContract.create({
+      data: {
+        clientId: client.id,
+        productId: product.id,
+        priceId: price.id,
+        status: SubscriptionStatus.ACTIVE,
+        startsAt: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+        currentPeriodStart: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+        currentPeriodEnd: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000),
+        provider: PaymentProvider.STRIPE,
+      },
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: client.id,
+        name: client.name,
+        email: client.email,
+      },
+      expires: new Date(Date.now() + 3600000).toISOString(),
+    });
+
+    const response = await previewPaymentOptions(
+      new Request(
+        `http://localhost:3000/api/bookings/payment-options-preview?serviceSlug=${serviceSlug}&bookingIntent=USE_PLAN`,
+      ),
+    );
+    const body = (await response.json()) as {
+      paymentOptions: {
+        existingPlans: Array<{ planSource: "CREDITS" | "SUBSCRIPTION" }>;
+        ux: {
+          recommended: {
+            mode: "EXISTING_PLAN" | "SINGLE_SESSION" | "NEW_PLAN_PURCHASE" | null;
+          };
+        };
+      };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.paymentOptions.existingPlans.some((plan) => plan.planSource === "SUBSCRIPTION")).toBe(true);
+    expect(body.paymentOptions.ux.recommended.mode).toBe("EXISTING_PLAN");
   });
 });

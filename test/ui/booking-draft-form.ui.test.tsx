@@ -1,4 +1,4 @@
-﻿/* @vitest-environment jsdom */
+/* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -22,11 +22,11 @@ describe("BookingDraftForm", () => {
   const assignMock = vi.fn();
 
   const baseProps = {
-    isAuthenticated: false,
+    isAuthenticated: true,
     initialValues: {
-      customerName: "",
-      customerEmail: "",
-      customerPhone: "",
+      customerName: "Guest User",
+      customerEmail: "guest@example.test",
+      customerPhone: "+32000000010",
     },
     session: {
       sessionId: "session-1",
@@ -55,54 +55,57 @@ describe("BookingDraftForm", () => {
     vi.spyOn(global, "fetch")
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          paymentOptions: {
-            bookingIntent: "SINGLE_BOOKING",
-            singleSession: {
-              priceId: "price-single",
-              priceName: "Drop-In Single",
-              amountMinor: 2200,
-              currencyCode: "EUR",
-            },
-            existingPlans: [],
-            newPlanOptions: [],
-            ux: {
-              recommended: {
-                mode: "SINGLE_SESSION",
+        text: async () =>
+          JSON.stringify({
+            paymentOptions: {
+              singleSession: {
                 priceId: "price-single",
-                entitlementId: null,
+                priceName: "Drop-In Single",
+                amountMinor: 2200,
+                currencyCode: "EUR",
+              },
+              existingPlans: [],
+              newPlanOptions: [],
+              ux: {
+                recommended: {
+                  mode: "SINGLE_SESSION",
+                  priceId: "price-single",
+                  entitlementId: null,
+                },
               },
             },
-          },
-        }),
+          }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          draft: {
-            bookingId: "booking-1",
-            status: "PENDING",
-          },
-        }),
+        text: async () =>
+          JSON.stringify({
+            draft: {
+              bookingId: "booking-1",
+              status: "PENDING",
+            },
+          }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          selection: {
-            bookingStatus: "PENDING",
-            paymentSelection: "SINGLE_SESSION",
-            draftAmountMinor: 2200,
-            draftCurrencyCode: "EUR",
-          },
-        }),
+        text: async () =>
+          JSON.stringify({
+            selection: {
+              bookingStatus: "PENDING",
+              paymentSelection: "SINGLE_SESSION",
+              draftAmountMinor: 2200,
+              draftCurrencyCode: "EUR",
+            },
+          }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          checkout: {
-            checkoutUrl: "https://checkout.stripe.com/pay/cs_test_123",
-          },
-        }),
+        text: async () =>
+          JSON.stringify({
+            checkout: {
+              checkoutUrl: "https://checkout.stripe.com/pay/cs_test_123",
+            },
+          }),
       } as Response);
 
     render(<BookingDraftForm {...baseProps} />);
@@ -111,8 +114,9 @@ describe("BookingDraftForm", () => {
       expect(screen.getByLabelText(/select how you want to continue/i)).toBeInTheDocument();
     });
 
+    await userEvent.clear(screen.getByLabelText("Name"));
     await userEvent.type(screen.getByLabelText("Name"), "Guest User");
-    await userEvent.type(screen.getByLabelText("Email"), "guest@example.test");
+    await userEvent.clear(screen.getByLabelText("Phone"));
     await userEvent.type(screen.getByLabelText("Phone"), "+32000000010");
     await userEvent.click(screen.getByRole("checkbox", { name: /terms and conditions/i }));
     await userEvent.click(screen.getByRole("checkbox", { name: /privacy policy/i }));
@@ -122,99 +126,70 @@ describe("BookingDraftForm", () => {
       expect(assignMock).toHaveBeenCalledWith("https://checkout.stripe.com/pay/cs_test_123");
     });
 
-    expect(screen.queryByText(/Selected session ID:/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Service slug:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/How do you plan to book\?/i)).not.toBeInTheDocument();
   });
 
   it("uses existing plan flow outside Stripe", async () => {
     vi.spyOn(global, "fetch")
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          paymentOptions: {
-            bookingIntent: "SINGLE_BOOKING",
-            singleSession: {
-              priceId: "price-single",
-              priceName: "Drop-In Single",
-              amountMinor: 2200,
-              currencyCode: "EUR",
-            },
-            existingPlans: [],
-            newPlanOptions: [
-              {
-                priceId: "price-plan",
-                priceName: "10-Class Pack One-Time",
-                productName: "10-Class Pack",
-                amountMinor: 15000,
-                currencyCode: "EUR",
-              },
-            ],
-            ux: {
-              recommended: {
-                mode: "SINGLE_SESSION",
-                entitlementId: null,
-                priceId: "price-single",
+        text: async () =>
+          JSON.stringify({
+            paymentOptions: {
+              singleSession: null,
+              existingPlans: [
+                {
+                  entitlementId: "ent-1",
+                  entitlementType: "CREDIT_PACK",
+                  planSource: "CREDITS",
+                  productName: "10-Class Pack",
+                  remainingCredits: 8,
+                },
+              ],
+              newPlanOptions: [],
+              ux: {
+                recommended: {
+                  mode: "EXISTING_PLAN",
+                  entitlementId: "ent-1",
+                  priceId: null,
+                },
               },
             },
-          },
-        }),
+          }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          paymentOptions: {
-            bookingIntent: "USE_PLAN",
-            singleSession: null,
-            existingPlans: [
-              {
-                entitlementId: "ent-1",
-                productName: "10-Class Pack",
-                remainingCredits: 8,
-              },
-            ],
-            newPlanOptions: [],
-            ux: {
-              recommended: {
-                mode: "EXISTING_PLAN",
-                entitlementId: "ent-1",
-                priceId: null,
-              },
+        text: async () =>
+          JSON.stringify({
+            draft: {
+              bookingId: "booking-2",
+              status: "PENDING",
             },
-          },
-        }),
+          }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          draft: {
-            bookingId: "booking-2",
-            status: "PENDING",
-          },
-        }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          selection: {
-            bookingStatus: "CONFIRMED",
-            paymentSelection: "EXISTING_PLAN",
-            draftAmountMinor: 0,
-            draftCurrencyCode: "EUR",
-          },
-        }),
+        text: async () =>
+          JSON.stringify({
+            selection: {
+              bookingStatus: "CONFIRMED",
+              paymentSelection: "EXISTING_PLAN",
+              draftAmountMinor: 0,
+              draftCurrencyCode: "EUR",
+            },
+          }),
       } as Response);
 
     render(<BookingDraftForm {...baseProps} />);
-
-    await userEvent.type(screen.getByLabelText("Name"), "Guest User");
-    await userEvent.type(screen.getByLabelText("Email"), "guest@example.test");
-    await userEvent.type(screen.getByLabelText("Phone"), "+32000000010");
-    await userEvent.click(screen.getByRole("radio", { name: /Use existing plan \/ credits/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Confirm Using Plan" })).toBeInTheDocument();
     });
 
+    await userEvent.clear(screen.getByLabelText("Name"));
+    await userEvent.type(screen.getByLabelText("Name"), "Client User");
+    await userEvent.clear(screen.getByLabelText("Phone"));
+    await userEvent.type(screen.getByLabelText("Phone"), "+32000000010");
     await userEvent.click(screen.getByRole("checkbox", { name: /terms and conditions/i }));
     await userEvent.click(screen.getByRole("checkbox", { name: /privacy policy/i }));
     await userEvent.click(screen.getByRole("button", { name: "Confirm Using Plan" }));
@@ -224,38 +199,41 @@ describe("BookingDraftForm", () => {
     });
 
     expect(assignMock).not.toHaveBeenCalled();
+    expect(screen.getByText(/Using 1 credit/i)).toBeInTheDocument();
+    expect(screen.getByText(/Credits remaining/i)).toBeInTheDocument();
   });
 
   it("shows API error message when draft creation fails", async () => {
     vi.spyOn(global, "fetch")
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          paymentOptions: {
-            bookingIntent: "SINGLE_BOOKING",
-            singleSession: {
-              priceId: "price-single",
-              priceName: "Drop-In Single",
-              amountMinor: 2200,
-              currencyCode: "EUR",
-            },
-            existingPlans: [],
-            newPlanOptions: [],
-            ux: {
-              recommended: {
-                mode: "SINGLE_SESSION",
+        text: async () =>
+          JSON.stringify({
+            paymentOptions: {
+              singleSession: {
                 priceId: "price-single",
-                entitlementId: null,
+                priceName: "Drop-In Single",
+                amountMinor: 2200,
+                currencyCode: "EUR",
+              },
+              existingPlans: [],
+              newPlanOptions: [],
+              ux: {
+                recommended: {
+                  mode: "SINGLE_SESSION",
+                  priceId: "price-single",
+                  entitlementId: null,
+                },
               },
             },
-          },
-        }),
+          }),
       } as Response)
       .mockResolvedValueOnce({
         ok: false,
-        json: async () => ({
-          error: "This session is full.",
-        }),
+        text: async () =>
+          JSON.stringify({
+            error: "This session is full.",
+          }),
       } as Response);
 
     render(<BookingDraftForm {...baseProps} />);
@@ -264,8 +242,9 @@ describe("BookingDraftForm", () => {
       expect(screen.getByLabelText(/select how you want to continue/i)).toBeInTheDocument();
     });
 
+    await userEvent.clear(screen.getByLabelText("Name"));
     await userEvent.type(screen.getByLabelText("Name"), "Guest User");
-    await userEvent.type(screen.getByLabelText("Email"), "guest@example.test");
+    await userEvent.clear(screen.getByLabelText("Phone"));
     await userEvent.type(screen.getByLabelText("Phone"), "+32000000010");
     await userEvent.click(screen.getByRole("checkbox", { name: /terms and conditions/i }));
     await userEvent.click(screen.getByRole("checkbox", { name: /privacy policy/i }));

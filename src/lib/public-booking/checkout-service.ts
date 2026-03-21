@@ -64,12 +64,13 @@ function assertBookingCheckoutReady(input: {
   }
 
   if (
-    booking.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE &&
-    (!userId || !booking.clientId || booking.clientId !== userId)
+    !userId ||
+    !booking.clientId ||
+    booking.clientId !== userId
   ) {
     throw new CheckoutError(
       "AUTH_REQUIRED",
-      "Sign in with the booking account to purchase and attach a new plan.",
+      "Sign in with the booking account to continue checkout.",
     );
   }
 

@@ -13,12 +13,16 @@ type SessionSlot = {
 };
 
 type SlotListProps = {
+  isAuthenticated: boolean;
+  onRequireSignIn: (targetHref: string) => void;
   selectedDate: string | null;
   serviceSlug: string;
   slots: SessionSlot[];
 };
 
 export function SlotList({
+  isAuthenticated,
+  onRequireSignIn,
   serviceSlug,
   selectedDate,
   slots,
@@ -40,6 +44,7 @@ export function SlotList({
       ) : (
         <ul className="mt-4 space-y-3">
           {slots.map((slot) => {
+            const bookingHref = `/book-a-class/${serviceSlug}/book?sessionId=${slot.id}`;
             return (
               <li key={slot.id} className="rounded-lg border border-[#d8cec6] bg-white p-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -55,18 +60,31 @@ export function SlotList({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Link
-                      href={`/book-a-class/${serviceSlug}/book?sessionId=${slot.id}`}
-                      aria-disabled={!slot.isAvailable}
-                      className={`rounded-md px-3 py-1 text-sm ${
-                        slot.isAvailable
-                          ? "bg-[#7b2d2d] text-[#f4eee8] hover:opacity-90"
-                          : "pointer-events-none cursor-not-allowed bg-[#eee8e1] text-[#a68f83]"
-                      }`}
-                      aria-label={`Book slot ${slot.startTime} to ${slot.endTime}`}
-                    >
-                      {slot.isAvailable ? "Book" : "Full"}
-                    </Link>
+                    {!slot.isAvailable ? (
+                      <span
+                        className="pointer-events-none cursor-not-allowed rounded-md bg-[#eee8e1] px-3 py-1 text-sm text-[#a68f83]"
+                        aria-label={`Slot ${slot.startTime} to ${slot.endTime} is full`}
+                      >
+                        Full
+                      </span>
+                    ) : isAuthenticated ? (
+                      <Link
+                        href={bookingHref}
+                        className="rounded-md bg-[#7b2d2d] px-3 py-1 text-sm text-[#f4eee8] hover:opacity-90"
+                        aria-label={`Book slot ${slot.startTime} to ${slot.endTime}`}
+                      >
+                        Book
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onRequireSignIn(bookingHref)}
+                        className="rounded-md bg-[#7b2d2d] px-3 py-1 text-sm text-[#f4eee8] hover:opacity-90"
+                        aria-label={`Sign in to book slot ${slot.startTime} to ${slot.endTime}`}
+                      >
+                        Book
+                      </button>
+                    )}
                   </div>
                 </div>
               </li>

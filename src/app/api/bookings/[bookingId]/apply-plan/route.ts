@@ -30,6 +30,10 @@ function toStatus(code: BookingPaymentOptionsError["code"]): number {
       return 404;
     case "BOOKING_NOT_PENDING":
       return 409;
+    case "BOOKING_NOT_OWNED":
+      return 403;
+    case "SESSION_NOT_BOOKABLE":
+      return 400;
     case "PLAN_NOT_FOUND":
       return 404;
     case "PLAN_NOT_USABLE":

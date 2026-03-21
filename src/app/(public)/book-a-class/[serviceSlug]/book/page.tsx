@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { auth } from "../../../../../auth";
 import { BookingDraftForm } from "../../../../../components/book-a-class/service-detail/BookingDraftForm";
 import { prisma } from "../../../../../lib/db";
@@ -15,20 +16,23 @@ export default async function BookingFormPage({
   const { sessionId } = await searchParams;
   const session = await auth();
 
-  const user = session?.user?.id
-    ? await prisma.user.findUnique({
-        where: { id: session.user.id },
+  if (!session?.user?.id) {
+    const callbackUrl = `/book-a-class/${serviceSlug}/book?sessionId=${encodeURIComponent(sessionId ?? "")}`;
+    redirect(`/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: {
+      name: true,
+      email: true,
+      clientProfile: {
         select: {
-          name: true,
-          email: true,
-          clientProfile: {
-            select: {
-              phone: true,
-            },
-          },
+          phone: true,
         },
-      })
-    : null;
+      },
+    },
+  });
 
   if (!sessionId) {
     return (
@@ -70,7 +74,7 @@ export default async function BookingFormPage({
   return (
     <BookingDraftForm
       session={summary}
-      isAuthenticated={Boolean(session?.user)}
+      isAuthenticated
       initialValues={{
         customerName: user?.name ?? "",
         customerEmail: user?.email ?? "",

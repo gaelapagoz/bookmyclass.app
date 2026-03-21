@@ -6,6 +6,13 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ServiceBookingExperience } from "../../src/components/book-a-class/service-detail/ServiceBookingExperience";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    refresh: vi.fn(),
+  }),
+}));
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -48,6 +55,7 @@ describe("ServiceBookingExperience", () => {
 
     render(
       <ServiceBookingExperience
+        isAuthenticated={true}
         service={{
           id: "service-1",
           slug: "vinyasa-yoga",
@@ -138,6 +146,7 @@ describe("ServiceBookingExperience", () => {
 
     render(
       <ServiceBookingExperience
+        isAuthenticated={true}
         service={{
           id: "service-1",
           slug: "vinyasa-yoga",

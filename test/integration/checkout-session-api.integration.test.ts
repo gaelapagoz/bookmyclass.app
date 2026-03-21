@@ -176,7 +176,15 @@ describe("POST /api/checkout/session", () => {
   it("creates checkout session for SINGLE_SESSION and creates payment record", async () => {
     const fixture = await createBookingWithSelection({
       paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
-      withClient: false,
+      withClient: true,
+    });
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: fixture.client!.id,
+        name: fixture.client!.name,
+        email: fixture.client!.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     });
 
     const response = await createCheckoutSession(
@@ -231,6 +239,14 @@ describe("POST /api/checkout/session", () => {
       paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
       withClient: true,
     });
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: fixture.client!.id,
+        name: fixture.client!.name,
+        email: fixture.client!.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
 
     const response = await createCheckoutSession(
       new Request("http://localhost/api/checkout/session", {
@@ -246,7 +262,15 @@ describe("POST /api/checkout/session", () => {
   it("reuses existing pending payment record on retry", async () => {
     const fixture = await createBookingWithSelection({
       paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
-      withClient: false,
+      withClient: true,
+    });
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: fixture.client!.id,
+        name: fixture.client!.name,
+        email: fixture.client!.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     });
 
     await createCheckoutSession(

@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { addMonths, getStudioDateKey } from "../../../lib/public-catalogue/timezone";
 import { AvailabilityCalendar } from "./AvailabilityCalendar";
+import { SignInModal } from "./SignInModal";
 import { SlotList } from "./SlotList";
 
 type PublicServiceDetail = {
@@ -51,6 +53,7 @@ type NextAvailabilityResponse = {
 };
 
 type ServiceBookingExperienceProps = {
+  isAuthenticated: boolean;
   initialAvailabilityDays: AvailabilityDay[];
   initialMonthKey: string;
   initialSelectedDate: string | null;
@@ -59,12 +62,14 @@ type ServiceBookingExperienceProps = {
 };
 
 export function ServiceBookingExperience({
+  isAuthenticated,
   service,
   initialMonthKey,
   initialAvailabilityDays,
   initialSelectedDate,
   initialSlots,
 }: ServiceBookingExperienceProps) {
+  const router = useRouter();
   const [monthKey, setMonthKey] = useState(initialMonthKey);
   const [availabilityDays, setAvailabilityDays] = useState(initialAvailabilityDays);
   const [selectedDate, setSelectedDate] = useState<string | null>(initialSelectedDate);
@@ -72,6 +77,7 @@ export function ServiceBookingExperience({
   const [isCalendarLoading, setIsCalendarLoading] = useState(false);
   const [isSlotsLoading, setIsSlotsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [signInTargetHref, setSignInTargetHref] = useState<string | null>(null);
   const todayDateKey = getStudioDateKey(new Date());
 
   const fetchMonthAvailability = async (nextMonthKey: string) => {
@@ -160,6 +166,10 @@ export function ServiceBookingExperience({
     }
   };
 
+  const handleRequireSignIn = (targetHref: string) => {
+    setSignInTargetHref(targetHref);
+  };
+
   return (
     <section className="mx-auto w-full max-w-6xl px-6 py-12">
       <Link
@@ -212,6 +222,8 @@ export function ServiceBookingExperience({
             </div>
           ) : (
             <SlotList
+              isAuthenticated={isAuthenticated}
+              onRequireSignIn={handleRequireSignIn}
               serviceSlug={service.slug}
               selectedDate={selectedDate}
               slots={slots}
@@ -229,6 +241,17 @@ export function ServiceBookingExperience({
           {errorMessage ? <p className="mt-3 text-sm text-[#7b2d2d]">{errorMessage}</p> : null}
         </div>
       </div>
+      {signInTargetHref ? (
+        <SignInModal
+          targetHref={signInTargetHref}
+          onClose={() => setSignInTargetHref(null)}
+          onSuccess={(targetHref) => {
+            setSignInTargetHref(null);
+            router.push(targetHref);
+            router.refresh();
+          }}
+        />
+      ) : null}
     </section>
   );
 }

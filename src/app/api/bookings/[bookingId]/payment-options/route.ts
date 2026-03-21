@@ -12,6 +12,12 @@ function toStatus(code: BookingPaymentOptionsError["code"]): number {
       return 404;
     case "BOOKING_NOT_PENDING":
       return 409;
+    case "NOT_AUTHENTICATED":
+      return 401;
+    case "BOOKING_NOT_OWNED":
+      return 403;
+    case "SESSION_NOT_BOOKABLE":
+      return 400;
     default:
       return 400;
   }

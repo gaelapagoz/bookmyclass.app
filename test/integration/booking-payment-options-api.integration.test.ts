@@ -214,10 +214,14 @@ describe("booking payment options api", () => {
     await resetDb();
   });
 
-  it("single-booking intent auto-selects single-session path", async () => {
+  it("single-booking intent still resolves to a payable default path when no plan exists", async () => {
     const fixture = await createFixture({
       bookingIntent: BookingIntent.SINGLE_BOOKING,
       createActivePlanCount: 0,
+    });
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: fixture.bookingUser.id, email: fixture.bookingUser.email, name: fixture.bookingUser.name },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     });
 
     const response = await getPaymentOptions(new Request("http://localhost/api"), {
@@ -230,7 +234,7 @@ describe("booking payment options api", () => {
     };
 
     expect(response.status).toBe(200);
-    expect(body.paymentOptions.ux.recommended.mode).toBe(BookingPaymentSelection.SINGLE_SESSION);
+    expect(body.paymentOptions.ux.recommended.mode).toBe(BookingPaymentSelection.NEW_PLAN_PURCHASE);
     expect(body.paymentOptions.ux.requiresChoice).toBe(false);
   });
 
@@ -325,3 +329,4 @@ describe("booking payment options api", () => {
     expect(consumeEntries[0]?.amount).toBe(-1);
   });
 });
+

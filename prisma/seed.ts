@@ -162,9 +162,6 @@ async function seedTeacher() {
         upsert: {
           update: {
             phone: "+32000000001",
-            dateOfBirth: new Date("1990-05-10T00:00:00.000Z"),
-            emergencyContactName: "Teacher Emergency Contact",
-            emergencyContactPhone: "+32000000099",
             bio: "Muay Thai and functional conditioning coach.",
             specialties: ["muay-thai", "conditioning"],
             certifications: ["ISSA CPT", "First Aid"],
@@ -172,9 +169,6 @@ async function seedTeacher() {
           },
           create: {
             phone: "+32000000001",
-            dateOfBirth: new Date("1990-05-10T00:00:00.000Z"),
-            emergencyContactName: "Teacher Emergency Contact",
-            emergencyContactPhone: "+32000000099",
             bio: "Muay Thai and functional conditioning coach.",
             specialties: ["muay-thai", "conditioning"],
             certifications: ["ISSA CPT", "First Aid"],
@@ -194,9 +188,6 @@ async function seedTeacher() {
       teacherProfile: {
         create: {
           phone: "+32000000001",
-          dateOfBirth: new Date("1990-05-10T00:00:00.000Z"),
-          emergencyContactName: "Teacher Emergency Contact",
-          emergencyContactPhone: "+32000000099",
           bio: "Muay Thai and functional conditioning coach.",
           specialties: ["muay-thai", "conditioning"],
           certifications: ["ISSA CPT", "First Aid"],
@@ -223,9 +214,6 @@ async function seedAssistantTeacher() {
         upsert: {
           update: {
             phone: "+32000000003",
-            dateOfBirth: new Date("1992-04-15T00:00:00.000Z"),
-            emergencyContactName: "Assistant Emergency Contact",
-            emergencyContactPhone: "+32000000097",
             bio: "Mobility and fundamentals specialist.",
             specialties: ["mobility", "fundamentals"],
             certifications: ["NASM CPT"],
@@ -233,9 +221,6 @@ async function seedAssistantTeacher() {
           },
           create: {
             phone: "+32000000003",
-            dateOfBirth: new Date("1992-04-15T00:00:00.000Z"),
-            emergencyContactName: "Assistant Emergency Contact",
-            emergencyContactPhone: "+32000000097",
             bio: "Mobility and fundamentals specialist.",
             specialties: ["mobility", "fundamentals"],
             certifications: ["NASM CPT"],
@@ -255,9 +240,6 @@ async function seedAssistantTeacher() {
       teacherProfile: {
         create: {
           phone: "+32000000003",
-          dateOfBirth: new Date("1992-04-15T00:00:00.000Z"),
-          emergencyContactName: "Assistant Emergency Contact",
-          emergencyContactPhone: "+32000000097",
           bio: "Mobility and fundamentals specialist.",
           specialties: ["mobility", "fundamentals"],
           certifications: ["NASM CPT"],
@@ -284,16 +266,10 @@ async function seedClient() {
         upsert: {
           update: {
             phone: "+32000000002",
-            dateOfBirth: new Date("1994-08-22T00:00:00.000Z"),
-            emergencyContactName: "Client Emergency Contact",
-            emergencyContactPhone: "+32000000098",
             notes: "Prefers evening classes and low-impact warmups.",
           },
           create: {
             phone: "+32000000002",
-            dateOfBirth: new Date("1994-08-22T00:00:00.000Z"),
-            emergencyContactName: "Client Emergency Contact",
-            emergencyContactPhone: "+32000000098",
             notes: "Prefers evening classes and low-impact warmups.",
           },
         },
@@ -310,9 +286,6 @@ async function seedClient() {
       clientProfile: {
         create: {
           phone: "+32000000002",
-          dateOfBirth: new Date("1994-08-22T00:00:00.000Z"),
-          emergencyContactName: "Client Emergency Contact",
-          emergencyContactPhone: "+32000000098",
           notes: "Prefers evening classes and low-impact warmups.",
         },
       },
@@ -336,16 +309,10 @@ async function seedClientTwo() {
         upsert: {
           update: {
             phone: "+32000000004",
-            dateOfBirth: new Date("1991-02-11T00:00:00.000Z"),
-            emergencyContactName: "Client Two Emergency Contact",
-            emergencyContactPhone: "+32000000096",
             notes: "Prefers morning classes.",
           },
           create: {
             phone: "+32000000004",
-            dateOfBirth: new Date("1991-02-11T00:00:00.000Z"),
-            emergencyContactName: "Client Two Emergency Contact",
-            emergencyContactPhone: "+32000000096",
             notes: "Prefers morning classes.",
           },
         },
@@ -362,9 +329,6 @@ async function seedClientTwo() {
       clientProfile: {
         create: {
           phone: "+32000000004",
-          dateOfBirth: new Date("1991-02-11T00:00:00.000Z"),
-          emergencyContactName: "Client Two Emergency Contact",
-          emergencyContactPhone: "+32000000096",
           notes: "Prefers morning classes.",
         },
       },
@@ -388,16 +352,10 @@ async function seedClientThree() {
         upsert: {
           update: {
             phone: "+32000000005",
-            dateOfBirth: new Date("1996-10-03T00:00:00.000Z"),
-            emergencyContactName: "Client Three Emergency Contact",
-            emergencyContactPhone: "+32000000095",
             notes: "Waiting list often used for evening sessions.",
           },
           create: {
             phone: "+32000000005",
-            dateOfBirth: new Date("1996-10-03T00:00:00.000Z"),
-            emergencyContactName: "Client Three Emergency Contact",
-            emergencyContactPhone: "+32000000095",
             notes: "Waiting list often used for evening sessions.",
           },
         },
@@ -414,9 +372,6 @@ async function seedClientThree() {
       clientProfile: {
         create: {
           phone: "+32000000005",
-          dateOfBirth: new Date("1996-10-03T00:00:00.000Z"),
-          emergencyContactName: "Client Three Emergency Contact",
-          emergencyContactPhone: "+32000000095",
           notes: "Waiting list often used for evening sessions.",
         },
       },

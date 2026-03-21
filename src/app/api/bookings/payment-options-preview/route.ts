@@ -17,14 +17,23 @@ function toStatus(code: BookingPaymentOptionsError["code"]): number {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const serviceSlug = searchParams.get("serviceSlug");
+  const sessionId = searchParams.get("sessionId");
   const bookingIntent = searchParams.get("bookingIntent");
 
   if (!serviceSlug) {
     return Response.json({ error: "Missing serviceSlug." }, { status: 400 });
   }
 
-  if (bookingIntent !== BookingIntent.SINGLE_BOOKING && bookingIntent !== BookingIntent.USE_PLAN) {
+  if (
+    bookingIntent &&
+    bookingIntent !== BookingIntent.SINGLE_BOOKING &&
+    bookingIntent !== BookingIntent.USE_PLAN
+  ) {
     return Response.json({ error: "Invalid bookingIntent." }, { status: 400 });
+  }
+
+  if (sessionId && sessionId.trim().length === 0) {
+    return Response.json({ error: "Invalid sessionId." }, { status: 400 });
   }
 
   const session = await auth();
@@ -33,7 +42,7 @@ export async function GET(request: Request) {
   try {
     const paymentOptions = await getBookingPaymentOptionsPreview({
       serviceSlug,
-      bookingIntent,
+      bookingIntent: bookingIntent as BookingIntent | undefined,
       userId,
     });
     return Response.json({ paymentOptions }, { status: 200 });

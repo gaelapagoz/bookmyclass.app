@@ -72,6 +72,8 @@ enum BookingStatus {
   PENDING
   CONFIRMED
   CANCELLED
+  COMPLETED
+  NO_SHOW
 }
 
 enum BookingIntent {
@@ -173,6 +175,8 @@ enum ContactMessageStatus {
 model User {
   id                         String                 @id @default(cuid())
   name                       String
+  firstName                  String?
+  lastName                   String?
   email                      String                 @unique
   passwordHash               String?
   emailVerified              DateTime?
@@ -193,7 +197,7 @@ model User {
   orders                     Order[]                @relation("OrderClient")
   subscriptionContracts      SubscriptionContract[] @relation("SubscriptionClient")
   clientEntitlements         ClientEntitlement[]    @relation("ClientEntitlementClient")
-  clientCreditLedgerEntries  CreditLedgerEntry[]    @relation("CreditLedgerEntryClient")
+  creditLedgerEntries        CreditLedgerEntry[]    @relation("UserCreditLedger")
   createdCreditLedgerEntries CreditLedgerEntry[]    @relation("CreditLedgerEntryCreatedBy")
   clientLoyaltyLedgerEntries LoyaltyLedgerEntry[]   @relation("LoyaltyLedgerEntryClient")
   createdLoyaltyEntries      LoyaltyLedgerEntry[]   @relation("LoyaltyLedgerEntryCreatedBy")
@@ -217,9 +221,6 @@ model ClientProfile {
   id                    String    @id @default(cuid())
   userId                String    @unique
   phone                 String?
-  dateOfBirth           DateTime?
-  emergencyContactName  String?
-  emergencyContactPhone String?
   notes                 String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
@@ -233,9 +234,6 @@ model TeacherProfile {
   id                    String    @id @default(cuid())
   userId                String    @unique
   phone                 String?
-  dateOfBirth           DateTime?
-  emergencyContactName  String?
-  emergencyContactPhone String?
   bio                   String?
   specialties           String[]
   certifications        String[]
@@ -448,6 +446,8 @@ model Booking {
   consentTermsAccepted   Boolean                  @default(false)
   consentPrivacyAccepted Boolean                  @default(false)
   consentAcceptedAt      DateTime?
+  cancellationEligibleUntilAt DateTime?
+  creditRefundedAt       DateTime?
   cancelledAt            DateTime?
   cancellationReason     String?
   cancelledById          String?
@@ -472,6 +472,15 @@ model Booking {
   @@index([customerEmail, bookedAt])
   @@index([studioSessionId, customerEmail])
   @@index([cancelledById])
+  @@index([cancellationEligibleUntilAt])
+}
+
+model BookingPolicy {
+  id                      String   @id @default(cuid())
+  scope                   String   @unique @default("GLOBAL")
+  cancellationCutoffHours Int      @default(24)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 }
 
 model WaitlistEntry {
@@ -646,7 +655,7 @@ model CreditLedgerEntry {
   orderId       String?
   createdById   String?
   notes         String?
-  client        User                  @relation("CreditLedgerEntryClient", fields: [clientId], references: [id], onDelete: Restrict)
+  client        User                  @relation("UserCreditLedger", fields: [clientId], references: [id], onDelete: Restrict)
   entitlement   ClientEntitlement?    @relation(fields: [entitlementId], references: [id], onDelete: SetNull)
   booking       Booking?              @relation(fields: [bookingId], references: [id], onDelete: SetNull)
   order         Order?                @relation(fields: [orderId], references: [id], onDelete: SetNull)
