@@ -8,6 +8,7 @@ import { useState } from "react";
 const publicNavLinks = [
   { href: "/", label: "Home" },
   { href: "/book-a-class", label: "Book a Class" },
+  { href: "/subscription", label: "Subscription" },
 ] as const;
 
 function isActivePath(pathname: string, href: string) {

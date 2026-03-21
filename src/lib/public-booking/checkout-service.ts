@@ -5,9 +5,12 @@ import {
   PaymentMethod,
   PaymentProvider,
   PaymentStatus,
+  PriceType,
 } from "@prisma/client";
 import { prisma } from "../db";
 import { createStripeCheckoutSession, getStripeEnv } from "../payments/stripe";
+import { getSubscriptionCheckoutItemByProductId } from "../subscription/subscription-products";
+import { hasActiveRecurringSubscriptionForProduct } from "../subscription/ownership";
 
 type CheckoutErrorCode =
   | "BOOKING_NOT_FOUND"
@@ -19,6 +22,21 @@ type CheckoutErrorCode =
 export class CheckoutError extends Error {
   constructor(
     public readonly code: CheckoutErrorCode,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+type CatalogCheckoutErrorCode =
+  | "AUTH_REQUIRED"
+  | "PRODUCT_NOT_FOUND"
+  | "CHECKOUT_NOT_CONFIGURED"
+  | "ALREADY_SUBSCRIBED";
+
+export class CatalogCheckoutError extends Error {
+  constructor(
+    public readonly code: CatalogCheckoutErrorCode,
     message: string,
   ) {
     super(message);
@@ -293,5 +311,153 @@ export async function createCheckoutSessionForBooking(input: {
     checkoutSessionId: checkoutSession.id,
     checkoutUrl: checkoutSession.url,
     paymentId: orderAndPayment.paymentId,
+  };
+}
+
+export async function createCheckoutSessionForCatalogProduct(input: {
+  userId: string | null;
+  productId: string;
+  successUrl: string;
+  cancelUrl: string;
+}) {
+  const { userId, productId, successUrl, cancelUrl } = input;
+  if (!userId) {
+    throw new CatalogCheckoutError("AUTH_REQUIRED", "Authentication required.");
+  }
+
+  const product = await getSubscriptionCheckoutItemByProductId(productId);
+  if (!product) {
+    throw new CatalogCheckoutError("PRODUCT_NOT_FOUND", "Product not found.");
+  }
+
+  if (!product.checkoutEnabled) {
+    throw new CatalogCheckoutError(
+      "CHECKOUT_NOT_CONFIGURED",
+      "Checkout is unavailable until Stripe pricing is configured.",
+    );
+  }
+
+  const stripePriceId = product.stripePriceId;
+  if (!stripePriceId) {
+    throw new CatalogCheckoutError(
+      "CHECKOUT_NOT_CONFIGURED",
+      "Checkout is unavailable until Stripe pricing is configured.",
+    );
+  }
+
+  if (product.priceType === PriceType.RECURRING) {
+    const alreadySubscribed = await hasActiveRecurringSubscriptionForProduct({
+      userId,
+      productId: product.productId,
+    });
+    if (alreadySubscribed) {
+      throw new CatalogCheckoutError(
+        "ALREADY_SUBSCRIBED",
+        "You already have an active recurring subscription for this product. Use Manage billing in your dashboard to make changes.",
+      );
+    }
+  }
+
+  const env = getStripeEnv();
+  if (!successUrl.startsWith(env.appUrl) || !cancelUrl.startsWith(env.appUrl)) {
+    throw new CatalogCheckoutError("CHECKOUT_NOT_CONFIGURED", "Invalid checkout redirect configuration.");
+  }
+
+  const orderAndPayment = await prisma.$transaction(async (tx) => {
+    const order = await tx.order.create({
+      data: {
+        clientId: userId,
+        subtotalAmountMinor: product.amountMinor,
+        discountAmountMinor: 0,
+        totalAmountMinor: product.amountMinor,
+        currencyCode: product.currencyCode,
+        status: OrderStatus.PLACED,
+        notes: "Product catalog order created from /subscription checkout.",
+      },
+      select: { id: true },
+    });
+
+    await tx.orderItem.create({
+      data: {
+        orderId: order.id,
+        productId: product.productId,
+        priceId: product.priceId,
+        quantity: 1,
+        productNameSnapshot: product.name,
+        priceNameSnapshot: product.priceName,
+        unitAmountMinor: product.amountMinor,
+        lineSubtotalAmountMinor: product.amountMinor,
+        lineDiscountAmountMinor: 0,
+        lineTotalAmountMinor: product.amountMinor,
+        currencyCode: product.currencyCode,
+      },
+    });
+
+    const payment = await tx.payment.create({
+      data: {
+        orderId: order.id,
+        status: PaymentStatus.PENDING,
+        method: PaymentMethod.CARD,
+        provider: PaymentProvider.STRIPE,
+        amountMinor: product.amountMinor,
+        currencyCode: product.currencyCode,
+      },
+      select: { id: true, orderId: true },
+    });
+
+    return {
+      orderId: order.id,
+      paymentId: payment.id,
+    };
+  });
+
+  const metadata = {
+    userId,
+    productId: product.productId,
+    priceId: product.priceId,
+    selectedPriceId: product.priceId,
+    orderId: orderAndPayment.orderId,
+    paymentId: orderAndPayment.paymentId,
+    source: "subscription-catalog",
+  };
+
+  const checkoutSession = await createStripeCheckoutSession({
+    mode: product.priceType === PriceType.RECURRING ? "subscription" : "payment",
+    line_items: [
+      {
+        price: stripePriceId,
+        quantity: 1,
+      },
+    ],
+    metadata,
+    client_reference_id: userId,
+    subscription_data:
+      product.priceType === PriceType.RECURRING
+        ? {
+            metadata,
+          }
+        : undefined,
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+  });
+
+  if (!checkoutSession.url) {
+    throw new Error("Stripe did not return a checkout URL.");
+  }
+
+  await prisma.payment.update({
+    where: { id: orderAndPayment.paymentId },
+    data: {
+      providerReference: checkoutSession.id,
+      stripeCheckoutSessionId: checkoutSession.id,
+      stripeCheckoutMode: product.priceType === PriceType.RECURRING ? "SUBSCRIPTION" : "PAYMENT",
+    },
+  });
+
+  return {
+    checkoutSessionId: checkoutSession.id,
+    checkoutUrl: checkoutSession.url,
+    paymentId: orderAndPayment.paymentId,
+    orderId: orderAndPayment.orderId,
   };
 }

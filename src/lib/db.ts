@@ -16,8 +16,10 @@ if (!databaseUrl) {
 const prismaPool =
   globalForPrisma.prismaPool ?? new Pool({ connectionString: databaseUrl });
 const adapter = new PrismaPg(prismaPool);
+const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
+export { prisma };
+export default prisma;
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prismaPool = prismaPool;

@@ -42,6 +42,16 @@ export async function createStripeCheckoutSession(
   return getStripeClient().checkout.sessions.create(input);
 }
 
+export async function createStripeBillingPortalSession(input: {
+  customer: string;
+  returnUrl: string;
+}): Promise<Stripe.BillingPortal.Session> {
+  return getStripeClient().billingPortal.sessions.create({
+    customer: input.customer,
+    return_url: input.returnUrl,
+  });
+}
+
 export function verifyStripeWebhookEvent(params: {
   payload: string;
   signature: string;

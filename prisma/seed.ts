@@ -32,6 +32,105 @@ scheduleWindowEnd.setUTCDate(scheduleWindowEnd.getUTCDate() + 56);
 scheduleWindowEnd.setUTCHours(23, 59, 59, 999);
 
 const SCHEDULE_BLACKOUT_DATES = new Set<string>();
+const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9]+$/;
+
+type CatalogStripePriceEnvSpec = {
+  productName: string;
+  lookupKey: string;
+  envVarName: string;
+};
+
+const PURCHASABLE_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[] = [
+  {
+    productName: "Collective Class Drop-In",
+    lookupKey: "collective-drop-in-eur-once-v1",
+    envVarName: "STRIPE_PRICE_ID_COLLECTIVE_DROP_IN",
+  },
+  {
+    productName: "5-Ticket Collective Classes",
+    lookupKey: "qa-collective-5-pack-eur-once-v1",
+    envVarName: "STRIPE_PRICE_ID_COLLECTIVE_5_PACK",
+  },
+  {
+    productName: "10-Ticket Collective Classes",
+    lookupKey: "collective-10-pack-eur-once-v1",
+    envVarName: "STRIPE_PRICE_ID_COLLECTIVE_10_PACK",
+  },
+  {
+    productName: "Monthly Recurrent Collective Subscription",
+    lookupKey: "monthly-unlimited-collective-eur-monthly-v1",
+    envVarName: "STRIPE_PRICE_ID_MONTHLY_UNLIMITED_COLLECTIVE",
+  },
+  {
+    productName: "5-Ticket Private Classes",
+    lookupKey: "qa-private-5-pack-eur-once-v1",
+    envVarName: "STRIPE_PRICE_ID_PRIVATE_5_PACK",
+  },
+  {
+    productName: "10-Ticket Private Classes",
+    lookupKey: "qa-private-10-pack-eur-once-v1",
+    envVarName: "STRIPE_PRICE_ID_PRIVATE_10_PACK",
+  },
+];
+
+function resolveRequiredCatalogStripePriceIds(): Record<string, string> {
+  const stripePriceIdByLookupKey: Record<string, string> = {};
+  const missing: CatalogStripePriceEnvSpec[] = [];
+  const invalid: Array<CatalogStripePriceEnvSpec & { value: string }> = [];
+
+  for (const spec of PURCHASABLE_CATALOG_STRIPE_PRICE_ENV_SPECS) {
+    const value = process.env[spec.envVarName]?.trim();
+
+    if (!value) {
+      missing.push(spec);
+      continue;
+    }
+
+    if (!STRIPE_PRICE_ID_PATTERN.test(value)) {
+      invalid.push({ ...spec, value });
+      continue;
+    }
+
+    stripePriceIdByLookupKey[spec.lookupKey] = value;
+  }
+
+  if (missing.length > 0 || invalid.length > 0) {
+    const details = [
+      missing.length > 0
+        ? `Missing Stripe price env vars:\n${missing
+            .map(
+              (entry) =>
+                `- ${entry.envVarName} (Product: ${entry.productName}, lookupKey: ${entry.lookupKey})`,
+            )
+            .join("\n")}`
+        : null,
+      invalid.length > 0
+        ? `Invalid Stripe price env var values (expected Stripe Price IDs like price_...):\n${invalid
+            .map(
+              (entry) =>
+                `- ${entry.envVarName}=${entry.value} (Product: ${entry.productName}, lookupKey: ${entry.lookupKey})`,
+            )
+            .join("\n")}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    throw new Error(
+      `Seed validation failed for purchasable catalog Stripe price configuration.\n${details}\n\n` +
+        "Set all required STRIPE_PRICE_ID_* env vars before running the seed.",
+    );
+  }
+
+  console.info("[seed] Stripe price configuration validated for purchasable catalog products:");
+  for (const spec of PURCHASABLE_CATALOG_STRIPE_PRICE_ENV_SPECS) {
+    console.info(
+      `  - ${spec.productName}: ${spec.envVarName}=${stripePriceIdByLookupKey[spec.lookupKey]} (${spec.lookupKey})`,
+    );
+  }
+
+  return stripePriceIdByLookupKey;
+}
 
 function weekdayToJsDay(weekday: Weekday): number {
   switch (weekday) {
@@ -268,6 +367,7 @@ async function upsertProduct(input: {
 async function upsertPrice(input: {
   productId: string;
   lookupKey: string;
+  stripePriceId?: string;
   name: string;
   priceType: PriceType;
   currencyCode: string;
@@ -280,6 +380,7 @@ async function upsertPrice(input: {
     update: {
       productId: input.productId,
       name: input.name,
+      stripePriceId: input.stripePriceId,
       priceType: input.priceType,
       currencyCode: input.currencyCode,
       unitAmountMinor: input.unitAmountMinor,
@@ -293,6 +394,7 @@ async function upsertPrice(input: {
     create: {
       productId: input.productId,
       lookupKey: input.lookupKey,
+      stripePriceId: input.stripePriceId,
       name: input.name,
       priceType: input.priceType,
       currencyCode: input.currencyCode,
@@ -341,7 +443,46 @@ async function upsertEntitlementRule(input: {
   });
 }
 
-async function seedCatalog() {
+async function assertPurchasableCatalogStripePriceIdsPersisted() {
+  const seededPrices = await prisma.price.findMany({
+    where: {
+      lookupKey: {
+        in: PURCHASABLE_CATALOG_STRIPE_PRICE_ENV_SPECS.map((spec) => spec.lookupKey),
+      },
+    },
+    select: {
+      lookupKey: true,
+      stripePriceId: true,
+    },
+  });
+
+  const missingStripeIdsAfterSeed = seededPrices
+    .filter((price) => !price.stripePriceId)
+    .map((price) => price.lookupKey);
+
+  if (missingStripeIdsAfterSeed.length > 0) {
+    throw new Error(
+      "Seed verification failed: Stripe price IDs are missing after seed for lookup keys: " +
+        missingStripeIdsAfterSeed.join(", "),
+    );
+  }
+
+  const expectedLookupKeys = new Set(PURCHASABLE_CATALOG_STRIPE_PRICE_ENV_SPECS.map((spec) => spec.lookupKey));
+  const seededLookupKeys = new Set(seededPrices.map((price) => price.lookupKey));
+  const missingRows = [...expectedLookupKeys].filter((lookupKey) => !seededLookupKeys.has(lookupKey));
+  if (missingRows.length > 0) {
+    throw new Error(
+      "Seed verification failed: expected purchasable catalog prices were not created for lookup keys: " +
+        missingRows.join(", "),
+    );
+  }
+
+  console.info(
+    `[seed] Verified Stripe-linked purchasable catalog prices: ${seededPrices.length}/${expectedLookupKeys.size}.`,
+  );
+}
+
+async function seedCatalog(stripePriceIdByLookupKey: Record<string, string>) {
   const collectiveDropIn = await upsertProduct({
     slug: "collective-drop-in",
     name: "Collective Class Drop-In",
@@ -352,6 +493,7 @@ async function seedCatalog() {
   await upsertPrice({
     productId: collectiveDropIn.id,
     lookupKey: "collective-drop-in-eur-once-v1",
+    stripePriceId: stripePriceIdByLookupKey["collective-drop-in-eur-once-v1"],
     name: "Collective Drop-In - One Time",
     priceType: PriceType.ONE_TIME,
     currencyCode: "EUR",
@@ -376,6 +518,7 @@ async function seedCatalog() {
   await upsertPrice({
     productId: collectiveFivePack.id,
     lookupKey: "qa-collective-5-pack-eur-once-v1",
+    stripePriceId: stripePriceIdByLookupKey["qa-collective-5-pack-eur-once-v1"],
     name: "5-Class Pack - One Time",
     priceType: PriceType.ONE_TIME,
     currencyCode: "EUR",
@@ -400,6 +543,7 @@ async function seedCatalog() {
   await upsertPrice({
     productId: collectiveTenPack.id,
     lookupKey: "collective-10-pack-eur-once-v1",
+    stripePriceId: stripePriceIdByLookupKey["collective-10-pack-eur-once-v1"],
     name: "10-Class Pack - One Time",
     priceType: PriceType.ONE_TIME,
     currencyCode: "EUR",
@@ -424,6 +568,7 @@ async function seedCatalog() {
   await upsertPrice({
     productId: collectiveMonthlySubscription.id,
     lookupKey: "monthly-unlimited-collective-eur-monthly-v1",
+    stripePriceId: stripePriceIdByLookupKey["monthly-unlimited-collective-eur-monthly-v1"],
     name: "Monthly Unlimited Collective - Monthly",
     priceType: PriceType.RECURRING,
     currencyCode: "EUR",
@@ -449,6 +594,7 @@ async function seedCatalog() {
   await upsertPrice({
     productId: privateFivePack.id,
     lookupKey: "qa-private-5-pack-eur-once-v1",
+    stripePriceId: stripePriceIdByLookupKey["qa-private-5-pack-eur-once-v1"],
     name: "5-Private Sessions - One Time",
     priceType: PriceType.ONE_TIME,
     currencyCode: "EUR",
@@ -473,6 +619,7 @@ async function seedCatalog() {
   await upsertPrice({
     productId: privateTenPack.id,
     lookupKey: "qa-private-10-pack-eur-once-v1",
+    stripePriceId: stripePriceIdByLookupKey["qa-private-10-pack-eur-once-v1"],
     name: "10-Private Sessions - One Time",
     priceType: PriceType.ONE_TIME,
     currencyCode: "EUR",
@@ -486,6 +633,8 @@ async function seedCatalog() {
     validForDays: 240,
     notes: "Ten credits for private classes.",
   });
+
+  await assertPurchasableCatalogStripePriceIdsPersisted();
 }
 
 async function upsertClassCategory(input: {
@@ -970,10 +1119,11 @@ async function verifyCleanSeed(clientEmail: string) {
 }
 
 async function main() {
+  const stripePriceIdByLookupKey = resolveRequiredCatalogStripePriceIds();
   await purgeForCleanSeed();
   const users = await seedUsers();
   await seedBookingPolicy();
-  await seedCatalog();
+  await seedCatalog(stripePriceIdByLookupKey);
   await seedScheduling(users.teacher.id);
   await verifyCleanSeed(users.client.email);
 

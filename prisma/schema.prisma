@@ -134,6 +134,11 @@ enum PaymentProvider {
   OTHER
 }
 
+enum StripeCheckoutMode {
+  PAYMENT
+  SUBSCRIPTION
+}
+
 enum SubscriptionStatus {
   PENDING
   ACTIVE
@@ -271,6 +276,7 @@ model Price {
   id                    String                 @id @default(cuid())
   productId             String
   lookupKey             String                 @unique
+  stripePriceId         String?                @unique
   name                  String
   priceType             PriceType
   currencyCode          String
@@ -574,6 +580,9 @@ model Payment {
   method            PaymentMethod
   provider          PaymentProvider
   providerReference String?
+  stripeCheckoutSessionId String?   @unique
+  stripeCustomerId  String?
+  stripeCheckoutMode StripeCheckoutMode?
   amountMinor       Int
   currencyCode      String
   authorizedAt      DateTime?
@@ -612,6 +621,7 @@ model SubscriptionContract {
   createdAt                     DateTime            @default(now())
   updatedAt                     DateTime            @updatedAt
 
+  @@unique([provider, providerSubscriptionReference])
   @@index([clientId, status, currentPeriodEnd])
   @@index([productId, status])
   @@index([provider, providerSubscriptionReference])

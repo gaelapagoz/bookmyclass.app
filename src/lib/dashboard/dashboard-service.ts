@@ -8,6 +8,13 @@ import {
   StudioSessionStatus,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import {
+  getLatestStripeCustomerIdForUser,
+  getOwnedOneTimeProducts,
+  getOwnedRecurringSubscriptions,
+  type OwnedOneTimeProduct,
+  type OwnedRecurringSubscription,
+} from "@/lib/subscription/ownership";
 
 type DashboardServiceErrorCode =
   | "BOOKING_NOT_FOUND"
@@ -79,6 +86,18 @@ export type DashboardMembershipData = {
     expiresAt: string | null;
     remainingCredits: number | null;
   }>;
+  activeCreditPacks: Array<{
+    entitlementId: string;
+    productName: string;
+    status: ClientEntitlementStatus;
+    expiresAt: string | null;
+    remainingCredits: number;
+    nextToConsume: boolean;
+  }>;
+  ownedOneTimeProducts: OwnedOneTimeProduct[];
+  recurringSubscriptions: OwnedRecurringSubscription[];
+  canManageStripeBilling: boolean;
+  usableCredits: number;
   creditsLeft: number;
 };
 
@@ -469,7 +488,7 @@ export async function getDashboardMembershipData(
   clientId: string,
 ): Promise<DashboardMembershipData> {
   const now = new Date();
-  const [activeSubscription, activeSubscriptions, entitlements, creditsLeft] = await prisma.$transaction([
+  const [activeSubscription, activeSubscriptions, entitlements, creditEntitlements] = await prisma.$transaction([
     prisma.subscriptionContract.findFirst({
       where: {
         clientId,
@@ -514,15 +533,31 @@ export async function getDashboardMembershipData(
       orderBy: { updatedAt: "desc" },
       select: {
         id: true,
+        createdAt: true,
         status: true,
         entitlementType: true,
         expiresAt: true,
         product: { select: { name: true } },
       },
     }),
-    prisma.creditLedgerEntry.aggregate({
-      where: { clientId },
-      _sum: { amount: true },
+    prisma.clientEntitlement.findMany({
+      where: {
+        clientId,
+        status: ClientEntitlementStatus.ACTIVE,
+        entitlementType: {
+          in: [EntitlementType.CREDIT_PACK, EntitlementType.SINGLE_USE],
+        },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      orderBy: [{ expiresAt: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        createdAt: true,
+        status: true,
+        entitlementType: true,
+        expiresAt: true,
+        product: { select: { name: true } },
+      },
     }),
   ]);
 
@@ -541,6 +576,41 @@ export async function getDashboardMembershipData(
   const balanceByEntitlementId = new Map(
     entitlementBalances.map((row) => [row.entitlementId, row._sum.amount ?? 0]),
   );
+
+  const activeCreditPacks = creditEntitlements
+    .map((entitlement) => ({
+      entitlementId: entitlement.id,
+      productName: entitlement.product.name,
+      status: entitlement.status,
+      expiresAt: entitlement.expiresAt?.toISOString() ?? null,
+      createdAt: entitlement.createdAt,
+      remainingCredits: balanceByEntitlementId.get(entitlement.id) ?? 0,
+    }))
+    .filter((entitlement) => entitlement.remainingCredits > 0)
+    .sort((a, b) => {
+      const aExpiry = a.expiresAt ? new Date(a.expiresAt).getTime() : Number.POSITIVE_INFINITY;
+      const bExpiry = b.expiresAt ? new Date(b.expiresAt).getTime() : Number.POSITIVE_INFINITY;
+      if (aExpiry !== bExpiry) {
+        return aExpiry - bExpiry;
+      }
+
+      const createdAtDelta = a.createdAt.getTime() - b.createdAt.getTime();
+      if (createdAtDelta !== 0) {
+        return createdAtDelta;
+      }
+
+      return a.entitlementId.localeCompare(b.entitlementId);
+    })
+    .map((entitlement, index) => ({
+      entitlementId: entitlement.entitlementId,
+      productName: entitlement.productName,
+      status: entitlement.status,
+      expiresAt: entitlement.expiresAt,
+      remainingCredits: entitlement.remainingCredits,
+      nextToConsume: index === 0,
+    }));
+
+  const usableCredits = activeCreditPacks.reduce((sum, entitlement) => sum + entitlement.remainingCredits, 0);
 
   const entitlementPlans = entitlements
     .map((entitlement) => {
@@ -571,6 +641,15 @@ export async function getDashboardMembershipData(
     remainingCredits: null,
   }));
 
+  const [ownedOneTimeProducts, recurringSubscriptions] = await Promise.all([
+    getOwnedOneTimeProducts(clientId),
+    getOwnedRecurringSubscriptions(clientId),
+  ]);
+  const stripeCustomerId = await getLatestStripeCustomerIdForUser(clientId);
+  const hasStripeRecurringSubscription = recurringSubscriptions.some(
+    (subscription) => subscription.provider === "STRIPE",
+  );
+
   return {
     activeSubscription: activeSubscription
       ? {
@@ -581,7 +660,12 @@ export async function getDashboardMembershipData(
         }
       : null,
     currentPlans: [...subscriptionPlans, ...entitlementPlans],
-    creditsLeft: creditsLeft._sum.amount ?? 0,
+    activeCreditPacks,
+    ownedOneTimeProducts,
+    recurringSubscriptions,
+    canManageStripeBilling: Boolean(stripeCustomerId && hasStripeRecurringSubscription),
+    usableCredits,
+    creditsLeft: usableCredits,
   };
 }
 

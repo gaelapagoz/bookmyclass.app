@@ -20,6 +20,7 @@ type PlanBalance = {
 };
 
 type ExistingPlanOption = {
+  createdAt: string;
   entitlementId: string;
   entitlementScope: EntitlementScope;
   entitlementType: EntitlementType;
@@ -92,6 +93,7 @@ export type BookingPaymentOptionsPreview = {
 };
 
 type PlanSummary = {
+  createdAt: string;
   entitlementId: string;
   expiresAt: string | null;
   isUsable: boolean;
@@ -367,8 +369,24 @@ function sortExistingPlans(options: ExistingPlanOption[]): ExistingPlanOption[] 
       return priorityDelta;
     }
 
-    if (a.remainingCredits !== null || b.remainingCredits !== null) {
-      return (b.remainingCredits ?? -1) - (a.remainingCredits ?? -1);
+    const aIsCreditPlan =
+      a.entitlementType === EntitlementType.CREDIT_PACK || a.entitlementType === EntitlementType.SINGLE_USE;
+    const bIsCreditPlan =
+      b.entitlementType === EntitlementType.CREDIT_PACK || b.entitlementType === EntitlementType.SINGLE_USE;
+
+    if (aIsCreditPlan && bIsCreditPlan) {
+      const aExpiry = a.expiresAt ? new Date(a.expiresAt).getTime() : Number.POSITIVE_INFINITY;
+      const bExpiry = b.expiresAt ? new Date(b.expiresAt).getTime() : Number.POSITIVE_INFINITY;
+      if (aExpiry !== bExpiry) {
+        return aExpiry - bExpiry;
+      }
+
+      const createdAtDelta = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      if (createdAtDelta !== 0) {
+        return createdAtDelta;
+      }
+
+      return a.entitlementId.localeCompare(b.entitlementId);
     }
 
     if (a.expiresAt && b.expiresAt) {
@@ -401,6 +419,7 @@ async function getExistingPlansByUserAndScope(params: {
     },
     select: {
       id: true,
+      createdAt: true,
       entitlementType: true,
       entitlementScope: true,
       expiresAt: true,
@@ -431,6 +450,7 @@ async function getExistingPlansByUserAndScope(params: {
       });
 
       return {
+        createdAt: entitlement.createdAt.toISOString(),
         entitlementId: entitlement.id,
         entitlementType: entitlement.entitlementType,
         entitlementScope: entitlement.entitlementScope,
@@ -480,6 +500,7 @@ async function getExistingPlansByUserAndScope(params: {
     },
     select: {
       id: true,
+      createdAt: true,
       currentPeriodEnd: true,
       product: {
         select: {
@@ -499,6 +520,7 @@ async function getExistingPlansByUserAndScope(params: {
   const subscriptionOptions: ExistingPlanOption[] = activeSubscriptions
     .filter((subscription) => !coveredSubscriptionIds.has(subscription.id))
     .map((subscription) => ({
+      createdAt: subscription.createdAt.toISOString(),
       entitlementId: `subscription:${subscription.id}`,
       entitlementType: EntitlementType.UNLIMITED_ACCESS,
       entitlementScope: EntitlementScope.ALL_CLASSES,
@@ -513,6 +535,71 @@ async function getExistingPlansByUserAndScope(params: {
     }));
 
   return sortExistingPlans([...usableEntitlementOptions, ...subscriptionOptions]);
+}
+
+type ConsumableCreditEntitlement = {
+  id: string;
+  entitlementType: EntitlementType;
+  entitlementScope: EntitlementScope;
+  expiresAt: Date | null;
+  createdAt: Date;
+  balance: number;
+};
+
+async function getNextConsumableCreditEntitlement(input: {
+  requiredScope: EntitlementScope;
+  userId: string;
+}): Promise<ConsumableCreditEntitlement | null> {
+  const now = new Date();
+  const entitlements = await prisma.clientEntitlement.findMany({
+    where: {
+      clientId: input.userId,
+      status: ClientEntitlementStatus.ACTIVE,
+      entitlementType: {
+        in: [EntitlementType.CREDIT_PACK, EntitlementType.SINGLE_USE],
+      },
+      entitlementScope: {
+        in: [input.requiredScope, EntitlementScope.ALL_CLASSES],
+      },
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    select: {
+      id: true,
+      createdAt: true,
+      entitlementType: true,
+      entitlementScope: true,
+      expiresAt: true,
+    },
+  });
+
+  const withBalance = await Promise.all(
+    entitlements.map(async (entitlement) => {
+      const balance = await getEntitlementCreditBalance(entitlement.id);
+      return { ...entitlement, balance };
+    }),
+  );
+
+  const eligible = withBalance.filter((entitlement) => entitlement.balance > 0);
+  if (eligible.length === 0) {
+    return null;
+  }
+
+  eligible.sort((a, b) => {
+    const aExpiry = a.expiresAt ? a.expiresAt.getTime() : Number.POSITIVE_INFINITY;
+    const bExpiry = b.expiresAt ? b.expiresAt.getTime() : Number.POSITIVE_INFINITY;
+    if (aExpiry !== bExpiry) {
+      return aExpiry - bExpiry;
+    }
+
+    const createdAtDelta = a.createdAt.getTime() - b.createdAt.getTime();
+    if (createdAtDelta !== 0) {
+      return createdAtDelta;
+    }
+
+    return a.id.localeCompare(b.id);
+  });
+
+  return eligible[0] ?? null;
 }
 
 async function getPlanPurchaseOptions(requiredScope: EntitlementScope): Promise<PlanOptionRecord[]> {
@@ -703,6 +790,7 @@ function assertBookingOwnedByUser(booking: BookingForOptions, userId: string | n
 
 function toPlanSummary(plan: ExistingPlanOption): PlanSummary {
   return {
+    createdAt: plan.createdAt,
     entitlementId: plan.entitlementId,
     productId: plan.productId,
     productName: plan.productName,
@@ -838,6 +926,7 @@ export async function getMyActivePlans(userId: string): Promise<PlanSummary[]> {
       });
 
       return {
+        createdAt: entitlement.createdAt.toISOString(),
         entitlementId: entitlement.id,
         entitlementType: entitlement.entitlementType,
         entitlementScope: entitlement.entitlementScope,
@@ -1039,6 +1128,7 @@ async function applyExistingPlanSelection(input: {
     },
     select: {
       id: true,
+      createdAt: true,
       entitlementType: true,
       entitlementScope: true,
       expiresAt: true,
@@ -1053,11 +1143,41 @@ async function applyExistingPlanSelection(input: {
     throw new BookingPaymentOptionsError("PLAN_NOT_USABLE", "Selected plan is not eligible for this booking.");
   }
 
-  const balance = await getPlanBalance({
-    entitlementId: entitlement.id,
-    entitlementType: entitlement.entitlementType,
-    isActive: isEntitlementActive(entitlement.expiresAt),
-  });
+  let effectiveEntitlement = entitlement;
+  let balance: PlanBalance;
+
+  if (
+    entitlement.entitlementType === EntitlementType.CREDIT_PACK ||
+    entitlement.entitlementType === EntitlementType.SINGLE_USE
+  ) {
+    const nextCreditEntitlement = await getNextConsumableCreditEntitlement({
+      requiredScope: input.requiredScope,
+      userId: input.userId,
+    });
+
+    if (!nextCreditEntitlement) {
+      throw new BookingPaymentOptionsError("PLAN_NOT_USABLE", "No usable credits available.");
+    }
+
+    effectiveEntitlement = {
+      id: nextCreditEntitlement.id,
+      createdAt: nextCreditEntitlement.createdAt,
+      entitlementType: nextCreditEntitlement.entitlementType,
+      entitlementScope: nextCreditEntitlement.entitlementScope,
+      expiresAt: nextCreditEntitlement.expiresAt,
+    };
+    balance = {
+      credits: nextCreditEntitlement.balance,
+      isUsable: true,
+      reason: null,
+    };
+  } else {
+    balance = await getPlanBalance({
+      entitlementId: entitlement.id,
+      entitlementType: entitlement.entitlementType,
+      isActive: isEntitlementActive(entitlement.expiresAt),
+    });
+  }
 
   if (!balance.isUsable) {
     throw new BookingPaymentOptionsError("PLAN_NOT_USABLE", balance.reason ?? "Selected plan is not usable.");
@@ -1065,13 +1185,13 @@ async function applyExistingPlanSelection(input: {
 
   const booking = await prisma.$transaction(async (tx) => {
     if (
-      entitlement.entitlementType === EntitlementType.CREDIT_PACK ||
-      entitlement.entitlementType === EntitlementType.SINGLE_USE
+      effectiveEntitlement.entitlementType === EntitlementType.CREDIT_PACK ||
+      effectiveEntitlement.entitlementType === EntitlementType.SINGLE_USE
     ) {
       const existingConsume = await tx.creditLedgerEntry.findFirst({
         where: {
           bookingId: input.bookingId,
-          entitlementId: entitlement.id,
+          entitlementId: effectiveEntitlement.id,
           entryType: CreditLedgerEntryType.CONSUME,
         },
         select: { id: true },
@@ -1081,7 +1201,7 @@ async function applyExistingPlanSelection(input: {
         await tx.creditLedgerEntry.create({
           data: {
             clientId: input.userId,
-            entitlementId: entitlement.id,
+            entitlementId: effectiveEntitlement.id,
             bookingId: input.bookingId,
             entryType: CreditLedgerEntryType.CONSUME,
             amount: -1,
@@ -1096,7 +1216,7 @@ async function applyExistingPlanSelection(input: {
       data: {
         status: BookingStatus.CONFIRMED,
         paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
-        selectedEntitlementId: entitlement.id,
+        selectedEntitlementId: effectiveEntitlement.id,
         selectedPriceId: null,
         draftAmountMinor: 0,
         draftCurrencyCode: "EUR",

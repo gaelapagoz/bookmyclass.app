@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "Plan"
+ADD COLUMN "price" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "currency" TEXT NOT NULL DEFAULT 'eur',
+ADD COLUMN "interval" TEXT NOT NULL DEFAULT 'month';
