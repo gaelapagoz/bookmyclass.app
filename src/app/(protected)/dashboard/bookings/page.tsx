@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { DashboardNav } from "@/components/dashboard/DashboardNav";
 import { requireAuth } from "@/lib/auth/require-auth";
 import {
   cancelClientBooking,
@@ -121,11 +120,10 @@ export default async function DashboardBookingsPage({
   const message = getMessage(params);
 
   return (
-    <section className="mx-auto w-full max-w-6xl px-6 py-12">
+    <section>
       <h1 className="text-3xl font-semibold text-[#6f2b2b]">My Bookings</h1>
       <p className="mt-2 text-sm text-[#7f5a5a]">Track upcoming, past, and cancelled sessions.</p>
 
-      <DashboardNav />
 
       {message ? (
         <p

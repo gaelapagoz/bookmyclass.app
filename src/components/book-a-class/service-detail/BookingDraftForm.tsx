@@ -360,7 +360,7 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
       }
 
       if (selectedPaymentOption.mode === "EXISTING_PLAN") {
-        router.push(`/book-a-class/${session.serviceSlug}/payment/success?bookingId=${bookingId}`);
+        router.push(`/book-a-class/${session.serviceSlug}/confirmed?bookingId=${bookingId}`);
         return;
       }
 

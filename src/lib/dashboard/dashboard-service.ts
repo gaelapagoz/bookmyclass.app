@@ -70,10 +70,12 @@ export type DashboardMembershipData = {
     currentPeriodStart: string;
     currentPeriodEnd: string;
   } | null;
-  usablePlans: Array<{
-    entitlementId: string;
+  currentPlans: Array<{
+    planId: string;
+    source: "SUBSCRIPTION" | "ENTITLEMENT";
     productName: string;
-    entitlementType: EntitlementType;
+    planType: EntitlementType | "SUBSCRIPTION";
+    status: SubscriptionStatus | ClientEntitlementStatus;
     expiresAt: string | null;
     remainingCredits: number | null;
   }>;
@@ -126,15 +128,6 @@ async function getCancellationCutoffHours(): Promise<number> {
   });
 
   return policy?.cancellationCutoffHours ?? 24;
-}
-
-async function computeCreditBalanceForEntitlement(entitlementId: string): Promise<number> {
-  const result = await prisma.creditLedgerEntry.aggregate({
-    where: { entitlementId },
-    _sum: { amount: true },
-  });
-
-  return result._sum.amount ?? 0;
 }
 
 export async function getCreditsLeft(clientId: string): Promise<number> {
@@ -476,7 +469,7 @@ export async function getDashboardMembershipData(
   clientId: string,
 ): Promise<DashboardMembershipData> {
   const now = new Date();
-  const [activeSubscription, entitlements, creditsLeft] = await prisma.$transaction([
+  const [activeSubscription, activeSubscriptions, entitlements, creditsLeft] = await prisma.$transaction([
     prisma.subscriptionContract.findFirst({
       where: {
         clientId,
@@ -491,15 +484,37 @@ export async function getDashboardMembershipData(
         product: { select: { name: true } },
       },
     }),
+    prisma.subscriptionContract.findMany({
+      where: {
+        clientId,
+        status: SubscriptionStatus.ACTIVE,
+        currentPeriodEnd: { gt: now },
+      },
+      orderBy: { currentPeriodEnd: "asc" },
+      select: {
+        id: true,
+        status: true,
+        currentPeriodEnd: true,
+        product: { select: { name: true } },
+      },
+    }),
     prisma.clientEntitlement.findMany({
       where: {
         clientId,
         status: ClientEntitlementStatus.ACTIVE,
+        entitlementType: {
+          in: [
+            EntitlementType.CREDIT_PACK,
+            EntitlementType.SINGLE_USE,
+            EntitlementType.UNLIMITED_ACCESS,
+          ],
+        },
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
       orderBy: { updatedAt: "desc" },
       select: {
         id: true,
+        status: true,
         entitlementType: true,
         expiresAt: true,
         product: { select: { name: true } },
@@ -511,23 +526,50 @@ export async function getDashboardMembershipData(
     }),
   ]);
 
-  const usablePlans = await Promise.all(
-    entitlements.map(async (entitlement) => {
+  const entitlementIds = entitlements.map((entitlement) => entitlement.id);
+  const entitlementBalances =
+    entitlementIds.length > 0
+      ? await prisma.creditLedgerEntry.groupBy({
+          by: ["entitlementId"],
+          where: {
+            clientId,
+            entitlementId: { in: entitlementIds },
+          },
+          _sum: { amount: true },
+        })
+      : [];
+  const balanceByEntitlementId = new Map(
+    entitlementBalances.map((row) => [row.entitlementId, row._sum.amount ?? 0]),
+  );
+
+  const entitlementPlans = entitlements
+    .map((entitlement) => {
       const remainingCredits =
         entitlement.entitlementType === EntitlementType.CREDIT_PACK ||
         entitlement.entitlementType === EntitlementType.SINGLE_USE
-          ? await computeCreditBalanceForEntitlement(entitlement.id)
+          ? balanceByEntitlementId.get(entitlement.id) ?? 0
           : null;
-
       return {
-        entitlementId: entitlement.id,
+        planId: entitlement.id,
+        source: "ENTITLEMENT" as const,
         productName: entitlement.product.name,
-        entitlementType: entitlement.entitlementType,
+        planType: entitlement.entitlementType,
+        status: entitlement.status,
         expiresAt: entitlement.expiresAt?.toISOString() ?? null,
         remainingCredits,
       };
-    }),
-  );
+    })
+    .filter((plan) => plan.remainingCredits === null || plan.remainingCredits > 0);
+
+  const subscriptionPlans = activeSubscriptions.map((subscription) => ({
+    planId: subscription.id,
+    source: "SUBSCRIPTION" as const,
+    productName: subscription.product.name,
+    planType: "SUBSCRIPTION" as const,
+    status: subscription.status,
+    expiresAt: subscription.currentPeriodEnd.toISOString(),
+    remainingCredits: null,
+  }));
 
   return {
     activeSubscription: activeSubscription
@@ -538,7 +580,7 @@ export async function getDashboardMembershipData(
           currentPeriodEnd: activeSubscription.currentPeriodEnd.toISOString(),
         }
       : null,
-    usablePlans,
+    currentPlans: [...subscriptionPlans, ...entitlementPlans],
     creditsLeft: creditsLeft._sum.amount ?? 0,
   };
 }

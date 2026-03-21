@@ -1,4 +1,4 @@
-﻿/* @vitest-environment jsdom */
+/* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -157,7 +157,7 @@ describe("BookingPaymentOptionsStep", () => {
 
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith(
-        "/book-a-class/vinyasa-yoga/payment/success?bookingId=booking-2",
+        "/book-a-class/vinyasa-yoga/confirmed?bookingId=booking-2",
       );
     });
 
@@ -218,6 +218,7 @@ describe("BookingPaymentOptionsStep", () => {
     });
   });
 });
+
 
 
 

@@ -1,19 +1,24 @@
 import "./helpers/setup-env";
 import {
+  BillingInterval,
   BookingStatus,
   ClientEntitlementStatus,
   CreditLedgerEntryType,
   EntitlementScope,
   EntitlementType,
+  PaymentProvider,
+  PriceType,
   ProductType,
   Role,
   StudioSessionStatus,
+  SubscriptionStatus,
 } from "@prisma/client";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   cancelClientBooking,
   DashboardServiceError,
   getDashboardHomeData,
+  getDashboardMembershipData,
   updateDashboardProfile,
 } from "../../src/lib/dashboard/dashboard-service";
 import { prisma } from "./helpers/db";
@@ -273,4 +278,69 @@ describe("dashboard-service integration", () => {
     expect(home.recentBookings.length).toBeGreaterThan(0);
     expect(home.creditsLeft).toBe(9);
   });
+
+  it("returns current plans with both active entitlement packs and subscriptions", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Membership Client",
+        firstName: "Membership",
+        lastName: "Client",
+        email: `membership.client.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await createSessionFixture(client.id);
+
+    const subscriptionProduct = await prisma.product.create({
+      data: {
+        name: "Monthly Unlimited Collective",
+        slug: `monthly-unlimited-${Date.now()}`,
+        productType: ProductType.UNLIMITED_MEMBERSHIP,
+        isActive: true,
+        isArchived: false,
+        sortOrder: 1,
+      },
+    });
+
+    const subscriptionPrice = await prisma.price.create({
+      data: {
+        productId: subscriptionProduct.id,
+        lookupKey: `monthly-unlimited-${Date.now()}`,
+        name: "Monthly Unlimited - Monthly",
+        priceType: PriceType.RECURRING,
+        currencyCode: "EUR",
+        unitAmountMinor: 12900,
+        billingInterval: BillingInterval.MONTH,
+        billingIntervalCount: 1,
+        isActive: true,
+        isArchived: false,
+      },
+    });
+
+    await prisma.subscriptionContract.create({
+      data: {
+        clientId: client.id,
+        productId: subscriptionProduct.id,
+        priceId: subscriptionPrice.id,
+        status: SubscriptionStatus.ACTIVE,
+        startsAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        currentPeriodStart: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        currentPeriodEnd: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000),
+        provider: PaymentProvider.STRIPE,
+      },
+    });
+
+    const membership = await getDashboardMembershipData(client.id);
+
+    const entitlementPlan = membership.currentPlans.find((plan) => plan.source === "ENTITLEMENT");
+    const subscriptionPlan = membership.currentPlans.find((plan) => plan.source === "SUBSCRIPTION");
+
+    expect(entitlementPlan).toBeTruthy();
+    expect(entitlementPlan?.remainingCredits).toBe(9);
+    expect(subscriptionPlan).toBeTruthy();
+    expect(subscriptionPlan?.status).toBe(SubscriptionStatus.ACTIVE);
+  });
 });
+
+

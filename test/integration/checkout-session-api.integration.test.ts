@@ -4,6 +4,7 @@ import {
   BookingStatus,
   EntitlementScope,
   EntitlementType,
+  OrderStatus,
   PaymentProvider,
   PaymentStatus,
   PriceType,
@@ -206,6 +207,19 @@ describe("POST /api/checkout/session", () => {
     });
     expect(payments).toHaveLength(1);
     expect(payments[0]?.status).toBe(PaymentStatus.PENDING);
+    expect(payments[0]?.orderId).toBeTruthy();
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: fixture.booking.id },
+      select: { orderId: true },
+    });
+    expect(booking?.orderId).toBeTruthy();
+
+    const order = await prisma.order.findUnique({
+      where: { id: booking?.orderId ?? "" },
+      select: { status: true },
+    });
+    expect(order?.status).toBe(OrderStatus.PLACED);
   });
 
   it("creates checkout session for NEW_PLAN_PURCHASE when authenticated", async () => {
@@ -292,5 +306,11 @@ describe("POST /api/checkout/session", () => {
       where: { bookingId: fixture.booking.id, provider: PaymentProvider.STRIPE },
     });
     expect(payments).toHaveLength(1);
+    expect(payments[0]?.orderId).toBeTruthy();
+
+    const orderCount = await prisma.order.count({
+      where: { bookings: { some: { id: fixture.booking.id } } },
+    });
+    expect(orderCount).toBe(1);
   });
 });

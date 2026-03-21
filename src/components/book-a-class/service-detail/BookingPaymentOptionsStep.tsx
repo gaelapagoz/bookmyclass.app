@@ -224,7 +224,7 @@ export function BookingPaymentOptionsStep({ bookingId, serviceSlug }: BookingPay
       }
 
       if (selection.mode === "EXISTING_PLAN") {
-        router.push(`/book-a-class/${serviceSlug}/payment/success?bookingId=${bookingId}`);
+        router.push(`/book-a-class/${serviceSlug}/confirmed?bookingId=${bookingId}`);
         return;
       }
 

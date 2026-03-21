@@ -6,6 +6,7 @@ import {
   CreditLedgerEntryType,
   EntitlementScope,
   EntitlementType,
+  OrderStatus,
   PaymentMethod,
   PaymentProvider,
   PaymentStatus,
@@ -128,10 +129,39 @@ async function createWebhookFixture(input: {
     },
   });
 
+  const order = await prisma.order.create({
+    data: {
+      clientId: client.id,
+      subtotalAmountMinor: price.unitAmountMinor,
+      discountAmountMinor: 0,
+      totalAmountMinor: price.unitAmountMinor,
+      currencyCode: "EUR",
+      status: OrderStatus.PLACED,
+      notes: "Webhook fixture order",
+    },
+  });
+
+  await prisma.orderItem.create({
+    data: {
+      orderId: order.id,
+      productId: product.id,
+      priceId: price.id,
+      quantity: 1,
+      productNameSnapshot: product.name,
+      priceNameSnapshot: price.name,
+      unitAmountMinor: price.unitAmountMinor,
+      lineSubtotalAmountMinor: price.unitAmountMinor,
+      lineDiscountAmountMinor: 0,
+      lineTotalAmountMinor: price.unitAmountMinor,
+      currencyCode: "EUR",
+    },
+  });
+
   const booking = await prisma.booking.create({
     data: {
       studioSessionId: session.id,
       clientId: client.id,
+      orderId: order.id,
       status: BookingStatus.PENDING,
       paymentSelection: input.paymentSelection,
       selectedPriceId: price.id,
@@ -149,6 +179,7 @@ async function createWebhookFixture(input: {
   const payment = await prisma.payment.create({
     data: {
       bookingId: booking.id,
+      orderId: order.id,
       status: PaymentStatus.PENDING,
       method: PaymentMethod.CARD,
       provider: PaymentProvider.STRIPE,
@@ -158,7 +189,7 @@ async function createWebhookFixture(input: {
     },
   });
 
-  return { booking, payment, price, client, product };
+  return { booking, payment, price, client, product, order };
 }
 
 describe("POST /api/stripe/webhook", () => {
@@ -167,7 +198,7 @@ describe("POST /api/stripe/webhook", () => {
     await resetDb();
   });
 
-  it("confirms booking and payment for single-session checkout", async () => {
+  it("confirms booking, payment, and order for single-session checkout", async () => {
     const fixture = await createWebhookFixture({
       paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
     });
@@ -177,10 +208,12 @@ describe("POST /api/stripe/webhook", () => {
       data: {
         object: {
           id: fixture.payment.providerReference,
+          payment_status: "paid",
           metadata: {
             paymentId: fixture.payment.id,
             bookingId: fixture.booking.id,
             selectedPriceId: fixture.price.id,
+            orderId: fixture.order.id,
           },
         },
       },
@@ -198,8 +231,11 @@ describe("POST /api/stripe/webhook", () => {
 
     const payment = await prisma.payment.findUnique({ where: { id: fixture.payment.id } });
     const booking = await prisma.booking.findUnique({ where: { id: fixture.booking.id } });
+    const order = await prisma.order.findUnique({ where: { id: fixture.order.id } });
 
     expect(payment?.status).toBe(PaymentStatus.SUCCEEDED);
+    expect(payment?.orderId).toBe(fixture.order.id);
+    expect(order?.status).toBe(OrderStatus.PAID);
     expect(booking?.status).toBe(BookingStatus.CONFIRMED);
   });
 
@@ -213,10 +249,12 @@ describe("POST /api/stripe/webhook", () => {
       data: {
         object: {
           id: fixture.payment.providerReference,
+          payment_status: "paid",
           metadata: {
             paymentId: fixture.payment.id,
             bookingId: fixture.booking.id,
             selectedPriceId: fixture.price.id,
+            orderId: fixture.order.id,
           },
         },
       },
@@ -241,6 +279,8 @@ describe("POST /api/stripe/webhook", () => {
     expect(responseTwo.status).toBe(200);
 
     const booking = await prisma.booking.findUnique({ where: { id: fixture.booking.id } });
+    const payment = await prisma.payment.findUnique({ where: { id: fixture.payment.id } });
+    const order = await prisma.order.findUnique({ where: { id: fixture.order.id } });
     const entitlements = await prisma.clientEntitlement.findMany({
       where: {
         clientId: fixture.client.id,
@@ -251,18 +291,29 @@ describe("POST /api/stripe/webhook", () => {
     const credits = await prisma.creditLedgerEntry.findMany({
       where: {
         clientId: fixture.client.id,
-        entryType: CreditLedgerEntryType.GRANT,
+        entitlementId: entitlements[0]?.id,
       },
     });
+    const creditBalance = await prisma.creditLedgerEntry.aggregate({
+      where: {
+        clientId: fixture.client.id,
+        entitlementId: entitlements[0]?.id,
+      },
+      _sum: { amount: true },
+    });
 
+    expect(payment?.status).toBe(PaymentStatus.SUCCEEDED);
+    expect(order?.status).toBe(OrderStatus.PAID);
     expect(booking?.status).toBe(BookingStatus.CONFIRMED);
     expect(booking?.selectedEntitlementId).toBeTruthy();
     expect(entitlements).toHaveLength(1);
-    expect(credits).toHaveLength(1);
-    expect(credits[0]?.amount).toBe(10);
+    expect(entitlements[0]?.orderId).toBe(fixture.order.id);
+    expect(credits.filter((entry) => entry.entryType === CreditLedgerEntryType.GRANT)).toHaveLength(1);
+    expect(credits.filter((entry) => entry.entryType === CreditLedgerEntryType.CONSUME)).toHaveLength(1);
+    expect(creditBalance._sum.amount).toBe(9);
   });
 
-  it("marks payment failed when checkout expires", async () => {
+  it("marks payment and order failed/cancelled when checkout expires", async () => {
     const fixture = await createWebhookFixture({
       paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
     });
@@ -289,9 +340,53 @@ describe("POST /api/stripe/webhook", () => {
 
     const payment = await prisma.payment.findUnique({ where: { id: fixture.payment.id } });
     const booking = await prisma.booking.findUnique({ where: { id: fixture.booking.id } });
+    const order = await prisma.order.findUnique({ where: { id: fixture.order.id } });
 
     expect(payment?.status).toBe(PaymentStatus.FAILED);
+    expect(order?.status).toBe(OrderStatus.CANCELLED);
     expect(booking?.status).toBe(BookingStatus.PENDING);
+  });
+
+  it("does not confirm booking when checkout.session.completed is unpaid", async () => {
+    const fixture = await createWebhookFixture({
+      paymentSelection: BookingPaymentSelection.NEW_PLAN_PURCHASE,
+    });
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: fixture.payment.providerReference,
+          payment_status: "unpaid",
+          metadata: {
+            paymentId: fixture.payment.id,
+            bookingId: fixture.booking.id,
+            selectedPriceId: fixture.price.id,
+            orderId: fixture.order.id,
+          },
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const booking = await prisma.booking.findUnique({ where: { id: fixture.booking.id } });
+    const payment = await prisma.payment.findUnique({ where: { id: fixture.payment.id } });
+    const order = await prisma.order.findUnique({ where: { id: fixture.order.id } });
+    const entitlements = await prisma.clientEntitlement.count({ where: { clientId: fixture.client.id } });
+
+    expect(booking?.status).toBe(BookingStatus.PENDING);
+    expect(payment?.status).toBe(PaymentStatus.FAILED);
+    expect(order?.status).toBe(OrderStatus.CANCELLED);
+    expect(entitlements).toBe(0);
   });
 
   it("rejects missing stripe signature", async () => {
@@ -305,3 +400,5 @@ describe("POST /api/stripe/webhook", () => {
     expect(response.status).toBe(400);
   });
 });
+
+

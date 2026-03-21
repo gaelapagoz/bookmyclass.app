@@ -1,6 +1,7 @@
 import {
   BookingPaymentSelection,
   BookingStatus,
+  OrderStatus,
   PaymentMethod,
   PaymentProvider,
   PaymentStatus,
@@ -102,6 +103,20 @@ export async function createCheckoutSessionForBooking(input: {
       selectedPriceId: true,
       draftAmountMinor: true,
       draftCurrencyCode: true,
+      orderId: true,
+      selectedPrice: {
+        select: {
+          id: true,
+          name: true,
+          unitAmountMinor: true,
+          product: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      },
       studioSession: {
         select: {
           classType: {
@@ -118,7 +133,7 @@ export async function createCheckoutSessionForBooking(input: {
           status: PaymentStatus.PENDING,
         },
         orderBy: { createdAt: "desc" },
-        select: { id: true },
+        select: { id: true, orderId: true },
         take: 1,
       },
     },
@@ -138,23 +153,100 @@ export async function createCheckoutSessionForBooking(input: {
     : null;
 
   assertBookingCheckoutReady({ booking: normalizedBooking, userId });
+  if (!booking?.selectedPrice || !booking.clientId) {
+    throw new CheckoutError("INVALID_SELECTION", "Selected price is missing.");
+  }
 
   const env = getStripeEnv();
   const serviceLabel = booking?.studioSession.classType.name ?? "Studio Class";
+  const orderAndPayment = await prisma.$transaction(async (tx) => {
+    let orderId = booking.orderId;
+    if (orderId) {
+      const existingOrder = await tx.order.findUnique({
+        where: { id: orderId },
+        select: { status: true },
+      });
+      if (!existingOrder || existingOrder.status !== OrderStatus.PLACED) {
+        orderId = null;
+      }
+    }
 
-  const payment =
-    booking?.payments[0] ??
-    (await prisma.payment.create({
+    if (!orderId) {
+      const order = await tx.order.create({
+        data: {
+          clientId: booking.clientId,
+          subtotalAmountMinor: normalizedBooking.draftAmountMinor,
+          discountAmountMinor: 0,
+          totalAmountMinor: normalizedBooking.draftAmountMinor,
+          currencyCode: normalizedBooking.draftCurrencyCode,
+          status: OrderStatus.PLACED,
+          notes:
+            normalizedBooking.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE
+              ? "Plan purchase order created from booking checkout."
+              : "Single-session order created from booking checkout.",
+        },
+        select: { id: true },
+      });
+      orderId = order.id;
+
+      await tx.orderItem.create({
+        data: {
+          orderId,
+          productId: booking.selectedPrice.product.id,
+          priceId: booking.selectedPrice.id,
+          quantity: 1,
+          productNameSnapshot: booking.selectedPrice.product.name,
+          priceNameSnapshot: booking.selectedPrice.name,
+          unitAmountMinor: booking.selectedPrice.unitAmountMinor,
+          lineSubtotalAmountMinor: normalizedBooking.draftAmountMinor,
+          lineDiscountAmountMinor: 0,
+          lineTotalAmountMinor: normalizedBooking.draftAmountMinor,
+          currencyCode: normalizedBooking.draftCurrencyCode,
+        },
+      });
+
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: { orderId },
+      });
+    }
+
+    const existingPendingPayment = booking.payments[0] ?? null;
+    if (existingPendingPayment) {
+      const updated = await tx.payment.update({
+        where: { id: existingPendingPayment.id },
+        data: {
+          orderId: existingPendingPayment.orderId ?? orderId,
+          amountMinor: normalizedBooking.draftAmountMinor,
+          currencyCode: normalizedBooking.draftCurrencyCode,
+        },
+        select: { id: true, orderId: true },
+      });
+
+      return {
+        paymentId: updated.id,
+        orderId: updated.orderId ?? orderId,
+      };
+    }
+
+    const createdPayment = await tx.payment.create({
       data: {
         bookingId,
+        orderId,
         status: PaymentStatus.PENDING,
         method: PaymentMethod.CARD,
         provider: PaymentProvider.STRIPE,
         amountMinor: normalizedBooking.draftAmountMinor,
         currencyCode: normalizedBooking.draftCurrencyCode,
       },
-      select: { id: true },
-    }));
+      select: { id: true, orderId: true },
+    });
+
+    return {
+      paymentId: createdPayment.id,
+      orderId: createdPayment.orderId ?? orderId,
+    };
+  });
 
   const checkoutSession = await createStripeCheckoutSession({
     mode: "payment",
@@ -176,7 +268,8 @@ export async function createCheckoutSessionForBooking(input: {
     ],
     metadata: {
       bookingId: normalizedBooking.id,
-      paymentId: payment.id,
+      paymentId: orderAndPayment.paymentId,
+      orderId: orderAndPayment.orderId ?? "",
       paymentSelection: normalizedBooking.paymentSelection,
       selectedPriceId: normalizedBooking.selectedPriceId,
       serviceSlug: normalizedBooking.serviceSlug,
@@ -190,7 +283,7 @@ export async function createCheckoutSessionForBooking(input: {
   }
 
   await prisma.payment.update({
-    where: { id: payment.id },
+    where: { id: orderAndPayment.paymentId },
     data: {
       providerReference: checkoutSession.id,
     },
@@ -199,6 +292,6 @@ export async function createCheckoutSessionForBooking(input: {
   return {
     checkoutSessionId: checkoutSession.id,
     checkoutUrl: checkoutSession.url,
-    paymentId: payment.id,
+    paymentId: orderAndPayment.paymentId,
   };
 }

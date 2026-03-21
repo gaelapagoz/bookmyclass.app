@@ -195,7 +195,7 @@ describe("BookingDraftForm", () => {
     await userEvent.click(screen.getByRole("button", { name: "Confirm Using Plan" }));
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/book-a-class/vinyasa-yoga/payment/success?bookingId=booking-2");
+      expect(pushMock).toHaveBeenCalledWith("/book-a-class/vinyasa-yoga/confirmed?bookingId=booking-2");
     });
 
     expect(assignMock).not.toHaveBeenCalled();
@@ -255,3 +255,4 @@ describe("BookingDraftForm", () => {
     });
   });
 });
+

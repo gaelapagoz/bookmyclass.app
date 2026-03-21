@@ -14,7 +14,7 @@ export default async function BookingPaymentCancelPage({
     <section className="mx-auto w-full max-w-3xl px-6 py-14">
       <h1 className="text-3xl font-semibold text-[#6f2b2b]">Checkout Cancelled</h1>
       <p className="mt-3 text-sm text-[#7f5a5a]">
-        No payment was confirmed. Your booking draft remains pending and you can retry checkout.
+        Payment failed or was not completed. Your booking was not confirmed.
       </p>
       <p className="mt-3 text-sm text-[#5f4040]">Booking ID: {bookingId ?? "Unavailable"}</p>
 

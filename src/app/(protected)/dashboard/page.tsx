@@ -1,4 +1,4 @@
-import { DashboardNav } from "@/components/dashboard/DashboardNav";
+import Link from "next/link";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { getDashboardHomeData } from "@/lib/dashboard/dashboard-service";
 
@@ -14,11 +14,9 @@ export default async function DashboardPage() {
   const data = await getDashboardHomeData(session.user.id);
 
   return (
-    <section className="mx-auto w-full max-w-6xl px-6 py-12">
+    <section className="space-y-6">
       <h1 className="text-3xl font-semibold text-[#6f2b2b]">Client Dashboard</h1>
       <p className="mt-2 text-sm text-[#7f5a5a]">Welcome back, {data.userName}.</p>
-
-      <DashboardNav />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-xl border border-[#d8cec6] bg-white p-4">
@@ -61,8 +59,16 @@ export default async function DashboardPage() {
         </article>
       </div>
 
-      <section className="mt-6 rounded-xl border border-[#d8cec6] bg-white p-4">
-        <h2 className="text-lg font-semibold text-[#6f2b2b]">Recent Bookings</h2>
+      <section className="rounded-xl border border-[#d8cec6] bg-white p-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-[#6f2b2b]">Recent Bookings</h2>
+          <Link
+            href="/dashboard/bookings"
+            className="text-sm font-medium text-[#7b2d2d] underline underline-offset-4 hover:opacity-80"
+          >
+            View booking history
+          </Link>
+        </div>
         {data.recentBookings.length === 0 ? (
           <p className="mt-3 text-sm text-[#5f4040]">No bookings yet.</p>
         ) : (
@@ -74,7 +80,7 @@ export default async function DashboardPage() {
               >
                 <span>{booking.serviceTitle}</span>
                 <span>
-                  {formatDateTime(booking.startsAt)} • {booking.status}
+                  {formatDateTime(booking.startsAt)} - {booking.status}
                 </span>
               </li>
             ))}

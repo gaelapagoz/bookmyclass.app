@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { DashboardNav } from "@/components/dashboard/DashboardNav";
 import { requireAuth } from "@/lib/auth/require-auth";
 import {
   DashboardServiceError,
@@ -75,11 +74,9 @@ export default async function DashboardProfilePage({
   }
 
   return (
-    <section className="mx-auto w-full max-w-5xl px-6 py-12">
+    <section>
       <h1 className="text-3xl font-semibold text-[#6f2b2b]">My Profile</h1>
       <p className="mt-2 text-sm text-[#7f5a5a]">Update your account contact details.</p>
-
-      <DashboardNav />
 
       {message ? (
         <p
