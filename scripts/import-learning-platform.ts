@@ -3,9 +3,10 @@ import { PrismaClient } from "@prisma/client";
 import { Pool } from "pg";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import "dotenv/config";
 
-type LearningProgramInput = {
+export type LearningProgramInput = {
   legacyId: string;
   mainTitle: string;
   mainDescription?: string | null;
@@ -20,7 +21,7 @@ type LearningProgramInput = {
   picture3?: string | null;
 };
 
-type LearningCourseInput = {
+export type LearningCourseInput = {
   legacyId: string;
   title: string;
   description?: string | null;
@@ -33,7 +34,7 @@ type LearningCourseInput = {
   priority?: number;
 };
 
-type LearningImportPayload = {
+export type LearningImportPayload = {
   programs: LearningProgramInput[];
   courses: LearningCourseInput[];
 };
@@ -107,7 +108,7 @@ function pickFirstDefined(record: Record<string, unknown>, keys: string[]): unkn
   return undefined;
 }
 
-function parsePayload(raw: unknown): { payload: LearningImportPayload | null; errors: string[] } {
+export function parsePayload(raw: unknown): { payload: LearningImportPayload | null; errors: string[] } {
   if (!isRecord(raw)) {
     return {
       payload: null,
@@ -247,7 +248,7 @@ function findDuplicates(values: string[]): string[] {
   return Array.from(duplicates);
 }
 
-async function loadImportFile(filePath: string): Promise<LearningImportPayload> {
+export async function loadImportFile(filePath: string): Promise<LearningImportPayload> {
   const absolutePath = resolve(filePath);
   const content = await readFile(absolutePath, "utf8");
   let parsed: unknown;
@@ -268,7 +269,7 @@ async function loadImportFile(filePath: string): Promise<LearningImportPayload> 
   return payload;
 }
 
-async function main() {
+export async function runLearningImport() {
   const importPathArg = process.argv[2];
   if (!importPathArg) {
     throw new Error(
@@ -357,7 +358,15 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error("[learning-import] Failed:", error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+const isDirectExecution =
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectExecution) {
+  runLearningImport().catch((error) => {
+    console.error("[learning-import] Failed:", error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}
+
+

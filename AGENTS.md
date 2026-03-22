@@ -6,6 +6,7 @@ Always follow:
 - docs/codex-rulebook.md
 - docs/domain-rules.md
 - docs/subscription-domain-rules.md
+
 Rules:
 - No business logic in frontend
 - Always validate before mutate

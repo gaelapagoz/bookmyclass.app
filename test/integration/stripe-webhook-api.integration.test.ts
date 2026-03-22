@@ -399,6 +399,187 @@ describe("POST /api/stripe/webhook", () => {
 
     expect(response.status).toBe(400);
   });
-});
+  it("handles completed checkout with missing metadata by leaving unmatched records unchanged", async () => {
+    const fixture = await createWebhookFixture({
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+    });
 
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_test_missing_metadata_unmatched",
+          payment_status: "paid",
+          metadata: {},
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const payment = await prisma.payment.findUnique({ where: { id: fixture.payment.id } });
+    const booking = await prisma.booking.findUnique({ where: { id: fixture.booking.id } });
+    const order = await prisma.order.findUnique({ where: { id: fixture.order.id } });
+
+    expect(payment?.status).toBe(PaymentStatus.PENDING);
+    expect(booking?.status).toBe(BookingStatus.PENDING);
+    expect(order?.status).toBe(OrderStatus.PLACED);
+  });
+
+  it("handles invalid metadata identifiers without mutating unrelated records", async () => {
+    const fixture = await createWebhookFixture({
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+    });
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: fixture.payment.providerReference,
+          payment_status: "paid",
+          metadata: {
+            paymentId: "payment_does_not_exist",
+            bookingId: "booking_does_not_exist",
+            selectedPriceId: fixture.price.id,
+            orderId: fixture.order.id,
+          },
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const payment = await prisma.payment.findUnique({ where: { id: fixture.payment.id } });
+    const booking = await prisma.booking.findUnique({ where: { id: fixture.booking.id } });
+    const order = await prisma.order.findUnique({ where: { id: fixture.order.id } });
+
+    expect(payment?.status).toBe(PaymentStatus.PENDING);
+    expect(order?.status).toBe(OrderStatus.PLACED);
+    expect(booking?.status).toBe(BookingStatus.PENDING);
+  });
+  it("keeps stable state across replayed completed events followed by expired", async () => {
+    const fixture = await createWebhookFixture({
+      paymentSelection: BookingPaymentSelection.NEW_PLAN_PURCHASE,
+    });
+
+    const completedEvent = {
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: fixture.payment.providerReference,
+          payment_status: "paid",
+          metadata: {
+            paymentId: fixture.payment.id,
+            bookingId: fixture.booking.id,
+            selectedPriceId: fixture.price.id,
+            orderId: fixture.order.id,
+          },
+        },
+      },
+    };
+
+    verifyStripeWebhookEventMock.mockReturnValueOnce(completedEvent);
+    const completedResponseOne = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(completedResponseOne.status).toBe(200);
+
+    verifyStripeWebhookEventMock.mockReturnValueOnce(completedEvent);
+    const completedResponseTwo = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(completedResponseTwo.status).toBe(200);
+
+    verifyStripeWebhookEventMock.mockReturnValueOnce({
+      type: "checkout.session.expired",
+      data: {
+        object: {
+          id: fixture.payment.providerReference,
+          metadata: {
+            paymentId: fixture.payment.id,
+            bookingId: fixture.booking.id,
+            orderId: fixture.order.id,
+          },
+        },
+      },
+    });
+    const expiredResponse = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(expiredResponse.status).toBe(200);
+
+    const booking = await prisma.booking.findUnique({ where: { id: fixture.booking.id } });
+    const payment = await prisma.payment.findUnique({ where: { id: fixture.payment.id } });
+    const order = await prisma.order.findUnique({ where: { id: fixture.order.id } });
+
+    const entitlements = await prisma.clientEntitlement.findMany({
+      where: {
+        clientId: fixture.client.id,
+        productId: fixture.product.id,
+        status: ClientEntitlementStatus.ACTIVE,
+      },
+    });
+
+    const credits = await prisma.creditLedgerEntry.findMany({
+      where: {
+        clientId: fixture.client.id,
+      },
+    });
+
+    const relatedPayments = await prisma.payment.findMany({
+      where: {
+        bookingId: fixture.booking.id,
+        provider: PaymentProvider.STRIPE,
+      },
+    });
+    const relatedOrders = await prisma.order.findMany({
+      where: {
+        bookings: {
+          some: {
+            id: fixture.booking.id,
+          },
+        },
+      },
+    });
+
+    expect(payment?.status).toBe(PaymentStatus.SUCCEEDED);
+    expect(order?.status).toBe(OrderStatus.PAID);
+    expect(booking?.status).toBe(BookingStatus.CONFIRMED);
+
+    expect(entitlements).toHaveLength(1);
+    expect(credits.filter((entry) => entry.entryType === CreditLedgerEntryType.GRANT)).toHaveLength(1);
+    expect(credits.filter((entry) => entry.entryType === CreditLedgerEntryType.CONSUME)).toHaveLength(1);
+
+    expect(relatedPayments).toHaveLength(1);
+    expect(relatedOrders).toHaveLength(1);
+  });
+});
 

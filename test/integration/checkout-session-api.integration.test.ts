@@ -313,4 +313,43 @@ describe("POST /api/checkout/session", () => {
     });
     expect(orderCount).toBe(1);
   });
+  it("returns 409 for already-processed (non-pending) booking and does not create checkout", async () => {
+    const fixture = await createBookingWithSelection({
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+      withClient: true,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: fixture.client!.id,
+        name: fixture.client!.name,
+        email: fixture.client!.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    await prisma.booking.update({
+      where: { id: fixture.booking.id },
+      data: { status: BookingStatus.CONFIRMED },
+    });
+
+    const response = await createCheckoutSession(
+      new Request("http://localhost/api/checkout/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ bookingId: fixture.booking.id }),
+      }),
+    );
+    const body = (await response.json()) as { code?: string };
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("BOOKING_NOT_PENDING");
+    expect(createStripeCheckoutSessionMock).not.toHaveBeenCalled();
+
+    const paymentCount = await prisma.payment.count({
+      where: { bookingId: fixture.booking.id, provider: PaymentProvider.STRIPE },
+    });
+    expect(paymentCount).toBe(0);
+  });
 });
+
