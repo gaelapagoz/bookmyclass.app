@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -71,7 +71,7 @@ export default function Footer() {
       <footer className="bg-[#7a232b] px-6 py-10 text-white">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-8 md:flex-row md:items-start md:justify-between">
           <div className="text-center md:text-left">
-            <p className="text-lg font-medium text-[#f2ede7] md:text-2xl">On The Mat Studio ASBL</p>
+            <p className="text-lg font-medium text-[#f2ede7] md:text-2xl">Yoga Pilates Fitness Studio</p>
             <Link
               href="/book-a-class"
               className="mt-2 inline-block text-base underline underline-offset-4 transition hover:opacity-80 md:text-lg"
@@ -107,8 +107,9 @@ export default function Footer() {
           />
         </div>
 
-        <p className="mt-10 text-center text-sm md:text-base">&copy; 2026 by On The Mat Studio ASBL</p>
+        <p className="mt-10 text-center text-sm md:text-base">&copy; 2026 by Yoga Pilates Fitness Studio</p>
       </footer>
     </>
   );
 }
+

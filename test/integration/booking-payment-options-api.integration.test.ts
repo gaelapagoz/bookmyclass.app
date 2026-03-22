@@ -24,6 +24,8 @@ vi.mock("../../src/auth", () => ({
 import { auth } from "../../src/auth";
 import { POST as applyPlan } from "../../src/app/api/bookings/[bookingId]/apply-plan/route";
 import { GET as getPaymentOptions } from "../../src/app/api/bookings/[bookingId]/payment-options/route";
+import { createAdminPlan } from "../../src/lib/admin/admin-service";
+import { backfillMissingPlanEntitlementRules } from "../../src/lib/admin/plan-entitlement-rules";
 
 async function createFixture(input: {
   bookingIntent: BookingIntent;
@@ -290,6 +292,142 @@ describe("booking payment options api", () => {
     expect(body.paymentOptions.ux.recommended.mode).toBe(BookingPaymentSelection.NEW_PLAN_PURCHASE);
   });
 
+  it("includes admin-created class-pack plans in new plan options when scope matches", async () => {
+    const fixture = await createFixture({
+      bookingIntent: BookingIntent.USE_PLAN,
+      createActivePlanCount: 0,
+    });
+
+    const adminPlan = await createAdminPlan({
+      name: "Admin Collective Pack",
+      productType: ProductType.CLASS_PACK,
+      isActive: true,
+      sortOrder: 9,
+      priceType: PriceType.ONE_TIME,
+      currencyCode: "EUR",
+      unitAmountMinor: 12500,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: fixture.bookingUser.id, email: fixture.bookingUser.email, name: fixture.bookingUser.name },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await getPaymentOptions(new Request("http://localhost/api"), {
+      params: Promise.resolve({ bookingId: fixture.booking.id }),
+    });
+    const body = (await response.json()) as {
+      paymentOptions: {
+        newPlanOptions: Array<{ productId: string }>;
+      };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.paymentOptions.newPlanOptions.some((option) => option.productId === adminPlan?.id)).toBe(true);
+  });
+
+  it("keeps admin-created private-class plans out of collective booking options", async () => {
+    const fixture = await createFixture({
+      bookingIntent: BookingIntent.USE_PLAN,
+      createActivePlanCount: 0,
+    });
+
+    const privatePlan = await createAdminPlan({
+      name: "Admin Private Session",
+      productType: ProductType.PRIVATE_CLASS,
+      isActive: true,
+      sortOrder: 10,
+      priceType: PriceType.ONE_TIME,
+      currencyCode: "EUR",
+      unitAmountMinor: 18900,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: fixture.bookingUser.id, email: fixture.bookingUser.email, name: fixture.bookingUser.name },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await getPaymentOptions(new Request("http://localhost/api"), {
+      params: Promise.resolve({ bookingId: fixture.booking.id }),
+    });
+    const body = (await response.json()) as {
+      paymentOptions: {
+        newPlanOptions: Array<{ productId: string }>;
+      };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.paymentOptions.newPlanOptions.some((option) => option.productId === privatePlan?.id)).toBe(false);
+  });
+
+  it("backfills a legacy admin class-pack with missing entitlement rule so it appears in collective options", async () => {
+    const fixture = await createFixture({
+      bookingIntent: BookingIntent.USE_PLAN,
+      createActivePlanCount: 0,
+    });
+
+    const legacyPlan = await prisma.product.create({
+      data: {
+        name: "Test Class",
+        slug: `test-class-${Date.now()}`,
+        productType: ProductType.CLASS_PACK,
+        isActive: true,
+        isArchived: false,
+        sortOrder: 50,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    await prisma.price.create({
+      data: {
+        productId: legacyPlan.id,
+        lookupKey: `legacy-test-class-${Date.now()}`,
+        name: "Test Class Price",
+        priceType: PriceType.ONE_TIME,
+        currencyCode: "EUR",
+        unitAmountMinor: 5000,
+        isActive: true,
+        isArchived: false,
+      },
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: fixture.bookingUser.id, email: fixture.bookingUser.email, name: fixture.bookingUser.name },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const beforeBackfillResponse = await getPaymentOptions(new Request("http://localhost/api"), {
+      params: Promise.resolve({ bookingId: fixture.booking.id }),
+    });
+    const beforeBackfillBody = (await beforeBackfillResponse.json()) as {
+      paymentOptions: {
+        newPlanOptions: Array<{ productId: string }>;
+      };
+    };
+
+    expect(beforeBackfillResponse.status).toBe(200);
+    expect(
+      beforeBackfillBody.paymentOptions.newPlanOptions.some((option) => option.productId === legacyPlan.id),
+    ).toBe(false);
+
+    await backfillMissingPlanEntitlementRules(prisma);
+
+    const afterBackfillResponse = await getPaymentOptions(new Request("http://localhost/api"), {
+      params: Promise.resolve({ bookingId: fixture.booking.id }),
+    });
+    const afterBackfillBody = (await afterBackfillResponse.json()) as {
+      paymentOptions: {
+        newPlanOptions: Array<{ productId: string }>;
+      };
+    };
+
+    expect(afterBackfillResponse.status).toBe(200);
+    expect(afterBackfillBody.paymentOptions.newPlanOptions.some((option) => option.productId === legacyPlan.id)).toBe(
+      true,
+    );
+  });
   it("applying active existing plan confirms booking and consumes one credit", async () => {
     const fixture = await createFixture({
       bookingIntent: BookingIntent.USE_PLAN,
@@ -329,4 +467,3 @@ describe("booking payment options api", () => {
     expect(consumeEntries[0]?.amount).toBe(-1);
   });
 });
-

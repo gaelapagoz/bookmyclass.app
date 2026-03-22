@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -55,7 +55,7 @@ export default function NavbarClient({
           <Link href="/" className="flex items-center gap-3" onClick={() => setIsOpen(false)}>
             <Image
               src="/images/logo.png"
-              alt="On the Mat Studio logo"
+              alt="Yoga Pilates Fitness Studio logo"
               width={56}
               height={56}
               className="h-36 w-36 rounded-full object-cover"
@@ -63,10 +63,10 @@ export default function NavbarClient({
             />
             <div className="flex flex-col">
               <span className="text-lg font-medium tracking-wide text-[#6f2b2b] sm:text-2xl">
-                On the Mat Studio ASBL
+                Yoga Pilates Fitness Studio
               </span>
               <span className="text-xs tracking-wide text-[#8a5959] sm:text-sm">
-                Brussels Yoga & Pilates Studio
+                Brussels Yoga, Pilates & Fitness
               </span>
             </div>
           </Link>
@@ -151,3 +151,4 @@ export default function NavbarClient({
     </header>
   );
 }
+

@@ -109,6 +109,7 @@ export async function getActiveSubscriptionCatalogProducts(): Promise<Subscripti
   return products
     .map(mapToCheckoutItem)
     .filter((item): item is SubscriptionCheckoutItem => item !== null)
+    .filter((item) => item.checkoutEnabled)
     .map((item) => {
       const { stripePriceId, ...publicItem } = item;
       void stripePriceId;
@@ -163,3 +164,4 @@ export async function getSubscriptionCheckoutItemByProductId(
 
   return mapToCheckoutItem(product);
 }
+

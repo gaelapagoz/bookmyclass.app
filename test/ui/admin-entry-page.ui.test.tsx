@@ -1,0 +1,136 @@
+﻿/* @vitest-environment jsdom */
+
+import "@testing-library/jest-dom/vitest";
+import { render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("next-auth", () => {
+  class MockAuthError extends Error {
+    type: string;
+
+    constructor(type: string) {
+      super(type);
+      this.type = type;
+      this.name = "AuthError";
+    }
+  }
+
+  return {
+    AuthError: MockAuthError,
+  };
+});
+
+const { redirectMock } = vi.hoisted(() => ({
+  redirectMock: vi.fn((url: string) => {
+    const error = new Error(`NEXT_REDIRECT:${url}`);
+    (error as Error & { digest?: string }).digest = `NEXT_REDIRECT;replace;${url};307;`;
+    throw error;
+  }),
+}));
+
+vi.mock("next/navigation", async () => {
+  const actual = await vi.importActual<typeof import("next/navigation")>("next/navigation");
+  return {
+    ...actual,
+    redirect: redirectMock,
+  };
+});
+
+vi.mock("@/auth", () => ({
+  auth: vi.fn(async () => null),
+  signIn: vi.fn(),
+}));
+
+import { AuthError } from "next-auth";
+import { auth, signIn } from "@/auth";
+import AdminEntryPage, { adminSignInAction } from "../../src/app/admin/page";
+
+describe("/admin entry flow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("unauthenticated user sees branded admin sign-in page", async () => {
+    vi.mocked(auth).mockResolvedValue(null);
+
+    render(await AdminEntryPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByText("Admin Portal")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Yoga Pilates Fitness Studio" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign In to Admin" })).toBeInTheDocument();
+  });
+
+  it("authenticated admin is redirected to /admin/dashboard", async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: "admin-1",
+        name: "Admin",
+        email: "admin@example.test",
+        role: "ADMIN",
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    await expect(AdminEntryPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/dashboard",
+    );
+  });
+
+  it("authenticated non-admin sees access denied message", async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: "client-1",
+        name: "Client",
+        email: "client@example.test",
+        role: "CLIENT",
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    render(await AdminEntryPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByText("does not have admin access", { exact: false })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign In to Admin" })).not.toBeInTheDocument();
+  });
+
+  it("adminSignInAction validates missing credentials", async () => {
+    const formData = new FormData();
+    formData.set("callbackUrl", "/admin/dashboard");
+
+    await expect(adminSignInAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin?error=invalid_input&callbackUrl=%2Fadmin%2Fdashboard",
+    );
+  });
+
+  it("adminSignInAction maps credential auth error to invalid_credentials", async () => {
+    vi.mocked(signIn).mockRejectedValue(new AuthError("CredentialsSignin"));
+
+    const formData = new FormData();
+    formData.set("email", "admin@example.test");
+    formData.set("password", "wrong-password");
+    formData.set("callbackUrl", "/admin/dashboard");
+
+    await expect(adminSignInAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin?error=invalid_credentials&callbackUrl=%2Fadmin%2Fdashboard",
+    );
+  });
+
+  it("adminSignInAction submits credentials on valid input", async () => {
+    vi.mocked(signIn).mockResolvedValue(undefined as never);
+
+    const formData = new FormData();
+    formData.set("email", "admin@example.test");
+    formData.set("password", "very-secure-password");
+    formData.set("callbackUrl", "/admin/dashboard");
+
+    await adminSignInAction(formData);
+
+    expect(signIn).toHaveBeenCalledWith("credentials", {
+      email: "admin@example.test",
+      password: "very-secure-password",
+      redirectTo: "/admin/dashboard",
+    });
+  });
+});
+
+

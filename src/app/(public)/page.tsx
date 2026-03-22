@@ -1,22 +1,22 @@
-import Image from "next/image";
+﻿import Image from "next/image";
 import Link from "next/link";
 
 const weeklyAgenda = [
   {
     day: "Monday",
-    classes: ["18:00–19:00 Pilates with Props", "19:00–20:30 Rocket Vinyasa Yoga (Level 1/2)"],
+    classes: ["18:00â€“19:00 Pilates with Props", "19:00â€“20:30 Rocket Vinyasa Yoga (Level 1/2)"],
   },
   {
     day: "Tuesday",
-    classes: ["18:00–19:00 Pilates Functional Training (TRX)", "19:15–20:15 Vinyasa Yoga (Level 1/2)"],
+    classes: ["18:00â€“19:00 Pilates Functional Training (TRX)", "19:15â€“20:15 Vinyasa Yoga (Level 1/2)"],
   },
   {
     day: "Wednesday",
-    classes: ["18:00–19:00 Pilates & Functional Training (TRX)", "19:15–20:15 Vinyasa Yoga (Level 1/2)"],
+    classes: ["18:00â€“19:00 Pilates & Functional Training (TRX)", "19:15â€“20:15 Vinyasa Yoga (Level 1/2)"],
   },
   {
     day: "Thursday",
-    classes: ["18:00–19:00 Pilates Stretch & Tone", "19:15–20:15 Rocket Vinyasa Yoga (Level 1)"],
+    classes: ["18:00â€“19:00 Pilates Stretch & Tone", "19:15â€“20:15 Rocket Vinyasa Yoga (Level 1)"],
   },
   {
     day: "Friday",
@@ -24,28 +24,28 @@ const weeklyAgenda = [
   },
   {
     day: "Saturday",
-    classes: ["10:30–11:30 Pilates with Props"],
+    classes: ["10:30â€“11:30 Pilates with Props"],
   },
 ] as const;
 
 const serviceCards = [
   {
-    icon: "●",
+    icon: "â—",
     title: "Collective Classes",
     description: "Small group yoga and pilates sessions in Brussels",
   },
   {
-    icon: "◐",
+    icon: "â—",
     title: "Private Coaching",
     description: "One-on-one sessions tailored to your goals",
   },
   {
-    icon: "○",
+    icon: "â—‹",
     title: "Online Programs",
     description: "Practice anytime with structured video programs",
   },
   {
-    icon: "◍",
+    icon: "â—",
     title: "Classes at Work",
     description: "Wellness experiences for teams and companies",
   },
@@ -266,7 +266,7 @@ export default function HomePage() {
             <p className="mt-4 text-sm text-[#6f605b]">hello@onthematstudio.be</p>
             <div className="mt-6 overflow-hidden rounded-2xl border border-[#eadfd7]">
               <iframe
-                title="On the Mat Studio map"
+                title="Yoga Pilates Fitness Studio map"
                 src="https://www.google.com/maps?q=Merode%20Brussels&output=embed"
                 className="h-64 w-full border-0"
                 loading="lazy"
@@ -310,3 +310,4 @@ export default function HomePage() {
     </div>
   );
 }
+
