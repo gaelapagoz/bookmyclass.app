@@ -9,6 +9,7 @@ const publicNavLinks = [
   { href: "/", label: "Home" },
   { href: "/book-a-class", label: "Book a Class" },
   { href: "/subscription", label: "Subscription" },
+  { href: "/learning", label: "Online Learning" },
 ] as const;
 
 function isActivePath(pathname: string, href: string) {

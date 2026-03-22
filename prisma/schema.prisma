@@ -356,6 +356,43 @@ model ClassType {
   @@index([categoryId, isActive, isVisible, sortOrder])
 }
 
+model LearningProgram {
+  id              String   @id @default(cuid())
+  legacyId        String   @unique
+  mainTitle       String
+  mainDescription String?
+  courseType      String   @unique
+  title           String
+  description1    String?
+  description2    String?
+  description3    String?
+  videoPromo      String?
+  picture1        String?
+  picture2        String?
+  picture3        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model LearningCourse {
+  id               String   @id @default(cuid())
+  legacyId         String   @unique
+  title            String
+  description      String?
+  shortDescription String?
+  category         String
+  categoryType     String?
+  categoryLevel    String?
+  thumbnail        String?
+  videoUrl         String?
+  priority         Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([category])
+  @@index([priority])
+}
+
 model ClassTemplate {
   id                     String          @id @default(cuid())
   classTypeId            String

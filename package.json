@@ -10,6 +10,7 @@
     "test": "vitest",
     "prisma:generate": "prisma generate",
     "prisma:seed": "prisma db seed",
+    "learning:import": "tsx scripts/import-learning-platform.ts",
     "db:test:setup": "dotenv -e .env.test -- prisma migrate deploy",
     "db:test:reset": "dotenv -e .env.test -- prisma migrate reset --force"
   },
