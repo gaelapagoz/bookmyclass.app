@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { NextResponse } from "next/server";
 import { auth } from "../../../../../auth";
 import {
   BookingPaymentOptionsError,
@@ -67,7 +68,10 @@ export async function POST(
   }
 
   const session = await auth();
-  const userId = session?.user?.id ?? null;
+  const userId = session?.user?.id;
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   try {
     const selection =
