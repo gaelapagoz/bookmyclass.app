@@ -10,6 +10,8 @@ import {
   Weekday,
 } from "@prisma/client";
 import { hash } from "bcryptjs";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import prisma from "../src/lib/db";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -67,6 +69,107 @@ const PURCHASABLE_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[] = 
     envVarName: "STRIPE_PRICE_ID_PRIVATE_10_PACK",
   },
 ];
+
+const DEFAULT_LEARNING_SEED_JSON_PATH = resolve(process.cwd(), "prisma", "seed-data", "learning-content.json");
+
+type LearningProgramSeedInput = {
+  legacyId: string;
+  mainTitle: string;
+  mainDescription?: string;
+  courseType: string;
+  title: string;
+  description1?: string;
+  description2?: string;
+  description3?: string;
+  videoPromo?: string;
+  picture1?: string;
+  picture2?: string;
+  picture3?: string;
+};
+
+type LearningCourseSeedInput = {
+  legacyId: string;
+  title: string;
+  description?: string;
+  shortDescription?: string;
+  category: string;
+  categoryType?: string;
+  categoryLevel?: string;
+  thumbnail?: string;
+  videoUrl?: string;
+  priority: number;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function asRequiredString(value: unknown): string | undefined {
+  return asOptionalString(value);
+}
+
+function asRequiredId(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return undefined;
+}
+
+function asOptionalNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === "") {
+    return undefined;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      return undefined;
+    }
+
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
+function pickFirstDefined(record: Record<string, unknown>, keys: string[]): unknown {
+  for (const key of keys) {
+    if (record[key] !== undefined) {
+      return record[key];
+    }
+  }
+
+  return undefined;
+}
+
+function slugifyForLegacyId(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized.length > 0 ? normalized : "uncategorized";
+}
 
 function resolveRequiredCatalogStripePriceIds(): Record<string, string> {
   const stripePriceIdByLookupKey: Record<string, string> = {};
@@ -1039,6 +1142,230 @@ async function seedScheduling(teacherId: string) {
   }
 }
 
+async function seedLearningFromJson() {
+  const learningJsonPath = resolve(
+    process.env.LEARNING_SEED_JSON_PATH?.trim() || DEFAULT_LEARNING_SEED_JSON_PATH,
+  );
+  const raw = await readFile(learningJsonPath, "utf8");
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    throw new Error(`Learning seed JSON is invalid: ${learningJsonPath}`);
+  }
+
+  if (!isRecord(parsed)) {
+    throw new Error(`Learning seed JSON root must be an object: ${learningJsonPath}`);
+  }
+
+  const courseRecordsRaw = parsed.courses;
+  if (!Array.isArray(courseRecordsRaw) || courseRecordsRaw.length === 0) {
+    throw new Error(`Learning seed JSON must contain a non-empty 'courses' array: ${learningJsonPath}`);
+  }
+
+  const courseInputs: LearningCourseSeedInput[] = [];
+  for (const [index, item] of courseRecordsRaw.entries()) {
+    if (!isRecord(item)) {
+      throw new Error(`courses[${index}] must be an object in ${learningJsonPath}`);
+    }
+
+    const legacyId = asRequiredId(pickFirstDefined(item, ["legacyId", "ID"]));
+    const title = asRequiredString(pickFirstDefined(item, ["title", "Title"]));
+    const category = asRequiredString(pickFirstDefined(item, ["category", "Category"]));
+
+    if (!legacyId || !title || !category) {
+      throw new Error(
+        `courses[${index}] is missing required fields (ID/Title/Category) in ${learningJsonPath}`,
+      );
+    }
+
+    const priority = asOptionalNumber(pickFirstDefined(item, ["priority", "Priority"])) ?? index + 1;
+    courseInputs.push({
+      legacyId,
+      title,
+      description: asOptionalString(pickFirstDefined(item, ["description", "Description"])),
+      shortDescription: asOptionalString(
+        pickFirstDefined(item, ["shortDescription", "Short Description"]),
+      ),
+      category,
+      categoryType: asOptionalString(
+        pickFirstDefined(item, ["categoryType", "Category Type"]),
+      ),
+      categoryLevel: asOptionalString(
+        pickFirstDefined(item, ["categoryLevel", "Category Level"]),
+      ),
+      thumbnail: asOptionalString(pickFirstDefined(item, ["thumbnail", "Thumbnail"])),
+      videoUrl: asOptionalString(pickFirstDefined(item, ["videoUrl", "VideoURL"])),
+      priority,
+    });
+  }
+
+  const programInputs: LearningProgramSeedInput[] = [];
+  if (Array.isArray(parsed.programs) && parsed.programs.length > 0) {
+    for (const [index, item] of parsed.programs.entries()) {
+      if (!isRecord(item)) {
+        throw new Error(`programs[${index}] must be an object in ${learningJsonPath}`);
+      }
+
+      const legacyId = asRequiredId(pickFirstDefined(item, ["legacyId", "ID"]));
+      const mainTitle = asRequiredString(pickFirstDefined(item, ["mainTitle", "MainTitle"]));
+      const courseType = asRequiredString(pickFirstDefined(item, ["courseType", "CourseType"]));
+      const title = asRequiredString(pickFirstDefined(item, ["title", "Title"]));
+      if (!legacyId || !mainTitle || !courseType || !title) {
+        throw new Error(
+          `programs[${index}] is missing required fields (ID/MainTitle/CourseType/Title) in ${learningJsonPath}`,
+        );
+      }
+
+      programInputs.push({
+        legacyId,
+        mainTitle,
+        mainDescription: asOptionalString(
+          pickFirstDefined(item, ["mainDescription", "MainDescription"]),
+        ),
+        courseType,
+        title,
+        description1: asOptionalString(pickFirstDefined(item, ["description1", "Description1"])),
+        description2: asOptionalString(pickFirstDefined(item, ["description2", "Description2"])),
+        description3: asOptionalString(pickFirstDefined(item, ["description3", "Description3"])),
+        videoPromo: asOptionalString(pickFirstDefined(item, ["videoPromo", "VideoPromo"])),
+        picture1: asOptionalString(pickFirstDefined(item, ["picture1", "Picture1"])),
+        picture2: asOptionalString(pickFirstDefined(item, ["picture2", "Picture2"])),
+        picture3: asOptionalString(pickFirstDefined(item, ["picture3", "Picture3"])),
+      });
+    }
+  } else {
+    const seedByCategory = new Map<
+      string,
+      { summary?: string; thumbnail?: string; videoUrl?: string }
+    >();
+    for (const course of courseInputs) {
+      if (seedByCategory.has(course.category)) {
+        continue;
+      }
+
+      seedByCategory.set(course.category, {
+        summary: course.shortDescription ?? course.description,
+        thumbnail: course.thumbnail,
+        videoUrl: course.videoUrl,
+      });
+    }
+
+    for (const [category, seed] of seedByCategory.entries()) {
+      const suffix = slugifyForLegacyId(category);
+      programInputs.push({
+        legacyId: `program-${suffix}`,
+        mainTitle: category,
+        mainDescription: seed.summary,
+        courseType: category,
+        title: category,
+        description1: seed.summary,
+        description2: undefined,
+        description3: undefined,
+        videoPromo: seed.videoUrl,
+        picture1: seed.thumbnail,
+        picture2: seed.thumbnail,
+        picture3: seed.thumbnail,
+      });
+    }
+  }
+
+  const programByCourseType = new Set(programInputs.map((program) => program.courseType));
+  const coursesWithoutProgram = courseInputs
+    .filter((course) => !programByCourseType.has(course.category))
+    .map((course) => course.category);
+  if (coursesWithoutProgram.length > 0) {
+    throw new Error(
+      `Learning seed JSON has courses mapped to unknown categories/courseType values: ${[
+        ...new Set(coursesWithoutProgram),
+      ].join(", ")}`,
+    );
+  }
+
+  for (const program of programInputs) {
+    await prisma.learningProgram.upsert({
+      where: { legacyId: program.legacyId },
+      update: {
+        mainTitle: program.mainTitle,
+        mainDescription: program.mainDescription,
+        courseType: program.courseType,
+        title: program.title,
+        description1: program.description1,
+        description2: program.description2,
+        description3: program.description3,
+        videoPromo: program.videoPromo,
+        picture1: program.picture1,
+        picture2: program.picture2,
+        picture3: program.picture3,
+      },
+      create: {
+        legacyId: program.legacyId,
+        mainTitle: program.mainTitle,
+        mainDescription: program.mainDescription,
+        courseType: program.courseType,
+        title: program.title,
+        description1: program.description1,
+        description2: program.description2,
+        description3: program.description3,
+        videoPromo: program.videoPromo,
+        picture1: program.picture1,
+        picture2: program.picture2,
+        picture3: program.picture3,
+      },
+    });
+  }
+
+  for (const course of courseInputs) {
+    await prisma.learningCourse.upsert({
+      where: { legacyId: course.legacyId },
+      update: {
+        title: course.title,
+        description: course.description,
+        shortDescription: course.shortDescription,
+        category: course.category,
+        categoryType: course.categoryType,
+        categoryLevel: course.categoryLevel,
+        thumbnail: course.thumbnail,
+        videoUrl: course.videoUrl,
+        priority: course.priority,
+      },
+      create: {
+        legacyId: course.legacyId,
+        title: course.title,
+        description: course.description,
+        shortDescription: course.shortDescription,
+        category: course.category,
+        categoryType: course.categoryType,
+        categoryLevel: course.categoryLevel,
+        thumbnail: course.thumbnail,
+        videoUrl: course.videoUrl,
+        priority: course.priority,
+      },
+    });
+  }
+
+  await prisma.learningCourse.deleteMany({
+    where: {
+      legacyId: {
+        notIn: courseInputs.map((course) => course.legacyId),
+      },
+    },
+  });
+
+  await prisma.learningProgram.deleteMany({
+    where: {
+      legacyId: {
+        notIn: programInputs.map((program) => program.legacyId),
+      },
+    },
+  });
+
+  console.info(
+    `[seed] Learning content seeded from JSON (${learningJsonPath}): programs=${programInputs.length}, courses=${courseInputs.length}.`,
+  );
+}
+
 async function verifyCleanSeed(clientEmail: string) {
   const [userCount, productCount, sessionCount, cancelledSessionCount] = await prisma.$transaction([
     prisma.user.count(),
@@ -1120,6 +1447,7 @@ async function main() {
   await seedBookingPolicy();
   await seedCatalog(stripePriceIdByLookupKey);
   await seedScheduling(users.teacher.id);
+  await seedLearningFromJson();
   await verifyCleanSeed(users.client.email);
 
   console.info("Clean QA-style seed completed.");
