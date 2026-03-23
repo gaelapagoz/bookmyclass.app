@@ -66,7 +66,7 @@ export default async function AdminEntryPage({ searchParams }: { searchParams: S
   const { callbackUrl = "/admin/dashboard", error } = await searchParams;
   const errorMessage = getErrorMessage(error);
 
-  const isNonAdminUser = Boolean(session?.user) && !isAdminRole(session.user?.role);
+  const isNonAdminUser = Boolean(session?.user) && !isAdminRole(session?.user?.role);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f2ede7] px-4 py-10 text-[#4f2a2a]">

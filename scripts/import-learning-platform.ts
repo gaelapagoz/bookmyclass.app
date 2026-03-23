@@ -1,10 +1,8 @@
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@prisma/client";
-import { Pool } from "pg";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import "dotenv/config";
+import prisma from "../src/lib/db";
 
 export type LearningProgramInput = {
   legacyId: string;
@@ -285,9 +283,6 @@ export async function runLearningImport() {
   const payload = await loadImportFile(importPathArg);
   console.info(`[learning-import] Loaded ${payload.programs.length} programs and ${payload.courses.length} courses.`);
 
-  const pool = new Pool({ connectionString: databaseUrl });
-  const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
-
   let createdPrograms = 0;
   let updatedPrograms = 0;
   let createdCourses = 0;
@@ -354,7 +349,6 @@ export async function runLearningImport() {
     console.info("[learning-import] No deletions were performed.");
   } finally {
     await prisma.$disconnect();
-    await pool.end();
   }
 }
 
@@ -368,5 +362,4 @@ if (isDirectExecution) {
     process.exit(1);
   });
 }
-
 
