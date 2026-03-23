@@ -898,6 +898,7 @@ export async function getMyActivePlans(userId: string): Promise<PlanSummary[]> {
     },
     select: {
       id: true,
+      createdAt: true,
       entitlementType: true,
       entitlementScope: true,
       expiresAt: true,
@@ -930,6 +931,11 @@ export async function getMyActivePlans(userId: string): Promise<PlanSummary[]> {
         entitlementId: entitlement.id,
         entitlementType: entitlement.entitlementType,
         entitlementScope: entitlement.entitlementScope,
+        planSource:
+          entitlement.entitlementType === EntitlementType.CREDIT_PACK ||
+          entitlement.entitlementType === EntitlementType.SINGLE_USE
+            ? "CREDITS"
+            : "SUBSCRIPTION",
         productId: entitlement.product.id,
         productName: entitlement.product.name,
         priceName: entitlement.product.prices[0]?.name ?? null,
@@ -1015,6 +1021,7 @@ export async function getBookingPaymentOptionsPreview(params: {
   const ux = computeRecommendedSelection({
     booking: {
       id: "preview",
+      clientId: null,
       status: BookingStatus.PENDING,
       bookingIntent,
       paymentSelection: null,
@@ -1022,6 +1029,13 @@ export async function getBookingPaymentOptionsPreview(params: {
       selectedPriceId: null,
       draftAmountMinor: null,
       draftCurrencyCode: null,
+      session: {
+        capacity: 0,
+        startsAt: new Date(),
+        status: StudioSessionStatus.SCHEDULED,
+        isPublished: true,
+        activeBookingCount: 0,
+      },
       classType: {
         serviceSlug: params.serviceSlug,
         categorySlug,

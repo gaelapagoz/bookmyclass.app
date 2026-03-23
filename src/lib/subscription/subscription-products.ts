@@ -1,4 +1,4 @@
-import { BillingInterval, PriceType, ProductType } from "@prisma/client";
+import { BillingInterval, PriceType, ProductType, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 export type SubscriptionCatalogItem = {
@@ -20,13 +20,13 @@ type SubscriptionCheckoutItem = SubscriptionCatalogItem & {
   stripePriceId: string | null;
 };
 
-function buildActivePriceWindowWhere(now: Date) {
+function buildActivePriceWindowWhere(now: Date): Prisma.PriceWhereInput {
   return {
     isActive: true,
     isArchived: false,
     OR: [{ startsAt: null }, { startsAt: { lte: now } }],
     AND: [{ OR: [{ endsAt: null }, { endsAt: { gt: now } }] }],
-  } as const;
+  };
 }
 
 function mapToCheckoutItem(product: {

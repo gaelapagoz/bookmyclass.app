@@ -52,6 +52,22 @@ type BookingPaymentOptionsStepProps = {
   serviceSlug: string;
 };
 
+type ApiErrorResponse = {
+  error?: string;
+};
+
+type ApplyPlanResponse = {
+  selection: {
+    bookingStatus: string;
+  };
+};
+
+type CheckoutSessionResponse = {
+  checkout: {
+    checkoutUrl: string;
+  };
+};
+
 type Selection =
   | { mode: "SINGLE_SESSION"; priceId: string }
   | { mode: "NEW_PLAN_PURCHASE"; priceId: string }
@@ -108,6 +124,30 @@ function selectionFromRecommended(input: {
   return null;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function extractApiErrorMessage(payload: unknown, fallback: string): string {
+  if (isRecord(payload) && typeof payload.error === "string" && payload.error.trim().length > 0) {
+    return payload.error;
+  }
+
+  return fallback;
+}
+
+function isPaymentOptionsResponse(payload: unknown): payload is PaymentOptionsResponse {
+  return isRecord(payload) && "paymentOptions" in payload && isRecord(payload.paymentOptions);
+}
+
+function isApplyPlanResponse(payload: unknown): payload is ApplyPlanResponse {
+  return isRecord(payload) && "selection" in payload && isRecord(payload.selection);
+}
+
+function isCheckoutSessionResponse(payload: unknown): payload is CheckoutSessionResponse {
+  return isRecord(payload) && "checkout" in payload && isRecord(payload.checkout) && typeof payload.checkout.checkoutUrl === "string";
+}
+
 export function BookingPaymentOptionsStep({ bookingId, serviceSlug }: BookingPaymentOptionsStepProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
@@ -123,9 +163,9 @@ export function BookingPaymentOptionsStep({ bookingId, serviceSlug }: BookingPay
       setErrorMessage(null);
       try {
         const response = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}/payment-options`);
-        const payload = (await response.json()) as PaymentOptionsResponse | { error?: string };
-        if (!response.ok || !("paymentOptions" in payload)) {
-          setErrorMessage(payload.error ?? "Could not load payment options.");
+        const payload: unknown = await response.json();
+        if (!response.ok || !isPaymentOptionsResponse(payload)) {
+          setErrorMessage(extractApiErrorMessage(payload, "Could not load payment options."));
           return;
         }
 
@@ -215,11 +255,10 @@ export function BookingPaymentOptionsStep({ bookingId, serviceSlug }: BookingPay
       });
 
       const applyPayload = (await applyResponse.json()) as
-        | { selection: { bookingStatus: string } }
-        | { error?: string };
-
-      if (!applyResponse.ok || !("selection" in applyPayload)) {
-        setErrorMessage(applyPayload.error ?? "Could not apply payment selection.");
+        | ApplyPlanResponse
+        | ApiErrorResponse;
+      if (!applyResponse.ok || !isApplyPlanResponse(applyPayload)) {
+        setErrorMessage(extractApiErrorMessage(applyPayload, "Could not apply payment selection."));
         return;
       }
 
@@ -234,12 +273,9 @@ export function BookingPaymentOptionsStep({ bookingId, serviceSlug }: BookingPay
         body: JSON.stringify({ bookingId }),
       });
 
-      const checkoutPayload = (await checkoutResponse.json()) as
-        | { checkout: { checkoutUrl: string } }
-        | { error?: string };
-
-      if (!checkoutResponse.ok || !("checkout" in checkoutPayload)) {
-        setErrorMessage(checkoutPayload.error ?? "Could not start checkout.");
+      const checkoutPayload: unknown = await checkoutResponse.json();
+      if (!checkoutResponse.ok || !isCheckoutSessionResponse(checkoutPayload)) {
+        setErrorMessage(extractApiErrorMessage(checkoutPayload, "Could not start checkout."));
         return;
       }
 

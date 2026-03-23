@@ -320,8 +320,9 @@ async function upsertSubscriptionContract(input: {
     return;
   }
 
-  const currentPeriodStart = fromUnixSeconds(stripeSubscription.current_period_start, new Date());
-  const currentPeriodEnd = fromUnixSeconds(stripeSubscription.current_period_end, currentPeriodStart);
+  const subscriptionItem = stripeSubscription.items.data[0];
+  const currentPeriodStart = fromUnixSeconds(subscriptionItem?.current_period_start, new Date());
+  const currentPeriodEnd = fromUnixSeconds(subscriptionItem?.current_period_end, currentPeriodStart);
   const startsAt = fromUnixSeconds(stripeSubscription.start_date, currentPeriodStart);
   const cancelledAt = stripeSubscription.canceled_at
     ? fromUnixSeconds(stripeSubscription.canceled_at, currentPeriodEnd)

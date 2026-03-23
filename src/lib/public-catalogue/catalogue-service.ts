@@ -23,7 +23,7 @@ type ClassTypeWithSchedule = Prisma.ClassTypeGetPayload<{
     studioSessions: {
       where: {
         isPublished: true;
-        status: StudioSessionStatus.SCHEDULED;
+        status: "SCHEDULED";
       };
       select: { startsAt: true };
       orderBy: { startsAt: "asc" };
