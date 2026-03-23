@@ -14,6 +14,7 @@ function isRole(value: unknown): value is Role {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
+  trustHost: true,
   secret: process.env.AUTH_SECRET,
   session: { strategy: "jwt" },
   pages: {
