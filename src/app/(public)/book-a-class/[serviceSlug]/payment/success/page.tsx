@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BookingStatus, PaymentProvider, PaymentStatus } from "@prisma/client";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { prisma } from "@/lib/db";
+import { getBookingConfirmationView } from "@/lib/public-booking/booking-confirmation-view";
 import { reconcileCheckoutSessionAfterReturn } from "@/lib/public-booking/stripe-webhook-service";
 
 export default async function BookingPaymentSuccessPage({
@@ -33,24 +34,24 @@ export default async function BookingPaymentSuccessPage({
     }
   }
 
-  const booking =
-    bookingId
-      ? await prisma.booking.findFirst({
-          where: { id: bookingId, clientId: session.user.id },
-          select: {
-            id: true,
-            status: true,
-            payments: {
-              where: { provider: PaymentProvider.STRIPE },
-              orderBy: { createdAt: "desc" },
-              take: 1,
-              select: { status: true, failureReason: true, providerReference: true },
-            },
-          },
-        })
-      : null;
+  const booking = bookingId
+    ? await getBookingConfirmationView({
+        bookingId,
+        userId: session.user.id,
+      })
+    : null;
 
-  const latestPayment = booking?.payments[0] ?? null;
+  const latestPayment = bookingId
+    ? await prisma.payment.findFirst({
+        where: {
+          bookingId,
+          provider: PaymentProvider.STRIPE,
+        },
+        orderBy: { createdAt: "desc" },
+        select: { status: true, failureReason: true },
+      })
+    : null;
+
   const looksConfirmed =
     booking?.status === BookingStatus.CONFIRMED &&
     latestPayment?.status === PaymentStatus.SUCCEEDED;
@@ -68,8 +69,27 @@ export default async function BookingPaymentSuccessPage({
             ? "Payment failed. Your booking was not confirmed."
             : "Stripe returned successfully, but confirmation is still processing. Please refresh in a few seconds."}
       </p>
-      <p className="mt-3 text-sm text-[#5f4040]">Booking ID: {bookingId ?? "Unavailable"}</p>
-      {session_id ? <p className="mt-1 text-xs text-[#7f5a5a]">Stripe session: {session_id}</p> : null}
+      {booking ? (
+        <div className="mt-5 rounded-xl border border-[#d8cec6] bg-white p-4">
+          <h2 className="text-lg font-semibold text-[#6f2b2b]">Booking Summary</h2>
+          <dl className="mt-3 space-y-2 text-sm text-[#5f4040]">
+            <div className="flex justify-between gap-3">
+              <dt className="font-medium">Class</dt>
+              <dd>{booking.className}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="font-medium">Date</dt>
+              <dd>{booking.date}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="font-medium">Time</dt>
+              <dd>
+                {booking.startTime} - {booking.endTime}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      ) : null}
       {looksFailed && latestPayment?.failureReason ? (
         <p className="mt-2 text-sm text-[#7b2d2d]">{latestPayment.failureReason}</p>
       ) : null}
@@ -82,7 +102,7 @@ export default async function BookingPaymentSuccessPage({
           {looksFailed ? "Retry payment" : "Back to payment status"}
         </Link>
         <Link
-          href={`/book-a-class/${serviceSlug}`}
+          href={`/book-a-class/${booking?.serviceSlug ?? serviceSlug}`}
           className="text-sm font-medium text-[#7b2d2d] underline underline-offset-4 hover:opacity-80"
         >
           Back to service

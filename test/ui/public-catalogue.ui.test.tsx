@@ -36,6 +36,7 @@ describe("PublicCatalogue", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Vinyasa Yoga" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Explore plans/i })).not.toBeInTheDocument();
     expect(
       screen.queryByText("No active services are currently available for this category."),
     ).not.toBeInTheDocument();

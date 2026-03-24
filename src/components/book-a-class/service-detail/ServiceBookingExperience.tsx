@@ -182,8 +182,7 @@ export function ServiceBookingExperience({
       <div className="mt-4 grid gap-6 lg:grid-cols-[2fr_1fr]">
         <div>
           <h1 className="text-3xl font-semibold text-[#6f2b2b]">{service.title}</h1>
-          <p className="mt-2 text-sm text-[#7f5a5a]">{service.shortDescription}</p>
-          <p className="mt-4 text-sm leading-6 text-[#5f4040]">{service.description}</p>
+          <p className="mt-2 text-sm leading-6 text-[#5f4040]">{service.description}</p>
         </div>
 
         <aside className="rounded-xl border border-[#d8cec6] bg-[#f4eee8] p-4">

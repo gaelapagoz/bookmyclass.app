@@ -66,20 +66,13 @@ export function ServiceCard({ service }: ServiceCardProps) {
           </div>
         </dl>
 
-        <div className="mt-auto flex flex-wrap items-center gap-3 pt-6">
+        <div className="mt-auto flex items-center gap-3 pt-6">
           <Link
             href={`/book-a-class/${service.slug}`}
             className="rounded-md bg-[#7b2d2d] px-4 py-2 text-sm text-[#f4eee8] transition hover:opacity-90"
             aria-label={`Book ${service.title}`}
           >
             Book Now
-          </Link>
-          <Link
-            href={`/book-a-class?service=${service.slug}#plans`}
-            className="text-sm font-medium text-[#7b2d2d] underline underline-offset-4 hover:opacity-80"
-            aria-label={`Explore plans for ${service.title}`}
-          >
-            Explore Plans
           </Link>
         </div>
       </div>

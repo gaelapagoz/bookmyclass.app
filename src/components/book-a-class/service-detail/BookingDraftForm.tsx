@@ -183,7 +183,7 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
         option: {
           mode: "NEW_PLAN_PURCHASE",
           id: plan.priceId,
-          label: `Buy plan - ${plan.productName} / ${plan.priceName}`,
+          label: `Buy plan - ${plan.productName}`,
           amountMinor: plan.amountMinor,
           currencyCode: plan.currencyCode,
         },

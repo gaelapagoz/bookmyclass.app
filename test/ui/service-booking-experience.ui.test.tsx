@@ -18,6 +18,29 @@ afterEach(() => {
 });
 
 describe("ServiceBookingExperience", () => {
+  it("renders a single description block for selected class", () => {
+    render(
+      <ServiceBookingExperience
+        isAuthenticated={true}
+        service={{
+          id: "service-1",
+          slug: "vinyasa-yoga",
+          title: "Vinyasa Yoga",
+          shortDescription: "Duplicate description",
+          description: "Duplicate description",
+          imageUrl: null,
+          durationMinutes: 60,
+        }}
+        initialMonthKey="2026-04"
+        initialAvailabilityDays={[]}
+        initialSelectedDate={null}
+        initialSlots={[]}
+      />,
+    );
+
+    expect(screen.getAllByText("Duplicate description")).toHaveLength(1);
+  });
+
   it("selecting a day updates slots and empty day shows no availability", async () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockImplementation(async (input) => {
       const url = String(input);

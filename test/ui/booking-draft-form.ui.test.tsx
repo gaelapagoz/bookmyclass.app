@@ -51,6 +51,45 @@ describe("BookingDraftForm", () => {
     });
   });
 
+  it("shows plan purchase option label without price name in combo box", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          paymentOptions: {
+            singleSession: null,
+            existingPlans: [],
+            newPlanOptions: [
+              {
+                priceId: "price-plan",
+                priceName: "Monthly",
+                productName: "Unlimited Yoga",
+                amountMinor: 12900,
+                currencyCode: "EUR",
+              },
+            ],
+            ux: {
+              recommended: {
+                mode: "NEW_PLAN_PURCHASE",
+                entitlementId: null,
+                priceId: "price-plan",
+              },
+            },
+          },
+        }),
+    } as Response);
+
+    render(<BookingDraftForm {...baseProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/select how you want to continue/i)).toBeInTheDocument();
+    });
+
+    const option = screen.getByRole("option", { name: "Buy plan - Unlimited Yoga" });
+    expect(option).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Monthly/i })).not.toBeInTheDocument();
+  });
+
   it("submits and redirects directly to Stripe checkout on payable option", async () => {
     vi.spyOn(global, "fetch")
       .mockResolvedValueOnce({
@@ -255,4 +294,3 @@ describe("BookingDraftForm", () => {
     });
   });
 });
-
