@@ -746,6 +746,44 @@ export async function reconcileCheckoutSessionAfterReturn(input: {
   await handleCheckoutCompleted(stripeSession);
 }
 
+export async function reconcileCatalogCheckoutSessionAfterReturn(input: {
+  checkoutSessionId: string;
+  userId: string;
+  productId?: string;
+}) {
+  logInfo("catalog manual reconciliation requested", input);
+
+  const stripeSession = await getStripeClient().checkout.sessions.retrieve(input.checkoutSessionId);
+  const metadata = parseCatalogCheckoutMetadata(stripeSession.metadata);
+
+  if (!metadata) {
+    logWarn("catalog manual reconciliation aborted: missing catalog metadata", {
+      checkoutSessionId: input.checkoutSessionId,
+    });
+    return;
+  }
+
+  if (metadata.userId !== input.userId) {
+    logWarn("catalog manual reconciliation aborted: metadata user mismatch", {
+      checkoutSessionId: input.checkoutSessionId,
+      requestedUserId: input.userId,
+      metadataUserId: metadata.userId,
+    });
+    return;
+  }
+
+  if (input.productId && metadata.productId !== input.productId) {
+    logWarn("catalog manual reconciliation aborted: metadata product mismatch", {
+      checkoutSessionId: input.checkoutSessionId,
+      requestedProductId: input.productId,
+      metadataProductId: metadata.productId,
+    });
+    return;
+  }
+
+  await handleCheckoutCompleted(stripeSession);
+}
+
 async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
   await markPaymentFailedByCheckoutSession({
     checkoutSessionId: session.id,

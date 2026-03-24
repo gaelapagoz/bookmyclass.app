@@ -19,6 +19,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "./helpers/db";
 import { createClassCategory, createClassType } from "./helpers/factories";
 import { resetDb } from "./helpers/reset-db";
+import {
+  getBookingPaymentOptions,
+  getMyActivePlans,
+} from "../../src/lib/public-booking/booking-payment-options-service";
 
 const verifyStripeWebhookEventMock = vi.fn();
 
@@ -190,6 +194,152 @@ async function createWebhookFixture(input: {
   });
 
   return { booking, payment, price, client, product, order };
+}
+
+async function createCatalogCheckoutFixture() {
+  const category = await createClassCategory(prisma, {
+    name: "Yoga",
+    slug: `yoga-catalog-${Date.now()}`,
+    sortOrder: 1,
+    isActive: true,
+  });
+  const classType = await createClassType(prisma, {
+    categoryId: category.id,
+    name: "Vinyasa",
+    slug: `vinyasa-catalog-${Date.now()}`,
+    sortOrder: 1,
+    isActive: true,
+    isVisible: true,
+  });
+  const teacher = await prisma.user.create({
+    data: {
+      name: "Teacher Catalog",
+      email: `teacher.catalog.${Date.now()}@example.test`,
+      role: Role.TEACHER,
+    },
+  });
+  const template = await prisma.classTemplate.create({
+    data: {
+      classTypeId: classType.id,
+      defaultTeacherId: teacher.id,
+      title: "Catalog Template",
+      slug: `template-catalog-${Date.now()}`,
+      defaultCapacity: 12,
+      defaultDurationMinutes: 60,
+      isActive: true,
+      isPublished: true,
+    },
+  });
+  const startsAt = new Date();
+  startsAt.setUTCDate(startsAt.getUTCDate() + 3);
+  startsAt.setUTCHours(18, 0, 0, 0);
+  const studioSession = await prisma.studioSession.create({
+    data: {
+      classTemplateId: template.id,
+      classTypeId: classType.id,
+      teacherId: teacher.id,
+      title: "Catalog Session",
+      startsAt,
+      endsAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
+      capacity: 12,
+      status: StudioSessionStatus.SCHEDULED,
+      isPublished: true,
+    },
+  });
+
+  const product = await prisma.product.create({
+    data: {
+      name: "Catalog 10-Class Pack",
+      slug: `catalog-pack-${Date.now()}`,
+      productType: ProductType.CLASS_PACK,
+      isActive: true,
+      isArchived: false,
+      sortOrder: 1,
+    },
+  });
+  const price = await prisma.price.create({
+    data: {
+      productId: product.id,
+      lookupKey: `catalog-pack-${Date.now()}`,
+      name: "Catalog 10-Class Pack",
+      priceType: PriceType.ONE_TIME,
+      currencyCode: "EUR",
+      unitAmountMinor: 15000,
+      isActive: true,
+      isArchived: false,
+    },
+  });
+  await prisma.entitlementRule.create({
+    data: {
+      productId: product.id,
+      entitlementType: EntitlementType.CREDIT_PACK,
+      entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+      quantity: 10,
+      isActive: true,
+    },
+  });
+
+  const client = await prisma.user.create({
+    data: {
+      name: "Catalog Client",
+      email: `client.catalog.${Date.now()}@example.test`,
+      role: Role.CLIENT,
+    },
+  });
+
+  const order = await prisma.order.create({
+    data: {
+      clientId: client.id,
+      subtotalAmountMinor: price.unitAmountMinor,
+      discountAmountMinor: 0,
+      totalAmountMinor: price.unitAmountMinor,
+      currencyCode: "EUR",
+      status: OrderStatus.PLACED,
+      notes: "Catalog checkout fixture order",
+    },
+  });
+  await prisma.orderItem.create({
+    data: {
+      orderId: order.id,
+      productId: product.id,
+      priceId: price.id,
+      quantity: 1,
+      productNameSnapshot: product.name,
+      priceNameSnapshot: price.name,
+      unitAmountMinor: price.unitAmountMinor,
+      lineSubtotalAmountMinor: price.unitAmountMinor,
+      lineDiscountAmountMinor: 0,
+      lineTotalAmountMinor: price.unitAmountMinor,
+      currencyCode: "EUR",
+    },
+  });
+  const payment = await prisma.payment.create({
+    data: {
+      orderId: order.id,
+      status: PaymentStatus.PENDING,
+      method: PaymentMethod.CARD,
+      provider: PaymentProvider.STRIPE,
+      providerReference: `cs_catalog_${Date.now()}`,
+      amountMinor: price.unitAmountMinor,
+      currencyCode: "EUR",
+    },
+  });
+
+  const booking = await prisma.booking.create({
+    data: {
+      studioSessionId: studioSession.id,
+      clientId: client.id,
+      status: BookingStatus.PENDING,
+      customerName: "Catalog Client",
+      customerEmail: client.email,
+      customerPhone: "+32000000000",
+      consentTermsAccepted: true,
+      consentPrivacyAccepted: true,
+      consentAcceptedAt: new Date(),
+    },
+  });
+
+  return { client, product, price, order, payment, booking };
 }
 
 describe("POST /api/stripe/webhook", () => {
@@ -581,5 +731,234 @@ describe("POST /api/stripe/webhook", () => {
     expect(relatedPayments).toHaveLength(1);
     expect(relatedOrders).toHaveLength(1);
   });
+  it("activates catalog purchase entitlements and exposes them in booking payment options", async () => {
+    const fixture = await createCatalogCheckoutFixture();
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: fixture.payment.providerReference,
+          payment_status: "paid",
+          metadata: {
+            paymentId: fixture.payment.id,
+            orderId: fixture.order.id,
+            userId: fixture.client.id,
+            productId: fixture.product.id,
+            priceId: fixture.price.id,
+            selectedPriceId: fixture.price.id,
+            source: "subscription-catalog",
+          },
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const entitlements = await prisma.clientEntitlement.findMany({
+      where: {
+        clientId: fixture.client.id,
+        productId: fixture.product.id,
+        status: ClientEntitlementStatus.ACTIVE,
+      },
+    });
+    expect(entitlements).toHaveLength(1);
+
+    const credits = await prisma.creditLedgerEntry.findMany({
+      where: {
+        clientId: fixture.client.id,
+        entitlementId: entitlements[0]?.id,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(credits.filter((entry) => entry.entryType === CreditLedgerEntryType.GRANT)).toHaveLength(1);
+    expect(credits.filter((entry) => entry.entryType === CreditLedgerEntryType.CONSUME)).toHaveLength(0);
+
+    const plans = await getMyActivePlans(fixture.client.id);
+    expect(plans.some((plan) => plan.productId === fixture.product.id && (plan.remainingCredits ?? 0) > 0)).toBe(true);
+
+    const paymentOptions = await getBookingPaymentOptions({
+      bookingId: fixture.booking.id,
+      userId: fixture.client.id,
+    });
+
+    expect(
+      paymentOptions.existingPlans.some(
+        (plan) =>
+          plan.productId === fixture.product.id &&
+          plan.entitlementId === entitlements[0]?.id &&
+          (plan.remainingCredits ?? 0) > 0,
+      ),
+    ).toBe(true);
+  });
+
+  it("membership and booking plan purchases create equivalent active entitlement sources", async () => {
+    const membershipFixture = await createCatalogCheckoutFixture();
+    const bookingFixture = await createWebhookFixture({
+      paymentSelection: BookingPaymentSelection.NEW_PLAN_PURCHASE,
+    });
+
+    verifyStripeWebhookEventMock.mockReturnValueOnce({
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: membershipFixture.payment.providerReference,
+          payment_status: "paid",
+          metadata: {
+            paymentId: membershipFixture.payment.id,
+            orderId: membershipFixture.order.id,
+            userId: membershipFixture.client.id,
+            productId: membershipFixture.product.id,
+            priceId: membershipFixture.price.id,
+            selectedPriceId: membershipFixture.price.id,
+            source: "subscription-catalog",
+          },
+        },
+      },
+    });
+
+    const membershipResponse = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(membershipResponse.status).toBe(200);
+
+    verifyStripeWebhookEventMock.mockReturnValueOnce({
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: bookingFixture.payment.providerReference,
+          payment_status: "paid",
+          metadata: {
+            paymentId: bookingFixture.payment.id,
+            bookingId: bookingFixture.booking.id,
+            selectedPriceId: bookingFixture.price.id,
+            orderId: bookingFixture.order.id,
+          },
+        },
+      },
+    });
+
+    const bookingResponse = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(bookingResponse.status).toBe(200);
+
+    const membershipEntitlement = await prisma.clientEntitlement.findFirst({
+      where: { clientId: membershipFixture.client.id, productId: membershipFixture.product.id },
+      select: { entitlementType: true, entitlementScope: true, status: true, id: true },
+    });
+    const bookingEntitlement = await prisma.clientEntitlement.findFirst({
+      where: { clientId: bookingFixture.client.id, productId: bookingFixture.product.id },
+      select: { entitlementType: true, entitlementScope: true, status: true, id: true },
+    });
+
+    expect(membershipEntitlement?.status).toBe(ClientEntitlementStatus.ACTIVE);
+    expect(bookingEntitlement?.status).toBe(ClientEntitlementStatus.ACTIVE);
+    expect(membershipEntitlement?.entitlementType).toBe(bookingEntitlement?.entitlementType);
+    expect(membershipEntitlement?.entitlementScope).toBe(bookingEntitlement?.entitlementScope);
+
+    const membershipBalance = await prisma.creditLedgerEntry.aggregate({
+      where: { clientId: membershipFixture.client.id, entitlementId: membershipEntitlement?.id },
+      _sum: { amount: true },
+    });
+    const bookingBalance = await prisma.creditLedgerEntry.aggregate({
+      where: { clientId: bookingFixture.client.id, entitlementId: bookingEntitlement?.id },
+      _sum: { amount: true },
+    });
+
+    expect((membershipBalance._sum.amount ?? 0) > 0).toBe(true);
+    expect((bookingBalance._sum.amount ?? 0) > 0).toBe(true);
+  });
+
+  it("keeps catalog finalization idempotent when checkout completion is replayed", async () => {
+    const fixture = await createCatalogCheckoutFixture();
+
+    const event = {
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: fixture.payment.providerReference,
+          payment_status: "paid",
+          metadata: {
+            paymentId: fixture.payment.id,
+            orderId: fixture.order.id,
+            userId: fixture.client.id,
+            productId: fixture.product.id,
+            priceId: fixture.price.id,
+            selectedPriceId: fixture.price.id,
+            source: "subscription-catalog",
+          },
+        },
+      },
+    };
+
+    verifyStripeWebhookEventMock.mockReturnValueOnce(event);
+    const responseOne = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(responseOne.status).toBe(200);
+
+    verifyStripeWebhookEventMock.mockReturnValueOnce(event);
+    const responseTwo = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(responseTwo.status).toBe(200);
+
+    const entitlements = await prisma.clientEntitlement.findMany({
+      where: {
+        clientId: fixture.client.id,
+        productId: fixture.product.id,
+        status: ClientEntitlementStatus.ACTIVE,
+      },
+    });
+
+    expect(entitlements).toHaveLength(1);
+
+    const credits = await prisma.creditLedgerEntry.findMany({
+      where: {
+        clientId: fixture.client.id,
+        entitlementId: entitlements[0]?.id,
+      },
+    });
+
+    expect(credits.filter((entry) => entry.entryType === CreditLedgerEntryType.GRANT)).toHaveLength(1);
+    expect(credits.filter((entry) => entry.entryType === CreditLedgerEntryType.CONSUME)).toHaveLength(0);
+
+    const balance = await prisma.creditLedgerEntry.aggregate({
+      where: {
+        clientId: fixture.client.id,
+        entitlementId: entitlements[0]?.id,
+      },
+      _sum: { amount: true },
+    });
+
+    expect(balance._sum.amount).toBe(10);
+  });
+
 });
+
 

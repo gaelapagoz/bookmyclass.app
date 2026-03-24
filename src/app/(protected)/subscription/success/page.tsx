@@ -1,11 +1,32 @@
 import Link from "next/link";
+import { requireAuth } from "@/lib/auth/require-auth";
+import { reconcileCatalogCheckoutSessionAfterReturn } from "@/lib/public-booking/stripe-webhook-service";
 
 export default async function SubscriptionSuccessPage({
   searchParams,
 }: {
   searchParams: Promise<{ productId?: string; session_id?: string }>;
 }) {
+  const session = await requireAuth();
   const { productId, session_id } = await searchParams;
+
+  if (session_id) {
+    try {
+      await reconcileCatalogCheckoutSessionAfterReturn({
+        checkoutSessionId: session_id,
+        userId: session.user.id,
+        productId,
+      });
+    } catch (error) {
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[subscription/success] manual reconciliation failed", {
+          sessionId: session_id,
+          productId,
+          error,
+        });
+      }
+    }
+  }
 
   return (
     <section className="mx-auto w-full max-w-3xl px-6 py-14">
