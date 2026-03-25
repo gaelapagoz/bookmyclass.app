@@ -1,5 +1,6 @@
 import { BookingStatus, StudioSessionStatus } from "@prisma/client";
 import { prisma } from "../db";
+import { getPublicTeacherName } from "../public-content/teacher-display";
 import {
   STUDIO_TIMEZONE,
   getDateRangeUtc,
@@ -9,8 +10,13 @@ import {
 } from "./timezone";
 
 export type PublicServiceDetail = {
+  classSummary: {
+    duration: string;
+    location: string;
+    teacher: string;
+    title: "Class Summary";
+  };
   description: string;
-  durationMinutes: number;
   id: string;
   imageUrl: string | null;
   shortDescription: string;
@@ -81,8 +87,70 @@ async function getServiceRecordBySlug(slug: string) {
       description: true,
       imageUrl: true,
       defaultDurationMinutes: true,
+      templates: {
+        where: {
+          isActive: true,
+          isPublished: true,
+        },
+        orderBy: {
+          updatedAt: "desc",
+        },
+        take: 1,
+        select: {
+          location: true,
+          defaultTeacher: {
+            select: {
+              firstName: true,
+              lastName: true,
+              name: true,
+            },
+          },
+        },
+      },
+      studioSessions: {
+        where: {
+          isPublished: true,
+          status: StudioSessionStatus.SCHEDULED,
+          startsAt: {
+            gte: new Date(),
+          },
+        },
+        orderBy: {
+          startsAt: "asc",
+        },
+        take: 1,
+        select: {
+          location: true,
+          teacher: {
+            select: {
+              firstName: true,
+              lastName: true,
+              name: true,
+            },
+          },
+        },
+      },
     },
   });
+}
+
+function resolveClassSummary(classType: NonNullable<Awaited<ReturnType<typeof getServiceRecordBySlug>>>) {
+  const upcomingSession = classType.studioSessions[0] ?? null;
+  const activeTemplate = classType.templates[0] ?? null;
+
+  const teacher = upcomingSession?.teacher
+    ? getPublicTeacherName(upcomingSession.teacher)
+    : activeTemplate?.defaultTeacher
+      ? getPublicTeacherName(activeTemplate.defaultTeacher)
+      : "";
+  const location = upcomingSession?.location?.trim() || activeTemplate?.location?.trim() || "Studio location";
+
+  return {
+    title: "Class Summary" as const,
+    duration: `${classType.defaultDurationMinutes} minutes`,
+    teacher,
+    location,
+  };
 }
 
 export async function getPublicServiceDetailBySlug(slug: string): Promise<PublicServiceDetail | null> {
@@ -99,7 +167,7 @@ export async function getPublicServiceDetailBySlug(slug: string): Promise<Public
     description: classType.description ?? "Description coming soon.",
     shortDescription: getShortDescription(classType.description),
     imageUrl: classType.imageUrl,
-    durationMinutes: classType.defaultDurationMinutes,
+    classSummary: resolveClassSummary(classType),
   };
 }
 

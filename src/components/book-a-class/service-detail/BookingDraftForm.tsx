@@ -7,14 +7,13 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 type BookingSessionSummary = {
   availableSpots: number;
   capacity: number;
-  date: string;
-  endTime: string;
+  classTitle: string;
+  dateTime: string;
+  place: string;
   serviceId: string;
   serviceSlug: string;
-  serviceTitle: string;
   sessionId: string;
-  startTime: string;
-  timezone: string;
+  teacher: string;
 };
 
 type BookingDraftFormProps = {
@@ -32,6 +31,8 @@ type PaymentMode = "SINGLE_SESSION" | "NEW_PLAN_PURCHASE" | "EXISTING_PLAN";
 type PaymentOptionsResponse = {
   paymentOptions: {
     existingPlans: Array<{
+      bookingLabel: string;
+      displayName: string;
       entitlementType: "CREDIT_PACK" | "SINGLE_USE" | "UNLIMITED_ACCESS";
       entitlementId: string;
       planSource: "CREDITS" | "SUBSCRIPTION";
@@ -40,14 +41,18 @@ type PaymentOptionsResponse = {
     }>;
     newPlanOptions: Array<{
       amountMinor: number;
+      bookingLabel: string;
       currencyCode: string;
+      displayName: string;
       priceId: string;
       priceName: string;
       productName: string;
     }>;
     singleSession: {
       amountMinor: number;
+      bookingLabel: string;
       currencyCode: string;
+      displayName: string;
       priceId: string;
       priceName: string;
     } | null;
@@ -154,7 +159,7 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
         option: {
           mode: "SINGLE_SESSION",
           id: paymentOptions.singleSession.priceId,
-          label: `Single session - ${paymentOptions.singleSession.priceName}`,
+          label: paymentOptions.singleSession.bookingLabel,
           amountMinor: paymentOptions.singleSession.amountMinor,
           currencyCode: paymentOptions.singleSession.currencyCode,
         },
@@ -167,10 +172,7 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
         option: {
           mode: "EXISTING_PLAN",
           id: plan.entitlementId,
-          label:
-            plan.planSource === "SUBSCRIPTION"
-              ? `Use membership - ${plan.productName}`
-              : `Use existing credits - ${plan.productName}${plan.remainingCredits !== null ? ` (${plan.remainingCredits} credits)` : ""}`,
+          label: plan.bookingLabel,
           amountMinor: 0,
           currencyCode: "EUR",
         },
@@ -183,7 +185,7 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
         option: {
           mode: "NEW_PLAN_PURCHASE",
           id: plan.priceId,
-          label: `Buy plan - ${plan.productName}`,
+          label: plan.bookingLabel,
           amountMinor: plan.amountMinor,
           currencyCode: plan.currencyCode,
         },
@@ -531,32 +533,26 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
         <h2 className="text-lg font-semibold text-[#6f2b2b]">Booking Summary</h2>
         <dl className="mt-4 space-y-2 text-sm text-[#5f4040]">
           <div className="flex justify-between gap-3">
-            <dt className="font-medium">Service</dt>
-            <dd>{session.serviceTitle}</dd>
+            <dt className="font-medium">Class</dt>
+            <dd>{session.classTitle}</dd>
           </div>
           <div className="flex justify-between gap-3">
-            <dt className="font-medium">Date</dt>
-            <dd>{session.date}</dd>
+            <dt className="font-medium">Date & Time</dt>
+            <dd>{session.dateTime}</dd>
           </div>
           <div className="flex justify-between gap-3">
-            <dt className="font-medium">Time</dt>
-            <dd>
-              {session.startTime} - {session.endTime}
-            </dd>
+            <dt className="font-medium">Teacher</dt>
+            <dd>{session.teacher}</dd>
           </div>
           <div className="flex justify-between gap-3">
-            <dt className="font-medium">Timezone</dt>
-            <dd>{session.timezone}</dd>
+            <dt className="font-medium">Place</dt>
+            <dd>{session.place}</dd>
           </div>
           <div className="flex justify-between gap-3">
             <dt className="font-medium">Spots left</dt>
             <dd>
               {session.availableSpots} / {session.capacity}
             </dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt className="font-medium">Booking Type</dt>
-            <dd>Session booking</dd>
           </div>
         </dl>
 
@@ -570,7 +566,6 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
                   {selectedExistingPlan?.planSource === "SUBSCRIPTION" ? (
                     <>
                       <p className="mt-1">Covered by your membership.</p>
-                      <p className="mt-1">Membership: {selectedExistingPlan.productName}</p>
                     </>
                   ) : (
                     <>

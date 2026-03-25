@@ -8,6 +8,7 @@ import {
   PaymentMethod,
   PaymentProvider,
   PaymentStatus,
+  PriceType,
   SubscriptionStatus,
 } from "@prisma/client";
 import type Stripe from "stripe";
@@ -85,6 +86,7 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
   const price = await prisma.price.findUnique({
     where: { id: input.selectedPriceId },
     select: {
+      priceType: true,
       productId: true,
       product: {
         select: {
@@ -106,6 +108,15 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
 
   const rule = price?.product.entitlementRules[0];
   if (!price || !rule) {
+    return null;
+  }
+  if (price.priceType === PriceType.RECURRING) {
+    if (input.bookingId) {
+      await prisma.booking.update({
+        where: { id: input.bookingId },
+        data: { selectedEntitlementId: null },
+      });
+    }
     return null;
   }
 
@@ -210,71 +221,59 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
   return entitlement.id;
 }
 
-async function ensureEntitlementForPlanPurchase(input: {
-  bookingId: string;
+async function ensureOwnershipForSuccessfulPricePurchase(input: {
   clientId: string;
+  bookingId?: string | null;
+  enforceBookingSelectionMatch?: boolean;
   orderId: string | null;
   selectedPriceId: string;
+  consumeCreditForBooking: boolean;
 }) {
-  logInfo("ensure booking entitlement start", input);
-
-  const booking = await prisma.booking.findUnique({
-    where: { id: input.bookingId },
-    select: {
-      id: true,
-      selectedEntitlementId: true,
-      selectedPriceId: true,
-    },
-  });
-
-  if (!booking || booking.selectedPriceId !== input.selectedPriceId) {
-    logWarn("ensure booking entitlement skipped: booking missing or selected price mismatch", {
-      bookingId: input.bookingId,
+  const bookingId = input.bookingId ?? null;
+  if (bookingId && input.enforceBookingSelectionMatch) {
+    logInfo("ensure booking ownership start", {
+      bookingId,
       selectedPriceId: input.selectedPriceId,
     });
-    return;
-  }
 
-  if (booking.selectedEntitlementId) {
-    logInfo("ensure booking entitlement skipped: booking already linked", {
-      bookingId: input.bookingId,
-      selectedEntitlementId: booking.selectedEntitlementId,
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        id: true,
+        selectedEntitlementId: true,
+        selectedPriceId: true,
+      },
     });
-    return;
+
+    if (!booking || booking.selectedPriceId !== input.selectedPriceId) {
+      logWarn("ensure booking ownership skipped: booking missing or selected price mismatch", {
+        bookingId,
+        selectedPriceId: input.selectedPriceId,
+      });
+      return;
+    }
+
+    if (booking.selectedEntitlementId) {
+      logInfo("ensure booking ownership skipped: booking already linked", {
+        bookingId,
+        selectedEntitlementId: booking.selectedEntitlementId,
+      });
+      return;
+    }
   }
 
   const entitlementId = await grantEntitlementForSuccessfulPricePurchase({
-    bookingId: input.bookingId,
+    bookingId,
     clientId: input.clientId,
     orderId: input.orderId,
     selectedPriceId: input.selectedPriceId,
-    consumeCreditForBooking: true,
+    consumeCreditForBooking: input.consumeCreditForBooking,
   });
 
   if (entitlementId) {
-    logInfo("booking entitlement ensured", {
-      bookingId: input.bookingId,
-      entitlementId,
-    });
-  }
-}
-
-async function ensureEntitlementForCatalogPurchase(input: {
-  clientId: string;
-  orderId: string | null;
-  selectedPriceId: string;
-}) {
-  const entitlementId = await grantEntitlementForSuccessfulPricePurchase({
-    clientId: input.clientId,
-    orderId: input.orderId,
-    selectedPriceId: input.selectedPriceId,
-    consumeCreditForBooking: false,
-  });
-
-  if (entitlementId) {
-    logInfo("catalog entitlement ensured", {
+    logInfo("price ownership entitlement ensured", {
+      bookingId,
       clientId: input.clientId,
-      orderId: input.orderId,
       selectedPriceId: input.selectedPriceId,
       entitlementId,
     });
@@ -647,18 +646,21 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   if (booking && booking.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE) {
     if (booking.clientId && selectedPriceIdFromMetadata) {
-      await ensureEntitlementForPlanPurchase({
-        bookingId: booking.id,
+      await ensureOwnershipForSuccessfulPricePurchase({
         clientId: booking.clientId,
+        bookingId: booking.id,
+        enforceBookingSelectionMatch: true,
         orderId,
         selectedPriceId: selectedPriceIdFromMetadata,
+        consumeCreditForBooking: true,
       });
     }
   } else if (catalogMetadata && selectedPriceIdFromMetadata) {
-    await ensureEntitlementForCatalogPurchase({
+    await ensureOwnershipForSuccessfulPricePurchase({
       clientId: catalogMetadata.userId,
       orderId,
       selectedPriceId: selectedPriceIdFromMetadata,
+      consumeCreditForBooking: false,
     });
   }
 

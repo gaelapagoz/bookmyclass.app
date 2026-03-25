@@ -1,11 +1,11 @@
 import Link from "next/link";
 
 export default async function SubscriptionCancelPage({
-  searchParams,
+  searchParams: _searchParams,
 }: {
   searchParams: Promise<{ productId?: string }>;
 }) {
-  const { productId } = await searchParams;
+  await _searchParams;
 
   return (
     <section className="mx-auto w-full max-w-3xl px-6 py-14">
@@ -13,8 +13,6 @@ export default async function SubscriptionCancelPage({
       <p className="mt-3 text-sm text-[#7f5a5a]">
         You cancelled Stripe checkout. No product purchase changes were applied.
       </p>
-      {productId ? <p className="mt-3 text-sm text-[#5f4040]">Product ID: {productId}</p> : null}
-
       <div className="mt-6 flex items-center gap-4">
         <Link
           href="/subscription"

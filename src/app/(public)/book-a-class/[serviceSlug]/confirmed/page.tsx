@@ -44,14 +44,16 @@ export default async function BookingConfirmedPage({
               <dd>{booking.className}</dd>
             </div>
             <div className="flex justify-between gap-3">
-              <dt className="font-medium">Date</dt>
-              <dd>{booking.date}</dd>
+              <dt className="font-medium">Date &amp; Time</dt>
+              <dd>{booking.dateTime}</dd>
             </div>
             <div className="flex justify-between gap-3">
-              <dt className="font-medium">Time</dt>
-              <dd>
-                {booking.startTime} - {booking.endTime}
-              </dd>
+              <dt className="font-medium">Teacher</dt>
+              <dd>{booking.teacherName}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="font-medium">Location</dt>
+              <dd>{booking.locationName}</dd>
             </div>
           </dl>
         </div>

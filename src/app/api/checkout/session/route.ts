@@ -15,6 +15,8 @@ function toStatus(code: CheckoutError["code"]): number {
       return 404;
     case "BOOKING_NOT_PENDING":
       return 409;
+    case "ALREADY_SUBSCRIBED":
+      return 409;
     case "AUTH_REQUIRED":
       return 401;
     case "INVALID_SELECTION":

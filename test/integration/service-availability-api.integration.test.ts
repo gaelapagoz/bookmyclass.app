@@ -41,6 +41,7 @@ async function createAvailabilityFixture() {
       title: "Vinyasa Flow",
       slug: "vinyasa-flow-template",
       description: "Flow class",
+      location: "Template Room",
       defaultCapacity: 2,
       defaultDurationMinutes: 60,
       isActive: true,
@@ -76,6 +77,7 @@ async function createAvailabilityFixture() {
       classTypeId: service.id,
       teacherId: teacher.id,
       title: "Vinyasa Evening",
+      location: "Main Studio",
       startsAt: firstSessionStart,
       endsAt: firstSessionEnd,
       capacity: 2,
@@ -141,12 +143,27 @@ describe("service availability api", () => {
       params: Promise.resolve({ slug: fixture.serviceSlug }),
     });
     const body = (await response.json()) as {
-      service: { slug: string; title: string } | null;
+      service:
+        | {
+            slug: string;
+            title: string;
+            classSummary: {
+              title: string;
+              duration: string;
+              teacher: string;
+              location: string;
+            };
+          }
+        | null;
     };
 
     expect(response.status).toBe(200);
     expect(body.service?.slug).toBe(fixture.serviceSlug);
     expect(body.service?.title).toBe("Vinyasa Yoga");
+    expect(body.service?.classSummary.title).toBe("Class Summary");
+    expect(body.service?.classSummary.duration).toBe("60 minutes");
+    expect(body.service?.classSummary.teacher).toBe("Teacher");
+    expect(body.service?.classSummary.location).toBe("Main Studio");
   });
 
   it("returns month availability with capacity-aware counts", async () => {

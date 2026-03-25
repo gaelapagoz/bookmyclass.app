@@ -29,7 +29,12 @@ describe("ServiceBookingExperience", () => {
           shortDescription: "Duplicate description",
           description: "Duplicate description",
           imageUrl: null,
-          durationMinutes: 60,
+          classSummary: {
+            title: "Class Summary",
+            duration: "60 minutes",
+            teacher: "Coach Marie",
+            location: "Studio Brussels",
+          },
         }}
         initialMonthKey="2026-04"
         initialAvailabilityDays={[]}
@@ -39,6 +44,11 @@ describe("ServiceBookingExperience", () => {
     );
 
     expect(screen.getAllByText("Duplicate description")).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Class Summary" })).toBeInTheDocument();
+    expect(screen.getByText("Duration: 60 minutes")).toBeInTheDocument();
+    expect(screen.getByText("Teacher: Coach Marie")).toBeInTheDocument();
+    expect(screen.getByText("Location: Studio Brussels")).toBeInTheDocument();
+    expect(screen.queryByText(/Timezone:/i)).not.toBeInTheDocument();
   });
 
   it("selecting a day updates slots and empty day shows no availability", async () => {
@@ -86,7 +96,12 @@ describe("ServiceBookingExperience", () => {
           shortDescription: "Flow class",
           description: "Full description",
           imageUrl: null,
-          durationMinutes: 60,
+          classSummary: {
+            title: "Class Summary",
+            duration: "60 minutes",
+            teacher: "Coach Marie",
+            location: "Studio Brussels",
+          },
         }}
         initialMonthKey="2026-04"
         initialAvailabilityDays={[
@@ -177,7 +192,12 @@ describe("ServiceBookingExperience", () => {
           shortDescription: "Flow class",
           description: "Full description",
           imageUrl: null,
-          durationMinutes: 60,
+          classSummary: {
+            title: "Class Summary",
+            duration: "60 minutes",
+            teacher: "Coach Marie",
+            location: "Studio Brussels",
+          },
         }}
         initialMonthKey="2026-04"
         initialAvailabilityDays={[]}

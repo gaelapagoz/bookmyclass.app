@@ -1,4 +1,4 @@
-# Codex Rulebook — On The Mat Studio
+# Codex Rulebook — Yoga Pilates Fitness Studio
 
 ## Purpose
 This document defines strict implementation rules for Codex to follow when generating or modifying code.

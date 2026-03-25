@@ -1,15 +1,16 @@
 import { BookingPaymentSelection, BookingStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { getStudioDateKey, getStudioTimeLabel } from "@/lib/public-catalogue/timezone";
+import { getPublicTeacherName } from "../public-content/teacher-display";
+import { formatSessionDateTime } from "./format-session-date-time";
 
 export type BookingConfirmationView = {
   className: string | null;
-  date: string | null;
-  endTime: string | null;
+  dateTime: string | null;
+  locationName: string | null;
   paymentSelection: BookingPaymentSelection | null;
   serviceSlug: string | null;
-  startTime: string | null;
   status: BookingStatus | null;
+  teacherName: string | null;
 };
 
 export async function getBookingConfirmationView(input: {
@@ -28,6 +29,19 @@ export async function getBookingConfirmationView(input: {
         select: {
           startsAt: true,
           endsAt: true,
+          location: true,
+          teacher: {
+            select: {
+              firstName: true,
+              lastName: true,
+              name: true,
+            },
+          },
+          classTemplate: {
+            select: {
+              location: true,
+            },
+          },
           classType: {
             select: {
               name: true,
@@ -48,8 +62,12 @@ export async function getBookingConfirmationView(input: {
     paymentSelection: booking.paymentSelection,
     className: booking.studioSession.classType.name,
     serviceSlug: booking.studioSession.classType.slug,
-    date: getStudioDateKey(booking.studioSession.startsAt),
-    startTime: getStudioTimeLabel(booking.studioSession.startsAt),
-    endTime: getStudioTimeLabel(booking.studioSession.endsAt),
+    dateTime: formatSessionDateTime({
+      startsAt: booking.studioSession.startsAt,
+      endsAt: booking.studioSession.endsAt,
+    }),
+    teacherName: getPublicTeacherName(booking.studioSession.teacher),
+    locationName:
+      booking.studioSession.location?.trim() || booking.studioSession.classTemplate.location?.trim() || null,
   };
 }

@@ -17,7 +17,8 @@ type CheckoutErrorCode =
   | "BOOKING_NOT_PENDING"
   | "INVALID_SELECTION"
   | "MISSING_DRAFT_TOTAL"
-  | "AUTH_REQUIRED";
+  | "AUTH_REQUIRED"
+  | "ALREADY_SUBSCRIBED";
 
 export class CheckoutError extends Error {
   constructor(
@@ -161,6 +162,8 @@ export async function createCheckoutSessionForBooking(input: {
         select: {
           id: true,
           name: true,
+          priceType: true,
+          stripePriceId: true,
           unitAmountMinor: true,
           product: {
             select: {
@@ -210,6 +213,27 @@ export async function createCheckoutSessionForBooking(input: {
     throw new CheckoutError("INVALID_SELECTION", "Selected price is missing.");
   }
   const selectedPrice = booking.selectedPrice;
+  const isRecurringPlanPurchase =
+    readyCheckout.booking.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE &&
+    selectedPrice.priceType === PriceType.RECURRING;
+  if (isRecurringPlanPurchase && !selectedPrice.stripePriceId) {
+    throw new CheckoutError(
+      "INVALID_SELECTION",
+      "Selected recurring plan is not checkout-ready.",
+    );
+  }
+  if (isRecurringPlanPurchase) {
+    const alreadySubscribed = await hasActiveRecurringSubscriptionForProduct({
+      userId: readyCheckout.userId,
+      productId: selectedPrice.product.id,
+    });
+    if (alreadySubscribed) {
+      throw new CheckoutError(
+        "ALREADY_SUBSCRIBED",
+        "You already have an active recurring subscription for this plan.",
+      );
+    }
+  }
 
   const env = getStripeEnv();
   const serviceLabel = booking.studioSession.classType.name;
@@ -303,35 +327,59 @@ export async function createCheckoutSessionForBooking(input: {
     };
   });
 
-  const checkoutSession = await createStripeCheckoutSession({
-    mode: "payment",
-    line_items: [
-      {
-        quantity: 1,
-        price_data: {
-          currency: readyCheckout.booking.draftCurrencyCode.toLowerCase(),
-          unit_amount: readyCheckout.booking.draftAmountMinor,
-          product_data: {
-            name: serviceLabel,
-            description:
-              readyCheckout.booking.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE
-                ? "Plan purchase for booking flow"
-                : "Single-session booking payment",
+  const metadata = {
+    bookingId: readyCheckout.booking.id,
+    paymentId: orderAndPayment.paymentId,
+    orderId: orderAndPayment.orderId ?? "",
+    paymentSelection: readyCheckout.booking.paymentSelection,
+    selectedPriceId: readyCheckout.booking.selectedPriceId,
+    serviceSlug: readyCheckout.booking.serviceSlug,
+    userId: readyCheckout.userId,
+    productId: selectedPrice.product.id,
+    priceId: selectedPrice.id,
+    source: "booking-flow",
+  };
+  const checkoutSession = await createStripeCheckoutSession(
+    isRecurringPlanPurchase
+      ? {
+          mode: "subscription",
+          line_items: [
+            {
+              price: selectedPrice.stripePriceId!,
+              quantity: 1,
+            },
+          ],
+          metadata,
+          client_reference_id: readyCheckout.userId,
+          subscription_data: {
+            metadata,
           },
+          success_url: `${env.appUrl}/book-a-class/${readyCheckout.booking.serviceSlug}/payment/success?bookingId=${readyCheckout.booking.id}&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${env.appUrl}/book-a-class/${readyCheckout.booking.serviceSlug}/payment/cancel?bookingId=${readyCheckout.booking.id}`,
+        }
+      : {
+          mode: "payment",
+          line_items: [
+            {
+              quantity: 1,
+              price_data: {
+                currency: readyCheckout.booking.draftCurrencyCode.toLowerCase(),
+                unit_amount: readyCheckout.booking.draftAmountMinor,
+                product_data: {
+                  name: serviceLabel,
+                  description:
+                    readyCheckout.booking.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE
+                      ? "Plan purchase for booking flow"
+                      : "Single-session booking payment",
+                },
+              },
+            },
+          ],
+          metadata,
+          success_url: `${env.appUrl}/book-a-class/${readyCheckout.booking.serviceSlug}/payment/success?bookingId=${readyCheckout.booking.id}&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${env.appUrl}/book-a-class/${readyCheckout.booking.serviceSlug}/payment/cancel?bookingId=${readyCheckout.booking.id}`,
         },
-      },
-    ],
-    metadata: {
-      bookingId: readyCheckout.booking.id,
-      paymentId: orderAndPayment.paymentId,
-      orderId: orderAndPayment.orderId ?? "",
-      paymentSelection: readyCheckout.booking.paymentSelection,
-      selectedPriceId: readyCheckout.booking.selectedPriceId,
-      serviceSlug: readyCheckout.booking.serviceSlug,
-    },
-    success_url: `${env.appUrl}/book-a-class/${readyCheckout.booking.serviceSlug}/payment/success?bookingId=${readyCheckout.booking.id}&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${env.appUrl}/book-a-class/${readyCheckout.booking.serviceSlug}/payment/cancel?bookingId=${readyCheckout.booking.id}`,
-  });
+  );
 
   if (!checkoutSession.url) {
     throw new Error("Stripe did not return a checkout URL.");
@@ -341,6 +389,8 @@ export async function createCheckoutSessionForBooking(input: {
     where: { id: orderAndPayment.paymentId },
     data: {
       providerReference: checkoutSession.id,
+      stripeCheckoutSessionId: checkoutSession.id,
+      stripeCheckoutMode: isRecurringPlanPurchase ? "SUBSCRIPTION" : "PAYMENT",
     },
   });
 

@@ -355,7 +355,7 @@ async function seedUsers() {
       name: "Master Admin",
       firstName: "Master",
       lastName: "Admin",
-      email: "masteradmin@onthematstudio.local",
+      email: "masteradmin@yogapilatesfitness.local",
       role: Role.MASTER_ADMIN,
       passwordHash: masterPasswordHash,
       isActive: true,
@@ -369,7 +369,7 @@ async function seedUsers() {
       name: "Admin User",
       firstName: "Admin",
       lastName: "User",
-      email: "admin@onthematstudio.local",
+      email: "admin@yogapilatesfitness.local",
       role: Role.ADMIN,
       passwordHash: adminPasswordHash,
       isActive: true,
@@ -378,24 +378,73 @@ async function seedUsers() {
     },
   });
 
-  const teacher = await prisma.user.create({
+  const ana = await prisma.user.create({
     data: {
-      name: "Teacher User",
-      firstName: "Teacher",
-      lastName: "User",
-      email: "teacher@onthematstudio.local",
+      name: "Ana Ionescu",
+      firstName: "Ana",
+      lastName: "Ionescu",
+      email: "ana.ionescu@yogapilatesfitness.local",
       role: Role.TEACHER,
       passwordHash: teacherPasswordHash,
+      image: "/images/instructors/ana_instructor_bio.jpg",
       isActive: true,
       isInactive: false,
       lastLoginAt: new Date("2026-03-18T09:30:00.000Z"),
       teacherProfile: {
         create: {
           phone: "+32000000001",
-          bio: "Yoga and pilates instructor.",
-          specialties: ["yoga", "pilates"],
+          bio: "Ana leads classes with a clear and progressive approach to technique, breath, and confidence in movement.",
+          specialties: ["Yoga", "Pilates"],
           certifications: ["RYT-200"],
           hireDate: new Date("2023-09-01T00:00:00.000Z"),
+        },
+      },
+    },
+  });
+
+  const elena = await prisma.user.create({
+    data: {
+      name: "Elena Moreau",
+      firstName: "Elena",
+      lastName: "Moreau",
+      email: "elena.moreau@yogapilatesfitness.local",
+      role: Role.TEACHER,
+      passwordHash: teacherPasswordHash,
+      image: "/images/instructors/elena_instructor_bio.jpg",
+      isActive: true,
+      isInactive: false,
+      lastLoginAt: new Date("2026-03-17T10:00:00.000Z"),
+      teacherProfile: {
+        create: {
+          phone: "+32000000003",
+          bio: "Elena brings a calm, precise teaching style focused on alignment, strength, and confidence in movement. Her classes are designed to help students feel stronger, more balanced, and more connected to their bodies.",
+          specialties: ["Pilates", "Mobility"],
+          certifications: ["Comprehensive Pilates"],
+          hireDate: new Date("2024-02-15T00:00:00.000Z"),
+        },
+      },
+    },
+  });
+
+  const sofia = await prisma.user.create({
+    data: {
+      name: "Sofia Van den Berg",
+      firstName: "Sofia",
+      lastName: "Van den Berg",
+      email: "sofia.vandenberg@yogapilatesfitness.local",
+      role: Role.TEACHER,
+      passwordHash: teacherPasswordHash,
+      image: "/images/instructors/sofia_instructor_bio.jpg",
+      isActive: true,
+      isInactive: false,
+      lastLoginAt: new Date("2026-03-16T08:45:00.000Z"),
+      teacherProfile: {
+        create: {
+          phone: "+32000000004",
+          bio: "Sofia teaches flowing classes with a warm and supportive approach. She focuses on breath, flexibility, and mindful movement, helping students build both ease and stability.",
+          specialties: ["Yoga", "Stretch"],
+          certifications: ["RYT-500"],
+          hireDate: new Date("2024-05-01T00:00:00.000Z"),
         },
       },
     },
@@ -406,7 +455,7 @@ async function seedUsers() {
       name: "Client User",
       firstName: "Client",
       lastName: "User",
-      email: "client@onthematstudio.local",
+      email: "client@yogapilatesfitness.local",
       role: Role.CLIENT,
       passwordHash: clientPasswordHash,
       isActive: true,
@@ -421,7 +470,7 @@ async function seedUsers() {
     },
   });
 
-  return { masterAdmin, admin, teacher, client };
+  return { masterAdmin, admin, teachers: { ana, elena, sofia }, client };
 }
 
 async function seedBookingPolicy() {
@@ -920,7 +969,7 @@ async function upsertStudioSession(input: {
   });
 }
 
-async function seedScheduling(teacherId: string) {
+async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaId: string }) {
   const yogaCategory = await upsertClassCategory({
     slug: "yoga-collective-classes",
     name: "Yoga Collective Classes",
@@ -1027,7 +1076,7 @@ async function seedScheduling(teacherId: string) {
   const vinyasaTemplate = await upsertClassTemplate({
     slug: "vinyasa-flow-brussels",
     classTypeId: vinyasaYoga.id,
-    defaultTeacherId: teacherId,
+    defaultTeacherId: teachers.anaId,
     title: "Vinyasa Flow Brussels",
     description: "A full-spectrum vinyasa class with warm-up, flow and cooldown.",
     location: "Ixelles Studio A",
@@ -1037,7 +1086,7 @@ async function seedScheduling(teacherId: string) {
   const rocketTemplate = await upsertClassTemplate({
     slug: "rocket-yoga-power-sequence",
     classTypeId: rocketYoga.id,
-    defaultTeacherId: teacherId,
+    defaultTeacherId: teachers.sofiaId,
     title: "Rocket Yoga Power Sequence",
     description: "Progressive rocket yoga with core and inversion prep.",
     location: "Ixelles Studio B",
@@ -1047,7 +1096,7 @@ async function seedScheduling(teacherId: string) {
   const hathaTemplate = await upsertClassTemplate({
     slug: "hatha-reset-weekend",
     classTypeId: hathaYoga.id,
-    defaultTeacherId: teacherId,
+    defaultTeacherId: teachers.anaId,
     title: "Hatha Reset Weekend",
     description: "Grounding hatha class focused on breath and posture quality.",
     location: "Ixelles Studio A",
@@ -1057,7 +1106,7 @@ async function seedScheduling(teacherId: string) {
   const matPilatesTemplate = await upsertClassTemplate({
     slug: "mat-pilates-core-lab",
     classTypeId: matPilates.id,
-    defaultTeacherId: teacherId,
+    defaultTeacherId: teachers.elenaId,
     title: "Mat Pilates Core Lab",
     description: "Core and glute-focused mat pilates with progression options.",
     location: "Etterbeek Studio C",
@@ -1067,7 +1116,7 @@ async function seedScheduling(teacherId: string) {
   const reformerTemplate = await upsertClassTemplate({
     slug: "reformer-foundations-small-group",
     classTypeId: reformerFoundations.id,
-    defaultTeacherId: teacherId,
+    defaultTeacherId: teachers.elenaId,
     title: "Reformer Foundations Small Group",
     description: "Technique-first reformer foundations for beginners.",
     location: "Ixelles Reformer Room",
@@ -1077,7 +1126,7 @@ async function seedScheduling(teacherId: string) {
   const functionalTemplate = await upsertClassTemplate({
     slug: "functional-strength-express",
     classTypeId: functionalStrength.id,
-    defaultTeacherId: teacherId,
+    defaultTeacherId: teachers.sofiaId,
     title: "Functional Strength Express",
     description: "High-focus functional strength class with mobility warm-up.",
     location: "Etterbeek Performance Room",
@@ -1087,7 +1136,7 @@ async function seedScheduling(teacherId: string) {
   const privateReformerTemplate = await upsertClassTemplate({
     slug: "private-reformer-coaching-slot",
     classTypeId: privateReformerCoaching.id,
-    defaultTeacherId: teacherId,
+    defaultTeacherId: teachers.anaId,
     title: "Private Reformer Coaching",
     description: "Private coaching slot tailored to goals and mobility.",
     location: "Ixelles Private Studio",
@@ -1096,17 +1145,17 @@ async function seedScheduling(teacherId: string) {
   });
 
   const recurringDefinitions = [
-    { template: vinyasaTemplate, classType: vinyasaYoga, weekday: Weekday.MONDAY, startTime: "07:00" },
-    { template: vinyasaTemplate, classType: vinyasaYoga, weekday: Weekday.WEDNESDAY, startTime: "18:30" },
-    { template: rocketTemplate, classType: rocketYoga, weekday: Weekday.SATURDAY, startTime: "09:00" },
-    { template: hathaTemplate, classType: hathaYoga, weekday: Weekday.SUNDAY, startTime: "10:30" },
-    { template: matPilatesTemplate, classType: matPilates, weekday: Weekday.TUESDAY, startTime: "12:15" },
-    { template: matPilatesTemplate, classType: matPilates, weekday: Weekday.THURSDAY, startTime: "19:00" },
-    { template: reformerTemplate, classType: reformerFoundations, weekday: Weekday.FRIDAY, startTime: "17:30" },
-    { template: functionalTemplate, classType: functionalStrength, weekday: Weekday.TUESDAY, startTime: "07:00" },
-    { template: functionalTemplate, classType: functionalStrength, weekday: Weekday.THURSDAY, startTime: "07:00" },
-    { template: privateReformerTemplate, classType: privateReformerCoaching, weekday: Weekday.WEDNESDAY, startTime: "12:00" },
-    { template: privateReformerTemplate, classType: privateReformerCoaching, weekday: Weekday.SATURDAY, startTime: "11:30" },
+    { template: vinyasaTemplate, classType: vinyasaYoga, teacherId: teachers.anaId, weekday: Weekday.MONDAY, startTime: "07:00" },
+    { template: vinyasaTemplate, classType: vinyasaYoga, teacherId: teachers.anaId, weekday: Weekday.WEDNESDAY, startTime: "18:30" },
+    { template: rocketTemplate, classType: rocketYoga, teacherId: teachers.sofiaId, weekday: Weekday.SATURDAY, startTime: "09:00" },
+    { template: hathaTemplate, classType: hathaYoga, teacherId: teachers.anaId, weekday: Weekday.SUNDAY, startTime: "10:30" },
+    { template: matPilatesTemplate, classType: matPilates, teacherId: teachers.elenaId, weekday: Weekday.TUESDAY, startTime: "12:15" },
+    { template: matPilatesTemplate, classType: matPilates, teacherId: teachers.elenaId, weekday: Weekday.THURSDAY, startTime: "19:00" },
+    { template: reformerTemplate, classType: reformerFoundations, teacherId: teachers.elenaId, weekday: Weekday.FRIDAY, startTime: "17:30" },
+    { template: functionalTemplate, classType: functionalStrength, teacherId: teachers.sofiaId, weekday: Weekday.TUESDAY, startTime: "07:00" },
+    { template: functionalTemplate, classType: functionalStrength, teacherId: teachers.sofiaId, weekday: Weekday.THURSDAY, startTime: "07:00" },
+    { template: privateReformerTemplate, classType: privateReformerCoaching, teacherId: teachers.anaId, weekday: Weekday.WEDNESDAY, startTime: "12:00" },
+    { template: privateReformerTemplate, classType: privateReformerCoaching, teacherId: teachers.anaId, weekday: Weekday.SATURDAY, startTime: "11:30" },
   ] as const;
 
   for (const definition of recurringDefinitions) {
@@ -1130,7 +1179,7 @@ async function seedScheduling(teacherId: string) {
         classTemplateId: definition.template.id,
         recurringRuleId: recurringRule.id,
         classTypeId: definition.classType.id,
-        teacherId,
+        teacherId: definition.teacherId,
         title: definition.template.title,
         description: definition.template.description ?? undefined,
         location: definition.template.location ?? undefined,
@@ -1376,8 +1425,8 @@ async function verifyCleanSeed(clientEmail: string) {
     prisma.studioSession.count({ where: { status: StudioSessionStatus.CANCELLED } }),
   ]);
 
-  if (userCount !== 4) {
-    throw new Error(`Seed verification failed: expected 4 users, got ${userCount}.`);
+  if (userCount !== 6) {
+    throw new Error(`Seed verification failed: expected 6 users, got ${userCount}.`);
   }
 
   if (productCount !== 6) {
@@ -1446,7 +1495,11 @@ async function main() {
   const users = await seedUsers();
   await seedBookingPolicy();
   await seedCatalog(stripePriceIdByLookupKey);
-  await seedScheduling(users.teacher.id);
+  await seedScheduling({
+    anaId: users.teachers.ana.id,
+    elenaId: users.teachers.elena.id,
+    sofiaId: users.teachers.sofia.id,
+  });
   await seedLearningFromJson();
   await verifyCleanSeed(users.client.email);
 

@@ -1,6 +1,7 @@
 import { BookingIntent, BookingStatus, StudioSessionStatus } from "@prisma/client";
 import { prisma } from "../db";
-import { STUDIO_TIMEZONE, getStudioDateKey, getStudioTimeLabel } from "../public-catalogue/timezone";
+import { formatSessionDateTime } from "./format-session-date-time";
+import { getPublicTeacherName } from "../public-content/teacher-display";
 
 export type BookingDraftPayload = {
   bookingIntent: BookingIntent;
@@ -17,14 +18,13 @@ export type BookingDraftPayload = {
 export type BookingSessionSummary = {
   availableSpots: number;
   capacity: number;
-  date: string;
-  endTime: string;
+  classTitle: string;
+  dateTime: string;
+  place: string;
   serviceId: string;
   serviceSlug: string;
-  serviceTitle: string;
   sessionId: string;
-  startTime: string;
-  timezone: string;
+  teacher: string;
 };
 
 type DraftErrorCode =
@@ -52,8 +52,14 @@ type SessionWithBookings = {
   endsAt: Date;
   id: string;
   isPublished: boolean;
+  location: string | null;
   startsAt: Date;
   status: StudioSessionStatus;
+  teacher: {
+    firstName: string | null;
+    lastName: string | null;
+    name: string;
+  };
 };
 
 async function getSessionForDraft(params: { serviceSlug: string; sessionId: string }) {
@@ -80,6 +86,14 @@ async function getSessionForDraft(params: { serviceSlug: string; sessionId: stri
           name: true,
         },
       },
+      teacher: {
+        select: {
+          firstName: true,
+          lastName: true,
+          name: true,
+        },
+      },
+      location: true,
       bookings: {
         where: {
           status: {
@@ -103,13 +117,15 @@ function toSessionSummary(session: SessionWithBookings): BookingSessionSummary {
     sessionId: session.id,
     serviceId: session.classType.id,
     serviceSlug: session.classType.slug,
-    serviceTitle: session.classType.name,
-    date: getStudioDateKey(session.startsAt),
-    startTime: getStudioTimeLabel(session.startsAt),
-    endTime: getStudioTimeLabel(session.endsAt),
+    classTitle: session.classType.name,
+    dateTime: formatSessionDateTime({
+      startsAt: session.startsAt,
+      endsAt: session.endsAt,
+    }),
+    teacher: getPublicTeacherName(session.teacher),
+    place: session.location?.trim() || "To be confirmed",
     capacity: session.capacity,
     availableSpots: getAvailableSpots(session),
-    timezone: STUDIO_TIMEZONE,
   };
 }
 

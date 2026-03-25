@@ -20,7 +20,9 @@ type PlanBalance = {
 };
 
 type ExistingPlanOption = {
+  bookingLabel: string;
   createdAt: string;
+  displayName: string;
   entitlementId: string;
   entitlementScope: EntitlementScope;
   entitlementType: EntitlementType;
@@ -38,7 +40,9 @@ type NewPlanOption = {
   amountMinor: number;
   billingInterval: BillingInterval | null;
   billingIntervalCount: number | null;
+  bookingLabel: string;
   currencyCode: string;
+  displayName: string;
   entitlementScope: EntitlementScope;
   entitlementType: EntitlementType;
   priceId: string;
@@ -50,7 +54,9 @@ type NewPlanOption = {
 
 type SingleSessionOption = {
   amountMinor: number;
+  bookingLabel: string;
   currencyCode: string;
+  displayName: string;
   priceId: string;
   priceName: string;
 } | null;
@@ -132,7 +138,9 @@ type PlanOptionRecord = {
   amountMinor: number;
   billingInterval: BillingInterval | null;
   billingIntervalCount: number | null;
+  bookingLabel: string;
   currencyCode: string;
+  displayName: string;
   entitlementScope: EntitlementScope;
   entitlementType: EntitlementType;
   priceId: string;
@@ -196,6 +204,53 @@ function toEntitlementScope(categorySlug: string): EntitlementScope {
   }
 
   return EntitlementScope.COLLECTIVE_CLASSES;
+}
+
+function formatPurchaseOptionDisplayName(input: { productName: string }): string {
+  return input.productName;
+}
+
+function formatBookingOptionLabel(input: {
+  displayName: string;
+  mode: "EXISTING_PLAN" | "NEW_PLAN_PURCHASE" | "SINGLE_SESSION";
+  amountMinor?: number;
+  currencyCode?: string;
+}): string {
+  if (input.mode === "EXISTING_PLAN") {
+    return `Use Existing Plan - ${input.displayName}`;
+  }
+
+  if (input.mode === "NEW_PLAN_PURCHASE") {
+    const hasPrice = typeof input.amountMinor === "number" && Boolean(input.currencyCode);
+    if (hasPrice) {
+      const formattedPrice = new Intl.NumberFormat("en-GB", {
+        style: "currency",
+        currency: input.currencyCode!,
+        minimumFractionDigits: 2,
+      }).format(input.amountMinor! / 100);
+
+      return `Buy a Plan - ${input.displayName} (${formattedPrice})`;
+    }
+
+    return `Buy a Plan - ${input.displayName}`;
+  }
+
+  if (input.mode === "SINGLE_SESSION") {
+    const hasPrice = typeof input.amountMinor === "number" && Boolean(input.currencyCode);
+    if (hasPrice) {
+      const formattedPrice = new Intl.NumberFormat("en-GB", {
+        style: "currency",
+        currency: input.currencyCode!,
+        minimumFractionDigits: 2,
+      }).format(input.amountMinor! / 100);
+
+      return `Single Session - ${input.displayName} (${formattedPrice})`;
+    }
+
+    return `Single Session - ${input.displayName}`;
+  }
+
+  return input.displayName;
 }
 
 function isScopeCompatible(params: {
@@ -450,7 +505,12 @@ async function getExistingPlansByUserAndScope(params: {
       });
 
       return {
+        bookingLabel: formatBookingOptionLabel({
+          mode: "EXISTING_PLAN",
+          displayName: formatPurchaseOptionDisplayName({ productName: entitlement.product.name }),
+        }),
         createdAt: entitlement.createdAt.toISOString(),
+        displayName: formatPurchaseOptionDisplayName({ productName: entitlement.product.name }),
         entitlementId: entitlement.id,
         entitlementType: entitlement.entitlementType,
         entitlementScope: entitlement.entitlementScope,
@@ -520,7 +580,12 @@ async function getExistingPlansByUserAndScope(params: {
   const subscriptionOptions: ExistingPlanOption[] = activeSubscriptions
     .filter((subscription) => !coveredSubscriptionIds.has(subscription.id))
     .map((subscription) => ({
+      bookingLabel: formatBookingOptionLabel({
+        mode: "EXISTING_PLAN",
+        displayName: formatPurchaseOptionDisplayName({ productName: subscription.product.name }),
+      }),
       createdAt: subscription.createdAt.toISOString(),
+      displayName: formatPurchaseOptionDisplayName({ productName: subscription.product.name }),
       entitlementId: `subscription:${subscription.id}`,
       entitlementType: EntitlementType.UNLIMITED_ACCESS,
       entitlementScope: EntitlementScope.ALL_CLASSES,
@@ -677,6 +742,13 @@ async function getPlanPurchaseOptions(requiredScope: EntitlementScope): Promise<
     }
 
     return product.prices.map((price) => ({
+      bookingLabel: formatBookingOptionLabel({
+        mode: "NEW_PLAN_PURCHASE",
+        displayName: formatPurchaseOptionDisplayName({ productName: product.name }),
+        amountMinor: price.unitAmountMinor,
+        currencyCode: price.currencyCode,
+      }),
+      displayName: formatPurchaseOptionDisplayName({ productName: product.name }),
       productId: product.id,
       productName: product.name,
       productType: product.productType,
@@ -747,8 +819,15 @@ async function getSingleSessionOptionByScope(requiredScope: EntitlementScope): P
   }
 
   return {
+    bookingLabel: formatBookingOptionLabel({
+      mode: "SINGLE_SESSION",
+      displayName: formatPurchaseOptionDisplayName({ productName: product.name }),
+      amountMinor: price.unitAmountMinor,
+      currencyCode: price.currencyCode,
+    }),
     priceId: price.id,
-    priceName: `${product.name} - ${price.name}`,
+    displayName: formatPurchaseOptionDisplayName({ productName: product.name }),
+    priceName: price.name,
     amountMinor: price.unitAmountMinor,
     currencyCode: price.currencyCode,
   };
@@ -927,7 +1006,12 @@ export async function getMyActivePlans(userId: string): Promise<PlanSummary[]> {
       });
 
       return {
+        bookingLabel: formatBookingOptionLabel({
+          mode: "EXISTING_PLAN",
+          displayName: formatPurchaseOptionDisplayName({ productName: entitlement.product.name }),
+        }),
         createdAt: entitlement.createdAt.toISOString(),
+        displayName: formatPurchaseOptionDisplayName({ productName: entitlement.product.name }),
         entitlementId: entitlement.id,
         entitlementType: entitlement.entitlementType,
         entitlementScope: entitlement.entitlementScope,

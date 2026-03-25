@@ -9,8 +9,13 @@ import { SignInModal } from "./SignInModal";
 import { SlotList } from "./SlotList";
 
 type PublicServiceDetail = {
+  classSummary: {
+    duration: string;
+    location: string;
+    teacher: string;
+    title: string;
+  };
   description: string;
-  durationMinutes: number;
   id: string;
   imageUrl: string | null;
   shortDescription: string;
@@ -186,9 +191,10 @@ export function ServiceBookingExperience({
         </div>
 
         <aside className="rounded-xl border border-[#d8cec6] bg-[#f4eee8] p-4">
-          <h2 className="text-lg font-semibold text-[#6f2b2b]">Service Summary</h2>
-          <p className="mt-2 text-sm text-[#5f4040]">Duration: {service.durationMinutes} minutes</p>
-          <p className="mt-1 text-sm text-[#5f4040]">Timezone: Europe/Brussels</p>
+          <h2 className="text-lg font-semibold text-[#6f2b2b]">{service.classSummary.title}</h2>
+          <p className="mt-2 text-sm text-[#5f4040]">Duration: {service.classSummary.duration}</p>
+          <p className="mt-1 text-sm text-[#5f4040]">Teacher: {service.classSummary.teacher}</p>
+          <p className="mt-1 text-sm text-[#5f4040]">Location: {service.classSummary.location}</p>
           <p className="mt-4 text-xs text-[#7f5a5a]">
             Choose a date and slot below. Booking form and checkout are connected in the next step.
           </p>

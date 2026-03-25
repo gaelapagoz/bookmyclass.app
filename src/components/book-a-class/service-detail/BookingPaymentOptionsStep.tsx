@@ -12,18 +12,24 @@ type PaymentOptionsResponse = {
     bookingIntent: "SINGLE_BOOKING" | "USE_PLAN";
     singleSession: {
       amountMinor: number;
+      bookingLabel: string;
       currencyCode: string;
+      displayName: string;
       priceId: string;
       priceName: string;
     } | null;
     existingPlans: Array<{
+      bookingLabel: string;
+      displayName: string;
       entitlementId: string;
       productName: string;
       remainingCredits: number | null;
     }>;
     newPlanOptions: Array<{
       amountMinor: number;
+      bookingLabel: string;
       currencyCode: string;
+      displayName: string;
       priceId: string;
       priceName: string;
       productName: string;
@@ -199,7 +205,7 @@ export function BookingPaymentOptionsStep({ bookingId, serviceSlug }: BookingPay
 
     if (selection.mode === "SINGLE_SESSION" && options.singleSession?.priceId === selection.priceId) {
       return {
-        label: options.singleSession.priceName,
+        label: options.singleSession.bookingLabel,
         amountMinor: options.singleSession.amountMinor,
         currencyCode: options.singleSession.currencyCode,
       };
@@ -211,7 +217,7 @@ export function BookingPaymentOptionsStep({ bookingId, serviceSlug }: BookingPay
     }
 
     return {
-      label: `${planPrice.productName} - ${planPrice.priceName}`,
+      label: planPrice.bookingLabel,
       amountMinor: planPrice.amountMinor,
       currencyCode: planPrice.currencyCode,
     };
@@ -323,7 +329,7 @@ export function BookingPaymentOptionsStep({ bookingId, serviceSlug }: BookingPay
         <div className="mt-6 rounded-xl border border-[#d8cec6] bg-white p-5 text-sm text-[#5f4040]">
           <p className="font-medium text-[#6f2b2b]">Selected payment path</p>
           {selection?.mode === "EXISTING_PLAN" && selectedPlan ? (
-            <p className="mt-2">Use plan: {selectedPlan.productName}{selectedPlan.remainingCredits !== null ? ` (${selectedPlan.remainingCredits} credits)` : ""}</p>
+            <p className="mt-2">{selectedPlan.bookingLabel}</p>
           ) : selectedPrice ? (
             <p className="mt-2">{selectedPrice.label} ({formatMoney(selectedPrice.amountMinor, selectedPrice.currencyCode)})</p>
           ) : (
@@ -354,7 +360,7 @@ export function BookingPaymentOptionsStep({ bookingId, serviceSlug }: BookingPay
                   checked={selection?.mode === "SINGLE_SESSION" && selection.priceId === options.singleSession?.priceId}
                   onChange={() => setSelection({ mode: "SINGLE_SESSION", priceId: options.singleSession!.priceId })}
                 />
-                <span>{options.singleSession.priceName} ({formatMoney(options.singleSession.amountMinor, options.singleSession.currencyCode)})</span>
+                <span>{options.singleSession.bookingLabel}</span>
               </label>
             </div>
           ) : null}
@@ -373,7 +379,7 @@ export function BookingPaymentOptionsStep({ bookingId, serviceSlug }: BookingPay
                       checked={selection?.mode === "EXISTING_PLAN" && selection.entitlementId === plan.entitlementId}
                       onChange={() => setSelection({ mode: "EXISTING_PLAN", entitlementId: plan.entitlementId })}
                     />
-                    <span>{plan.productName}{plan.remainingCredits !== null ? ` (${plan.remainingCredits} credits)` : ""}</span>
+                    <span>{plan.bookingLabel}</span>
                   </label>
                 ))}
               </div>
@@ -394,7 +400,7 @@ export function BookingPaymentOptionsStep({ bookingId, serviceSlug }: BookingPay
                       checked={selection?.mode === "NEW_PLAN_PURCHASE" && selection.priceId === plan.priceId}
                       onChange={() => setSelection({ mode: "NEW_PLAN_PURCHASE", priceId: plan.priceId })}
                     />
-                    <span>{plan.productName} - {plan.priceName} ({formatMoney(plan.amountMinor, plan.currencyCode)})</span>
+                    <span>{plan.bookingLabel}</span>
                   </label>
                 ))}
               </div>

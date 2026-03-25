@@ -1,5 +1,6 @@
 ﻿import Image from "next/image";
 import Link from "next/link";
+import { siteConfig } from "@/lib/site-config";
 
 const weeklyAgenda = [
   {
@@ -263,7 +264,7 @@ export default function HomePage() {
               <br />
               Brussels, Belgium
             </p>
-            <p className="mt-4 text-sm text-[#6f605b]">hello@onthematstudio.be</p>
+            <p className="mt-4 text-sm text-[#6f605b]">{siteConfig.contactEmail}</p>
             <div className="mt-6 overflow-hidden rounded-2xl border border-[#eadfd7]">
               <iframe
                 title="Yoga Pilates Fitness Studio map"
@@ -310,4 +311,5 @@ export default function HomePage() {
     </div>
   );
 }
+
 

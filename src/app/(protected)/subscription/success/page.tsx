@@ -30,12 +30,13 @@ export default async function SubscriptionSuccessPage({
 
   return (
     <section className="mx-auto w-full max-w-3xl px-6 py-14">
-      <h1 className="text-3xl font-semibold text-[#6f2b2b]">Checkout Submitted</h1>
+      <h1 className="text-3xl font-semibold text-[#6f2b2b]">Paymented Confirmed</h1>
       <p className="mt-3 text-sm text-[#7f5a5a]">
-        Stripe checkout completed. Final product ownership status will be confirmed by webhook processing.
+        Your subscription payment is confirmed, and you are now ready to book a class.
       </p>
-      {productId ? <p className="mt-3 text-sm text-[#5f4040]">Product ID: {productId}</p> : null}
-      {session_id ? <p className="mt-1 text-xs text-[#7f5a5a]">Stripe session: {session_id}</p> : null}
+      <p className="mt-2 text-sm text-[#7f5a5a]">
+        You can start booking right away from the class schedule, and your active plan will be available in your membership dashboard.
+      </p>
 
       <div className="mt-6 flex items-center gap-4">
         <Link

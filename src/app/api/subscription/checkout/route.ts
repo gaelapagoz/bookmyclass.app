@@ -31,8 +31,8 @@ export async function POST(request: Request) {
     const checkoutSession = await createCheckoutSessionForCatalogProduct({
       userId: session.user.id,
       productId: parsed.data.productId,
-      successUrl: `${appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}&productId=${parsed.data.productId}`,
-      cancelUrl: `${appUrl}/subscription/cancel?productId=${parsed.data.productId}`,
+      successUrl: `${appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${appUrl}/subscription/cancel`,
     });
 
     return Response.json(

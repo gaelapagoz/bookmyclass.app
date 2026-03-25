@@ -18,9 +18,9 @@ vi.mock("@/lib/public-booking/booking-confirmation-view", () => ({
     paymentSelection: "EXISTING_PLAN",
     className: "Vinyasa Yoga",
     serviceSlug: "vinyasa-yoga",
-    date: "2026-04-10",
-    startTime: "18:00",
-    endTime: "19:00",
+    dateTime: "10 Apr 2026 · 18:00 - 19:00",
+    teacherName: "Ana Ionescu",
+    locationName: "Ixelles Studio A",
   })),
 }));
 
@@ -37,8 +37,9 @@ describe("Booking confirmed page", () => {
 
     expect(screen.getByRole("heading", { name: "Booking Confirmed" })).toBeInTheDocument();
     expect(screen.getByText("Vinyasa Yoga")).toBeInTheDocument();
-    expect(screen.getByText("2026-04-10")).toBeInTheDocument();
-    expect(screen.getByText("18:00 - 19:00")).toBeInTheDocument();
+    expect(screen.getByText("10 Apr 2026 · 18:00 - 19:00")).toBeInTheDocument();
+    expect(screen.getByText("Ana Ionescu")).toBeInTheDocument();
+    expect(screen.getByText("Ixelles Studio A")).toBeInTheDocument();
     expect(screen.queryByText(/Booking ID/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/slug/i)).not.toBeInTheDocument();
   });

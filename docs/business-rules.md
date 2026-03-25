@@ -1,4 +1,4 @@
-# Business Rules — On The Mat Studio
+# Business Rules — Yoga Pilates Fitness Studio
 
 ## Purpose
 This document defines the frozen product and operational rules for the booking and subscription platform.

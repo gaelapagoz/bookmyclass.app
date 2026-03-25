@@ -32,13 +32,12 @@ describe("BookingDraftForm", () => {
       sessionId: "session-1",
       serviceId: "service-1",
       serviceSlug: "vinyasa-yoga",
-      serviceTitle: "Vinyasa Yoga",
-      date: "2026-04-10",
-      startTime: "18:00",
-      endTime: "19:00",
+      classTitle: "Vinyasa Yoga",
+      dateTime: "10 Apr 2026 · 18:00 - 19:00",
+      teacher: "Coach Marie",
+      place: "Studio Brussels",
       capacity: 12,
       availableSpots: 4,
-      timezone: "Europe/Brussels",
     },
   } as const;
 
@@ -61,7 +60,9 @@ describe("BookingDraftForm", () => {
             existingPlans: [],
             newPlanOptions: [
               {
+                bookingLabel: "Buy a Plan - Unlimited Yoga (€129.00)",
                 priceId: "price-plan",
+                displayName: "Unlimited Yoga",
                 priceName: "Monthly",
                 productName: "Unlimited Yoga",
                 amountMinor: 12900,
@@ -85,7 +86,7 @@ describe("BookingDraftForm", () => {
       expect(screen.getByLabelText(/select how you want to continue/i)).toBeInTheDocument();
     });
 
-    const option = screen.getByRole("option", { name: "Buy plan - Unlimited Yoga" });
+    const option = screen.getByRole("option", { name: "Buy a Plan - Unlimited Yoga (€129.00)" });
     expect(option).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /Monthly/i })).not.toBeInTheDocument();
   });
@@ -98,7 +99,9 @@ describe("BookingDraftForm", () => {
           JSON.stringify({
             paymentOptions: {
               singleSession: {
+                bookingLabel: "Single Session - Collective Drop-In (€22.00)",
                 priceId: "price-single",
+                displayName: "Collective Drop-In",
                 priceName: "Drop-In Single",
                 amountMinor: 2200,
                 currencyCode: "EUR",
@@ -178,6 +181,8 @@ describe("BookingDraftForm", () => {
               singleSession: null,
               existingPlans: [
                 {
+                  bookingLabel: "Use Existing Plan - 10-Class Pack",
+                  displayName: "10-Class Pack",
                   entitlementId: "ent-1",
                   entitlementType: "CREDIT_PACK",
                   planSource: "CREDITS",
@@ -250,7 +255,9 @@ describe("BookingDraftForm", () => {
           JSON.stringify({
             paymentOptions: {
               singleSession: {
+                bookingLabel: "Single Session - Collective Drop-In (€22.00)",
                 priceId: "price-single",
+                displayName: "Collective Drop-In",
                 priceName: "Drop-In Single",
                 amountMinor: 2200,
                 currencyCode: "EUR",
@@ -292,5 +299,39 @@ describe("BookingDraftForm", () => {
     await waitFor(() => {
       expect(screen.getByText("This session is full.")).toBeInTheDocument();
     });
+  });
+  it("renders booking summary with the shared customer-facing fields", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          paymentOptions: {
+            singleSession: null,
+            existingPlans: [],
+            newPlanOptions: [],
+            ux: {
+              recommended: {
+                mode: "NO_OPTION",
+                priceId: null,
+                entitlementId: null,
+              },
+            },
+          },
+        }),
+    } as Response);
+
+    render(<BookingDraftForm {...baseProps} />);
+
+    expect(screen.getByText("Class")).toBeInTheDocument();
+    expect(screen.getByText("Vinyasa Yoga")).toBeInTheDocument();
+    expect(screen.getByText("Date & Time")).toBeInTheDocument();
+    expect(screen.getByText("10 Apr 2026 · 18:00 - 19:00")).toBeInTheDocument();
+    expect(screen.getByText("Teacher")).toBeInTheDocument();
+    expect(screen.getByText("Coach Marie")).toBeInTheDocument();
+    expect(screen.getByText("Place")).toBeInTheDocument();
+    expect(screen.getByText("Studio Brussels")).toBeInTheDocument();
+    expect(screen.getByText("Spots left")).toBeInTheDocument();
+    expect(screen.queryByText("Timezone")).not.toBeInTheDocument();
+    expect(screen.queryByText("Booking Type")).not.toBeInTheDocument();
   });
 });

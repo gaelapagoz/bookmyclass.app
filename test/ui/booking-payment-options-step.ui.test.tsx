@@ -39,7 +39,9 @@ describe("BookingPaymentOptionsStep", () => {
             bookingId: "booking-1",
             bookingIntent: "SINGLE_BOOKING",
             singleSession: {
+              bookingLabel: "Single Session - Collective Drop-In (€22.00)",
               priceId: "price-single",
+              displayName: "Collective Drop-In",
               priceName: "Drop-In Single",
               amountMinor: 2200,
               currencyCode: "EUR",
@@ -111,6 +113,8 @@ describe("BookingPaymentOptionsStep", () => {
             existingPlans: [
               {
                 entitlementId: "ent-1",
+                bookingLabel: "Use Existing Plan - 10-Class Pack",
+                displayName: "10-Class Pack",
                 productName: "10-Class Pack",
                 remainingCredits: 8,
               },
@@ -175,7 +179,9 @@ describe("BookingPaymentOptionsStep", () => {
           bookingId: "booking-3",
           bookingIntent: "USE_PLAN",
           singleSession: {
+            bookingLabel: "Single Session - Collective Drop-In (€22.00)",
             priceId: "price-single",
+            displayName: "Collective Drop-In",
             priceName: "Drop-In Single",
             amountMinor: 2200,
             currencyCode: "EUR",
@@ -183,7 +189,9 @@ describe("BookingPaymentOptionsStep", () => {
           existingPlans: [],
           newPlanOptions: [
             {
+              bookingLabel: "Buy a Plan - 10-Class Pack (€150.00)",
               priceId: "price-plan",
+              displayName: "10-Class Pack",
               priceName: "10-Class Pack One-Time",
               productName: "10-Class Pack",
               amountMinor: 15000,
@@ -218,8 +226,6 @@ describe("BookingPaymentOptionsStep", () => {
     });
   });
 });
-
-
 
 
 
