@@ -76,6 +76,23 @@ function fromUnixSeconds(value: number | null | undefined, fallback: Date): Date
   return new Date(value * 1000);
 }
 
+function buildCreditLedgerIdempotencyKey(input: {
+  type: "GRANT" | "CONSUME";
+  clientId: string;
+  entitlementId: string;
+  orderId: string | null;
+  bookingId: string | null;
+}): string {
+  return [
+    "stripe-fulfillment",
+    input.type,
+    input.clientId,
+    input.entitlementId,
+    input.orderId ?? "no-order",
+    input.bookingId ?? "no-booking",
+  ].join(":");
+}
+
 async function grantEntitlementForSuccessfulPricePurchase(input: {
   clientId: string;
   orderId: string | null;
@@ -126,59 +143,71 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
       ? new Date(activatedAt.getTime() + rule.validForDays * 24 * 60 * 60 * 1000)
       : null;
 
-  const existingEntitlement = input.orderId
-    ? await prisma.clientEntitlement.findFirst({
+  const entitlement = input.orderId
+    ? await prisma.clientEntitlement.upsert({
         where: {
-          clientId: input.clientId,
-          orderId: input.orderId,
-          productId: price.productId,
+          clientId_productId_orderId: {
+            clientId: input.clientId,
+            productId: price.productId,
+            orderId: input.orderId,
+          },
+        },
+        update: {
           status: ClientEntitlementStatus.ACTIVE,
+          entitlementType: rule.entitlementType,
+          entitlementScope: rule.entitlementScope,
+          activatedAt,
+          expiresAt,
+          notes: "Activated via Stripe checkout finalization.",
+        },
+        create: {
+          clientId: input.clientId,
+          productId: price.productId,
+          orderId: input.orderId,
+          entitlementType: rule.entitlementType,
+          entitlementScope: rule.entitlementScope,
+          status: ClientEntitlementStatus.ACTIVE,
+          activatedAt,
+          expiresAt,
+          notes: "Activated via Stripe checkout finalization.",
         },
         select: { id: true },
       })
-    : null;
-
-  const entitlement =
-    existingEntitlement ??
-    (await prisma.clientEntitlement.create({
-      data: {
-        clientId: input.clientId,
-        productId: price.productId,
-        orderId: input.orderId,
-        entitlementType: rule.entitlementType,
-        entitlementScope: rule.entitlementScope,
-        status: ClientEntitlementStatus.ACTIVE,
-        activatedAt,
-        expiresAt,
-        notes: "Activated via Stripe checkout finalization.",
-      },
-      select: { id: true },
-    }));
+    : await prisma.clientEntitlement.create({
+        data: {
+          clientId: input.clientId,
+          productId: price.productId,
+          orderId: input.orderId,
+          entitlementType: rule.entitlementType,
+          entitlementScope: rule.entitlementScope,
+          status: ClientEntitlementStatus.ACTIVE,
+          activatedAt,
+          expiresAt,
+          notes: "Activated via Stripe checkout finalization.",
+        },
+        select: { id: true },
+      });
 
   if (typeof rule.quantity === "number" && rule.quantity > 0) {
-    const grantExists = await prisma.creditLedgerEntry.findFirst({
-      where: {
+    await prisma.creditLedgerEntry.createMany({
+      data: {
         clientId: input.clientId,
         entitlementId: entitlement.id,
         orderId: input.orderId,
         bookingId: input.bookingId ?? null,
         entryType: CreditLedgerEntryType.GRANT,
-      },
-      select: { id: true },
-    });
-    if (!grantExists) {
-      await prisma.creditLedgerEntry.create({
-        data: {
+        amount: rule.quantity,
+        idempotencyKey: buildCreditLedgerIdempotencyKey({
+          type: "GRANT",
           clientId: input.clientId,
           entitlementId: entitlement.id,
           orderId: input.orderId,
           bookingId: input.bookingId ?? null,
-          entryType: CreditLedgerEntryType.GRANT,
-          amount: rule.quantity,
-          notes: "Credits granted from successful Stripe product purchase.",
-        },
-      });
-    }
+        }),
+        notes: "Credits granted from successful Stripe product purchase.",
+      },
+      skipDuplicates: true,
+    });
   }
 
   if (
@@ -187,28 +216,24 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
     (rule.entitlementType === EntitlementType.CREDIT_PACK ||
       rule.entitlementType === EntitlementType.SINGLE_USE)
   ) {
-    const consumeExists = await prisma.creditLedgerEntry.findFirst({
-      where: {
+    await prisma.creditLedgerEntry.createMany({
+      data: {
         clientId: input.clientId,
         entitlementId: entitlement.id,
         bookingId: input.bookingId,
         entryType: CreditLedgerEntryType.CONSUME,
-      },
-      select: { id: true },
-    });
-
-    if (!consumeExists) {
-      await prisma.creditLedgerEntry.create({
-        data: {
+        amount: -1,
+        idempotencyKey: buildCreditLedgerIdempotencyKey({
+          type: "CONSUME",
           clientId: input.clientId,
           entitlementId: entitlement.id,
+          orderId: input.orderId,
           bookingId: input.bookingId,
-          entryType: CreditLedgerEntryType.CONSUME,
-          amount: -1,
-          notes: "Credit consumed for booking confirmed by Stripe purchase.",
-        },
-      });
-    }
+        }),
+        notes: "Credit consumed for booking confirmed by Stripe purchase.",
+      },
+      skipDuplicates: true,
+    });
   }
 
   if (input.bookingId) {

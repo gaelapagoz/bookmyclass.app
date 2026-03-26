@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { auth } from "@/auth";
 import { CatalogCheckoutError, createCheckoutSessionForCatalogProduct } from "@/lib/public-booking/checkout-service";
-import { getStripeEnv } from "@/lib/payments/stripe";
+import { getStripeServerEnv } from "@/lib/payments/stripe";
 
 const checkoutSchema = z.object({
   productId: z.string().cuid("Invalid productId."),
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid productId." }, { status: 400 });
   }
 
-  const appUrl = getStripeEnv().appUrl;
+  const appUrl = getStripeServerEnv().appUrl;
 
   try {
     const checkoutSession = await createCheckoutSessionForCatalogProduct({

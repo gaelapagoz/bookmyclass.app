@@ -64,4 +64,14 @@ describe("DashboardProfilePage", () => {
     expect(screen.getByRole("button", { name: "Update Password" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send Password Reset Email" })).toBeInTheDocument();
   });
+
+  it("shows explicit reset delivery failure message", async () => {
+    render(
+      await DashboardProfilePage({
+        searchParams: Promise.resolve({ reset_error: "send_failed" }),
+      }),
+    );
+
+    expect(screen.getByText("Could not send password reset email right now.")).toBeInTheDocument();
+  });
 });

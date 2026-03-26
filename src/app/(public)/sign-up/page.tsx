@@ -3,6 +3,7 @@ import { auth, signIn } from "@/auth";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { hashPassword } from "@/lib/auth/password-service";
+import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -36,7 +37,7 @@ export async function registerAction(formData: FormData) {
   const lastName = String(formData.get("lastName") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
-  const callbackUrl = String(formData.get("callbackUrl") ?? "/dashboard");
+  const callbackUrl = getSafeCallbackPath(formData.get("callbackUrl"), "/dashboard");
 
   if (!firstName || !lastName || !email || !password || password.length < 8) {
     if (process.env.NODE_ENV !== "production") {
@@ -166,7 +167,8 @@ export default async function SignUpPage({
   searchParams: SearchParams;
 }) {
   const session = await auth();
-  const { error, callbackUrl = "/dashboard" } = await searchParams;
+  const { error, callbackUrl: rawCallbackUrl = "/dashboard" } = await searchParams;
+  const callbackUrl = getSafeCallbackPath(rawCallbackUrl, "/dashboard");
   if (session?.user) {
     redirect(callbackUrl);
   }

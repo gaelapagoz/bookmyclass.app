@@ -1,9 +1,13 @@
 import Stripe from "stripe";
 
-type RequiredStripeEnv = {
+type StripeServerEnv = {
   appUrl: string;
-  publishableKey: string;
   secretKey: string;
+  webhookSecret?: string;
+};
+
+type StripePublicEnv = {
+  publishableKey: string;
 };
 
 function assertEnv(name: string, value: string | undefined): string {
@@ -14,18 +18,24 @@ function assertEnv(name: string, value: string | undefined): string {
   return value;
 }
 
-export function getStripeEnv(): RequiredStripeEnv {
+export function getStripeServerEnv(): StripeServerEnv {
   return {
     appUrl: assertEnv("appUrl", process.env.APP_URL),
-    publishableKey: assertEnv("publishableKey", process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY),
     secretKey: assertEnv("secretKey", process.env.STRIPE_SECRET_KEY),
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+  };
+}
+
+export function getStripePublicEnv(): StripePublicEnv {
+  return {
+    publishableKey: assertEnv("publishableKey", process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY),
   };
 }
 
 let stripeClient: Stripe | null = null;
 
 export function getStripeClient(): Stripe {
-  const env = getStripeEnv();
+  const env = getStripeServerEnv();
 
   if (!stripeClient) {
     stripeClient = new Stripe(env.secretKey, {
@@ -56,7 +66,7 @@ export function verifyStripeWebhookEvent(params: {
   payload: string;
   signature: string;
 }): Stripe.Event {
-  const webhookSecret = assertEnv("webhookSecret", process.env.STRIPE_WEBHOOK_SECRET);
+  const webhookSecret = assertEnv("webhookSecret", getStripeServerEnv().webhookSecret);
   return getStripeClient().webhooks.constructEvent(
     params.payload,
     params.signature,

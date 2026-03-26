@@ -23,14 +23,28 @@ import {
   getBookingPaymentOptions,
   getMyActivePlans,
 } from "../../src/lib/public-booking/booking-payment-options-service";
+import { getDashboardMembershipData } from "../../src/lib/dashboard/dashboard-service";
 
 const verifyStripeWebhookEventMock = vi.fn();
+const retrieveCheckoutSessionMock = vi.fn();
+const retrieveSubscriptionMock = vi.fn();
 
 vi.mock("../../src/lib/payments/stripe", () => ({
   verifyStripeWebhookEvent: (...args: unknown[]) => verifyStripeWebhookEventMock(...args),
+  getStripeClient: () => ({
+    checkout: {
+      sessions: {
+        retrieve: (...args: unknown[]) => retrieveCheckoutSessionMock(...args),
+      },
+    },
+    subscriptions: {
+      retrieve: (...args: unknown[]) => retrieveSubscriptionMock(...args),
+    },
+  }),
 }));
 
 import { POST as handleStripeWebhook } from "../../src/app/api/stripe/webhook/route";
+import { reconcileCheckoutSessionAfterReturn } from "../../src/lib/public-booking/stripe-webhook-service";
 
 async function createWebhookFixture(input: {
   paymentSelection: BookingPaymentSelection;
@@ -342,9 +356,99 @@ async function createCatalogCheckoutFixture() {
   return { client, product, price, order, payment, booking };
 }
 
+async function createRecurringCatalogCheckoutFixture() {
+  const product = await prisma.product.create({
+    data: {
+      name: "Monthly Unlimited Collective",
+      slug: `monthly-unlimited-${Date.now()}`,
+      productType: ProductType.UNLIMITED_MEMBERSHIP,
+      isActive: true,
+      isArchived: false,
+      sortOrder: 1,
+    },
+  });
+
+  const price = await prisma.price.create({
+    data: {
+      productId: product.id,
+      lookupKey: `monthly-unlimited-price-${Date.now()}`,
+      name: "Monthly Unlimited",
+      priceType: PriceType.RECURRING,
+      currencyCode: "EUR",
+      unitAmountMinor: 12900,
+      billingInterval: "MONTH",
+      billingIntervalCount: 1,
+      stripePriceId: `price_monthly_${Date.now()}`,
+      isActive: true,
+      isArchived: false,
+    },
+  });
+
+  await prisma.entitlementRule.create({
+    data: {
+      productId: product.id,
+      entitlementType: EntitlementType.UNLIMITED_ACCESS,
+      entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+      quantity: null,
+      isActive: true,
+    },
+  });
+
+  const client = await prisma.user.create({
+    data: {
+      name: "Recurring Client",
+      email: `client.recurring.${Date.now()}@example.test`,
+      role: Role.CLIENT,
+    },
+  });
+
+  const order = await prisma.order.create({
+    data: {
+      clientId: client.id,
+      subtotalAmountMinor: price.unitAmountMinor,
+      discountAmountMinor: 0,
+      totalAmountMinor: price.unitAmountMinor,
+      currencyCode: "EUR",
+      status: OrderStatus.PLACED,
+      notes: "Recurring catalog checkout fixture order",
+    },
+  });
+
+  await prisma.orderItem.create({
+    data: {
+      orderId: order.id,
+      productId: product.id,
+      priceId: price.id,
+      quantity: 1,
+      productNameSnapshot: product.name,
+      priceNameSnapshot: price.name,
+      unitAmountMinor: price.unitAmountMinor,
+      lineSubtotalAmountMinor: price.unitAmountMinor,
+      lineDiscountAmountMinor: 0,
+      lineTotalAmountMinor: price.unitAmountMinor,
+      currencyCode: "EUR",
+    },
+  });
+
+  const payment = await prisma.payment.create({
+    data: {
+      orderId: order.id,
+      status: PaymentStatus.PENDING,
+      method: PaymentMethod.CARD,
+      provider: PaymentProvider.STRIPE,
+      providerReference: `cs_recurring_${Date.now()}`,
+      amountMinor: price.unitAmountMinor,
+      currencyCode: "EUR",
+    },
+  });
+
+  return { client, product, price, order, payment };
+}
 describe("POST /api/stripe/webhook", () => {
   beforeEach(async () => {
     verifyStripeWebhookEventMock.mockReset();
+    retrieveCheckoutSessionMock.mockReset();
+    retrieveSubscriptionMock.mockReset();
     await resetDb();
   });
 
@@ -886,6 +990,253 @@ describe("POST /api/stripe/webhook", () => {
     expect((bookingBalance._sum.amount ?? 0) > 0).toBe(true);
   });
 
+  it("reflects fulfilled class-pack purchase in dashboard active packs and credits", async () => {
+    const fixture = await createCatalogCheckoutFixture();
+
+    const beforeFulfillment = await getDashboardMembershipData(fixture.client.id);
+    expect(beforeFulfillment.ownedOneTimeProducts).toHaveLength(0);
+    expect(beforeFulfillment.activeCreditPacks).toHaveLength(0);
+    expect(beforeFulfillment.usableCredits).toBe(0);
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: fixture.payment.providerReference,
+          payment_status: "paid",
+          metadata: {
+            paymentId: fixture.payment.id,
+            orderId: fixture.order.id,
+            userId: fixture.client.id,
+            productId: fixture.product.id,
+            priceId: fixture.price.id,
+            selectedPriceId: fixture.price.id,
+            source: "subscription-catalog",
+          },
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const membership = await getDashboardMembershipData(fixture.client.id);
+
+    expect(membership.usableCredits).toBe(10);
+    expect(membership.activeCreditPacks).toHaveLength(1);
+    expect(membership.activeCreditPacks[0]?.productName).toBe(fixture.product.name);
+    expect(membership.ownedOneTimeProducts).toHaveLength(1);
+  });
+
+  it("reflects fulfilled recurring subscription purchase in dashboard subscription state", async () => {
+    const fixture = await createRecurringCatalogCheckoutFixture();
+
+    retrieveSubscriptionMock.mockResolvedValue({
+      id: "sub_dashboard_test",
+      status: "active",
+      start_date: Math.floor(Date.now() / 1000) - 60,
+      cancel_at_period_end: false,
+      canceled_at: null,
+      ended_at: null,
+      items: {
+        data: [
+          {
+            current_period_start: Math.floor(Date.now() / 1000) - 60,
+            current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+            price: { id: fixture.price.stripePriceId },
+          },
+        ],
+      },
+    });
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: fixture.payment.providerReference,
+          payment_status: "paid",
+          mode: "subscription",
+          subscription: "sub_dashboard_test",
+          metadata: {
+            paymentId: fixture.payment.id,
+            orderId: fixture.order.id,
+            userId: fixture.client.id,
+            productId: fixture.product.id,
+            priceId: fixture.price.id,
+            selectedPriceId: fixture.price.id,
+            source: "subscription-catalog",
+          },
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const membership = await getDashboardMembershipData(fixture.client.id);
+
+    expect(membership.activeSubscription?.productName).toBe(fixture.product.name);
+    expect(
+      membership.recurringSubscriptions.some((subscription) => subscription.productId === fixture.product.id),
+    ).toBe(true);
+    expect(membership.usableCredits).toBe(0);
+    expect(membership.activeCreditPacks).toHaveLength(0);
+  });
+  it("handles concurrent duplicate checkout completion deliveries without duplicate grants", async () => {
+    const fixture = await createWebhookFixture({
+      paymentSelection: BookingPaymentSelection.NEW_PLAN_PURCHASE,
+    });
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: fixture.payment.providerReference,
+          payment_status: "paid",
+          metadata: {
+            paymentId: fixture.payment.id,
+            bookingId: fixture.booking.id,
+            selectedPriceId: fixture.price.id,
+            orderId: fixture.order.id,
+          },
+        },
+      },
+    });
+
+    await Promise.all(
+      Array.from({ length: 8 }).map(() =>
+        handleStripeWebhook(
+          new Request("http://localhost/api/stripe/webhook", {
+            method: "POST",
+            headers: { "stripe-signature": "sig_test" },
+            body: "{}",
+          }),
+        ),
+      ),
+    );
+
+    const entitlements = await prisma.clientEntitlement.findMany({
+      where: {
+        clientId: fixture.client.id,
+        productId: fixture.product.id,
+        orderId: fixture.order.id,
+        status: ClientEntitlementStatus.ACTIVE,
+      },
+    });
+    expect(entitlements).toHaveLength(1);
+
+    const entries = await prisma.creditLedgerEntry.findMany({
+      where: {
+        clientId: fixture.client.id,
+        entitlementId: entitlements[0]?.id,
+      },
+    });
+    expect(entries.filter((entry) => entry.entryType === CreditLedgerEntryType.GRANT)).toHaveLength(1);
+    expect(entries.filter((entry) => entry.entryType === CreditLedgerEntryType.CONSUME)).toHaveLength(1);
+  });
+
+  it("rejects invalid stripe signature with no DB mutation", async () => {
+    const fixture = await createWebhookFixture({
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+    });
+
+    verifyStripeWebhookEventMock.mockImplementation(() => {
+      throw new Error("invalid signature");
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "bad_sig" },
+        body: "{}",
+      }),
+    );
+
+    expect(response.status).toBe(400);
+
+    const payment = await prisma.payment.findUnique({ where: { id: fixture.payment.id } });
+    const booking = await prisma.booking.findUnique({ where: { id: fixture.booking.id } });
+    const order = await prisma.order.findUnique({ where: { id: fixture.order.id } });
+
+    expect(payment?.status).toBe(PaymentStatus.PENDING);
+    expect(booking?.status).toBe(BookingStatus.PENDING);
+    expect(order?.status).toBe(OrderStatus.PLACED);
+  });
+
+  it("does not duplicate fulfillment when recovery runs after a successful webhook", async () => {
+    const fixture = await createWebhookFixture({
+      paymentSelection: BookingPaymentSelection.NEW_PLAN_PURCHASE,
+    });
+
+    const checkoutSession = {
+      id: fixture.payment.providerReference,
+      payment_status: "paid",
+      mode: "payment",
+      payment_intent: "pi_reconcile_success",
+      customer: "cus_reconcile_success",
+      metadata: {
+        paymentId: fixture.payment.id,
+        bookingId: fixture.booking.id,
+        selectedPriceId: fixture.price.id,
+        orderId: fixture.order.id,
+      },
+    };
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.completed",
+      data: { object: checkoutSession },
+    });
+
+    const webhookResponse = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(webhookResponse.status).toBe(200);
+
+    retrieveCheckoutSessionMock.mockResolvedValue(checkoutSession);
+    await reconcileCheckoutSessionAfterReturn({
+      checkoutSessionId: fixture.payment.providerReference,
+      bookingId: fixture.booking.id,
+      userId: fixture.client.id,
+    });
+
+    const entitlements = await prisma.clientEntitlement.findMany({
+      where: {
+        clientId: fixture.client.id,
+        productId: fixture.product.id,
+        orderId: fixture.order.id,
+        status: ClientEntitlementStatus.ACTIVE,
+      },
+    });
+    expect(entitlements).toHaveLength(1);
+
+    const entries = await prisma.creditLedgerEntry.findMany({
+      where: {
+        clientId: fixture.client.id,
+        entitlementId: entitlements[0]?.id,
+      },
+    });
+    expect(entries.filter((entry) => entry.entryType === CreditLedgerEntryType.GRANT)).toHaveLength(1);
+    expect(entries.filter((entry) => entry.entryType === CreditLedgerEntryType.CONSUME)).toHaveLength(1);
+  });
+
   it("keeps catalog finalization idempotent when checkout completion is replayed", async () => {
     const fixture = await createCatalogCheckoutFixture();
 
@@ -960,5 +1311,13 @@ describe("POST /api/stripe/webhook", () => {
   });
 
 });
+
+
+
+
+
+
+
+
 
 

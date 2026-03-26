@@ -14,8 +14,11 @@ if (!databaseUrl) {
 const adapter = new PrismaPg({ connectionString: databaseUrl });
 
 function hasRequiredDelegates(client: PrismaClient): boolean {
-  const runtimeClient = client as unknown as { passwordResetToken?: unknown };
-  return Boolean(runtimeClient.passwordResetToken);
+  const runtimeClient = client as unknown as {
+    passwordResetToken?: unknown;
+    passwordResetRateLimit?: unknown;
+  };
+  return Boolean(runtimeClient.passwordResetToken && runtimeClient.passwordResetRateLimit);
 }
 
 function createPrismaClient(): PrismaClient {

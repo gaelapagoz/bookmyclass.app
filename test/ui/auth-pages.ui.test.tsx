@@ -45,6 +45,8 @@ vi.mock("next/navigation", async () => {
 import SignInPage from "../../src/app/(public)/sign-in/page";
 import SignUpPage from "../../src/app/(public)/sign-up/page";
 import ForgotPasswordPage from "../../src/app/(public)/forgot-password/page";
+import { auth } from "../../src/auth";
+import { redirect } from "next/navigation";
 
 describe("Auth pages UI", () => {
   it("renders sign-up page", async () => {
@@ -84,5 +86,21 @@ describe("Auth pages UI", () => {
     expect(
       screen.getByText("Account created, but automatic sign-in failed. Please sign in manually."),
     ).toBeInTheDocument();
+  });
+  it("sign-up page sanitizes external callbackUrl for authenticated users", async () => {
+    vi.mocked(auth).mockResolvedValueOnce({
+      user: {
+        id: "user_1",
+        email: "client@example.com",
+        name: "Client",
+      },
+      expires: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    await SignUpPage({
+      searchParams: Promise.resolve({ callbackUrl: "https://evil.example/path" }),
+    });
+
+    expect(redirect).toHaveBeenCalledWith("/dashboard");
   });
 });

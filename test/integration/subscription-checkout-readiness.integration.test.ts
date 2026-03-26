@@ -6,6 +6,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const createStripeCheckoutSessionMock = vi.fn();
 
 vi.mock("../../src/lib/payments/stripe", () => ({
+  getStripeServerEnv: () => ({
+    appUrl: "http://localhost:3000",
+    secretKey: "sk_test_123",
+    webhookSecret: "whsec_123",
+  }),
+  getStripePublicEnv: () => ({
+    publishableKey: "pk_test_123",
+  }),
   getStripeEnv: () => ({
     appUrl: "http://localhost:3000",
     publishableKey: "pk_test_123",
@@ -140,3 +148,4 @@ describe("subscription catalog readiness and checkout", () => {
     ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
   });
 });
+

@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { requestPasswordReset } from "@/lib/auth/password-service";
+import { PasswordServiceError, requestPasswordReset } from "@/lib/auth/password-service";
 
 type SearchParams = Promise<{
   sent?: string;
+  error?: string;
 }>;
 
 export default async function ForgotPasswordPage({
@@ -19,6 +20,8 @@ export default async function ForgotPasswordPage({
 
   const params = await searchParams;
   const sent = params.sent === "1";
+  const deliveryFailed = params.error === "delivery_failed";
+  const requestFailed = params.error === "request_failed";
 
   async function requestResetAction(formData: FormData) {
     "use server";
@@ -40,6 +43,10 @@ export default async function ForgotPasswordPage({
       });
     } catch (error) {
       console.error("[forgot-password] request failed", { error });
+      if (error instanceof PasswordServiceError && error.code === "PASSWORD_RESET_DELIVERY_FAILED") {
+        redirect("/forgot-password?error=delivery_failed");
+      }
+      redirect("/forgot-password?error=request_failed");
     }
 
     redirect("/forgot-password?sent=1");
@@ -55,6 +62,16 @@ export default async function ForgotPasswordPage({
       {sent ? (
         <p className="mt-4 text-sm text-[#2f6b35]">
           If an account exists for that email, a reset link has been sent.
+        </p>
+      ) : null}
+      {deliveryFailed ? (
+        <p className="mt-4 text-sm text-[#7b2d2d]">
+          We could not send reset email right now. Please try again in a few minutes.
+        </p>
+      ) : null}
+      {requestFailed ? (
+        <p className="mt-4 text-sm text-[#7b2d2d]">
+          Password reset is temporarily unavailable. Please try again shortly.
         </p>
       ) : null}
 

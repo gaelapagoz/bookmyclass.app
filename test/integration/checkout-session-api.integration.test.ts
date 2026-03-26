@@ -24,6 +24,14 @@ vi.mock("../../src/auth", () => ({
 }));
 
 vi.mock("../../src/lib/payments/stripe", () => ({
+  getStripeServerEnv: () => ({
+    appUrl: "http://localhost:3000",
+    secretKey: "sk_test_123",
+    webhookSecret: "whsec_123",
+  }),
+  getStripePublicEnv: () => ({
+    publishableKey: "pk_test_123",
+  }),
   getStripeEnv: () => ({
     appUrl: "http://localhost:3000",
     publishableKey: "pk_test_123",
@@ -352,4 +360,9 @@ describe("POST /api/checkout/session", () => {
     expect(paymentCount).toBe(0);
   });
 });
+
+
+
+
+
 

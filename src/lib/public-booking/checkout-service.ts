@@ -8,7 +8,7 @@ import {
   PriceType,
 } from "@prisma/client";
 import { prisma } from "../db";
-import { createStripeCheckoutSession, getStripeEnv } from "../payments/stripe";
+import { createStripeCheckoutSession, getStripeServerEnv } from "../payments/stripe";
 import { getSubscriptionCheckoutItemByProductId } from "../subscription/subscription-products";
 import { hasActiveRecurringSubscriptionForProduct } from "../subscription/ownership";
 
@@ -235,7 +235,7 @@ export async function createCheckoutSessionForBooking(input: {
     }
   }
 
-  const env = getStripeEnv();
+  const env = getStripeServerEnv();
   const serviceLabel = booking.studioSession.classType.name;
   const orderAndPayment = await prisma.$transaction(async (tx) => {
     const readyBooking = readyCheckout.booking;
@@ -445,7 +445,7 @@ export async function createCheckoutSessionForCatalogProduct(input: {
     }
   }
 
-  const env = getStripeEnv();
+  const env = getStripeServerEnv();
   if (!successUrl.startsWith(env.appUrl) || !cancelUrl.startsWith(env.appUrl)) {
     throw new CatalogCheckoutError("CHECKOUT_NOT_CONFIGURED", "Invalid checkout redirect configuration.");
   }

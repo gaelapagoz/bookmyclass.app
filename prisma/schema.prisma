@@ -690,6 +690,7 @@ model ClientEntitlement {
   @@index([productId, status])
   @@index([orderId])
   @@index([subscriptionContractId])
+  @@unique([clientId, productId, orderId])
 }
 
 model CreditLedgerEntry {
@@ -702,6 +703,7 @@ model CreditLedgerEntry {
   bookingId     String?
   orderId       String?
   createdById   String?
+  idempotencyKey String?              @unique
   notes         String?
   client        User                  @relation("UserCreditLedger", fields: [clientId], references: [id], onDelete: Restrict)
   entitlement   ClientEntitlement?    @relation(fields: [entitlementId], references: [id], onDelete: SetNull)
@@ -845,5 +847,15 @@ model PasswordResetToken {
 
   @@index([userId, createdAt])
   @@index([userId, expiresAt, usedAt])
+}
+
+model PasswordResetRateLimit {
+  id              String   @id @default(cuid())
+  emailHash       String   @unique
+  lastRequestedAt DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([lastRequestedAt])
 }
 

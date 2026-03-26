@@ -30,9 +30,7 @@ export async function getOwnedOneTimeProducts(userId: string): Promise<OwnedOneT
     where: {
       order: {
         clientId: userId,
-        status: {
-          in: [OrderStatus.PAID, OrderStatus.PLACED],
-        },
+        status: OrderStatus.PAID,
       },
       price: {
         priceType: PriceType.ONE_TIME,

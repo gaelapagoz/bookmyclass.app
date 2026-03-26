@@ -1,7 +1,7 @@
 import {
   createStripeBillingPortalSession,
   createStripeCheckoutSession,
-  getStripeEnv,
+  getStripeServerEnv,
 } from "@/lib/payments/stripe";
 import type Stripe from "stripe";
 
@@ -42,7 +42,7 @@ export async function createSubscriptionCheckoutSession(input: {
 }
 
 export function getAppUrlFromStripeEnv(): string {
-  return getStripeEnv().appUrl;
+  return getStripeServerEnv().appUrl;
 }
 
 export async function createSubscriptionBillingPortalSession(input: {

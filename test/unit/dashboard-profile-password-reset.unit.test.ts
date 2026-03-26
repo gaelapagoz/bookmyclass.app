@@ -25,7 +25,7 @@ describe("requestDashboardPasswordResetByUserId", () => {
       email: "client@example.test",
       phone: "",
     });
-    vi.mocked(requestPasswordReset).mockResolvedValue({ accepted: true });
+    vi.mocked(requestPasswordReset).mockResolvedValue({ outcome: "SENT" });
 
     await requestDashboardPasswordResetByUserId({
       userId: "client-1",
@@ -38,4 +38,40 @@ describe("requestDashboardPasswordResetByUserId", () => {
       appUrl: "http://localhost:3000",
     });
   });
+
+  it("throws when reset delivery fails so dashboard action can show explicit failure", async () => {
+    vi.mocked(getDashboardProfileData).mockResolvedValue({
+      firstName: "Client",
+      lastName: "User",
+      fullName: "Client User",
+      email: "client@example.test",
+      phone: "",
+    });
+    vi.mocked(requestPasswordReset).mockRejectedValue(new Error("delivery failed"));
+
+    await expect(
+      requestDashboardPasswordResetByUserId({
+        userId: "client-1",
+        appUrl: "http://localhost:3000",
+      }),
+    ).rejects.toThrow("delivery failed");
+  });
+  it("passes through shared SKIPPED outcome without throwing", async () => {
+    vi.mocked(getDashboardProfileData).mockResolvedValue({
+      firstName: "Client",
+      lastName: "User",
+      fullName: "Client User",
+      email: "client@example.test",
+      phone: "",
+    });
+    vi.mocked(requestPasswordReset).mockResolvedValue({ outcome: "SKIPPED" });
+
+    await expect(
+      requestDashboardPasswordResetByUserId({
+        userId: "client-1",
+        appUrl: "http://localhost:3000",
+      }),
+    ).resolves.toBeUndefined();
+  });
 });
+

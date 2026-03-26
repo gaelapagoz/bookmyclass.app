@@ -36,7 +36,7 @@ async function createClientUser(email: string, password: string) {
 describe("password-service integration", () => {
   beforeEach(async () => {
     await resetDb();
-    clearPasswordResetRateLimitForTests();
+    await clearPasswordResetRateLimitForTests();
   });
 
   it("change password succeeds with correct current password", async () => {
@@ -145,7 +145,7 @@ describe("password-service integration", () => {
       sendResetEmail,
     });
 
-    expect(result).toEqual({ accepted: true });
+    expect(result).toEqual({ outcome: "SENT" });
     expect(sendResetEmail).toHaveBeenCalledTimes(1);
 
     const activeTokenCount = await prisma.passwordResetToken.count({
@@ -166,8 +166,81 @@ describe("password-service integration", () => {
       sendResetEmail,
     });
 
-    expect(result).toEqual({ accepted: true });
+    expect(result).toEqual({ outcome: "SKIPPED" });
     expect(sendResetEmail).not.toHaveBeenCalled();
+  });
+
+  it("forgot password repeated requests are blocked within the limiter window", async () => {
+    const user = await createClientUser(`forgot.limit.${Date.now()}@example.test`, "Password123!");
+    const sendResetEmail = vi.fn(async () => undefined);
+    const now = new Date();
+
+    const first = await requestPasswordReset({
+      email: user.email,
+      appUrl: "http://localhost:3000",
+      now,
+      sendResetEmail,
+    });
+
+    const second = await requestPasswordReset({
+      email: user.email,
+      appUrl: "http://localhost:3000",
+      now: new Date(now.getTime() + 10 * 1000),
+      sendResetEmail,
+    });
+
+    expect(first).toEqual({ outcome: "SENT" });
+    expect(second).toEqual({ outcome: "SKIPPED" });
+    expect(sendResetEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("forgot password limiter persists across service invocations", async () => {
+    const user = await createClientUser(`forgot.persist.${Date.now()}@example.test`, "Password123!");
+    const sendResetEmail = vi.fn(async () => undefined);
+    const firstNow = new Date();
+
+    await requestPasswordReset({
+      email: user.email,
+      appUrl: "http://localhost:3000",
+      now: firstNow,
+      sendResetEmail,
+    });
+
+    const second = await requestPasswordReset({
+      email: user.email,
+      appUrl: "http://localhost:3000",
+      now: new Date(firstNow.getTime() + 10 * 1000),
+      sendResetEmail,
+    });
+
+    const third = await requestPasswordReset({
+      email: user.email,
+      appUrl: "http://localhost:3000",
+      now: new Date(firstNow.getTime() + 70 * 1000),
+      sendResetEmail,
+    });
+
+    expect(second).toEqual({ outcome: "SKIPPED" });
+    expect(third).toEqual({ outcome: "SENT" });
+    expect(sendResetEmail).toHaveBeenCalledTimes(2);
+  });
+  it("forgot password with known email throws when provider delivery fails", async () => {
+    const user = await createClientUser(`forgot.fail.${Date.now()}@example.test`, "Password123!");
+    const sendResetEmail = vi.fn(async () => {
+      throw new Error("provider unavailable");
+    });
+
+    await expect(
+      requestPasswordReset({
+        email: user.email,
+        appUrl: "http://localhost:3000",
+        sendResetEmail,
+      }),
+    ).rejects.toMatchObject<Partial<PasswordServiceError>>({
+      code: "PASSWORD_RESET_DELIVERY_FAILED",
+    });
+
+    expect(sendResetEmail).toHaveBeenCalledTimes(1);
   });
 
   it("reset with valid token succeeds", async () => {
@@ -268,7 +341,7 @@ describe("password-service integration", () => {
       },
     });
 
-    clearPasswordResetRateLimitForTests();
+    await clearPasswordResetRateLimitForTests();
 
     await requestPasswordReset({
       email: user.email,
@@ -297,5 +370,11 @@ describe("password-service integration", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+
+
+
+
+
 
 

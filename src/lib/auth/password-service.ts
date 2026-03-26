@@ -6,14 +6,13 @@ const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 const PASSWORD_RESET_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
-const forgotPasswordRateLimit = new Map<string, number>();
-
 export type PasswordServiceErrorCode =
   | "INVALID_PASSWORD"
   | "PASSWORD_MISMATCH"
   | "INVALID_CURRENT_PASSWORD"
   | "PASSWORD_NOT_SET"
-  | "TOKEN_INVALID_OR_EXPIRED";
+  | "TOKEN_INVALID_OR_EXPIRED"
+  | "PASSWORD_RESET_DELIVERY_FAILED";
 
 export class PasswordServiceError extends Error {
   constructor(
@@ -94,6 +93,12 @@ function hashResetToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+function hashPasswordResetRateLimitKey(email: string): string {
+  return createHash("sha256")
+    .update(`password-reset-rate-limit:${email}`)
+    .digest("hex");
+}
+
 function getPasswordResetTokenDelegateOrThrow() {
   const delegate = (prisma as unknown as { passwordResetToken?: unknown }).passwordResetToken;
   if (!delegate) {
@@ -105,6 +110,20 @@ function getPasswordResetTokenDelegateOrThrow() {
     updateMany: typeof prisma.passwordResetToken.updateMany;
     create: typeof prisma.passwordResetToken.create;
     findUnique: typeof prisma.passwordResetToken.findUnique;
+  };
+}
+
+function getPasswordResetRateLimitDelegateOrThrow() {
+  const delegate = (prisma as unknown as { passwordResetRateLimit?: unknown }).passwordResetRateLimit;
+  if (!delegate) {
+    throw new Error(
+      "PasswordResetRateLimit Prisma delegate is unavailable. Run `npx prisma generate`, apply migrations, and restart the Next.js server.",
+    );
+  }
+  return delegate as {
+    findUnique: typeof prisma.passwordResetRateLimit.findUnique;
+    upsert: typeof prisma.passwordResetRateLimit.upsert;
+    deleteMany: typeof prisma.passwordResetRateLimit.deleteMany;
   };
 }
 
@@ -196,18 +215,39 @@ async function sendPasswordResetEmailViaResend(
   }
 }
 
-function shouldRateLimitForgotPasswordRequest(email: string, nowMs: number): boolean {
-  const lastAttemptAt = forgotPasswordRateLimit.get(email);
-  if (lastAttemptAt && nowMs - lastAttemptAt < PASSWORD_RESET_RATE_LIMIT_WINDOW_MS) {
-    return true;
-  }
+async function shouldRateLimitForgotPasswordRequest(email: string, now: Date): Promise<boolean> {
+  getPasswordResetRateLimitDelegateOrThrow();
+  const emailHash = hashPasswordResetRateLimitKey(email);
 
-  forgotPasswordRateLimit.set(email, nowMs);
-  return false;
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.passwordResetRateLimit.findUnique({
+      where: { emailHash },
+      select: { lastRequestedAt: true },
+    });
+
+    if (
+      existing &&
+      now.getTime() - existing.lastRequestedAt.getTime() < PASSWORD_RESET_RATE_LIMIT_WINDOW_MS
+    ) {
+      return true;
+    }
+
+    await tx.passwordResetRateLimit.upsert({
+      where: { emailHash },
+      update: { lastRequestedAt: now },
+      create: {
+        emailHash,
+        lastRequestedAt: now,
+      },
+    });
+
+    return false;
+  });
 }
 
-export function clearPasswordResetRateLimitForTests(): void {
-  forgotPasswordRateLimit.clear();
+export async function clearPasswordResetRateLimitForTests(): Promise<void> {
+  const passwordResetRateLimit = getPasswordResetRateLimitDelegateOrThrow();
+  await passwordResetRateLimit.deleteMany();
 }
 
 export async function hashPassword(plainTextPassword: string): Promise<string> {
@@ -301,7 +341,7 @@ export async function requestPasswordReset(input: {
   appUrl?: string;
   now?: Date;
   sendResetEmail?: (payload: PasswordResetEmailPayload) => Promise<ResendSendResult | void>;
-}): Promise<{ accepted: true }> {
+}): Promise<{ outcome: "SKIPPED" | "SENT" }> {
   const passwordResetToken = getPasswordResetTokenDelegateOrThrow();
   logPasswordResetDebug("request-entered");
   const now = input.now ?? new Date();
@@ -310,13 +350,13 @@ export async function requestPasswordReset(input: {
     hasEmail: Boolean(normalizedEmail),
   });
   if (!normalizedEmail) {
-    return { accepted: true };
+    return { outcome: "SKIPPED" };
   }
 
-  const isRateLimited = shouldRateLimitForgotPasswordRequest(normalizedEmail, now.getTime());
+  const isRateLimited = await shouldRateLimitForgotPasswordRequest(normalizedEmail, now);
   logPasswordResetDebug("rate-limit-check", { blocked: isRateLimited });
   if (isRateLimited) {
-    return { accepted: true };
+    return { outcome: "SKIPPED" };
   }
 
   const user = await prisma.user.findFirst({
@@ -335,7 +375,7 @@ export async function requestPasswordReset(input: {
   logPasswordResetDebug("user-lookup", { userFound: Boolean(user) });
 
   if (!user) {
-    return { accepted: true };
+    return { outcome: "SKIPPED" };
   }
 
   const resetToken = randomBytes(32).toString("hex");
@@ -402,9 +442,13 @@ export async function requestPasswordReset(input: {
           ? JSON.stringify(error, Object.getOwnPropertyNames(error))
           : String(error),
     });
+    throw new PasswordServiceError(
+      "PASSWORD_RESET_DELIVERY_FAILED",
+      "Password reset email delivery failed.",
+    );
   }
 
-  return { accepted: true };
+  return { outcome: "SENT" };
 }
 
 export async function resetPasswordWithToken(input: {
