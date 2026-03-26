@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   cancelClientBooking,
   DashboardServiceError,
+  getDashboardBookingsData,
   getDashboardHomeData,
   getDashboardMembershipData,
   updateDashboardProfile,
@@ -25,7 +26,12 @@ import { prisma } from "./helpers/db";
 import { createClassCategory, createClassType } from "./helpers/factories";
 import { resetDb } from "./helpers/reset-db";
 
-async function createSessionFixture(clientId: string) {
+async function createSessionFixture(
+  clientId: string,
+  options?: {
+    startsInHours?: number;
+  },
+) {
   const category = await createClassCategory(prisma, {
     name: "Yoga",
     slug: `yoga-${Date.now()}`,
@@ -61,9 +67,8 @@ async function createSessionFixture(clientId: string) {
     },
   });
 
-  const startsAt = new Date();
-  startsAt.setUTCDate(startsAt.getUTCDate() + 3);
-  startsAt.setUTCHours(18, 0, 0, 0);
+  const startsInHours = options?.startsInHours ?? 72;
+  const startsAt = new Date(Date.now() + startsInHours * 60 * 60 * 1000);
 
   const studioSession = await prisma.studioSession.create({
     data: {
@@ -119,7 +124,6 @@ async function createSessionFixture(clientId: string) {
       status: BookingStatus.CONFIRMED,
       selectedEntitlementId: entitlement.id,
       bookedAt: new Date(),
-      cancellationEligibleUntilAt: new Date(startsAt.getTime() - 24 * 60 * 60 * 1000),
       customerName: "Client",
       customerEmail: "client@example.test",
       customerPhone: "+32000000000",
@@ -191,13 +195,7 @@ describe("dashboard-service integration", () => {
       },
     });
 
-    const { booking } = await createSessionFixture(client.id);
-    await prisma.booking.update({
-      where: { id: booking.id },
-      data: {
-        cancellationEligibleUntilAt: new Date(Date.now() - 60 * 1000),
-      },
-    });
+    const { booking } = await createSessionFixture(client.id, { startsInHours: 2 });
 
     await expect(
       cancelClientBooking({ bookingId: booking.id, clientId: client.id }),
@@ -206,6 +204,65 @@ describe("dashboard-service integration", () => {
     });
   });
 
+
+  it("marks booking as cancellable when start is more than 24 hours away", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Eligible Client",
+        firstName: "Eligible",
+        lastName: "Client",
+        email: `eligible.client.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await createSessionFixture(client.id, { startsInHours: 26 });
+    const bookings = await getDashboardBookingsData(client.id);
+
+    expect(bookings.upcoming).toHaveLength(1);
+    expect(bookings.upcoming[0]?.canCancel).toBe(true);
+    expect(bookings.upcoming[0]?.cancellationBlockedReason).toBeNull();
+  });
+
+  it("marks booking as not cancellable when start is within 24 hours", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Window Client",
+        firstName: "Window",
+        lastName: "Client",
+        email: `window.client.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await createSessionFixture(client.id, { startsInHours: 6 });
+    const bookings = await getDashboardBookingsData(client.id);
+
+    expect(bookings.upcoming).toHaveLength(1);
+    expect(bookings.upcoming[0]?.canCancel).toBe(false);
+    expect(bookings.upcoming[0]?.cancellationBlockedReason).toMatch(/less than 24 hour/i);
+  });
+
+  it("falls back to 24-hour cancellation window when config row is missing", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Fallback Client",
+        firstName: "Fallback",
+        lastName: "Client",
+        email: `fallback.client.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await prisma.bookingPolicy.deleteMany({ where: { scope: "GLOBAL" } });
+    await createSessionFixture(client.id, { startsInHours: 23 });
+
+    const bookings = await getDashboardBookingsData(client.id);
+
+    expect(bookings.upcoming).toHaveLength(1);
+    expect(bookings.upcoming[0]?.canCancel).toBe(false);
+    expect(bookings.upcoming[0]?.cancellationBlockedReason).toMatch(/less than 24 hour/i);
+  });
   it("updates profile and blocks duplicate email", async () => {
     const userOne = await prisma.user.create({
       data: {
@@ -342,5 +399,11 @@ describe("dashboard-service integration", () => {
     expect(subscriptionPlan?.status).toBe(SubscriptionStatus.ACTIVE);
   });
 });
+
+
+
+
+
+
 
 

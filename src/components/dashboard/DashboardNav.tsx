@@ -5,10 +5,9 @@ import { usePathname } from "next/navigation";
 
 const links = [
   { href: "/dashboard", label: "Overview" },
-  { href: "/dashboard/profile", label: "My Profile" },
   { href: "/dashboard/bookings", label: "My Bookings" },
-  { href: "/dashboard/membership", label: "Membership / Plans" },
-  { href: "/dashboard/loyalty", label: "Loyalty" },
+  { href: "/dashboard/membership", label: "My Memberships / Plans" },
+  { href: "/dashboard/profile", label: "My Profile" },
 ] as const;
 
 function isActive(pathname: string, href: string) {

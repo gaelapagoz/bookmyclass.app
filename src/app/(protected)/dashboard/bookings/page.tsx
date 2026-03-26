@@ -41,7 +41,7 @@ function renderBookingCard(booking: DashboardBookingItem, showCancel: boolean) {
           </button>
           {!booking.canCancel ? (
             <p className="mt-1 text-xs text-[#8a5959]">
-              Cancellation unavailable (past cutoff, already cancelled, or session not active).
+              {booking.cancellationBlockedReason ?? "This booking cannot be cancelled."}
             </p>
           ) : null}
         </form>
@@ -93,7 +93,10 @@ function getMessage(params: { cancelled?: string; error?: string }) {
   }
 
   if (params.error === "too_late") {
-    return { type: "error" as const, text: "You can no longer cancel this booking within 24 hours." };
+    return {
+      type: "error" as const,
+      text: "You can no longer cancel this booking because the cancellation window has passed.",
+    };
   }
 
   if (params.error === "not_cancellable") {

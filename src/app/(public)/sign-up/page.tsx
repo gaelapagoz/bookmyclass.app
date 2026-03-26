@@ -2,7 +2,7 @@ import { AuthError } from "next-auth";
 import { auth, signIn } from "@/auth";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import { hash } from "bcryptjs";
+import { hashPassword } from "@/lib/auth/password-service";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -67,7 +67,7 @@ export async function registerAction(formData: FormData) {
     redirect(`/sign-up?error=email_exists&callbackUrl=${encodeURIComponent(callbackUrl)}`);
   }
 
-  const passwordHash = await hash(password, 12);
+  const passwordHash = await hashPassword(password);
   const baseData = {
     name: parseName(firstName, lastName),
     email,
@@ -242,3 +242,4 @@ export default async function SignUpPage({
     </main>
   );
 }
+

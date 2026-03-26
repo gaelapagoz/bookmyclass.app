@@ -18,7 +18,7 @@ export default async function DashboardPage() {
       <h1 className="text-3xl font-semibold text-[#6f2b2b]">Client Dashboard</h1>
       <p className="mt-2 text-sm text-[#7f5a5a]">Welcome back, {data.userName}.</p>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <article className="rounded-xl border border-[#d8cec6] bg-white p-4">
           <p className="text-xs uppercase tracking-wide text-[#8a5959]">Upcoming Booking</p>
           {data.nextUpcomingBooking ? (
@@ -52,11 +52,6 @@ export default async function DashboardPage() {
           <p className="mt-2 text-2xl font-semibold text-[#6f2b2b]">{data.creditsLeft}</p>
         </article>
 
-        <article className="rounded-xl border border-[#d8cec6] bg-white p-4">
-          <p className="text-xs uppercase tracking-wide text-[#8a5959]">Loyalty Points</p>
-          <p className="mt-2 text-2xl font-semibold text-[#6f2b2b]">{data.loyaltyPointsPlaceholder}</p>
-          <p className="mt-1 text-xs text-[#7f5a5a]">Placeholder for upcoming loyalty features.</p>
-        </article>
       </div>
 
       <section className="rounded-xl border border-[#d8cec6] bg-white p-4">

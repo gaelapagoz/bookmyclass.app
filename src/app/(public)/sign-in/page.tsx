@@ -101,6 +101,15 @@ export default async function SignInPage({
         </button>
       </form>
 
+      <p className="mt-3 text-sm text-[#7f5a5a]">
+        <Link
+          href="/forgot-password"
+          className="font-medium text-[#7b2d2d] underline underline-offset-4"
+        >
+          Forgot password?
+        </Link>
+      </p>
+
       <p className="mt-4 text-sm text-[#7f5a5a]">
         Don&apos;t have an account?{" "}
         <Link

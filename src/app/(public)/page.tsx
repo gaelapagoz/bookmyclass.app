@@ -71,7 +71,7 @@ export default function HomePage() {
         <div className="relative mx-auto flex min-h-[78vh] w-full max-w-6xl items-center px-6 py-20 md:px-10">
           <div className="max-w-2xl">
             <p className="mb-4 inline-flex rounded-full border border-[#e7d7cc]/70 bg-[#f5ece5]/20 px-4 py-1 text-xs tracking-[0.2em] text-[#f7efe8]">
-              Brussels - Merode
+              Brussels
             </p>
             <h1
               className={`${headingClassName("lg")} text-[#fffaf6]`}
@@ -209,47 +209,12 @@ export default function HomePage() {
               blends strength, mobility, and mindful movement in a calm and supportive environment.
             </p>
             <Link
-              href="/"
+              href="/about/studio"
               className="mt-7 inline-flex rounded-full border border-[#d6c6ba] bg-[#fff] px-5 py-2.5 text-sm font-medium text-[#6e3232] transition-all hover:-translate-y-0.5 hover:shadow"
             >
               About Us
             </Link>
           </article>
-        </div>
-      </section>
-
-      <section className="mx-auto w-full max-w-6xl px-6 pb-12 md:px-10">
-        <div className="rounded-3xl border border-[#eadfd7] bg-[#fffdfa] p-8 text-center shadow-[0_18px_35px_-30px_rgba(47,25,25,0.45)] md:p-10">
-          <h2 className={headingClassName("md")} style={{ fontFamily: "Iowan Old Style, Baskerville, Georgia, serif" }}>
-            Workshops & Teacher Trainings
-          </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-[#6f605b]">
-            Deepen your practice through workshops and certified training programs designed for dedicated
-            practitioners.
-          </p>
-          <Link
-            href="/"
-            className="mt-7 inline-flex rounded-full bg-[#7b2d2d] px-6 py-3 text-sm font-medium text-[#f8efea] transition-colors hover:bg-[#8b3434]"
-          >
-            Explore Workshops
-          </Link>
-        </div>
-      </section>
-
-      <section className="mx-auto w-full max-w-6xl px-6 pb-20 md:px-10">
-        <div className="rounded-3xl border border-[#eadfd7] bg-gradient-to-br from-[#fffdfa] via-[#f8efea] to-[#f2e3dc] p-8 shadow-[0_18px_35px_-30px_rgba(47,25,25,0.45)] md:p-10">
-          <h2 className={headingClassName("md")} style={{ fontFamily: "Iowan Old Style, Baskerville, Georgia, serif" }}>
-            Practice Anytime, Anywhere
-          </h2>
-          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[#6f605b]">
-            Access yoga, pilates, and fitness programs designed to support your practice at home or on the go.
-          </p>
-          <Link
-            href="/"
-            className="mt-7 inline-flex rounded-full bg-[#7b2d2d] px-6 py-3 text-sm font-medium text-[#f8efea] transition-colors hover:bg-[#8b3434]"
-          >
-            Start Learning
-          </Link>
         </div>
       </section>
 
@@ -268,7 +233,7 @@ export default function HomePage() {
             <div className="mt-6 overflow-hidden rounded-2xl border border-[#eadfd7]">
               <iframe
                 title="Yoga Pilates Fitness Studio map"
-                src="https://www.google.com/maps?q=Merode%20Brussels&output=embed"
+                src="https://www.google.com/maps?q=Brussels&output=embed"
                 className="h-64 w-full border-0"
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"

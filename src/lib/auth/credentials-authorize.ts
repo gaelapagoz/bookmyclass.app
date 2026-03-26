@@ -1,7 +1,7 @@
-﻿import type { Role } from "@prisma/client";
-import { compare } from "bcryptjs";
+import type { Role } from "@prisma/client";
 import { z } from "zod";
 
+import { verifyPassword } from "@/lib/auth/password-service";
 import { prisma } from "@/lib/db";
 
 const credentialsSchema = z.object({
@@ -46,7 +46,7 @@ export async function authorizeCredentials(rawCredentials: unknown): Promise<Aut
     return null;
   }
 
-  const isValidPassword = await compare(password, user.passwordHash);
+  const isValidPassword = await verifyPassword(password, user.passwordHash);
   if (!isValidPassword) {
     return null;
   }

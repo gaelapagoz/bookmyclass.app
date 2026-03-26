@@ -161,7 +161,9 @@ describe("BookingDraftForm", () => {
     await userEvent.clear(screen.getByLabelText("Phone"));
     await userEvent.type(screen.getByLabelText("Phone"), "+32000000010");
     await userEvent.click(screen.getByRole("checkbox", { name: /terms and conditions/i }));
-    await userEvent.click(screen.getByRole("checkbox", { name: /privacy policy/i }));
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /no cancellation or rescheduling is permitted within 24 hour/i }),
+    );
     await userEvent.click(screen.getByRole("button", { name: /Continue To Secure Checkout/i }));
 
     await waitFor(() => {
@@ -235,7 +237,9 @@ describe("BookingDraftForm", () => {
     await userEvent.clear(screen.getByLabelText("Phone"));
     await userEvent.type(screen.getByLabelText("Phone"), "+32000000010");
     await userEvent.click(screen.getByRole("checkbox", { name: /terms and conditions/i }));
-    await userEvent.click(screen.getByRole("checkbox", { name: /privacy policy/i }));
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /no cancellation or rescheduling is permitted within 24 hour/i }),
+    );
     await userEvent.click(screen.getByRole("button", { name: "Confirm Using Plan" }));
 
     await waitFor(() => {
@@ -293,7 +297,9 @@ describe("BookingDraftForm", () => {
     await userEvent.clear(screen.getByLabelText("Phone"));
     await userEvent.type(screen.getByLabelText("Phone"), "+32000000010");
     await userEvent.click(screen.getByRole("checkbox", { name: /terms and conditions/i }));
-    await userEvent.click(screen.getByRole("checkbox", { name: /privacy policy/i }));
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /no cancellation or rescheduling is permitted within 24 hour/i }),
+    );
     await userEvent.click(screen.getByRole("button", { name: /Continue To Secure Checkout/i }));
 
     await waitFor(() => {
@@ -335,3 +341,5 @@ describe("BookingDraftForm", () => {
     expect(screen.queryByText("Booking Type")).not.toBeInTheDocument();
   });
 });
+
+

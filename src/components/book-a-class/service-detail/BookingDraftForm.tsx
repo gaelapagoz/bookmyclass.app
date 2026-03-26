@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 type BookingSessionSummary = {
   availableSpots: number;
@@ -505,7 +506,16 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
               onChange={(event) => setConsentTermsAccepted(event.target.checked)}
               required
             />
-            <span>I accept the terms and conditions.</span>
+            <span>
+              I accept the{" "}
+              <Link
+              href="/about/terms-and-conditions"
+              className="underline underline-offset-4 hover:opacity-80"
+              >
+              Terms and Conditions
+              </Link>
+              .
+            </span>
           </label>
           <label className="flex items-start gap-2">
             <input
@@ -514,7 +524,7 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
               onChange={(event) => setConsentPrivacyAccepted(event.target.checked)}
               required
             />
-            <span>I accept the privacy policy and consent to processing my booking details.</span>
+            <span>No cancellation or rescheduling is permitted within 24 hour(s) of the appointment time</span>
           </label>
         </fieldset>
 

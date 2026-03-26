@@ -12,7 +12,20 @@ if (!databaseUrl) {
 }
 
 const adapter = new PrismaPg({ connectionString: databaseUrl });
-const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
+
+function hasRequiredDelegates(client: PrismaClient): boolean {
+  const runtimeClient = client as unknown as { passwordResetToken?: unknown };
+  return Boolean(runtimeClient.passwordResetToken);
+}
+
+function createPrismaClient(): PrismaClient {
+  return new PrismaClient({ adapter });
+}
+
+const prisma =
+  globalForPrisma.prisma && hasRequiredDelegates(globalForPrisma.prisma)
+    ? globalForPrisma.prisma
+    : createPrismaClient();
 
 export { prisma };
 export default prisma;

@@ -1,4 +1,4 @@
-﻿/* @vitest-environment jsdom */
+/* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
@@ -44,6 +44,7 @@ vi.mock("next/navigation", async () => {
 
 import SignInPage from "../../src/app/(public)/sign-in/page";
 import SignUpPage from "../../src/app/(public)/sign-up/page";
+import ForgotPasswordPage from "../../src/app/(public)/forgot-password/page";
 
 describe("Auth pages UI", () => {
   it("renders sign-up page", async () => {
@@ -58,6 +59,13 @@ describe("Auth pages UI", () => {
 
     expect(screen.getByRole("heading", { name: "Sign In" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign In" })).toBeInTheDocument();
+  });
+
+  it("renders public forgot-password page", async () => {
+    render(await ForgotPasswordPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByRole("heading", { name: "Forgot Password" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send Reset Link" })).toBeInTheDocument();
   });
 
   it("shows sign-up specific error messages", async () => {

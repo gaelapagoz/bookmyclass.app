@@ -73,12 +73,35 @@ export default function Footer() {
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-8 md:flex-row md:items-start md:justify-between">
           <div className="text-center md:text-left">
             <p className="text-lg font-medium text-[#f2ede7] md:text-2xl">{siteConfig.brandName}</p>
-            <Link
-              href="/book-a-class"
-              className="mt-2 inline-block text-base underline underline-offset-4 transition hover:opacity-80 md:text-lg"
-            >
-              Book a Class
-            </Link>
+              <div className="mt-2 flex flex-col items-center md:items-start">
+                <Link
+                  href="/about/studio"
+                  className="text-base underline underline-offset-4 transition hover:opacity-80 md:text-lg"
+                >
+                  Our Studio
+                </Link>
+
+                <Link
+                  href="/about/team"
+                  className="text-base underline underline-offset-4 transition hover:opacity-80 md:text-lg"
+                >
+                  Our Team
+                </Link>
+
+                <Link
+                  href="/about/terms-and-conditions"
+                  className="text-base underline underline-offset-4 transition hover:opacity-80 md:text-lg"
+                >
+                  Terms & Conditions
+                </Link>
+
+                <Link
+                  href="/about/faq"
+                  className="text-base underline underline-offset-4 transition hover:opacity-80 md:text-lg"
+                >
+                  Frequent Ask Questions
+                </Link>                                  
+              </div>
           </div>
 
           <div className="text-center">

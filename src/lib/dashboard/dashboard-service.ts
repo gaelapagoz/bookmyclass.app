@@ -15,6 +15,10 @@ import {
   type OwnedOneTimeProduct,
   type OwnedRecurringSubscription,
 } from "@/lib/subscription/ownership";
+import {
+  evaluateBookingCancellation,
+  normalizeBookingCancellationWindowHours,
+} from "@/lib/booking/cancellation-policy";
 
 type DashboardServiceErrorCode =
   | "BOOKING_NOT_FOUND"
@@ -42,6 +46,7 @@ export type DashboardBookingItem = {
   location: string | null;
   cancellationEligibleUntilAt: string | null;
   canCancel: boolean;
+  cancellationBlockedReason: string | null;
 };
 
 export type DashboardHomeData = {
@@ -52,7 +57,6 @@ export type DashboardHomeData = {
     currentPeriodEnd: string;
   } | null;
   creditsLeft: number;
-  loyaltyPointsPlaceholder: number;
   recentBookings: DashboardBookingItem[];
 };
 
@@ -105,8 +109,6 @@ function toBookingItem(input: {
   booking: {
     id: string;
     status: BookingStatus;
-    cancellationEligibleUntilAt: Date | null;
-    cancelledAt: Date | null;
     studioSession: {
       title: string;
       startsAt: Date;
@@ -116,17 +118,17 @@ function toBookingItem(input: {
     };
   };
   now: Date;
+  cancellationCutoffHours: number;
 }): DashboardBookingItem {
-  const { booking, now } = input;
+  const { booking, now, cancellationCutoffHours } = input;
   const session = booking.studioSession;
-  const isFuture = session.startsAt > now;
-  const eligibleUntil =
-    booking.cancellationEligibleUntilAt && booking.cancellationEligibleUntilAt > now;
-  const canCancel =
-    booking.status !== BookingStatus.CANCELLED &&
-    session.status === StudioSessionStatus.SCHEDULED &&
-    isFuture &&
-    Boolean(eligibleUntil);
+  const cancellation = evaluateBookingCancellation({
+    bookingStatus: booking.status,
+    sessionStatus: session.status,
+    sessionStartsAt: session.startsAt,
+    now,
+    cancellationWindowHours: cancellationCutoffHours,
+  });
 
   return {
     bookingId: booking.id,
@@ -135,18 +137,24 @@ function toBookingItem(input: {
     startsAt: session.startsAt.toISOString(),
     endsAt: session.endsAt.toISOString(),
     location: session.location,
-    cancellationEligibleUntilAt: booking.cancellationEligibleUntilAt?.toISOString() ?? null,
-    canCancel,
+    cancellationEligibleUntilAt: cancellation.cancellationEligibleUntilAt.toISOString(),
+    canCancel: cancellation.canCancel,
+    cancellationBlockedReason: cancellation.cancellationBlockedReason,
   };
 }
 
 async function getCancellationCutoffHours(): Promise<number> {
-  const policy = await prisma.bookingPolicy.findUnique({
+  const policy = await prisma.bookingPolicy.upsert({
     where: { scope: "GLOBAL" },
+    create: {
+      scope: "GLOBAL",
+      cancellationCutoffHours: 24,
+    },
+    update: {},
     select: { cancellationCutoffHours: true },
   });
 
-  return policy?.cancellationCutoffHours ?? 24;
+  return normalizeBookingCancellationWindowHours(policy.cancellationCutoffHours);
 }
 
 export async function getCreditsLeft(clientId: string): Promise<number> {
@@ -160,7 +168,8 @@ export async function getCreditsLeft(clientId: string): Promise<number> {
 
 export async function getDashboardHomeData(clientId: string): Promise<DashboardHomeData> {
   const now = new Date();
-  const [user, activeSubscription, creditsLeft, loyaltyPoints, upcoming, recent] =
+  const cancellationCutoffHours = await getCancellationCutoffHours();
+  const [user, activeSubscription, creditsLeft, upcoming, recent] =
     await prisma.$transaction([
       prisma.user.findUniqueOrThrow({
         where: { id: clientId },
@@ -186,10 +195,6 @@ export async function getDashboardHomeData(clientId: string): Promise<DashboardH
         where: { clientId },
         _sum: { amount: true },
       }),
-      prisma.loyaltyLedgerEntry.aggregate({
-        where: { clientId },
-        _sum: { amount: true },
-      }),
       prisma.booking.findFirst({
         where: {
           clientId,
@@ -203,8 +208,6 @@ export async function getDashboardHomeData(clientId: string): Promise<DashboardH
         select: {
           id: true,
           status: true,
-          cancellationEligibleUntilAt: true,
-          cancelledAt: true,
           studioSession: {
             select: {
               title: true,
@@ -223,8 +226,6 @@ export async function getDashboardHomeData(clientId: string): Promise<DashboardH
         select: {
           id: true,
           status: true,
-          cancellationEligibleUntilAt: true,
-          cancelledAt: true,
           studioSession: {
             select: {
               title: true,
@@ -240,7 +241,9 @@ export async function getDashboardHomeData(clientId: string): Promise<DashboardH
 
   return {
     userName: user.firstName?.trim() || user.name,
-    nextUpcomingBooking: upcoming ? toBookingItem({ booking: upcoming, now }) : null,
+    nextUpcomingBooking: upcoming
+      ? toBookingItem({ booking: upcoming, now, cancellationCutoffHours })
+      : null,
     activeSubscription: activeSubscription
       ? {
           productName: activeSubscription.product.name,
@@ -248,8 +251,9 @@ export async function getDashboardHomeData(clientId: string): Promise<DashboardH
         }
       : null,
     creditsLeft: creditsLeft._sum.amount ?? 0,
-    loyaltyPointsPlaceholder: loyaltyPoints._sum.amount ?? 0,
-    recentBookings: recent.map((booking) => toBookingItem({ booking, now })),
+    recentBookings: recent.map((booking) =>
+      toBookingItem({ booking, now, cancellationCutoffHours }),
+    ),
   };
 }
 
@@ -326,14 +330,13 @@ export async function updateDashboardProfile(
 
 export async function getDashboardBookingsData(clientId: string): Promise<DashboardBookingsData> {
   const now = new Date();
+  const cancellationCutoffHours = await getCancellationCutoffHours();
   const bookings = await prisma.booking.findMany({
     where: { clientId },
     orderBy: [{ studioSession: { startsAt: "desc" } }, { bookedAt: "desc" }],
     select: {
       id: true,
       status: true,
-      cancellationEligibleUntilAt: true,
-      cancelledAt: true,
       studioSession: {
         select: {
           title: true,
@@ -346,7 +349,9 @@ export async function getDashboardBookingsData(clientId: string): Promise<Dashbo
     },
   });
 
-  const mapped = bookings.map((booking) => toBookingItem({ booking, now }));
+  const mapped = bookings.map((booking) =>
+    toBookingItem({ booking, now, cancellationCutoffHours }),
+  );
   const upcoming = mapped.filter(
     (booking) =>
       booking.status !== BookingStatus.CANCELLED &&
@@ -376,7 +381,6 @@ export async function cancelClientBooking(input: {
       status: true,
       selectedEntitlementId: true,
       creditRefundedAt: true,
-      cancellationEligibleUntilAt: true,
       studioSession: {
         select: {
           startsAt: true,
@@ -394,33 +398,27 @@ export async function cancelClientBooking(input: {
     throw new DashboardServiceError("BOOKING_NOT_OWNED", "You cannot cancel this booking.");
   }
 
-  if (
-    booking.status === BookingStatus.CANCELLED ||
-    booking.studioSession.status !== StudioSessionStatus.SCHEDULED
-  ) {
-    throw new DashboardServiceError(
-      "BOOKING_NOT_CANCELLABLE",
-      "This booking cannot be cancelled.",
-    );
-  }
-
-  if (booking.studioSession.startsAt <= now) {
-    throw new DashboardServiceError(
-      "BOOKING_NOT_CANCELLABLE",
-      "Past bookings cannot be cancelled.",
-    );
-  }
-
-  const computedEligibleUntil = new Date(
-    booking.studioSession.startsAt.getTime() - cutoffHours * 60 * 60 * 1000,
-  );
-  const eligibleUntil = booking.cancellationEligibleUntilAt ?? computedEligibleUntil;
-  if (now > eligibleUntil) {
+  const cancellation = evaluateBookingCancellation({
+    bookingStatus: booking.status,
+    sessionStatus: booking.studioSession.status,
+    sessionStartsAt: booking.studioSession.startsAt,
+    now,
+    cancellationWindowHours: cutoffHours,
+  });
+  if (!cancellation.canCancel && cancellation.blockCode === "WINDOW_PASSED") {
     throw new DashboardServiceError(
       "BOOKING_TOO_LATE_TO_CANCEL",
-      "Booking can no longer be cancelled less than 24 hours before session start.",
+      cancellation.cancellationBlockedReason ?? "Booking can no longer be cancelled.",
     );
   }
+  if (!cancellation.canCancel) {
+    throw new DashboardServiceError(
+      "BOOKING_NOT_CANCELLABLE",
+      cancellation.cancellationBlockedReason ?? "This booking cannot be cancelled.",
+    );
+  }
+
+  const eligibleUntil = cancellation.cancellationEligibleUntilAt;
 
   await prisma.$transaction(async (tx) => {
     let refunded = false;
