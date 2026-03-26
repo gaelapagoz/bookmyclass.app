@@ -1,43 +1,17 @@
-﻿"use client";
+"use client";
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { siteConfig } from "@/lib/site-config";
-
-type NavLinkItem = {
-  href: string;
-  label: string;
-  type: "link";
-};
-
-type NavDisclosureItem = {
-  id: string;
-  label: string;
-  links: Array<{ href: string; label: string }>;
-  type: "disclosure";
-};
-
-type PublicNavItem = NavLinkItem | NavDisclosureItem;
-
-const publicNavItems: PublicNavItem[] = [
-  { href: "/", label: "Home", type: "link" },
-  { href: "/book-a-class", label: "Book a Class", type: "link" },
-  { href: "/subscription", label: "Subscription", type: "link" },
-  { href: "/learning", label: "Online Learning", type: "link" },
-  {
-    id: "about-us",
-    label: "About Us",
-    type: "disclosure",
-    links: [
-      { href: "/about/studio", label: "Our Studio" },
-      { href: "/about/team", label: "Our Team" },
-      { href: "/about/terms-and-conditions", label: "Terms and Conditions" },
-      { href: "/about/faq", label: "FAQ" },
-    ],
-  },
-];
+import {
+  getHeaderAccountNavigation,
+  getHeaderPrimaryNavigation,
+  type HeaderAccountNavItem,
+  type HeaderNavDisclosure,
+  type HeaderPrimaryNavItem,
+} from "@/lib/navigation/site-header-nav";
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") {
@@ -56,13 +30,14 @@ function linkClass(isActive: boolean) {
 type AboutDisclosureProps = {
   isOpen: boolean;
   isVertical: boolean;
-  links: NavDisclosureItem["links"];
+  item: HeaderNavDisclosure;
   menuId: string;
   onClose: () => void;
   onToggle: () => void;
+  onNavigateLink: (href: string) => void;
 };
 
-function AboutDisclosure({ isOpen, isVertical, links, menuId, onClose, onToggle }: AboutDisclosureProps) {
+function AboutDisclosure({ isOpen, isVertical, item, menuId, onClose, onToggle, onNavigateLink }: AboutDisclosureProps) {
   const pathname = usePathname();
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -97,7 +72,7 @@ function AboutDisclosure({ isOpen, isVertical, links, menuId, onClose, onToggle 
     };
   }, [isOpen, onClose]);
 
-  const hasActiveChild = links.some((item) => isActivePath(pathname, item.href));
+  const hasActiveChild = item.links.some((link) => isActivePath(pathname, link.href));
 
   return (
     <div ref={wrapperRef} className={`relative ${isVertical ? "w-full" : ""}`}>
@@ -110,8 +85,10 @@ function AboutDisclosure({ isOpen, isVertical, links, menuId, onClose, onToggle 
         aria-controls={menuId}
         onClick={onToggle}
       >
-        About Us
-        <span aria-hidden="true" className={`transition-transform ${isOpen ? "rotate-180" : ""}`}>v</span>
+        {item.label}
+        <span aria-hidden="true" className={`transition-transform ${isOpen ? "rotate-180" : ""}`}>
+          v
+        </span>
       </button>
 
       <div
@@ -123,63 +100,145 @@ function AboutDisclosure({ isOpen, isVertical, links, menuId, onClose, onToggle 
           isOpen ? "block" : "hidden"
         } ${isVertical ? "mt-2 space-y-2 border-l border-[#d8cec6] pl-3" : "absolute left-0 z-20 mt-2 min-w-[280px] rounded-md border border-[#d8cec6] bg-[#fffdfa] p-2 shadow-md"}`}
       >
-        {links.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            role="menuitem"
-            className={`block whitespace-nowrap rounded px-2 py-1.5 text-sm ${linkClass(isActivePath(pathname, item.href))}`}
-            onClick={onClose}
-          >
-            {item.label}
-          </Link>
-        ))}
+        {item.links.map((link) =>
+          isVertical ? (
+            <button
+              key={link.href}
+              type="button"
+              role="menuitem"
+              className={`block w-full whitespace-nowrap rounded px-2 py-1.5 text-left text-sm ${linkClass(
+                isActivePath(pathname, link.href),
+              )}`}
+              onClick={() => onNavigateLink(link.href)}
+            >
+              {link.label}
+            </button>
+          ) : (
+            <Link
+              key={link.href}
+              href={link.href}
+              role="menuitem"
+              className={`block whitespace-nowrap rounded px-2 py-1.5 text-sm ${linkClass(isActivePath(pathname, link.href))}`}
+              onClick={() => onNavigateLink(link.href)}
+            >
+              {link.label}
+            </Link>
+          ),
+        )}
       </div>
     </div>
   );
 }
 
 type PublicNavProps = {
-  isOpen: boolean;
+  isAboutOpen: boolean;
   isVertical: boolean;
+  items: HeaderPrimaryNavItem[];
   menuId: string;
   onCloseAll: () => void;
+  onNavigateLink: (href: string) => void;
   onToggleAbout: () => void;
 };
 
-function PublicNavigation({ isOpen, isVertical, menuId, onCloseAll, onToggleAbout }: PublicNavProps) {
+function PublicNavigation({
+  isAboutOpen,
+  isVertical,
+  items,
+  menuId,
+  onCloseAll,
+  onNavigateLink,
+  onToggleAbout,
+}: PublicNavProps) {
   const pathname = usePathname();
 
   return (
     <nav className={`${isVertical ? "flex flex-col gap-2" : "flex items-center justify-center gap-4"}`}>
-      {publicNavItems.map((item, index) => {
+      {items.map((item, index) => {
         if (item.type === "disclosure") {
           return (
             <div key={item.id} className={isVertical ? "" : "flex items-center gap-4"}>
               <AboutDisclosure
-                isOpen={isOpen}
+                isOpen={isAboutOpen}
                 isVertical={isVertical}
-                links={item.links}
+                item={item}
                 menuId={menuId}
                 onClose={onCloseAll}
                 onToggle={onToggleAbout}
+                onNavigateLink={onNavigateLink}
               />
-              {!isVertical && index < publicNavItems.length - 1 ? <span className="text-[#b68585]">|</span> : null}
+              {!isVertical && index < items.length - 1 ? <span className="text-[#b68585]">|</span> : null}
             </div>
           );
         }
 
         return (
           <div key={item.href} className={isVertical ? "" : "flex items-center gap-4"}>
-            <Link
-              href={item.href}
-              className={linkClass(isActivePath(pathname, item.href))}
-              onClick={onCloseAll}
-            >
-              {item.label}
-            </Link>
-            {!isVertical && index < publicNavItems.length - 1 ? <span className="text-[#b68585]">|</span> : null}
+            {isVertical ? (
+              <button
+                type="button"
+                className={`${linkClass(isActivePath(pathname, item.href))} text-left`}
+                onClick={() => onNavigateLink(item.href)}
+              >
+                {item.label}
+              </button>
+            ) : (
+              <Link
+                href={item.href}
+                className={linkClass(isActivePath(pathname, item.href))}
+                onClick={() => onNavigateLink(item.href)}
+              >
+                {item.label}
+              </Link>
+            )}
+            {!isVertical && index < items.length - 1 ? <span className="text-[#b68585]">|</span> : null}
           </div>
+        );
+      })}
+    </nav>
+  );
+}
+
+type AccountNavProps = {
+  isVertical: boolean;
+  items: HeaderAccountNavItem[];
+  onNavigateLink: (href: string) => void;
+  onSignOutAction: (formData: FormData) => Promise<void>;
+};
+
+function AccountNavigation({ isVertical, items, onNavigateLink, onSignOutAction }: AccountNavProps) {
+  const pathname = usePathname();
+
+  return (
+    <nav className={`flex ${isVertical ? "flex-col gap-2" : "items-center gap-3"}`}>
+      {items.map((item) => {
+        if (item.type === "action") {
+          return (
+            <form key={item.id} action={onSignOutAction}>
+              <button type="submit" className={`${linkClass(false)} ${isVertical ? "text-left" : ""}`}>
+                {item.label}
+              </button>
+            </form>
+          );
+        }
+
+        return isVertical ? (
+          <button
+            key={item.href}
+            type="button"
+            className={`${linkClass(isActivePath(pathname, item.href))} text-left`}
+            onClick={() => onNavigateLink(item.href)}
+          >
+            {item.label}
+          </button>
+        ) : (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={linkClass(isActivePath(pathname, item.href))}
+            onClick={() => onNavigateLink(item.href)}
+          >
+            {item.label}
+          </Link>
         );
       })}
     </nav>
@@ -193,24 +252,20 @@ type NavbarClientProps = {
 
 export default function NavbarClient({ isAuthenticated, onSignOutAction }: NavbarClientProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAboutMenuOpen, setIsAboutMenuOpen] = useState(false);
 
-  const authLinks = useMemo(
-    () =>
-      isAuthenticated
-        ? [{ href: "/dashboard", label: "Dashboard" as const }]
-        : [
-            { href: "/sign-in", label: "Sign In" as const },
-            { href: "/sign-up", label: "Sign Up" as const },
-          ],
+  const primaryItems = useMemo(() => getHeaderPrimaryNavigation(), []);
+  const accountItems = useMemo(
+    () => getHeaderAccountNavigation({ isAuthenticated }),
     [isAuthenticated],
   );
 
   useEffect(() => {
     setIsMobileMenuOpen(false);
     setIsAboutMenuOpen(false);
-  }, [pathname]);
+  }, [pathname, isAuthenticated]);
 
   const closeMenus = () => {
     setIsAboutMenuOpen(false);
@@ -224,6 +279,17 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
   const toggleAboutMenu = () => {
     setIsAboutMenuOpen((prev) => !prev);
   };
+
+  const navigateDesktop = (href: string) => {
+    void href;
+    closeMenus();
+  };
+
+  const navigateMobile = (href: string) => {
+    router.push(href);
+    closeAllNavigation();
+  };
+
   return (
     <header className="border-b border-[#d8cec6] bg-[#f2ede7]">
       <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
@@ -238,12 +304,8 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
               priority
             />
             <div className="flex flex-col">
-              <span className="text-lg font-medium tracking-wide text-[#6f2b2b] sm:text-2xl">
-                {siteConfig.brandName}
-              </span>
-              <span className="text-xs tracking-wide text-[#8a5959] sm:text-sm">
-                Brussels Yoga, Pilates & Fitness
-              </span>
+              <span className="text-lg font-medium tracking-wide text-[#6f2b2b] sm:text-2xl">{siteConfig.brandName}</span>
+              <span className="text-xs tracking-wide text-[#8a5959] sm:text-sm">Brussels Yoga, Pilates & Fitness</span>
             </div>
           </Link>
 
@@ -263,61 +325,44 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
 
         <div className="mt-4 hidden items-center justify-between gap-4 md:flex" hidden={isMobileMenuOpen}>
           <PublicNavigation
-            isOpen={isAboutMenuOpen}
+            isAboutOpen={isAboutMenuOpen}
             isVertical={false}
+            items={primaryItems}
             menuId="about-us-menu-desktop"
             onCloseAll={closeMenus}
+            onNavigateLink={navigateDesktop}
             onToggleAbout={toggleAboutMenu}
           />
 
-          <nav className="flex items-center gap-3">
-            {authLinks.map((link) => (
-              <Link key={link.href} href={link.href} className={linkClass(isActivePath(pathname, link.href))}>
-                {link.label}
-              </Link>
-            ))}
-            {isAuthenticated ? (
-              <form action={onSignOutAction}>
-                <button type="submit" className={linkClass(false)}>
-                  Log Out
-                </button>
-              </form>
-            ) : null}
-          </nav>
+          <AccountNavigation
+            isVertical={false}
+            items={accountItems}
+            onNavigateLink={navigateDesktop}
+            onSignOutAction={onSignOutAction}
+          />
         </div>
 
         {isMobileMenuOpen ? (
           <nav className="mt-4 flex flex-col gap-2 border-t border-[#d8cec6] pt-3 md:hidden">
             <PublicNavigation
-              isOpen={isAboutMenuOpen}
+              isAboutOpen={isAboutMenuOpen}
               isVertical={true}
+              items={primaryItems}
               menuId="about-us-menu-mobile"
               onCloseAll={closeAllNavigation}
+              onNavigateLink={navigateMobile}
               onToggleAbout={toggleAboutMenu}
             />
 
-            {authLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={linkClass(isActivePath(pathname, link.href))}
-                onClick={closeAllNavigation}
-              >
-                {link.label}
-              </Link>
-            ))}
-
-            {isAuthenticated ? (
-              <form action={onSignOutAction}>
-                <button type="submit" className={`${linkClass(false)} text-left`} onClick={closeAllNavigation}>
-                  Log Out
-                </button>
-              </form>
-            ) : null}
+            <AccountNavigation
+              isVertical={true}
+              items={accountItems}
+              onNavigateLink={navigateMobile}
+              onSignOutAction={onSignOutAction}
+            />
           </nav>
         ) : null}
       </div>
     </header>
   );
 }
-

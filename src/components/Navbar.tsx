@@ -13,7 +13,7 @@ export default async function Navbar() {
 
   return (
     <NavbarClient
-      isAuthenticated={Boolean(session?.user)}
+      isAuthenticated={Boolean(session?.user?.id)}
       onSignOutAction={handleSignOut}
     />
   );
