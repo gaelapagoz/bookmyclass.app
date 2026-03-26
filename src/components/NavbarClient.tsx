@@ -2,16 +2,19 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { siteConfig } from "@/lib/site-config";
 import {
   getHeaderAccountNavigation,
   getHeaderPrimaryNavigation,
-  type HeaderAccountNavItem,
   type HeaderNavDisclosure,
-  type HeaderPrimaryNavItem,
 } from "@/lib/navigation/site-header-nav";
+
+type NavbarClientProps = {
+  isAuthenticated: boolean;
+  onSignOutAction: (formData: FormData) => Promise<void>;
+};
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") {
@@ -27,274 +30,65 @@ function linkClass(isActive: boolean) {
   }`;
 }
 
-type AboutDisclosureProps = {
-  isOpen: boolean;
-  isVertical: boolean;
-  item: HeaderNavDisclosure;
-  menuId: string;
-  onClose: () => void;
-  onToggle: () => void;
-  onNavigateLink: (href: string) => void;
-};
-
-function AboutDisclosure({ isOpen, isVertical, item, menuId, onClose, onToggle, onNavigateLink }: AboutDisclosureProps) {
+export default function NavbarClient({ isAuthenticated, onSignOutAction }: NavbarClientProps) {
   const pathname = usePathname();
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isDesktopAboutOpen, setIsDesktopAboutOpen] = useState(false);
+
+  const desktopAboutRef = useRef<HTMLDivElement | null>(null);
+
+  const primaryItems = useMemo(() => getHeaderPrimaryNavigation(), []);
+  const accountItems = useMemo(() => getHeaderAccountNavigation({ isAuthenticated }), [isAuthenticated]);
 
   useEffect(() => {
-    function handleOutside(event: MouseEvent | TouchEvent) {
-      if (!isOpen || !wrapperRef.current) {
+    setIsMobileMenuOpen(false);
+    setIsAboutOpen(false);
+    setIsDesktopAboutOpen(false);
+  }, [pathname, isAuthenticated]);
+
+  useEffect(() => {
+    function onOutsideClick(event: MouseEvent) {
+      if (!isDesktopAboutOpen || !desktopAboutRef.current) {
         return;
       }
 
       const target = event.target as Node | null;
-      if (target && !wrapperRef.current.contains(target)) {
-        onClose();
+      if (target && !desktopAboutRef.current.contains(target)) {
+        setIsDesktopAboutOpen(false);
       }
     }
 
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape" && isOpen) {
-        onClose();
-        buttonRef.current?.focus();
+    function onEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsDesktopAboutOpen(false);
       }
     }
 
-    document.addEventListener("mousedown", handleOutside);
-    document.addEventListener("touchstart", handleOutside);
-    document.addEventListener("keydown", handleEscape);
+    document.addEventListener("mousedown", onOutsideClick);
+    document.addEventListener("keydown", onEscape);
 
     return () => {
-      document.removeEventListener("mousedown", handleOutside);
-      document.removeEventListener("touchstart", handleOutside);
-      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("mousedown", onOutsideClick);
+      document.removeEventListener("keydown", onEscape);
     };
-  }, [isOpen, onClose]);
+  }, [isDesktopAboutOpen]);
 
-  const hasActiveChild = item.links.some((link) => isActivePath(pathname, link.href));
-
-  return (
-    <div ref={wrapperRef} className={`relative ${isVertical ? "w-full" : ""}`}>
-      <button
-        ref={buttonRef}
-        type="button"
-        className={`${linkClass(hasActiveChild)} inline-flex items-center gap-1`}
-        aria-expanded={isOpen}
-        aria-haspopup="menu"
-        aria-controls={menuId}
-        onClick={onToggle}
-      >
-        {item.label}
-        <span aria-hidden="true" className={`transition-transform ${isOpen ? "rotate-180" : ""}`}>
-          v
-        </span>
-      </button>
-
-      <div
-        id={menuId}
-        role="menu"
-        hidden={!isOpen}
-        aria-hidden={!isOpen}
-        className={`${
-          isOpen ? "block" : "hidden"
-        } ${isVertical ? "mt-2 space-y-2 border-l border-[#d8cec6] pl-3" : "absolute left-0 z-20 mt-2 min-w-[280px] rounded-md border border-[#d8cec6] bg-[#fffdfa] p-2 shadow-md"}`}
-      >
-        {item.links.map((link) =>
-          isVertical ? (
-            <button
-              key={link.href}
-              type="button"
-              role="menuitem"
-              className={`block w-full whitespace-nowrap rounded px-2 py-1.5 text-left text-sm ${linkClass(
-                isActivePath(pathname, link.href),
-              )}`}
-              onClick={() => onNavigateLink(link.href)}
-            >
-              {link.label}
-            </button>
-          ) : (
-            <Link
-              key={link.href}
-              href={link.href}
-              role="menuitem"
-              className={`block whitespace-nowrap rounded px-2 py-1.5 text-sm ${linkClass(isActivePath(pathname, link.href))}`}
-              onClick={() => onNavigateLink(link.href)}
-            >
-              {link.label}
-            </Link>
-          ),
-        )}
-      </div>
-    </div>
-  );
-}
-
-type PublicNavProps = {
-  isAboutOpen: boolean;
-  isVertical: boolean;
-  items: HeaderPrimaryNavItem[];
-  menuId: string;
-  onCloseAll: () => void;
-  onNavigateLink: (href: string) => void;
-  onToggleAbout: () => void;
-};
-
-function PublicNavigation({
-  isAboutOpen,
-  isVertical,
-  items,
-  menuId,
-  onCloseAll,
-  onNavigateLink,
-  onToggleAbout,
-}: PublicNavProps) {
-  const pathname = usePathname();
-
-  return (
-    <nav className={`${isVertical ? "flex flex-col gap-2" : "flex items-center justify-center gap-4"}`}>
-      {items.map((item, index) => {
-        if (item.type === "disclosure") {
-          return (
-            <div key={item.id} className={isVertical ? "" : "flex items-center gap-4"}>
-              <AboutDisclosure
-                isOpen={isAboutOpen}
-                isVertical={isVertical}
-                item={item}
-                menuId={menuId}
-                onClose={onCloseAll}
-                onToggle={onToggleAbout}
-                onNavigateLink={onNavigateLink}
-              />
-              {!isVertical && index < items.length - 1 ? <span className="text-[#b68585]">|</span> : null}
-            </div>
-          );
-        }
-
-        return (
-          <div key={item.href} className={isVertical ? "" : "flex items-center gap-4"}>
-            {isVertical ? (
-              <button
-                type="button"
-                className={`${linkClass(isActivePath(pathname, item.href))} text-left`}
-                onClick={() => onNavigateLink(item.href)}
-              >
-                {item.label}
-              </button>
-            ) : (
-              <Link
-                href={item.href}
-                className={linkClass(isActivePath(pathname, item.href))}
-                onClick={() => onNavigateLink(item.href)}
-              >
-                {item.label}
-              </Link>
-            )}
-            {!isVertical && index < items.length - 1 ? <span className="text-[#b68585]">|</span> : null}
-          </div>
-        );
-      })}
-    </nav>
-  );
-}
-
-type AccountNavProps = {
-  isVertical: boolean;
-  items: HeaderAccountNavItem[];
-  onNavigateLink: (href: string) => void;
-  onSignOutAction: (formData: FormData) => Promise<void>;
-};
-
-function AccountNavigation({ isVertical, items, onNavigateLink, onSignOutAction }: AccountNavProps) {
-  const pathname = usePathname();
-
-  return (
-    <nav className={`flex ${isVertical ? "flex-col gap-2" : "items-center gap-3"}`}>
-      {items.map((item) => {
-        if (item.type === "action") {
-          return (
-            <form key={item.id} action={onSignOutAction}>
-              <button type="submit" className={`${linkClass(false)} ${isVertical ? "text-left" : ""}`}>
-                {item.label}
-              </button>
-            </form>
-          );
-        }
-
-        return isVertical ? (
-          <button
-            key={item.href}
-            type="button"
-            className={`${linkClass(isActivePath(pathname, item.href))} text-left`}
-            onClick={() => onNavigateLink(item.href)}
-          >
-            {item.label}
-          </button>
-        ) : (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={linkClass(isActivePath(pathname, item.href))}
-            onClick={() => onNavigateLink(item.href)}
-          >
-            {item.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
-
-type NavbarClientProps = {
-  isAuthenticated: boolean;
-  onSignOutAction: (formData: FormData) => Promise<void>;
-};
-
-export default function NavbarClient({ isAuthenticated, onSignOutAction }: NavbarClientProps) {
-  const pathname = usePathname();
-  const router = useRouter();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isAboutMenuOpen, setIsAboutMenuOpen] = useState(false);
-
-  const primaryItems = useMemo(() => getHeaderPrimaryNavigation(), []);
-  const accountItems = useMemo(
-    () => getHeaderAccountNavigation({ isAuthenticated }),
-    [isAuthenticated],
-  );
-
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-    setIsAboutMenuOpen(false);
-  }, [pathname, isAuthenticated]);
-
-  const closeMenus = () => {
-    setIsAboutMenuOpen(false);
-  };
-
-  const closeAllNavigation = () => {
-    closeMenus();
-    setIsMobileMenuOpen(false);
-  };
-
-  const toggleAboutMenu = () => {
-    setIsAboutMenuOpen((prev) => !prev);
-  };
-
-  const navigateDesktop = (href: string) => {
-    void href;
-    closeMenus();
-  };
-
-  const navigateMobile = (href: string) => {
-    router.push(href);
-    closeAllNavigation();
-  };
+  const aboutItem = primaryItems.find((item): item is HeaderNavDisclosure => item.type === "disclosure") ?? null;
 
   return (
     <header className="border-b border-[#d8cec6] bg-[#f2ede7]">
       <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
         <div className="flex items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-3" onClick={closeAllNavigation}>
+          <Link
+            href="/"
+            className="flex items-center gap-3"
+            onClick={() => {
+              setIsMobileMenuOpen(false);
+              setIsAboutOpen(false);
+            }}
+          >
             <Image
               src="/images/logo.png"
               alt="Yoga Pilates Fitness Studio logo"
@@ -311,56 +105,181 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
 
           <button
             type="button"
+            aria-label="Toggle navigation menu"
+            aria-expanded={isMobileMenuOpen}
             className="inline-flex items-center justify-center rounded-md border border-[#c7b7aa] px-3 py-2 text-sm text-[#7b2d2d] md:hidden"
             onClick={() => {
               setIsMobileMenuOpen((prev) => !prev);
-              setIsAboutMenuOpen(false);
+              setIsAboutOpen(false);
             }}
-            aria-expanded={isMobileMenuOpen}
-            aria-label="Toggle navigation menu"
           >
             Menu
           </button>
         </div>
 
-        <div className="mt-4 hidden items-center justify-between gap-4 md:flex" hidden={isMobileMenuOpen}>
-          <PublicNavigation
-            isAboutOpen={isAboutMenuOpen}
-            isVertical={false}
-            items={primaryItems}
-            menuId="about-us-menu-desktop"
-            onCloseAll={closeMenus}
-            onNavigateLink={navigateDesktop}
-            onToggleAbout={toggleAboutMenu}
-          />
+        <div className="mt-4 hidden items-center justify-between gap-4 md:flex">
+          <nav className="flex items-center justify-center gap-4">
+            {primaryItems.map((item, index) => {
+              if (item.type === "disclosure") {
+                return (
+                  <div key={item.id} className="relative flex items-center gap-4" ref={desktopAboutRef}>
+                    <button
+                      type="button"
+                      aria-expanded={isDesktopAboutOpen}
+                      aria-haspopup="menu"
+                      aria-controls="about-us-menu-desktop"
+                      className={`${linkClass(item.links.some((link) => isActivePath(pathname, link.href)))} inline-flex items-center gap-1`}
+                      onClick={() => setIsDesktopAboutOpen((prev) => !prev)}
+                    >
+                      {item.label}
+                      <span aria-hidden="true" className={`transition-transform ${isDesktopAboutOpen ? "rotate-180" : ""}`}>
+                        v
+                      </span>
+                    </button>
 
-          <AccountNavigation
-            isVertical={false}
-            items={accountItems}
-            onNavigateLink={navigateDesktop}
-            onSignOutAction={onSignOutAction}
-          />
+                    <div
+                      id="about-us-menu-desktop"
+                      role="menu"
+                      hidden={!isDesktopAboutOpen}
+                      aria-hidden={!isDesktopAboutOpen}
+                      className={`${
+                        isDesktopAboutOpen ? "block" : "hidden"
+                      } absolute left-0 top-full z-20 mt-2 min-w-[280px] rounded-md border border-[#d8cec6] bg-[#fffdfa] p-2 shadow-md`}
+                    >
+                      {item.links.map((link) => (
+                        <Link
+                          key={link.href}
+                          href={link.href}
+                          role="menuitem"
+                          className={`block whitespace-nowrap rounded px-2 py-1.5 text-sm ${linkClass(isActivePath(pathname, link.href))}`}
+                          onClick={() => setIsDesktopAboutOpen(false)}
+                        >
+                          {link.label}
+                        </Link>
+                      ))}
+                    </div>
+
+                    {index < primaryItems.length - 1 ? <span className="text-[#b68585]">|</span> : null}
+                  </div>
+                );
+              }
+
+              return (
+                <div key={item.href} className="flex items-center gap-4">
+                  <Link href={item.href} className={linkClass(isActivePath(pathname, item.href))}>
+                    {item.label}
+                  </Link>
+                  {index < primaryItems.length - 1 ? <span className="text-[#b68585]">|</span> : null}
+                </div>
+              );
+            })}
+          </nav>
+
+          <nav className="flex items-center gap-3">
+            {accountItems.map((item) => {
+              if (item.type === "action") {
+                return (
+                  <form key={item.id} action={onSignOutAction}>
+                    <button type="submit" className={linkClass(false)}>
+                      {item.label}
+                    </button>
+                  </form>
+                );
+              }
+
+              return (
+                <Link key={item.href} href={item.href} className={linkClass(isActivePath(pathname, item.href))}>
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
 
         {isMobileMenuOpen ? (
-          <nav className="mt-4 flex flex-col gap-2 border-t border-[#d8cec6] pt-3 md:hidden">
-            <PublicNavigation
-              isAboutOpen={isAboutMenuOpen}
-              isVertical={true}
-              items={primaryItems}
-              menuId="about-us-menu-mobile"
-              onCloseAll={closeAllNavigation}
-              onNavigateLink={navigateMobile}
-              onToggleAbout={toggleAboutMenu}
-            />
+          <div data-testid="mobile-nav-panel" className="mt-4 border-t border-[#d8cec6] pt-3 md:hidden">
+            <nav className="flex flex-col gap-2">
+              {primaryItems.map((item) => {
+                if (item.type === "disclosure") {
+                  return (
+                    <section key={item.id} className="w-full">
+                      <button
+                        type="button"
+                        data-testid="mobile-about-toggle"
+                        aria-expanded={isAboutOpen}
+                        aria-controls="about-mobile-links"
+                        className="inline-flex items-center gap-1 text-sm tracking-wide text-[#8a5959] hover:text-[#7b2d2d]"
+                        onClick={() => setIsAboutOpen((prev) => !prev)}
+                      >
+                        {item.label}
+                        <span aria-hidden="true" className={`transition-transform ${isAboutOpen ? "rotate-180" : ""}`}>
+                          v
+                        </span>
+                      </button>
 
-            <AccountNavigation
-              isVertical={true}
-              items={accountItems}
-              onNavigateLink={navigateMobile}
-              onSignOutAction={onSignOutAction}
-            />
-          </nav>
+                      <div
+                        id="about-mobile-links"
+                        hidden={!isAboutOpen}
+                        className={`${isAboutOpen ? "block" : "hidden"} mt-2 space-y-2 border-l border-[#d8cec6] pl-3`}
+                      >
+                        {item.links.map((link) => (
+                          <Link
+                            key={link.href}
+                            href={link.href}
+                            data-testid={`mobile-about-link-${link.href.replace(/\//g, "-")}`}
+                            className={`block whitespace-nowrap text-sm ${linkClass(isActivePath(pathname, link.href))}`}
+                            onClick={() => setIsMobileMenuOpen(false)}
+                          >
+                            {link.label}
+                          </Link>
+                        ))}
+                      </div>
+                    </section>
+                  );
+                }
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={linkClass(isActivePath(pathname, item.href))}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            <nav className="mt-3 flex flex-col gap-2 border-t border-[#d8cec6] pt-3">
+              {accountItems.map((item) => {
+                if (item.type === "action") {
+                  return (
+                    <form key={item.id} action={onSignOutAction}>
+                      <button
+                        type="submit"
+                        className={`${linkClass(false)} text-left`}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        {item.label}
+                      </button>
+                    </form>
+                  );
+                }
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={linkClass(isActivePath(pathname, item.href))}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
         ) : null}
       </div>
     </header>

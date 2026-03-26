@@ -5,13 +5,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import NavbarClient from "../../src/components/NavbarClient";
 
-const pushMock = vi.fn();
-
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
-  useRouter: () => ({
-    push: pushMock,
-  }),
 }));
 
 describe("NavbarClient", () => {
@@ -65,17 +60,21 @@ describe("NavbarClient", () => {
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
   });
 
-  it("mobile About submenu item navigates with router push", () => {
-    pushMock.mockReset();
+  it("mobile About submenu item is a real plain link", () => {
     render(<NavbarClient isAuthenticated={false} onSignOutAction={vi.fn(async () => undefined)} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle navigation menu" }));
     const aboutButtons = screen.getAllByRole("button", { name: /about us/i });
     fireEvent.click(aboutButtons[aboutButtons.length - 1] as HTMLElement);
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Our Studio" }));
+    const studioLink = screen.getAllByRole("link", { name: "Our Studio" }).at(-1);
+    expect(studioLink).toBeDefined();
+    if (!studioLink) {
+      throw new Error("Missing Our Studio link");
+    }
 
-    expect(pushMock).toHaveBeenCalledWith("/about/studio");
+    expect(studioLink.tagName).toBe("A");
+    expect(studioLink).toHaveAttribute("href", "/about/studio");
   });
 
   it("mobile logout submits sign out action", async () => {

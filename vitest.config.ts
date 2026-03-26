@@ -1,5 +1,5 @@
-﻿import { resolve } from "node:path";
-import { defineConfig } from "vitest/config";
+import { resolve } from "node:path";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
@@ -12,5 +12,6 @@ export default defineConfig({
     environment: "node",
     globals: true,
     fileParallelism: false,
+    exclude: [...configDefaults.exclude, "test/e2e/**"],
   },
 });
