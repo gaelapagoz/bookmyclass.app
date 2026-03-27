@@ -2,6 +2,7 @@ import { BookingIntent, BookingStatus, StudioSessionStatus } from "@prisma/clien
 import { prisma } from "../db";
 import { formatSessionDateTime } from "./format-session-date-time";
 import { getPublicTeacherName } from "../public-content/teacher-display";
+import { createBookingNoteMessage } from "../client-messages/client-message-service";
 
 export type BookingDraftPayload = {
   bookingIntent: BookingIntent;
@@ -219,6 +220,17 @@ export async function createPendingBookingDraft(params: {
       status: true,
     },
   });
+  const normalizedMessage = payload.customerMessage?.trim() ?? "";
+  if (normalizedMessage) {
+    await createBookingNoteMessage({
+      bookingId: booking.id,
+      userId: authenticatedUserId,
+      name: payload.customerName,
+      email: payload.customerEmail,
+      phone: payload.customerPhone,
+      message: normalizedMessage,
+    });
+  }
 
   return {
     bookingId: booking.id,

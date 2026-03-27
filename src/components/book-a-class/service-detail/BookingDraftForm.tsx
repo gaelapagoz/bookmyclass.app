@@ -453,13 +453,16 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
           </label>
 
           <label className="text-sm text-[#5f4040]">
-            Message (optional)
+            Message for the studio (optional)
             <textarea
               value={customerMessage}
               onChange={(event) => setCustomerMessage(event.target.value)}
               rows={4}
               className="mt-1 w-full rounded-md border border-[#d8cec6] px-3 py-2"
             />
+            <p className="mt-1 text-xs text-[#7f5a5a]">
+              This message is saved with your booking and visible to the admin.
+            </p>
           </label>
         </div>
 

@@ -1,23 +1,27 @@
-﻿import Image from "next/image";
+import Image from "next/image";
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { z } from "zod";
 import { siteConfig } from "@/lib/site-config";
+import { createContactMessage } from "@/lib/client-messages/client-message-service";
+import { getActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
 
 const weeklyAgenda = [
   {
     day: "Monday",
-    classes: ["18:00â€“19:00 Pilates with Props", "19:00â€“20:30 Rocket Vinyasa Yoga (Level 1/2)"],
+    classes: ["18:00–19:00 Pilates with Props", "19:00–20:30 Rocket Vinyasa Yoga (Level 1/2)"],
   },
   {
     day: "Tuesday",
-    classes: ["18:00â€“19:00 Pilates Functional Training (TRX)", "19:15â€“20:15 Vinyasa Yoga (Level 1/2)"],
+    classes: ["18:00–19:00 Pilates Functional Training (TRX)", "19:15–20:15 Vinyasa Yoga (Level 1/2)"],
   },
   {
     day: "Wednesday",
-    classes: ["18:00â€“19:00 Pilates & Functional Training (TRX)", "19:15â€“20:15 Vinyasa Yoga (Level 1/2)"],
+    classes: ["18:00–19:00 Pilates & Functional Training (TRX)", "19:15–20:15 Vinyasa Yoga (Level 1/2)"],
   },
   {
     day: "Thursday",
-    classes: ["18:00â€“19:00 Pilates Stretch & Tone", "19:15â€“20:15 Rocket Vinyasa Yoga (Level 1)"],
+    classes: ["18:00–19:00 Pilates Stretch & Tone", "19:15–20:15 Rocket Vinyasa Yoga (Level 1)"],
   },
   {
     day: "Friday",
@@ -25,28 +29,28 @@ const weeklyAgenda = [
   },
   {
     day: "Saturday",
-    classes: ["10:30â€“11:30 Pilates with Props"],
+    classes: ["10:30–11:30 Pilates with Props"],
   },
 ] as const;
 
 const serviceCards = [
   {
-    icon: "â—",
+    icon: "●",
     title: "Collective Classes",
     description: "Small group yoga and pilates sessions in Brussels",
   },
   {
-    icon: "â—",
+    icon: "◐",
     title: "Private Coaching",
     description: "One-on-one sessions tailored to your goals",
   },
   {
-    icon: "â—‹",
+    icon: "○",
     title: "Online Programs",
     description: "Practice anytime with structured video programs",
   },
   {
-    icon: "â—",
+    icon: "◍",
     title: "Classes at Work",
     description: "Wellness experiences for teams and companies",
   },
@@ -56,7 +60,56 @@ function headingClassName(size: "lg" | "md" = "lg") {
   return `${size === "lg" ? "text-3xl md:text-5xl" : "text-2xl md:text-4xl"} font-semibold tracking-tight text-[#682c2f]`;
 }
 
-export default function HomePage() {
+const contactSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  email: z.string().trim().email().max(180),
+  phone: z.string().trim().max(40).optional(),
+  message: z.string().trim().min(1).max(2000),
+});
+
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ contact?: string; error?: string }>;
+}) {
+  const params = await searchParams;
+  const agendaPdf = await getActiveAgendaPdfDocument();
+  const contactSent = params.contact === "sent";
+  const contactError = params.error === "contact_failed";
+
+  async function submitContactAction(formData: FormData) {
+    "use server";
+
+    const parsed = contactSchema.safeParse({
+      name: formData.get("name"),
+      email: formData.get("email"),
+      phone: formData.get("phone") || undefined,
+      message: formData.get("message"),
+    });
+
+    if (!parsed.success) {
+      console.error("[home/contact] validation failed", {
+        issues: parsed.error.issues.map((issue) => issue.message),
+      });
+      redirect("/?error=contact_failed");
+    }
+
+    try {
+      await createContactMessage({
+        name: parsed.data.name,
+        email: parsed.data.email,
+        phone: parsed.data.phone ?? null,
+        subject: "Contact form",
+        message: parsed.data.message,
+      });
+    } catch (error) {
+      console.error("[home/contact] createContactMessage failed", error);
+      redirect("/?error=contact_failed");
+    }
+
+    redirect("/?contact=sent");
+  }
+
   return (
     <div className="bg-[#f7f3ee] text-[#5a4b47]">
       <section className="relative min-h-[78vh] overflow-hidden">
@@ -129,12 +182,24 @@ export default function HomePage() {
         </div>
 
         <div className="mt-8">
-          <Link
-            href="/book-a-class"
-            className="inline-flex rounded-full border border-[#d6c6ba] bg-[#fff] px-6 py-3 text-sm font-medium text-[#6e3232] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#c8b3a4] hover:shadow"
-          >
-            Download Full Agenda
-          </Link>
+          {agendaPdf ? (
+            <Link
+              href={agendaPdf.fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex rounded-full border border-[#d6c6ba] bg-[#fff] px-6 py-3 text-sm font-medium text-[#6e3232] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#c8b3a4] hover:shadow"
+            >
+              Download Full Agenda
+            </Link>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="inline-flex cursor-not-allowed rounded-full border border-[#d6c6ba] bg-[#fff] px-6 py-3 text-sm font-medium text-[#a3897e] shadow-sm"
+            >
+              Agenda Coming Soon
+            </button>
+          )}
         </div>
       </section>
 
@@ -241,26 +306,37 @@ export default function HomePage() {
             </div>
           </article>
 
-          <form className="rounded-3xl border border-[#eadfd7] bg-[#fffdfa] p-8">
+          <form action={submitContactAction} className="rounded-3xl border border-[#eadfd7] bg-[#fffdfa] p-8">
+            {contactSent ? <p className="mb-4 text-sm text-[#2f6b35]">Message sent successfully.</p> : null}
+            {contactError ? (
+              <p className="mb-4 text-sm text-[#7b2d2d]">Could not send your message. Please try again.</p>
+            ) : null}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <input
                 type="text"
+                name="name"
                 placeholder="Name"
+                required
                 className="rounded-xl border border-[#e4d8cf] bg-[#fff] px-4 py-3 text-sm outline-none transition focus:border-[#cba4a4]"
               />
               <input
                 type="email"
+                name="email"
                 placeholder="Email"
+                required
                 className="rounded-xl border border-[#e4d8cf] bg-[#fff] px-4 py-3 text-sm outline-none transition focus:border-[#cba4a4]"
               />
               <input
                 type="tel"
+                name="phone"
                 placeholder="Phone"
                 className="rounded-xl border border-[#e4d8cf] bg-[#fff] px-4 py-3 text-sm outline-none transition focus:border-[#cba4a4] sm:col-span-2"
               />
               <textarea
+                name="message"
                 placeholder="Message"
                 rows={5}
+                required
                 className="rounded-xl border border-[#e4d8cf] bg-[#fff] px-4 py-3 text-sm outline-none transition focus:border-[#cba4a4] sm:col-span-2"
               />
             </div>

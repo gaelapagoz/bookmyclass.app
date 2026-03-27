@@ -3,11 +3,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth, signIn } from "@/auth";
+import { prisma } from "@/lib/db";
 import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
 
 type SearchParams = Promise<{
   callbackUrl?: string;
   error?: string;
+  password_reset?: string;
+  email?: string;
 }>;
 
 export async function signInAction(formData: FormData) {
@@ -19,6 +22,24 @@ export async function signInAction(formData: FormData) {
 
   if (!email || !password) {
     redirect(`/sign-in?error=invalid_input&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+  }
+
+  const user = await prisma.user.findFirst({
+    where: {
+      email: {
+        equals: email,
+        mode: "insensitive",
+      },
+    },
+    select: {
+      emailVerified: true,
+    },
+  });
+
+  if (user && !user.emailVerified) {
+    redirect(
+      `/sign-in?error=email_not_verified&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`,
+    );
   }
 
   try {
@@ -48,6 +69,10 @@ function getErrorMessage(error?: string) {
     return "Invalid email or password.";
   }
 
+  if (error === "email_not_verified") {
+    return "Please verify your email before signing in.";
+  }
+
   return "Could not sign in right now. Please try again.";
 }
 
@@ -61,7 +86,8 @@ export default async function SignInPage({
     redirect("/dashboard");
   }
 
-  const { callbackUrl: rawCallbackUrl = "/dashboard", error } = await searchParams;
+  const { callbackUrl: rawCallbackUrl = "/dashboard", error, email: rawEmail, password_reset } = await searchParams;
+  const email = String(rawEmail ?? "").trim();
   const callbackUrl = getSafeCallbackPath(rawCallbackUrl, "/dashboard");
   const errorMessage = getErrorMessage(error);
 
@@ -71,6 +97,19 @@ export default async function SignInPage({
       <p className="mt-2 text-sm text-[#7f5a5a]">Sign in to access your dashboard.</p>
 
       {errorMessage ? <p className="mt-4 text-sm text-[#7b2d2d]">{errorMessage}</p> : null}
+      {password_reset === "1" ? (
+        <p className="mt-2 text-sm text-[#2f6b35]">Password updated. Please sign in with your new password.</p>
+      ) : null}
+      {error === "email_not_verified" && email ? (
+        <p className="mt-2 text-sm text-[#7f5a5a]">
+          <Link
+            href={`/verify-email?email=${encodeURIComponent(email)}&resend=1&callbackUrl=${encodeURIComponent(callbackUrl)}`}
+            className="font-medium text-[#7b2d2d] underline underline-offset-4"
+          >
+            Resend verification email
+          </Link>
+        </p>
+      ) : null}
 
       <form action={signInAction} className="mt-8 space-y-4 rounded-xl border border-[#d8cec6] bg-white p-5">
         <input type="hidden" name="callbackUrl" value={callbackUrl} />

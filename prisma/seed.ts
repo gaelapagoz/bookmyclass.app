@@ -327,8 +327,10 @@ async function purgeForCleanSeed() {
   await prisma.adminNote.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.contactMessage.deleteMany();
+  await prisma.clientMessage.deleteMany();
   await prisma.order.deleteMany();
   await prisma.subscriptionContract.deleteMany();
+  await prisma.publicDocument.deleteMany();
 
   await prisma.entitlementRule.deleteMany();
   await prisma.price.deleteMany();
@@ -1482,6 +1484,8 @@ async function verifyCleanSeed(clientEmail: string) {
     prisma.adminNote.count(),
     prisma.auditLog.count(),
     prisma.contactMessage.count(),
+    prisma.clientMessage.count(),
+    prisma.publicDocument.count(),
   ]);
 
   if (operationalCounts.some((count) => count !== 0)) {

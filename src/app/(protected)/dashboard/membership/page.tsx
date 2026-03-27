@@ -16,7 +16,7 @@ export default async function DashboardMembershipPage() {
     <section>
       <h1 className="text-3xl font-semibold text-[#6f2b2b]">Membership & Credits</h1>
       <p className="mt-2 text-sm text-[#7f5a5a]">Track active packs, usable credits, and recurring memberships.</p>
-      {data.canManageStripeBilling ? <ManageBillingButton /> : null}
+      {data.canManageStripeBilling ? <div className="mt-4"><ManageBillingButton /></div> : null}
 
       <div className="grid gap-4 md:grid-cols-2">
         <article className="rounded-xl border border-[#d8cec6] bg-white p-5">

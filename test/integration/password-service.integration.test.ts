@@ -14,7 +14,7 @@ import { authorizeCredentials } from "../../src/lib/auth/credentials-authorize";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
 
-async function createClientUser(email: string, password: string) {
+async function createClientUser(email: string, password: string, verified: boolean = true) {
   const passwordHash = await hashPassword(password);
   return prisma.user.create({
     data: {
@@ -24,6 +24,7 @@ async function createClientUser(email: string, password: string) {
       email,
       role: Role.CLIENT,
       passwordHash,
+      emailVerified: verified ? new Date() : null,
     },
     select: {
       id: true,
@@ -39,6 +40,13 @@ describe("password-service integration", () => {
     await clearPasswordResetRateLimitForTests();
   });
 
+  it("credentials authorize rejects unverified users", async () => {
+    const user = await createClientUser(`change.unverified.${Date.now()}@example.test`, "Password123!", false);
+
+    await expect(
+      authorizeCredentials({ email: user.email, password: "Password123!" }),
+    ).resolves.toBeNull();
+  });
   it("change password succeeds with correct current password", async () => {
     const user = await createClientUser(`change.ok.${Date.now()}@example.test`, "OldPassword123!");
 
@@ -370,6 +378,8 @@ describe("password-service integration", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+
 
 
 

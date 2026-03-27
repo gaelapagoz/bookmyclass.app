@@ -53,9 +53,6 @@ Run key flows with:
 - Missing key section
 - Layout prevents interaction
 
-### Results
-- Fail test: Contact Us: the message box is not operational. Logic needs to be implemented. Blocker Issue. User cannot send feedback
-- Fail test: Download Agenda: this should download a .pdf file that is handled on the Admin Dashboard. Blocker Issue. User needs to download .pdf from mobile.
 
 ---
 
@@ -73,9 +70,6 @@ Run key flows with:
 ### Fail (Blocker)
 - 404 / blank page
 - Clipped or overlapping content
-
-# Results
-- All passed
 
 ---
 
@@ -140,6 +134,7 @@ Run key flows with:
 - Broken navigation
 
 ---
+
 
 ## 6. Sign-in / Sign-up
 

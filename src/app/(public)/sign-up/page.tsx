@@ -1,16 +1,21 @@
-import { AuthError } from "next-auth";
-import { auth, signIn } from "@/auth";
+import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import { hashPassword } from "@/lib/auth/password-service";
-import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+
+import { auth } from "@/auth";
+import { hashPassword } from "@/lib/auth/password-service";
+import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
+import { requestEmailVerification } from "@/lib/auth/email-verification-service";
 
 type SearchParams = Promise<{
   callbackUrl?: string;
   error?: string;
+  email?: string;
 }>;
+
+const SIGNUP_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 function parseName(firstName: string, lastName: string) {
   return `${firstName.trim()} ${lastName.trim()}`.trim();
@@ -20,14 +25,38 @@ function isPrismaKnownError(error: unknown): error is Prisma.PrismaClientKnownRe
   return error instanceof Prisma.PrismaClientKnownRequestError;
 }
 
-function isNextRedirectError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "digest" in error &&
-    typeof (error as { digest?: unknown }).digest === "string" &&
-    (error as { digest: string }).digest.startsWith("NEXT_REDIRECT")
-  );
+function hashSignupRateLimitKey(email: string): string {
+  return createHash("sha256")
+    .update(`signup-rate-limit:${email}`)
+    .digest("hex");
+}
+
+async function isSignupRateLimited(email: string, now: Date): Promise<boolean> {
+  const emailHash = hashSignupRateLimitKey(email);
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.passwordResetRateLimit.findUnique({
+      where: { emailHash },
+      select: { lastRequestedAt: true },
+    });
+
+    if (
+      existing &&
+      now.getTime() - existing.lastRequestedAt.getTime() < SIGNUP_RATE_LIMIT_WINDOW_MS
+    ) {
+      return true;
+    }
+
+    await tx.passwordResetRateLimit.upsert({
+      where: { emailHash },
+      update: { lastRequestedAt: now },
+      create: {
+        emailHash,
+        lastRequestedAt: now,
+      },
+    });
+
+    return false;
+  });
 }
 
 export async function registerAction(formData: FormData) {
@@ -40,15 +69,12 @@ export async function registerAction(formData: FormData) {
   const callbackUrl = getSafeCallbackPath(formData.get("callbackUrl"), "/dashboard");
 
   if (!firstName || !lastName || !email || !password || password.length < 8) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[sign-up] validation failed", {
-        hasFirstName: Boolean(firstName),
-        hasLastName: Boolean(lastName),
-        hasEmail: Boolean(email),
-        passwordLength: password.length,
-      });
-    }
     redirect(`/sign-up?error=invalid_input&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+  }
+
+  const rateLimited = await isSignupRateLimited(email, new Date());
+  if (rateLimited) {
+    redirect(`/sign-up?error=rate_limited&callbackUrl=${encodeURIComponent(callbackUrl)}&email=${encodeURIComponent(email)}`);
   }
 
   const existingUser = await prisma.user.findFirst({
@@ -58,13 +84,10 @@ export async function registerAction(formData: FormData) {
         mode: "insensitive",
       },
     },
-    select: { id: true },
+    select: { id: true, emailVerified: true },
   });
 
-  if (existingUser) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[sign-up] duplicate email (pre-check)", { email });
-    }
+  if (existingUser?.emailVerified) {
     redirect(`/sign-up?error=email_exists&callbackUrl=${encodeURIComponent(callbackUrl)}`);
   }
 
@@ -76,65 +99,49 @@ export async function registerAction(formData: FormData) {
     role: "CLIENT" as const,
     isActive: true,
     isInactive: false,
+    emailVerified: null,
   };
 
   try {
-    const createdUser = await prisma.user.create({
-      data: {
-        ...baseData,
-        firstName,
-        lastName,
-      },
-      select: { id: true, email: true },
-    });
-    if (process.env.NODE_ENV !== "production") {
-      console.info("[sign-up] user created", createdUser);
+    if (existingUser) {
+      await prisma.user.update({
+        where: { id: existingUser.id },
+        data: {
+          ...baseData,
+          firstName,
+          lastName,
+        },
+        select: { id: true },
+      });
+    } else {
+      await prisma.user.create({
+        data: {
+          ...baseData,
+          firstName,
+          lastName,
+        },
+        select: { id: true },
+      });
     }
   } catch (error: unknown) {
     if (isPrismaKnownError(error) && error.code === "P2002") {
-      if (process.env.NODE_ENV !== "production") {
-        console.error("[sign-up] duplicate email (P2002)", { email, code: error.code });
-      }
       redirect(`/sign-up?error=email_exists&callbackUrl=${encodeURIComponent(callbackUrl)}`);
-    }
-
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[sign-up] user.create failed", error);
     }
 
     redirect(`/sign-up?error=signup_failed&callbackUrl=${encodeURIComponent(callbackUrl)}`);
   }
 
   try {
-    if (process.env.NODE_ENV !== "production") {
-      console.info("[sign-up] attempting auto sign-in", { email });
-      console.info("[sign-up] redirect success path", { redirectTo: callbackUrl });
-    }
-
-    await signIn("credentials", {
+    await requestEmailVerification({
       email,
-      password,
-      redirectTo: callbackUrl,
+      appUrl: process.env.APP_URL,
     });
-  } catch (error: unknown) {
-    if (isNextRedirectError(error)) {
-      throw error;
-    }
-
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[sign-up] auto sign-in failed", error);
-    }
-
-    if (error instanceof AuthError) {
-      redirect(`/sign-up?error=signin_failed&callbackUrl=${encodeURIComponent(callbackUrl)}`);
-    }
-
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[sign-up] unexpected sign-in error", error);
-    }
-
-    redirect(`/sign-up?error=signup_failed&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+  } catch (error) {
+    console.error("[sign-up] verification send failed", error);
+    redirect(`/sign-up?error=verification_send_failed&callbackUrl=${encodeURIComponent(callbackUrl)}&email=${encodeURIComponent(email)}`);
   }
+
+  redirect(`/verify-email?sent=1&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`);
 }
 
 function getErrorMessage(error?: string) {
@@ -154,8 +161,12 @@ function getErrorMessage(error?: string) {
     return "Could not create account right now. Please try again.";
   }
 
-  if (error === "signin_failed") {
-    return "Account created, but automatic sign-in failed. Please sign in manually.";
+  if (error === "rate_limited") {
+    return "Please wait before trying to sign up again.";
+  }
+
+  if (error === "verification_send_failed") {
+    return "Account created, but verification email could not be sent right now.";
   }
 
   return "Could not create account.";
@@ -167,7 +178,7 @@ export default async function SignUpPage({
   searchParams: SearchParams;
 }) {
   const session = await auth();
-  const { error, callbackUrl: rawCallbackUrl = "/dashboard" } = await searchParams;
+  const { error, callbackUrl: rawCallbackUrl = "/dashboard", email } = await searchParams;
   const callbackUrl = getSafeCallbackPath(rawCallbackUrl, "/dashboard");
   if (session?.user) {
     redirect(callbackUrl);
@@ -208,6 +219,7 @@ export default async function SignUpPage({
           <input
             name="email"
             type="email"
+            defaultValue={email ?? ""}
             required
             className="mt-1 w-full rounded-md border border-[#d8cec6] px-3 py-2"
           />
@@ -244,4 +256,3 @@ export default async function SignUpPage({
     </main>
   );
 }
-

@@ -2,6 +2,7 @@
 
 import {
   BillingInterval,
+  ClientMessageStatus,
   PaymentProvider,
   PriceType,
   ProductType,
@@ -11,6 +12,8 @@ import {
   Prisma,
 } from "@prisma/client";
 import { redirect } from "next/navigation";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { z } from "zod";
 
 import { auth } from "@/auth";
@@ -31,6 +34,8 @@ import {
   updateAdminUser,
 } from "@/lib/admin/admin-service";
 import { isAdminRole } from "@/lib/auth/admin-access";
+import { upsertActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
+import { updateClientMessageStatus } from "@/lib/client-messages/client-message-service";
 
 const classSchema = z.object({
   categoryId: z.string().min(1),
@@ -156,6 +161,11 @@ const learningVideoSchema = z.object({
   thumbnail: z.string().optional(),
   videoUrl: z.string().optional(),
   priority: z.coerce.number().int(),
+});
+
+const updateClientMessageStatusSchema = z.object({
+  id: z.string().min(1),
+  status: z.nativeEnum(ClientMessageStatus),
 });
 
 function isChecked(formData: FormData, name: string): boolean {
@@ -623,6 +633,56 @@ export async function updateLearningVideoAction(id: string, formData: FormData) 
   }
 
   redirect("/admin/learning-videos");
+}
+
+export async function updateClientMessageStatusAction(formData: FormData) {
+  await assertAdminAccess();
+
+  const parsed = updateClientMessageStatusSchema.safeParse({
+    id: formData.get("id"),
+    status: formData.get("status"),
+  });
+
+  if (!parsed.success) {
+    redirectWithError("/admin/dashboard", "Invalid message status payload.");
+  }
+
+  try {
+    await updateClientMessageStatus(parsed.data.id, parsed.data.status);
+  } catch (error) {
+    redirectWithError("/admin/dashboard", getPrismaErrorMessage(error));
+  }
+
+  redirect("/admin/dashboard");
+}
+
+export async function uploadAgendaPdfAction(formData: FormData) {
+  await assertAdminAccess();
+
+  const file = formData.get("agendaPdf");
+  if (!(file instanceof File) || file.size < 1) {
+    redirectWithError("/admin/dashboard", "Please select a PDF file.");
+  }
+
+  if (!file.type.includes("pdf")) {
+    redirectWithError("/admin/dashboard", "Only PDF files are accepted.");
+  }
+
+  const bytes = await file.arrayBuffer();
+  const uploadsDir = join(process.cwd(), "public", "uploads");
+  const targetFileName = `agenda-${Date.now()}.pdf`;
+  const targetAbsolutePath = join(uploadsDir, targetFileName);
+
+  try {
+    await mkdir(uploadsDir, { recursive: true });
+    await writeFile(targetAbsolutePath, Buffer.from(bytes));
+    await upsertActiveAgendaPdfDocument(`/uploads/${targetFileName}`);
+  } catch (error) {
+    console.error("[admin/upload-agenda-pdf] failed", error);
+    redirectWithError("/admin/dashboard", "Could not upload agenda PDF.");
+  }
+
+  redirect("/admin/dashboard");
 }
 
 

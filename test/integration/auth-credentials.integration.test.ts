@@ -1,4 +1,4 @@
-﻿import "./helpers/setup-env";
+import "./helpers/setup-env";
 
 import { hash } from "bcryptjs";
 import { Role } from "@prisma/client";
@@ -25,6 +25,7 @@ describe("credentials authorize integration", () => {
         email: "auth.client@example.test",
         role: Role.CLIENT,
         passwordHash,
+        emailVerified: new Date(),
       },
     });
 
@@ -49,12 +50,37 @@ describe("credentials authorize integration", () => {
         email: "auth.client@example.test",
         role: Role.CLIENT,
         passwordHash,
+        emailVerified: new Date(),
       },
     });
 
     const result = await authorizeCredentials({
       email: "auth.client@example.test",
       password: "WrongPass123!",
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it("rejects unverified users even with correct password", async () => {
+    const password = "Password123!";
+    const passwordHash = await hash(password, 12);
+
+    await prisma.user.create({
+      data: {
+        name: "Auth Client",
+        firstName: "Auth",
+        lastName: "Client",
+        email: "unverified.auth.client@example.test",
+        role: Role.CLIENT,
+        passwordHash,
+        emailVerified: null,
+      },
+    });
+
+    const result = await authorizeCredentials({
+      email: "unverified.auth.client@example.test",
+      password,
     });
 
     expect(result).toBeNull();

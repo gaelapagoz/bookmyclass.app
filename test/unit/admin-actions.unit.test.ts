@@ -25,6 +25,14 @@ vi.mock("@/lib/admin/admin-service", () => ({
   updateAdminUser: vi.fn(),
 }));
 
+vi.mock("@/lib/public-documents/agenda-document-service", () => ({
+  upsertActiveAgendaPdfDocument: vi.fn(),
+}));
+
+vi.mock("@/lib/client-messages/client-message-service", () => ({
+  updateClientMessageStatus: vi.fn(),
+}));
+
 import { auth } from "@/auth";
 import {
   createAdminClass,
@@ -245,3 +253,5 @@ describe("admin actions", () => {
     );
   });
 });
+
+

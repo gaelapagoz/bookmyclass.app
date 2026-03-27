@@ -177,6 +177,17 @@ enum ContactMessageStatus {
   CLOSED
 }
 
+enum ClientMessageType {
+  CONTACT
+  BOOKING_NOTE
+}
+
+enum ClientMessageStatus {
+  NEW
+  READ
+  ARCHIVED
+}
+
 model User {
   id                         String                 @id @default(cuid())
   name                       String
@@ -211,6 +222,7 @@ model User {
   adminNotesAboutClient      AdminNote[]            @relation("AdminNoteClient")
   contactMessages            ContactMessage[]       @relation("ContactMessageClient")
   resolvedContactMessages    ContactMessage[]       @relation("ContactMessageResolvedBy")
+  clientMessagesUnified      ClientMessage[]        @relation("ClientMessageUser")
   accounts                   Account[]
   sessions                   Session[]
   passwordResetTokens        PasswordResetToken[]
@@ -504,6 +516,7 @@ model Booking {
   cancelledBy            User?                    @relation("BookingCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
   attendanceRecord       AttendanceRecord?
   creditLedgerEntries    CreditLedgerEntry[]
+  clientMessages         ClientMessage[]          @relation("ClientMessageBooking")
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
 
@@ -791,6 +804,39 @@ model ContactMessage {
   @@index([email])
   @@index([clientId, status, createdAt])
   @@index([resolvedById, resolvedAt])
+}
+
+model ClientMessage {
+  id        String            @id @default(cuid())
+  type      ClientMessageType
+  userId    String?
+  bookingId String?
+  name      String
+  email     String
+  phone     String?
+  subject   String?
+  message   String
+  status    ClientMessageStatus @default(NEW)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  user    User?    @relation("ClientMessageUser", fields: [userId], references: [id], onDelete: SetNull)
+  booking Booking? @relation("ClientMessageBooking", fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@index([type, status, createdAt])
+  @@index([bookingId, createdAt])
+  @@index([email, createdAt])
+}
+
+model PublicDocument {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  fileUrl   String
+  isActive  Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([key, isActive])
 }
 
 model Account {

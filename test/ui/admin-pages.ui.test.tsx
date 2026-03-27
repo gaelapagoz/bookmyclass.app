@@ -4,6 +4,22 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/app/admin/(private)/actions", () => ({
+  uploadAgendaPdfAction: vi.fn(),
+  updateClientMessageStatusAction: vi.fn(),
+}));
+
+vi.mock("@/lib/client-messages/client-message-service", () => ({
+  listClientMessages: vi.fn(async () => []),
+}));
+
+vi.mock("@/lib/public-documents/agenda-document-service", () => ({
+  getActiveAgendaPdfDocument: vi.fn(async () => null),
+}));
+
+vi.mock("@/auth", () => ({
+  auth: vi.fn(async () => null),
+}));
 vi.mock("@/lib/admin/admin-service", () => ({
   getAdminDashboardData: vi.fn(),
   getAdminClassesData: vi.fn(),
@@ -266,5 +282,6 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Unable to load learning programs right now.")).toBeInTheDocument();
   });
 });
+
 
 

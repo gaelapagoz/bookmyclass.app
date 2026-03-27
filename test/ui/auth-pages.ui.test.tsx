@@ -102,9 +102,9 @@ describe("Auth pages UI", () => {
     render(await SignUpPage({ searchParams: Promise.resolve({ error: "signup_failed" }) }));
     expect(screen.getByText("Could not create account right now. Please try again.")).toBeInTheDocument();
 
-    render(await SignUpPage({ searchParams: Promise.resolve({ error: "signin_failed" }) }));
+    render(await SignUpPage({ searchParams: Promise.resolve({ error: "verification_send_failed" }) }));
     expect(
-      screen.getByText("Account created, but automatic sign-in failed. Please sign in manually."),
+      screen.getByText("Account created, but verification email could not be sent right now."),
     ).toBeInTheDocument();
   });
   it("sign-up page sanitizes external callbackUrl for authenticated users", async () => {
@@ -124,3 +124,4 @@ describe("Auth pages UI", () => {
     expect(redirect).toHaveBeenCalledWith("/dashboard");
   });
 });
+

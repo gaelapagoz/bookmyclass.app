@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { PasswordServiceError, resetPasswordWithToken } from "@/lib/auth/password-service";
+import { TokenFromHashBridge } from "./token-from-hash-bridge";
 
 type SearchParams = Promise<{
   token?: string;
@@ -37,11 +37,6 @@ export default async function ResetPasswordPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const session = await auth();
-  if (session?.user) {
-    redirect("/dashboard");
-  }
-
   const params = await searchParams;
   const token = String(params.token ?? "").trim();
   const message = getMessage(params);
@@ -73,7 +68,7 @@ export default async function ResetPasswordPage({
       redirect(`/reset-password?token=${encodeURIComponent(submittedToken)}&error=reset_failed`);
     }
 
-    redirect("/reset-password?success=1");
+    redirect("/sign-in?password_reset=1");
   }
 
   return (
@@ -87,9 +82,9 @@ export default async function ResetPasswordPage({
         </p>
       ) : null}
 
-      {!token ? (
-        <p className="mt-4 text-sm text-[#7b2d2d]">Reset link is missing a token.</p>
-      ) : null}
+      <TokenFromHashBridge />
+
+      {!token ? <p className="mt-4 text-sm text-[#7f5a5a]">Waiting for reset token...</p> : null}
 
       {token ? (
         <form action={resetPasswordAction} className="mt-8 space-y-4 rounded-xl border border-[#d8cec6] bg-white p-5">

@@ -38,11 +38,12 @@ export async function authorizeCredentials(rawCredentials: unknown): Promise<Aut
       email: true,
       name: true,
       role: true,
+      emailVerified: true,
       passwordHash: true,
     },
   });
 
-  if (!user?.passwordHash) {
+  if (!user?.passwordHash || !user.emailVerified) {
     return null;
   }
 
