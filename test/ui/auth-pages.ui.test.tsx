@@ -63,6 +63,26 @@ describe("Auth pages UI", () => {
     expect(screen.getByRole("button", { name: "Sign In" })).toBeInTheDocument();
   });
 
+  it("sign-in page sanitizes external callbackUrl for form and sign-up link", async () => {
+    render(await SignInPage({ searchParams: Promise.resolve({ callbackUrl: "https://evil.example/path" }) }));
+
+    const hiddenInput = document.querySelector('input[name="callbackUrl"]') as HTMLInputElement | null;
+    expect(hiddenInput?.value).toBe("/dashboard");
+
+    const signUpLink = screen.getByRole("link", { name: "Sign up" });
+    expect(signUpLink).toHaveAttribute("href", "/sign-up?callbackUrl=%2Fdashboard");
+  });
+
+  it("sign-in page preserves safe internal callbackUrl for form and sign-up link", async () => {
+    render(await SignInPage({ searchParams: Promise.resolve({ callbackUrl: "/dashboard/bookings" }) }));
+
+    const hiddenInput = document.querySelector('input[name="callbackUrl"]') as HTMLInputElement | null;
+    expect(hiddenInput?.value).toBe("/dashboard/bookings");
+
+    const signUpLink = screen.getByRole("link", { name: "Sign up" });
+    expect(signUpLink).toHaveAttribute("href", "/sign-up?callbackUrl=%2Fdashboard%2Fbookings");
+  });
+
   it("renders public forgot-password page", async () => {
     render(await ForgotPasswordPage({ searchParams: Promise.resolve({}) }));
 

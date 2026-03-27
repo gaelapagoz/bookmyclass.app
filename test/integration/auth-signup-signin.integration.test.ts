@@ -144,4 +144,61 @@ describe("auth actions integration", () => {
       signInAction(makeSignInForm({ email: "ok@example.test", password: "Password123!" })),
     ).rejects.toThrow("NEXT_REDIRECT:/dashboard");
   });
+
+  it("sign-in action sanitizes protocol-relative callback URL to /dashboard", async () => {
+    vi.mocked(signIn).mockImplementation(async (_provider, options) => {
+      expect((options as { redirectTo?: string }).redirectTo).toBe("/dashboard");
+      const error = new Error("NEXT_REDIRECT:/dashboard");
+      (error as Error & { digest?: string }).digest = "NEXT_REDIRECT;replace;/dashboard;307;";
+      throw error;
+    });
+
+    await expect(
+      signInAction(
+        makeSignInForm({
+          email: "ok@example.test",
+          password: "Password123!",
+          callbackUrl: "//evil.com",
+        }),
+      ),
+    ).rejects.toThrow("NEXT_REDIRECT:/dashboard");
+  });
+
+  it("sign-in action sanitizes absolute callback URL to /dashboard", async () => {
+    vi.mocked(signIn).mockImplementation(async (_provider, options) => {
+      expect((options as { redirectTo?: string }).redirectTo).toBe("/dashboard");
+      const error = new Error("NEXT_REDIRECT:/dashboard");
+      (error as Error & { digest?: string }).digest = "NEXT_REDIRECT;replace;/dashboard;307;";
+      throw error;
+    });
+
+    await expect(
+      signInAction(
+        makeSignInForm({
+          email: "ok@example.test",
+          password: "Password123!",
+          callbackUrl: "https://evil.com",
+        }),
+      ),
+    ).rejects.toThrow("NEXT_REDIRECT:/dashboard");
+  });
+
+  it("sign-in action preserves safe internal callback URL", async () => {
+    vi.mocked(signIn).mockImplementation(async (_provider, options) => {
+      expect((options as { redirectTo?: string }).redirectTo).toBe("/dashboard/bookings");
+      const error = new Error("NEXT_REDIRECT:/dashboard/bookings");
+      (error as Error & { digest?: string }).digest = "NEXT_REDIRECT;replace;/dashboard/bookings;307;";
+      throw error;
+    });
+
+    await expect(
+      signInAction(
+        makeSignInForm({
+          email: "ok@example.test",
+          password: "Password123!",
+          callbackUrl: "/dashboard/bookings",
+        }),
+      ),
+    ).rejects.toThrow("NEXT_REDIRECT:/dashboard/bookings");
+  });
 });

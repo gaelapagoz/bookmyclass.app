@@ -30,7 +30,7 @@ export default async function SubscriptionSuccessPage({
 
   return (
     <section className="mx-auto w-full max-w-3xl px-6 py-14">
-      <h1 className="text-3xl font-semibold text-[#6f2b2b]">Paymented Confirmed</h1>
+      <h1 className="text-3xl font-semibold text-[#6f2b2b]">Payment Confirmed</h1>
       <p className="mt-3 text-sm text-[#7f5a5a]">
         Your subscription payment is confirmed, and you are now ready to book a class.
       </p>

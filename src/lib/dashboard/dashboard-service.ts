@@ -166,78 +166,103 @@ export async function getCreditsLeft(clientId: string): Promise<number> {
   return result._sum.amount ?? 0;
 }
 
+async function getUsableCreditsForActivePacks(clientId: string, now: Date): Promise<number> {
+  const entitlements = await prisma.clientEntitlement.findMany({
+    where: {
+      clientId,
+      status: ClientEntitlementStatus.ACTIVE,
+      entitlementType: {
+        in: [EntitlementType.CREDIT_PACK, EntitlementType.SINGLE_USE],
+      },
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    select: { id: true },
+  });
+
+  if (entitlements.length === 0) {
+    return 0;
+  }
+
+  const balances = await prisma.creditLedgerEntry.groupBy({
+    by: ["entitlementId"],
+    where: {
+      clientId,
+      entitlementId: { in: entitlements.map((entitlement) => entitlement.id) },
+    },
+    _sum: { amount: true },
+  });
+
+  return balances.reduce((sum, row) => sum + Math.max(row._sum.amount ?? 0, 0), 0);
+}
+
 export async function getDashboardHomeData(clientId: string): Promise<DashboardHomeData> {
   const now = new Date();
   const cancellationCutoffHours = await getCancellationCutoffHours();
-  const [user, activeSubscription, creditsLeft, upcoming, recent] =
-    await prisma.$transaction([
-      prisma.user.findUniqueOrThrow({
-        where: { id: clientId },
-        select: {
-          name: true,
-          firstName: true,
-          lastName: true,
+  const [user, activeSubscription, upcoming, recent, usableCredits] = await Promise.all([
+    prisma.user.findUniqueOrThrow({
+      where: { id: clientId },
+      select: {
+        name: true,
+        firstName: true,
+        lastName: true,
+      },
+    }),
+    prisma.subscriptionContract.findFirst({
+      where: {
+        clientId,
+        status: SubscriptionStatus.ACTIVE,
+        currentPeriodEnd: { gt: now },
+      },
+      orderBy: { currentPeriodEnd: "asc" },
+      select: {
+        currentPeriodEnd: true,
+        product: { select: { name: true } },
+      },
+    }),
+    prisma.booking.findFirst({
+      where: {
+        clientId,
+        status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+        studioSession: {
+          startsAt: { gt: now },
+          status: StudioSessionStatus.SCHEDULED,
         },
-      }),
-      prisma.subscriptionContract.findFirst({
-        where: {
-          clientId,
-          status: SubscriptionStatus.ACTIVE,
-          currentPeriodEnd: { gt: now },
-        },
-        orderBy: { currentPeriodEnd: "asc" },
-        select: {
-          currentPeriodEnd: true,
-          product: { select: { name: true } },
-        },
-      }),
-      prisma.creditLedgerEntry.aggregate({
-        where: { clientId },
-        _sum: { amount: true },
-      }),
-      prisma.booking.findFirst({
-        where: {
-          clientId,
-          status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
-          studioSession: {
-            startsAt: { gt: now },
-            status: StudioSessionStatus.SCHEDULED,
+      },
+      orderBy: { studioSession: { startsAt: "asc" } },
+      select: {
+        id: true,
+        status: true,
+        studioSession: {
+          select: {
+            title: true,
+            startsAt: true,
+            endsAt: true,
+            location: true,
+            status: true,
           },
         },
-        orderBy: { studioSession: { startsAt: "asc" } },
-        select: {
-          id: true,
-          status: true,
-          studioSession: {
-            select: {
-              title: true,
-              startsAt: true,
-              endsAt: true,
-              location: true,
-              status: true,
-            },
+      },
+    }),
+    prisma.booking.findMany({
+      where: { clientId },
+      orderBy: { bookedAt: "desc" },
+      take: 5,
+      select: {
+        id: true,
+        status: true,
+        studioSession: {
+          select: {
+            title: true,
+            startsAt: true,
+            endsAt: true,
+            location: true,
+            status: true,
           },
         },
-      }),
-      prisma.booking.findMany({
-        where: { clientId },
-        orderBy: { bookedAt: "desc" },
-        take: 5,
-        select: {
-          id: true,
-          status: true,
-          studioSession: {
-            select: {
-              title: true,
-              startsAt: true,
-              endsAt: true,
-              location: true,
-              status: true,
-            },
-          },
-        },
-      }),
-    ]);
+      },
+    }),
+    getUsableCreditsForActivePacks(clientId, now),
+  ]);
 
   return {
     userName: user.firstName?.trim() || user.name,
@@ -250,7 +275,7 @@ export async function getDashboardHomeData(clientId: string): Promise<DashboardH
           currentPeriodEnd: activeSubscription.currentPeriodEnd.toISOString(),
         }
       : null,
-    creditsLeft: creditsLeft._sum.amount ?? 0,
+    creditsLeft: usableCredits,
     recentBookings: recent.map((booking) =>
       toBookingItem({ booking, now, cancellationCutoffHours }),
     ),

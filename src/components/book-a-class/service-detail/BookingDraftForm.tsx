@@ -209,7 +209,6 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
       try {
         const params = new URLSearchParams({
           serviceSlug: session.serviceSlug,
-          sessionId: session.sessionId,
         });
         const response = await fetch(`/api/bookings/payment-options-preview?${params.toString()}`);
         const payload = (await parseJsonResponse(response)) as PaymentOptionsResponse | ErrorResponse | null;

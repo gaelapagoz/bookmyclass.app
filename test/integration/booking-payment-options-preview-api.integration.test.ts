@@ -138,6 +138,18 @@ describe("GET /api/bookings/payment-options-preview", () => {
     expect(body.paymentOptions.existingPlans).toHaveLength(0);
   });
 
+  it("works without sessionId query parameter", async () => {
+    const { serviceSlug } = await seedCatalogue(`service-${Date.now()}`);
+
+    const response = await previewPaymentOptions(
+      new Request(
+        `http://localhost:3000/api/bookings/payment-options-preview?serviceSlug=${serviceSlug}&bookingIntent=USE_PLAN`,
+      ),
+    );
+
+    expect(response.status).toBe(200);
+  });
+
   it("returns existing eligible plans for authenticated user", async () => {
     const { serviceSlug, packProductId } = await seedCatalogue(`service-${Date.now()}`);
     const client = await prisma.user.create({

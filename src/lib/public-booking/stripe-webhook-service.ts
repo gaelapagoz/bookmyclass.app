@@ -735,7 +735,10 @@ export async function reconcileCheckoutSessionAfterReturn(input: {
       payments: {
         where: {
           provider: PaymentProvider.STRIPE,
-          providerReference: input.checkoutSessionId,
+          OR: [
+            { stripeCheckoutSessionId: input.checkoutSessionId },
+            { providerReference: input.checkoutSessionId },
+          ],
         },
         orderBy: { createdAt: "desc" },
         take: 1,

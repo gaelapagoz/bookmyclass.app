@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth, signIn } from "@/auth";
+import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
 
 type SearchParams = Promise<{
   callbackUrl?: string;
@@ -14,7 +15,7 @@ export async function signInAction(formData: FormData) {
 
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
-  const callbackUrl = String(formData.get("callbackUrl") ?? "/dashboard");
+  const callbackUrl = getSafeCallbackPath(formData.get("callbackUrl"), "/dashboard");
 
   if (!email || !password) {
     redirect(`/sign-in?error=invalid_input&callbackUrl=${encodeURIComponent(callbackUrl)}`);
@@ -24,7 +25,7 @@ export async function signInAction(formData: FormData) {
     await signIn("credentials", {
       email,
       password,
-      redirectTo: callbackUrl || "/dashboard",
+      redirectTo: callbackUrl,
     });
   } catch (error) {
     if (error instanceof AuthError) {
@@ -60,7 +61,8 @@ export default async function SignInPage({
     redirect("/dashboard");
   }
 
-  const { callbackUrl = "/dashboard", error } = await searchParams;
+  const { callbackUrl: rawCallbackUrl = "/dashboard", error } = await searchParams;
+  const callbackUrl = getSafeCallbackPath(rawCallbackUrl, "/dashboard");
   const errorMessage = getErrorMessage(error);
 
   return (

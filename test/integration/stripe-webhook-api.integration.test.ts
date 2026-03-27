@@ -1182,8 +1182,10 @@ describe("POST /api/stripe/webhook", () => {
       paymentSelection: BookingPaymentSelection.NEW_PLAN_PURCHASE,
     });
 
+    const checkoutSessionId = fixture.payment.providerReference;
+
     const checkoutSession = {
-      id: fixture.payment.providerReference,
+      id: checkoutSessionId,
       payment_status: "paid",
       mode: "payment",
       payment_intent: "pi_reconcile_success",
@@ -1210,12 +1212,19 @@ describe("POST /api/stripe/webhook", () => {
     );
     expect(webhookResponse.status).toBe(200);
 
+    const finalizedPayment = await prisma.payment.findUnique({ where: { id: fixture.payment.id } });
+    expect(finalizedPayment?.providerReference).toBe("pi_reconcile_success");
+    expect(finalizedPayment?.stripeCheckoutSessionId).toBe(checkoutSessionId);
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     retrieveCheckoutSessionMock.mockResolvedValue(checkoutSession);
     await reconcileCheckoutSessionAfterReturn({
-      checkoutSessionId: fixture.payment.providerReference,
+      checkoutSessionId,
       bookingId: fixture.booking.id,
       userId: fixture.client.id,
     });
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
 
     const entitlements = await prisma.clientEntitlement.findMany({
       where: {
@@ -1311,13 +1320,3 @@ describe("POST /api/stripe/webhook", () => {
   });
 
 });
-
-
-
-
-
-
-
-
-
-

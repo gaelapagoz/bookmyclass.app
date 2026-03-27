@@ -6,6 +6,7 @@ import {
   CreditLedgerEntryType,
   EntitlementScope,
   EntitlementType,
+  OrderStatus,
   PaymentProvider,
   PriceType,
   ProductType,
@@ -336,6 +337,69 @@ describe("dashboard-service integration", () => {
     expect(home.creditsLeft).toBe(9);
   });
 
+  it("keeps dashboard home credits aligned with membership usable credits", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Consistent Credits Client",
+        firstName: "Consistent",
+        lastName: "Client",
+        email: `consistent.credits.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    const { entitlement } = await createSessionFixture(client.id);
+
+    await prisma.clientEntitlement.update({
+      where: { id: entitlement.id },
+      data: {
+        expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      },
+    });
+
+    const expiredProduct = await prisma.product.create({
+      data: {
+        name: "Expired Pack",
+        slug: `expired-pack-${Date.now()}`,
+        productType: ProductType.CLASS_PACK,
+        isActive: true,
+        isArchived: false,
+        sortOrder: 99,
+      },
+    });
+
+    const expiredEntitlement = await prisma.clientEntitlement.create({
+      data: {
+        clientId: client.id,
+        productId: expiredProduct.id,
+        entitlementType: EntitlementType.CREDIT_PACK,
+        entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+        status: ClientEntitlementStatus.ACTIVE,
+        activatedAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    await prisma.creditLedgerEntry.create({
+      data: {
+        clientId: client.id,
+        entitlementId: expiredEntitlement.id,
+        entryType: CreditLedgerEntryType.GRANT,
+        amount: 50,
+        notes: "Expired credits should not count as usable.",
+      },
+    });
+
+    const [home, membership] = await Promise.all([
+      getDashboardHomeData(client.id),
+      getDashboardMembershipData(client.id),
+    ]);
+
+    expect(home.creditsLeft).toBe(0);
+    expect(membership.usableCredits).toBe(0);
+    expect(home.creditsLeft).toBe(membership.usableCredits);
+  });
+
   it("returns current plans with both active entitlement packs and subscriptions", async () => {
     const client = await prisma.user.create({
       data: {
@@ -398,12 +462,97 @@ describe("dashboard-service integration", () => {
     expect(subscriptionPlan).toBeTruthy();
     expect(subscriptionPlan?.status).toBe(SubscriptionStatus.ACTIVE);
   });
+  it("keeps purchase history consistent with finalized ownership state", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "History Client",
+        firstName: "History",
+        lastName: "Client",
+        email: `history.client.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    const product = await prisma.product.create({
+      data: {
+        name: "History Pack",
+        slug: `history-pack-${Date.now()}`,
+        productType: ProductType.CLASS_PACK,
+        isActive: true,
+        isArchived: false,
+        sortOrder: 1,
+      },
+    });
+
+    const price = await prisma.price.create({
+      data: {
+        productId: product.id,
+        lookupKey: `history-pack-${Date.now()}`,
+        name: "History Pack Price",
+        priceType: PriceType.ONE_TIME,
+        currencyCode: "EUR",
+        unitAmountMinor: 9500,
+        isActive: true,
+        isArchived: false,
+      },
+    });
+
+    const placedOrder = await prisma.order.create({
+      data: {
+        clientId: client.id,
+        subtotalAmountMinor: price.unitAmountMinor,
+        discountAmountMinor: 0,
+        totalAmountMinor: price.unitAmountMinor,
+        currencyCode: "EUR",
+        status: OrderStatus.PLACED,
+      },
+    });
+
+    const paidOrder = await prisma.order.create({
+      data: {
+        clientId: client.id,
+        subtotalAmountMinor: price.unitAmountMinor,
+        discountAmountMinor: 0,
+        totalAmountMinor: price.unitAmountMinor,
+        currencyCode: "EUR",
+        status: OrderStatus.PAID,
+      },
+    });
+
+    await prisma.orderItem.createMany({
+      data: [
+        {
+          orderId: placedOrder.id,
+          productId: product.id,
+          priceId: price.id,
+          quantity: 1,
+          productNameSnapshot: product.name,
+          priceNameSnapshot: price.name,
+          unitAmountMinor: price.unitAmountMinor,
+          lineSubtotalAmountMinor: price.unitAmountMinor,
+          lineDiscountAmountMinor: 0,
+          lineTotalAmountMinor: price.unitAmountMinor,
+          currencyCode: "EUR",
+        },
+        {
+          orderId: paidOrder.id,
+          productId: product.id,
+          priceId: price.id,
+          quantity: 1,
+          productNameSnapshot: product.name,
+          priceNameSnapshot: price.name,
+          unitAmountMinor: price.unitAmountMinor,
+          lineSubtotalAmountMinor: price.unitAmountMinor,
+          lineDiscountAmountMinor: 0,
+          lineTotalAmountMinor: price.unitAmountMinor,
+          currencyCode: "EUR",
+        },
+      ],
+    });
+
+    const membership = await getDashboardMembershipData(client.id);
+    expect(membership.ownedOneTimeProducts).toHaveLength(1);
+    expect(membership.ownedOneTimeProducts[0]?.orderId).toBe(paidOrder.id);
+  });
 });
-
-
-
-
-
-
-
 

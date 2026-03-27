@@ -17,7 +17,6 @@ function toStatus(code: BookingPaymentOptionsError["code"]): number {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const serviceSlug = searchParams.get("serviceSlug");
-  const sessionId = searchParams.get("sessionId");
   const bookingIntent = searchParams.get("bookingIntent");
 
   if (!serviceSlug) {
@@ -30,10 +29,6 @@ export async function GET(request: Request) {
     bookingIntent !== BookingIntent.USE_PLAN
   ) {
     return Response.json({ error: "Invalid bookingIntent." }, { status: 400 });
-  }
-
-  if (sessionId && sessionId.trim().length === 0) {
-    return Response.json({ error: "Invalid sessionId." }, { status: 400 });
   }
 
   const session = await auth();
