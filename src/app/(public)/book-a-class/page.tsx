@@ -4,6 +4,8 @@ import {
   getPublicServicesByCategorySlug,
 } from "../../../lib/public-catalogue/catalogue-service";
 
+export const dynamic = "force-dynamic";
+
 export default async function BookAClassPage() {
   const categories = await getPublicCategories();
   const initialCategorySlug = categories[0]?.slug ?? null;
