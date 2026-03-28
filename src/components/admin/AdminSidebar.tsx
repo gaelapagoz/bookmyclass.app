@@ -5,17 +5,27 @@ import { usePathname } from "next/navigation";
 
 const adminNavItems = [
   { href: "/admin/dashboard", label: "Dashboard" },
-  { href: "/admin/classes", label: "Classes" },
-  { href: "/admin/sessions", label: "Sessions" },
-  { href: "/admin/plans", label: "Plans" },
-  { href: "/admin/bookings", label: "Bookings" },
   { href: "/admin/users", label: "Users" },
+  { href: "/admin/sessions", label: "Sessions" },
+  { href: "/admin/bookings", label: "Bookings" },
   { href: "/admin/subscriptions", label: "Subscriptions" },
-  { href: "/admin/learning-programs", label: "Learning Programs" },
-  { href: "/admin/learning-videos", label: "Learning Videos" },
+  { href: "/admin/inbox", label: "Inbox" },
+  { href: "/admin/classes", label: "Classes" },
+  { href: "/admin/plans", label: "Plans" },
+  { href: "/admin/manage-site", label: "Manage Site" },
+  { href: "/admin/online-learning", label: "Online Learning" },
 ] as const;
 
 function isActive(pathname: string, href: string) {
+  if (href === "/admin/online-learning") {
+    return (
+      pathname === href ||
+      pathname.startsWith(`${href}/`) ||
+      pathname.startsWith("/admin/learning-programs") ||
+      pathname.startsWith("/admin/learning-videos")
+    );
+  }
+
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

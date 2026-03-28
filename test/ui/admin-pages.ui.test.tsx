@@ -17,6 +17,11 @@ vi.mock("@/lib/public-documents/agenda-document-service", () => ({
   getActiveAgendaPdfDocument: vi.fn(async () => null),
 }));
 
+vi.mock("@/lib/public-content/home-agenda-service", () => ({
+  getHomeAgendaTableFromSchedule: vi.fn(async () => []),
+  getManageSiteAgendaPreview: vi.fn(async () => []),
+}));
+
 vi.mock("@/auth", () => ({
   auth: vi.fn(async () => null),
 }));
@@ -28,21 +33,25 @@ vi.mock("@/lib/admin/admin-service", () => ({
   getAdminBookingsData: vi.fn(),
   getAdminUsersData: vi.fn(),
   getAdminSubscriptionsData: vi.fn(),
-  getAdminLearningProgramsData: vi.fn(),
-  getAdminLearningVideosData: vi.fn(),
+  getAdminOnlineLearningData: vi.fn(),
 }));
 
 import {
   getAdminBookingsData,
   getAdminClassesData,
   getAdminDashboardData,
-  getAdminLearningProgramsData,
-  getAdminLearningVideosData,
+  getAdminOnlineLearningData,
   getAdminPlansData,
   getAdminSessionsData,
   getAdminSubscriptionsData,
   getAdminUsersData,
 } from "@/lib/admin/admin-service";
+import { listClientMessages } from "@/lib/client-messages/client-message-service";
+import { getActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
+import {
+  getHomeAgendaTableFromSchedule,
+  getManageSiteAgendaPreview,
+} from "@/lib/public-content/home-agenda-service";
 
 import AdminDashboardPage from "../../src/app/admin/(private)/dashboard/page";
 import AdminClassesPage from "../../src/app/admin/(private)/classes/page";
@@ -51,8 +60,9 @@ import AdminPlansPage from "../../src/app/admin/(private)/plans/page";
 import AdminBookingsPage from "../../src/app/admin/(private)/bookings/page";
 import AdminUsersPage from "../../src/app/admin/(private)/users/page";
 import AdminSubscriptionsPage from "../../src/app/admin/(private)/subscriptions/page";
-import AdminLearningProgramsPage from "../../src/app/admin/(private)/learning-programs/page";
-import AdminLearningVideosPage from "../../src/app/admin/(private)/learning-videos/page";
+import AdminOnlineLearningPage from "../../src/app/admin/(private)/online-learning/page";
+import AdminInboxPage from "../../src/app/admin/(private)/inbox/page";
+import AdminManageSitePage from "../../src/app/admin/(private)/manage-site/page";
 
 describe("Admin pages branching", () => {
   beforeEach(() => {
@@ -61,19 +71,24 @@ describe("Admin pages branching", () => {
 
   it("renders dashboard data state", async () => {
     vi.mocked(getAdminDashboardData).mockResolvedValue({
-      upcomingSessionsCount: 4,
-      bookingsCount: 22,
-      activePlansCount: 5,
-      activeEntitlementsCount: 11,
-      recentBookings: [
+      diagnostics: [
         {
-          id: "b1",
-          status: "CONFIRMED",
-          bookedAt: new Date().toISOString(),
-          clientName: "Jane",
-          clientEmail: "jane@example.test",
-          sessionTitle: "Morning Flow",
+          key: "week",
+          label: "Current Week",
+          siteSessions: 18,
+          totalOrders: 6,
+          totalBookings: 12,
+          totalCancellations: 2,
+          totalSalesByCurrency: [{ currencyCode: "EUR", amountMinor: 19900 }],
+        },
+      ],
+      upcomingSessions: [
+        {
+          id: "s1",
+          title: "Morning Flow",
           startsAt: new Date().toISOString(),
+          bookedSpots: 8,
+          capacity: 12,
         },
       ],
     });
@@ -81,7 +96,10 @@ describe("Admin pages branching", () => {
     render(await AdminDashboardPage());
 
     expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getByText("Operational Diagnostics")).toBeInTheDocument();
     expect(screen.getByText("Morning Flow")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Inbox" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage Site" })).toBeInTheDocument();
   });
 
   it("renders classes empty state", async () => {
@@ -182,7 +200,9 @@ describe("Admin pages branching", () => {
 
     render(await AdminUsersPage());
 
+    expect(screen.getByText("Admins")).toBeInTheDocument();
     expect(screen.getByText("Admin User")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Create user" })).toBeInTheDocument();
   });
 
@@ -228,60 +248,108 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Unable to load subscriptions right now.")).toBeInTheDocument();
   });
 
-  it("renders learning programs data from service", async () => {
-    vi.mocked(getAdminLearningProgramsData).mockResolvedValue([
+  it("renders inbox data and message status controls", async () => {
+    vi.mocked(listClientMessages).mockResolvedValue([
       {
-        id: "lp1",
-        legacyId: "1",
-        courseType: "Yoga",
-        mainTitle: "Yoga Program",
-        title: "Yoga Basics",
-        updatedAt: new Date().toISOString(),
+        id: "msg-1",
+        type: "CONTACT",
+        userId: null,
+        bookingId: null,
+        name: "Jane",
+        email: "jane@example.test",
+        phone: null,
+        subject: "Help",
+        message: "Need details",
+        status: "NEW",
+        createdAt: new Date(),
       },
     ]);
 
-    render(await AdminLearningProgramsPage());
+    render(await AdminInboxPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByRole("heading", { name: "Learning Programs" })).toBeInTheDocument();
-    expect(screen.getByText("Yoga Program")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Inbox" })).toBeInTheDocument();
+    expect(screen.getByText(/Jane/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
   });
 
-  it("renders learning videos data from service", async () => {
-    vi.mocked(getAdminLearningVideosData).mockResolvedValue([
+  it("renders manage site data with agenda sections", async () => {
+    vi.mocked(getActiveAgendaPdfDocument).mockResolvedValue({
+      id: "doc-1",
+      key: "agenda_pdf",
+      fileUrl: "/uploads/agenda.pdf",
+      isActive: true,
+      updatedAt: new Date(),
+      createdAt: new Date(),
+    });
+    vi.mocked(getHomeAgendaTableFromSchedule).mockResolvedValue([
+      { day: "Monday", classes: ["18:00-19:00 Pilates"] },
+    ]);
+    vi.mocked(getManageSiteAgendaPreview).mockResolvedValue([
       {
-        id: "lv1",
-        legacyId: "101",
-        title: "Core Burn",
-        category: "Yoga",
-        categoryType: "Flow",
-        categoryLevel: "Beginner",
-        priority: 1,
-        updatedAt: new Date().toISOString(),
+        id: "sess-1",
+        title: "Morning Flow",
+        startsAt: new Date().toISOString(),
+        endsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        bookedSpots: 5,
+        capacity: 10,
       },
     ]);
 
-    render(await AdminLearningVideosPage());
+    render(await AdminManageSitePage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByRole("heading", { name: "Learning Videos" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Manage Site" })).toBeInTheDocument();
+    expect(screen.getByText("Agenda PDF")).toBeInTheDocument();
+    expect(screen.getByText("Home Agenda Table")).toBeInTheDocument();
+    expect(screen.getByText("Morning Flow")).toBeInTheDocument();
+  });
+
+  it("renders online learning data from shared service", async () => {
+    vi.mocked(getAdminOnlineLearningData).mockResolvedValue({
+      programs: [
+        {
+          id: "lp1",
+          legacyId: "1",
+          courseType: "Yoga",
+          mainTitle: "Yoga Program",
+          title: "Yoga Basics",
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+      videos: [
+        {
+          id: "lv1",
+          legacyId: "101",
+          title: "Core Burn",
+          category: "Yoga",
+          categoryType: "Flow",
+          categoryLevel: "Beginner",
+          priority: 1,
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    render(await AdminOnlineLearningPage());
+
+    expect(screen.getByRole("heading", { name: "Online Learning" })).toBeInTheDocument();
+    expect(screen.getByText("Yoga Program")).toBeInTheDocument();
     expect(screen.getByText("Core Burn")).toBeInTheDocument();
   });
 
-  it("renders learning videos empty state", async () => {
-    vi.mocked(getAdminLearningVideosData).mockResolvedValue([]);
+  it("renders online learning empty state", async () => {
+    vi.mocked(getAdminOnlineLearningData).mockResolvedValue({ programs: [], videos: [] });
 
-    render(await AdminLearningVideosPage());
+    render(await AdminOnlineLearningPage());
 
+    expect(screen.getByText("No learning programs found.")).toBeInTheDocument();
     expect(screen.getByText("No learning videos found.")).toBeInTheDocument();
   });
 
-  it("renders learning programs error state", async () => {
-    vi.mocked(getAdminLearningProgramsData).mockRejectedValue(new Error("DB error"));
+  it("renders online learning error state", async () => {
+    vi.mocked(getAdminOnlineLearningData).mockRejectedValue(new Error("DB error"));
 
-    render(await AdminLearningProgramsPage());
+    render(await AdminOnlineLearningPage());
 
-    expect(screen.getByText("Unable to load learning programs right now.")).toBeInTheDocument();
+    expect(screen.getByText("Unable to load online learning right now.")).toBeInTheDocument();
   });
 });
-
-
-

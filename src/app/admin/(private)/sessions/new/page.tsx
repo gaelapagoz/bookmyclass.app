@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { createSessionAction } from "@/app/admin/(private)/actions";
+import SessionScheduleModeFields from "@/components/admin/SessionScheduleModeFields";
 import { getAdminSessionOptions } from "@/lib/admin/admin-service";
 
 type SearchParams = Promise<{ error?: string }>;
@@ -60,37 +61,7 @@ export default async function AdminSessionCreatePage({ searchParams }: { searchP
           <input name="location" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
         </label>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <label className="block text-sm text-[#334155]">
-            Starts At
-            <input
-              name="startsAt"
-              type="datetime-local"
-              required
-              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm text-[#334155]">
-            Ends At
-            <input
-              name="endsAt"
-              type="datetime-local"
-              required
-              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm text-[#334155]">
-            Capacity
-            <input
-              name="capacity"
-              type="number"
-              min={1}
-              defaultValue={10}
-              required
-              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
-            />
-          </label>
-        </div>
+        <SessionScheduleModeFields />
 
         <label className="block text-sm text-[#334155]">
           Status

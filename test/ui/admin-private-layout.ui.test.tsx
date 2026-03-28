@@ -78,17 +78,32 @@ describe("/admin private layout", () => {
 
     expect(screen.getByText("Admin")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Classes" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sessions" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Plans" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Bookings" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Users" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Learning Programs" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Learning Videos" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sessions" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Bookings" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Subscriptions" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Inbox" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Classes" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Plans" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage Site" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Online Learning" })).toBeInTheDocument();
+    const navOrder = screen
+      .getAllByRole("link")
+      .map((element) => element.textContent?.trim())
+      .filter(Boolean);
+    expect(navOrder).toEqual([
+      "Dashboard",
+      "Users",
+      "Sessions",
+      "Bookings",
+      "Subscriptions",
+      "Inbox",
+      "Classes",
+      "Plans",
+      "Manage Site",
+      "Online Learning",
+    ]);
     expect(screen.getByText("Admin Content")).toBeInTheDocument();
     expect(screen.queryByText("Book a Class")).not.toBeInTheDocument();
   });
 });
-
-
-

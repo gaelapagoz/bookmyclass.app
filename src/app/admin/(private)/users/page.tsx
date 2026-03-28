@@ -1,21 +1,17 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
+import AdminUsersRoleTable from "@/components/admin/AdminUsersRoleTable";
 import { getAdminUsersData } from "@/lib/admin/admin-service";
-
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat("en-BE", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
 
 export default async function AdminUsersPage() {
   try {
     const users = await getAdminUsersData();
+    const sections = [
+      { title: "Master Admins", role: "MASTER_ADMIN" },
+      { title: "Admins", role: "ADMIN" },
+      { title: "Teachers", role: "TEACHER" },
+      { title: "Clients / Users", role: "CLIENT" },
+    ] as const;
 
     return (
       <section className="space-y-4">
@@ -34,35 +30,14 @@ export default async function AdminUsersPage() {
             No users found.
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-[#d3dbe5] bg-white">
-            <table className="min-w-full text-sm">
-              <thead className="bg-[#f3f6fb] text-left text-xs uppercase tracking-wide text-[#5a6d86]">
-                <tr>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">Email</th>
-                  <th className="px-3 py-2">Role</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Last Login</th>
-                  <th className="px-3 py-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((item) => (
-                  <tr key={item.id} className="border-t border-[#e2e8f0] text-[#334155]">
-                    <td className="px-3 py-2 font-medium">{item.name}</td>
-                    <td className="px-3 py-2">{item.email}</td>
-                    <td className="px-3 py-2">{item.role}</td>
-                    <td className="px-3 py-2">{item.isActive ? "Active" : "Inactive"}</td>
-                    <td className="px-3 py-2">{formatDateTime(item.lastLoginAt)}</td>
-                    <td className="px-3 py-2">
-                      <Link href={`/admin/users/${item.id}/edit`} className="text-[#2a4f78] underline underline-offset-4">
-                        Edit
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-4">
+            {sections.map((section) => (
+              <AdminUsersRoleTable
+                key={section.role}
+                title={section.title}
+                users={users.filter((item) => item.role === section.role)}
+              />
+            ))}
           </div>
         )}
       </section>
@@ -76,4 +51,3 @@ export default async function AdminUsersPage() {
     );
   }
 }
-

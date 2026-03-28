@@ -2,12 +2,17 @@ import {
   BillingInterval,
   BookingStatus,
   ClientEntitlementStatus,
+  CreditLedgerEntryType,
+  EntitlementType,
+  OrderStatus,
   PaymentProvider,
+  PaymentStatus,
   PriceType,
   ProductType,
   Role,
   StudioSessionStatus,
   SubscriptionStatus,
+  Weekday,
 } from "@prisma/client";
 import { hash } from "bcryptjs";
 
@@ -17,18 +22,24 @@ import { ensureEntitlementRuleForProduct } from "@/lib/admin/plan-entitlement-ru
 import { provisionPlanOnStripe, resolveStripeProductIdFromPrice } from "@/lib/admin/plan-provisioning";
 
 export type AdminDashboardData = {
-  upcomingSessionsCount: number;
-  bookingsCount: number;
-  activePlansCount: number;
-  activeEntitlementsCount: number;
-  recentBookings: Array<{
+  diagnostics: Array<{
+    key: "week" | "month" | "quarter";
+    label: string;
+    siteSessions: number;
+    totalOrders: number;
+    totalBookings: number;
+    totalCancellations: number;
+    totalSalesByCurrency: Array<{
+      currencyCode: string;
+      amountMinor: number;
+    }>;
+  }>;
+  upcomingSessions: Array<{
     id: string;
-    status: BookingStatus;
-    bookedAt: string;
-    clientName: string;
-    clientEmail: string;
-    sessionTitle: string;
+    title: string;
     startsAt: string;
+    bookedSpots: number;
+    capacity: number;
   }>;
 };
 
@@ -42,6 +53,19 @@ export type AdminClassItem = {
   isActive: boolean;
   isVisible: boolean;
   sortOrder: number;
+};
+
+export type AdminClassScheduleConfig = {
+  defaultTeacherId: string;
+  startTime: string;
+  endTime: string;
+  isRecurring: boolean;
+  date: string | null;
+  repeatEveryWeeks: number;
+  weekdays: Weekday[];
+  endsType: "never" | "onDate" | "afterOccurrences";
+  endDate: string | null;
+  occurrenceCount: number | null;
 };
 
 export type AdminSessionItem = {
@@ -93,6 +117,55 @@ export type AdminUserItem = {
   createdAt: string;
 };
 
+export type AdminUserDetail = {
+  id: string;
+  name: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: Role;
+  isActive: boolean;
+  phone: string;
+  notes: string;
+  bio: string;
+  specialties: string[];
+  certifications: string[];
+  hireDate: string | null;
+};
+
+export type AdminClientActivityData = {
+  plansBought: Array<{
+    orderId: string;
+    productName: string;
+    priceName: string;
+    amountMinor: number;
+    currencyCode: string;
+    purchasedAt: string;
+  }>;
+  classesBooked: number;
+  classesCancelled: number;
+  outstandingMemberships: Array<{
+    id: string;
+    productName: string;
+    status: SubscriptionStatus;
+    currentPeriodEnd: string;
+    cancelAtPeriodEnd: boolean;
+  }>;
+  creditEntitlements: Array<{
+    entitlementId: string;
+    productName: string;
+    status: ClientEntitlementStatus;
+    expiresAt: string | null;
+    remainingCredits: number;
+  }>;
+  creditsRemaining: number;
+  nextCreditExpiration: string | null;
+  eligibleCreditProducts: Array<{
+    id: string;
+    name: string;
+  }>;
+};
+
 export type AdminSubscriptionItem = {
   id: string;
   clientName: string;
@@ -129,70 +202,274 @@ export type AdminLearningVideoItem = {
   updatedAt: string;
 };
 
+export type AdminRecurringSessionScheduleInput = {
+  startsOn: Date;
+  startTime: string;
+  endTime: string;
+  repeatEveryWeeks: number;
+  weekdays: Weekday[];
+  endMode: "never" | "on_date" | "after_occurrences";
+  endDate?: Date | null;
+  occurrences?: number;
+};
+
 function toNullable(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 }
 
-export async function getAdminDashboardData(): Promise<AdminDashboardData> {
-  const now = new Date();
+const WEEKDAY_TO_INDEX: Record<Weekday, number> = {
+  SUNDAY: 0,
+  MONDAY: 1,
+  TUESDAY: 2,
+  WEDNESDAY: 3,
+  THURSDAY: 4,
+  FRIDAY: 5,
+  SATURDAY: 6,
+};
 
-  const [upcomingSessionsCount, bookingsCount, activePlansCount, activeEntitlementsCount, recentBookings] =
+function startOfWeekMonday(input: Date): Date {
+  const date = new Date(input);
+  date.setHours(0, 0, 0, 0);
+  const jsDay = date.getDay();
+  const diffToMonday = (jsDay + 6) % 7;
+  date.setDate(date.getDate() - diffToMonday);
+  return date;
+}
+
+function addDays(input: Date, amount: number): Date {
+  const date = new Date(input);
+  date.setDate(date.getDate() + amount);
+  return date;
+}
+
+function parseTimeToMinutes(value: string): number {
+  const [hour, minute] = value.split(":").map((part) => Number.parseInt(part, 10));
+  return hour * 60 + minute;
+}
+
+function withTime(input: Date, time: string): Date {
+  const [hour, minute] = time.split(":").map((part) => Number.parseInt(part, 10));
+  const date = new Date(input);
+  date.setHours(hour, minute, 0, 0);
+  return date;
+}
+
+function buildRecurringOccurrences(input: AdminRecurringSessionScheduleInput): Array<{
+  weekday: Weekday;
+  startsAt: Date;
+  endsAt: Date;
+}> {
+  const startMinutes = parseTimeToMinutes(input.startTime);
+  const endMinutes = parseTimeToMinutes(input.endTime);
+  const durationMinutes = endMinutes - startMinutes;
+  const rangeStart = new Date(input.startsOn);
+  rangeStart.setHours(0, 0, 0, 0);
+
+  const targetCount = input.endMode === "after_occurrences" ? input.occurrences ?? 0 : 0;
+  const endDate =
+    input.endMode === "on_date" && input.endDate
+      ? (() => {
+          const parsed = new Date(input.endDate);
+          parsed.setHours(23, 59, 59, 999);
+          return parsed;
+        })()
+      : null;
+
+  const maxOccurrences = input.endMode === "after_occurrences" ? targetCount : 260;
+  const weekAnchor = startOfWeekMonday(rangeStart);
+  const weekdayOrder = [...input.weekdays].sort(
+    (a, b) => WEEKDAY_TO_INDEX[a] - WEEKDAY_TO_INDEX[b],
+  );
+
+  const results: Array<{ weekday: Weekday; startsAt: Date; endsAt: Date }> = [];
+  for (
+    let cycleStart = new Date(weekAnchor);
+    results.length < maxOccurrences;
+    cycleStart = addDays(cycleStart, input.repeatEveryWeeks * 7)
+  ) {
+    if (endDate && cycleStart > endDate) {
+      break;
+    }
+
+    for (const weekday of weekdayOrder) {
+      const dayOffset = (WEEKDAY_TO_INDEX[weekday] + 6) % 7;
+      const occurrenceDay = addDays(cycleStart, dayOffset);
+      if (occurrenceDay < rangeStart) {
+        continue;
+      }
+      if (endDate && occurrenceDay > endDate) {
+        continue;
+      }
+
+      const startsAt = withTime(occurrenceDay, input.startTime);
+      const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
+      results.push({ weekday, startsAt, endsAt });
+
+      if (results.length >= maxOccurrences) {
+        break;
+      }
+    }
+  }
+
+  return results;
+}
+
+type DateRange = { start: Date; end: Date };
+
+function getCurrentWeekRange(now: Date): DateRange {
+  const dayOfWeek = now.getDay();
+  const diffToMonday = (dayOfWeek + 6) % 7;
+  const start = new Date(now);
+  start.setDate(now.getDate() - diffToMonday);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 7);
+
+  return { start, end };
+}
+
+function getCurrentMonthRange(now: Date): DateRange {
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return { start, end };
+}
+
+function getCurrentQuarterRange(now: Date): DateRange {
+  const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3;
+  const start = new Date(now.getFullYear(), quarterStartMonth, 1);
+  const end = new Date(now.getFullYear(), quarterStartMonth + 3, 1);
+  return { start, end };
+}
+
+async function getPeriodDiagnostics(input: {
+  key: "week" | "month" | "quarter";
+  label: string;
+  range: DateRange;
+}) {
+  const [siteSessions, totalOrders, totalBookings, totalCancellations, totalSalesByCurrency] =
     await prisma.$transaction([
-      prisma.studioSession.count({
+      prisma.session.count({
         where: {
-          startsAt: { gte: now },
-          status: StudioSessionStatus.SCHEDULED,
+          createdAt: {
+            gte: input.range.start,
+            lt: input.range.end,
+          },
         },
       }),
-      prisma.booking.count(),
-      prisma.subscriptionContract.count({
+      prisma.order.count({
         where: {
-          status: SubscriptionStatus.ACTIVE,
-          currentPeriodEnd: { gt: now },
+          status: OrderStatus.PAID,
+          placedAt: {
+            gte: input.range.start,
+            lt: input.range.end,
+          },
         },
       }),
-      prisma.clientEntitlement.count({
-        where: { status: ClientEntitlementStatus.ACTIVE },
+      prisma.booking.count({
+        where: {
+          status: {
+            in: [BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.NO_SHOW],
+          },
+          bookedAt: {
+            gte: input.range.start,
+            lt: input.range.end,
+          },
+        },
       }),
-      prisma.booking.findMany({
-        orderBy: { bookedAt: "desc" },
-        take: 8,
-        select: {
-          id: true,
-          status: true,
-          bookedAt: true,
-          customerName: true,
-          customerEmail: true,
-          client: {
-            select: {
-              name: true,
-              email: true,
-            },
+      prisma.booking.count({
+        where: {
+          status: BookingStatus.CANCELLED,
+          cancelledAt: {
+            gte: input.range.start,
+            lt: input.range.end,
           },
-          studioSession: {
-            select: {
-              title: true,
-              startsAt: true,
-            },
+        },
+      }),
+      prisma.payment.groupBy({
+        by: ["currencyCode"],
+        where: {
+          status: PaymentStatus.SUCCEEDED,
+          createdAt: {
+            gte: input.range.start,
+            lt: input.range.end,
           },
+        },
+        _sum: {
+          amountMinor: true,
         },
       }),
     ]);
 
   return {
-    upcomingSessionsCount,
-    bookingsCount,
-    activePlansCount,
-    activeEntitlementsCount,
-    recentBookings: recentBookings.map((booking) => ({
-      id: booking.id,
-      status: booking.status,
-      bookedAt: booking.bookedAt.toISOString(),
-      clientName: booking.customerName ?? booking.client?.name ?? "Guest",
-      clientEmail: booking.customerEmail ?? booking.client?.email ?? "-",
-      sessionTitle: booking.studioSession.title,
-      startsAt: booking.studioSession.startsAt.toISOString(),
+    key: input.key,
+    label: input.label,
+    siteSessions,
+    totalOrders,
+    totalBookings,
+    totalCancellations,
+    totalSalesByCurrency: totalSalesByCurrency.map((entry) => ({
+      currencyCode: entry.currencyCode,
+      amountMinor: entry._sum.amountMinor ?? 0,
+    })),
+  };
+}
+
+export async function getAdminDashboardData(): Promise<AdminDashboardData> {
+  const now = new Date();
+  const [diagnostics, upcomingSessions] = await Promise.all([
+    Promise.all([
+      getPeriodDiagnostics({
+        key: "week",
+        label: "Current Week",
+        range: getCurrentWeekRange(now),
+      }),
+      getPeriodDiagnostics({
+        key: "month",
+        label: "Current Month",
+        range: getCurrentMonthRange(now),
+      }),
+      getPeriodDiagnostics({
+        key: "quarter",
+        label: "Current Quarter",
+        range: getCurrentQuarterRange(now),
+      }),
+    ]),
+    prisma.studioSession.findMany({
+      where: {
+        startsAt: { gt: now },
+        status: StudioSessionStatus.SCHEDULED,
+      },
+      orderBy: [{ startsAt: "asc" }],
+      take: 20,
+      select: {
+        id: true,
+        title: true,
+        startsAt: true,
+        capacity: true,
+        bookings: {
+          where: {
+            status: {
+              in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
+            },
+          },
+          select: {
+            id: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  return {
+    diagnostics,
+    upcomingSessions: upcomingSessions.map((session) => ({
+      id: session.id,
+      title: session.title,
+      startsAt: session.startsAt.toISOString(),
+      bookedSpots: session.bookings.length,
+      capacity: session.capacity,
     })),
   };
 }
@@ -231,7 +508,7 @@ export async function getAdminClassesData(): Promise<AdminClassItem[]> {
 }
 
 export async function getAdminClassById(id: string) {
-  return prisma.classType.findUnique({
+  const classType = await prisma.classType.findUnique({
     where: { id },
     select: {
       id: true,
@@ -244,6 +521,111 @@ export async function getAdminClassById(id: string) {
       isActive: true,
       isVisible: true,
       sortOrder: true,
+      templates: {
+        orderBy: [{ createdAt: "asc" }],
+        take: 1,
+        select: {
+          id: true,
+          defaultTeacherId: true,
+          defaultDurationMinutes: true,
+          recurringRules: {
+            where: { isActive: true },
+            orderBy: [{ weekday: "asc" }],
+            select: {
+              weekday: true,
+              startTime: true,
+              startDate: true,
+              endDate: true,
+            },
+          },
+          studioSessions: {
+            where: {
+              status: StudioSessionStatus.SCHEDULED,
+              startsAt: {
+                gte: new Date(),
+              },
+            },
+            orderBy: [{ startsAt: "asc" }],
+            take: 1,
+            select: {
+              startsAt: true,
+              endsAt: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!classType) {
+    return null;
+  }
+
+  const template = classType.templates[0] ?? null;
+  const recurringRules = template?.recurringRules ?? [];
+  const nextSession = template?.studioSessions[0] ?? null;
+  const startTime = recurringRules[0]?.startTime ?? (nextSession ? formatTimeString(nextSession.startsAt) : "18:00");
+  const defaultDuration =
+    template?.defaultDurationMinutes ?? classType.defaultDurationMinutes;
+  const endTime = addMinutesToTimeString(startTime, defaultDuration);
+  const isRecurring = recurringRules.length > 0;
+  const defaultDate = nextSession?.startsAt.toISOString().slice(0, 10) ?? null;
+
+  const schedule: AdminClassScheduleConfig = {
+    defaultTeacherId: template?.defaultTeacherId ?? "",
+    startTime,
+    endTime,
+    isRecurring,
+    date: defaultDate,
+    repeatEveryWeeks: 1,
+    weekdays: recurringRules.map((rule) => rule.weekday),
+    endsType: recurringRules[0]?.endDate ? "onDate" : "never",
+    endDate: recurringRules[0]?.endDate?.toISOString().slice(0, 10) ?? null,
+    occurrenceCount: null,
+  };
+
+  return {
+    id: classType.id,
+    categoryId: classType.categoryId,
+    name: classType.name,
+    slug: classType.slug,
+    description: classType.description,
+    defaultDurationMinutes: classType.defaultDurationMinutes,
+    defaultCapacity: classType.defaultCapacity,
+    isActive: classType.isActive,
+    isVisible: classType.isVisible,
+    sortOrder: classType.sortOrder,
+    schedule,
+  };
+}
+
+function formatTimeString(date: Date): string {
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function addMinutesToTimeString(time: string, amount: number): string {
+  const [hour, minute] = time.split(":").map((item) => Number.parseInt(item, 10));
+  const total = hour * 60 + minute + amount;
+  const normalized = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+  const endHour = Math.floor(normalized / 60);
+  const endMinute = normalized % 60;
+  return `${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`;
+}
+
+export async function getAdminClassScheduleOptions() {
+  return prisma.user.findMany({
+    where: {
+      role: {
+        in: [Role.TEACHER, Role.ADMIN, Role.MASTER_ADMIN],
+      },
+      isActive: true,
+    },
+    orderBy: [{ name: "asc" }],
+    select: {
+      id: true,
+      name: true,
     },
   });
 }
@@ -309,6 +691,220 @@ export async function updateAdminClass(
       isVisible: input.isVisible,
       sortOrder: input.sortOrder,
     },
+  });
+}
+
+function combineDateAndTime(dateValue: Date, timeValue: string): Date {
+  const [hours, minutes] = timeValue.split(":").map((part) => Number.parseInt(part, 10));
+  const date = new Date(dateValue);
+  date.setHours(hours, minutes, 0, 0);
+  return date;
+}
+
+function validateTimeRange(startTime: string, endTime: string) {
+  const startMinutes = parseTimeToMinutes(startTime);
+  const endMinutes = parseTimeToMinutes(endTime);
+  if (Number.isNaN(startMinutes) || Number.isNaN(endMinutes) || endMinutes <= startMinutes) {
+    throw new Error("INVALID_SESSION_TIME_RANGE");
+  }
+  return endMinutes - startMinutes;
+}
+
+export async function upsertAdminClassScheduleConfig(input: {
+  classTypeId: string;
+  className: string;
+  classSlug: string;
+  defaultCapacity: number;
+  defaultDurationMinutes: number;
+  defaultTeacherId: string;
+  startTime: string;
+  endTime: string;
+  isRecurring: boolean;
+  date?: Date | null;
+  repeatEveryWeeks?: number;
+  weekdays?: Weekday[];
+  endsType?: "never" | "onDate" | "afterOccurrences";
+  endDate?: Date | null;
+  occurrenceCount?: number | null;
+}) {
+  if (!input.defaultTeacherId) {
+    throw new Error("TEACHER_REQUIRED");
+  }
+
+  const durationMinutes = validateTimeRange(input.startTime, input.endTime);
+  const repeatEveryWeeks = input.repeatEveryWeeks ?? 1;
+  const weekdays = input.weekdays ?? [];
+  const endsType = input.endsType ?? "never";
+  const now = new Date();
+
+  if (input.isRecurring && weekdays.length < 1) {
+    throw new Error("INVALID_RECURRENCE_WEEKDAYS");
+  }
+  if (input.isRecurring && endsType === "onDate" && !input.endDate) {
+    throw new Error("RECURRENCE_END_DATE_REQUIRED");
+  }
+  if (input.isRecurring && endsType === "afterOccurrences" && (!input.occurrenceCount || input.occurrenceCount < 1)) {
+    throw new Error("RECURRENCE_OCCURRENCES_REQUIRED");
+  }
+  if (!input.isRecurring && !input.date) {
+    throw new Error("SCHEDULE_DATE_REQUIRED");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const existingTemplate = await tx.classTemplate.findFirst({
+      where: { classTypeId: input.classTypeId },
+      orderBy: [{ createdAt: "asc" }],
+      select: { id: true, slug: true },
+    });
+
+    const template =
+      existingTemplate
+        ? await tx.classTemplate.update({
+            where: { id: existingTemplate.id },
+            data: {
+              title: `${input.className} Schedule`,
+              defaultTeacherId: input.defaultTeacherId,
+              defaultCapacity: input.defaultCapacity,
+              defaultDurationMinutes: input.defaultDurationMinutes,
+              isActive: true,
+              isPublished: true,
+            },
+            select: { id: true },
+          })
+        : await tx.classTemplate.create({
+            data: {
+              classTypeId: input.classTypeId,
+              defaultTeacherId: input.defaultTeacherId,
+              title: `${input.className} Schedule`,
+              slug: `${input.classSlug}-schedule-${Date.now()}`,
+              defaultCapacity: input.defaultCapacity,
+              defaultDurationMinutes: input.defaultDurationMinutes,
+              isActive: true,
+              isPublished: true,
+            },
+            select: { id: true },
+          });
+
+    await tx.studioSession.deleteMany({
+      where: {
+        classTemplateId: template.id,
+        startsAt: { gte: now },
+        bookings: { none: {} },
+      },
+    });
+
+    await tx.recurringRule.updateMany({
+      where: { classTemplateId: template.id },
+      data: { isActive: false },
+    });
+
+    if (input.isRecurring) {
+      const startsOn = input.date ?? now;
+      const schedule = {
+        startsOn,
+        startTime: input.startTime,
+        endTime: input.endTime,
+        repeatEveryWeeks,
+        weekdays,
+        endMode:
+          endsType === "onDate"
+            ? ("on_date" as const)
+            : endsType === "afterOccurrences"
+              ? ("after_occurrences" as const)
+              : ("never" as const),
+        endDate: input.endDate ?? null,
+        occurrences: input.occurrenceCount ?? undefined,
+      };
+
+      const occurrences = buildRecurringOccurrences(schedule);
+      const endDateForRule =
+        endsType === "onDate"
+          ? input.endDate ?? null
+          : endsType === "afterOccurrences"
+            ? (occurrences[occurrences.length - 1]?.startsAt ?? null)
+            : null;
+
+      const ruleByWeekday = new Map<Weekday, string>();
+      for (const weekday of weekdays) {
+        const rule = await tx.recurringRule.upsert({
+          where: {
+            classTemplateId_weekday_startTime_startDate: {
+              classTemplateId: template.id,
+              weekday,
+              startTime: input.startTime,
+              startDate: startsOn,
+            },
+          },
+          create: {
+            classTemplateId: template.id,
+            weekday,
+            startTime: input.startTime,
+            startDate: startsOn,
+            endDate: endDateForRule,
+            isActive: true,
+          },
+          update: {
+            endDate: endDateForRule,
+            isActive: true,
+          },
+          select: {
+            id: true,
+            weekday: true,
+          },
+        });
+        ruleByWeekday.set(rule.weekday, rule.id);
+      }
+
+      if (occurrences.length > 0) {
+        await tx.studioSession.createMany({
+          data: occurrences.map((occurrence) => ({
+            classTemplateId: template.id,
+            recurringRuleId: ruleByWeekday.get(occurrence.weekday) ?? null,
+            classTypeId: input.classTypeId,
+            teacherId: input.defaultTeacherId,
+            title: input.className,
+            startsAt: occurrence.startsAt,
+            endsAt: occurrence.endsAt,
+            capacity: input.defaultCapacity,
+            status: StudioSessionStatus.SCHEDULED,
+            isPublished: true,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      return;
+    }
+
+    const startsAt = combineDateAndTime(input.date!, input.startTime);
+    const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
+    await tx.studioSession.upsert({
+      where: {
+        classTemplateId_startsAt: {
+          classTemplateId: template.id,
+          startsAt,
+        },
+      },
+      create: {
+        classTemplateId: template.id,
+        recurringRuleId: null,
+        classTypeId: input.classTypeId,
+        teacherId: input.defaultTeacherId,
+        title: input.className,
+        startsAt,
+        endsAt,
+        capacity: input.defaultCapacity,
+        status: StudioSessionStatus.SCHEDULED,
+        isPublished: true,
+      },
+      update: {
+        teacherId: input.defaultTeacherId,
+        title: input.className,
+        endsAt,
+        capacity: input.defaultCapacity,
+        status: StudioSessionStatus.SCHEDULED,
+        isPublished: true,
+      },
+    });
   });
 }
 
@@ -446,6 +1042,10 @@ export async function createAdminSession(input: {
     throw new Error("TEMPLATE_NOT_FOUND");
   }
 
+  if (input.endsAt <= input.startsAt) {
+    throw new Error("INVALID_SESSION_TIME_RANGE");
+  }
+
   return prisma.studioSession.create({
     data: {
       classTemplateId: template.id,
@@ -460,6 +1060,124 @@ export async function createAdminSession(input: {
       status: input.status,
       isPublished: input.isPublished,
     },
+  });
+}
+
+export async function createAdminRecurringSessions(input: {
+  classTemplateId: string;
+  teacherId: string;
+  title: string;
+  description?: string;
+  location?: string;
+  capacity: number;
+  status: StudioSessionStatus;
+  isPublished: boolean;
+  schedule: AdminRecurringSessionScheduleInput;
+}) {
+  if (input.schedule.repeatEveryWeeks < 1) {
+    throw new Error("INVALID_RECURRENCE_INTERVAL");
+  }
+
+  if (input.schedule.weekdays.length < 1) {
+    throw new Error("INVALID_RECURRENCE_WEEKDAYS");
+  }
+
+  const startMinutes = parseTimeToMinutes(input.schedule.startTime);
+  const endMinutes = parseTimeToMinutes(input.schedule.endTime);
+  if (Number.isNaN(startMinutes) || Number.isNaN(endMinutes) || endMinutes <= startMinutes) {
+    throw new Error("INVALID_SESSION_TIME_RANGE");
+  }
+
+  if (input.schedule.endMode === "on_date" && !input.schedule.endDate) {
+    throw new Error("RECURRENCE_END_DATE_REQUIRED");
+  }
+
+  if (
+    input.schedule.endMode === "after_occurrences" &&
+    (!input.schedule.occurrences || input.schedule.occurrences < 1)
+  ) {
+    throw new Error("RECURRENCE_OCCURRENCES_REQUIRED");
+  }
+
+  const template = await prisma.classTemplate.findUnique({
+    where: { id: input.classTemplateId },
+    select: {
+      id: true,
+      classTypeId: true,
+    },
+  });
+
+  if (!template) {
+    throw new Error("TEMPLATE_NOT_FOUND");
+  }
+
+  const occurrences = buildRecurringOccurrences(input.schedule);
+  if (occurrences.length < 1) {
+    throw new Error("NO_RECURRENCE_OCCURRENCES");
+  }
+
+  const perWeekdayEndDate =
+    input.schedule.endMode === "on_date" && input.schedule.endDate
+      ? input.schedule.endDate
+      : input.schedule.endMode === "after_occurrences"
+        ? occurrences[occurrences.length - 1]?.startsAt ?? null
+        : null;
+
+  return prisma.$transaction(async (tx) => {
+    const uniqueWeekdays = [...new Set(input.schedule.weekdays)];
+    const recurringRulesByWeekday = new Map<Weekday, string>();
+
+    for (const weekday of uniqueWeekdays) {
+      const rule = await tx.recurringRule.upsert({
+        where: {
+          classTemplateId_weekday_startTime_startDate: {
+            classTemplateId: template.id,
+            weekday,
+            startTime: input.schedule.startTime,
+            startDate: input.schedule.startsOn,
+          },
+        },
+        create: {
+          classTemplateId: template.id,
+          weekday,
+          startTime: input.schedule.startTime,
+          startDate: input.schedule.startsOn,
+          endDate: perWeekdayEndDate ?? null,
+          isActive: true,
+        },
+        update: {
+          endDate: perWeekdayEndDate ?? null,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          weekday: true,
+        },
+      });
+      recurringRulesByWeekday.set(rule.weekday, rule.id);
+    }
+
+    await tx.studioSession.createMany({
+      data: occurrences.map((occurrence) => ({
+        classTemplateId: template.id,
+        recurringRuleId: recurringRulesByWeekday.get(occurrence.weekday) ?? null,
+        classTypeId: template.classTypeId,
+        teacherId: input.teacherId,
+        title: input.title.trim(),
+        description: toNullable(input.description),
+        location: toNullable(input.location),
+        startsAt: occurrence.startsAt,
+        endsAt: occurrence.endsAt,
+        capacity: input.capacity,
+        status: input.status,
+        isPublished: input.isPublished,
+      })),
+      skipDuplicates: true,
+    });
+
+    return {
+      createdSessionCount: occurrences.length,
+    };
   });
 }
 
@@ -845,17 +1563,378 @@ export async function getAdminUsersData(): Promise<AdminUserItem[]> {
   }));
 }
 
-export async function getAdminUserById(id: string) {
-  return prisma.user.findUnique({
+export async function getAdminUserById(id: string): Promise<AdminUserDetail | null> {
+  const user = await prisma.user.findUnique({
     where: { id },
     select: {
       id: true,
       name: true,
+      firstName: true,
+      lastName: true,
       email: true,
       role: true,
       isActive: true,
+      clientProfile: {
+        select: {
+          phone: true,
+          notes: true,
+        },
+      },
+      teacherProfile: {
+        select: {
+          phone: true,
+          bio: true,
+          specialties: true,
+          certifications: true,
+          hireDate: true,
+        },
+      },
     },
   });
+
+  if (!user) {
+    return null;
+  }
+
+  const primaryPhone =
+    user.role === Role.TEACHER
+      ? user.teacherProfile?.phone ?? user.clientProfile?.phone ?? ""
+      : user.clientProfile?.phone ?? user.teacherProfile?.phone ?? "";
+
+  return {
+    id: user.id,
+    name: user.name,
+    firstName: user.firstName ?? "",
+    lastName: user.lastName ?? "",
+    email: user.email,
+    role: user.role,
+    isActive: user.isActive,
+    phone: primaryPhone,
+    notes: user.clientProfile?.notes ?? "",
+    bio: user.teacherProfile?.bio ?? "",
+    specialties: user.teacherProfile?.specialties ?? [],
+    certifications: user.teacherProfile?.certifications ?? [],
+    hireDate: user.teacherProfile?.hireDate?.toISOString() ?? null,
+  };
+}
+
+export async function getAdminClientActivityData(clientId: string): Promise<AdminClientActivityData> {
+  const now = new Date();
+  const [plansBought, classesBooked, classesCancelled, outstandingMemberships, creditEntitlements, creditProducts] =
+    await prisma.$transaction([
+      prisma.orderItem.findMany({
+        where: {
+          order: {
+            clientId,
+            status: OrderStatus.PAID,
+          },
+          product: {
+            productType: {
+              in: [ProductType.CLASS_PACK, ProductType.UNLIMITED_MEMBERSHIP, ProductType.INTRO_OFFER],
+            },
+          },
+        },
+        orderBy: [{ order: { placedAt: "desc" } }, { createdAt: "desc" }],
+        select: {
+          orderId: true,
+          productNameSnapshot: true,
+          priceNameSnapshot: true,
+          lineTotalAmountMinor: true,
+          currencyCode: true,
+          order: {
+            select: {
+              placedAt: true,
+            },
+          },
+        },
+      }),
+      prisma.booking.count({
+        where: {
+          clientId,
+          status: {
+            in: [BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.NO_SHOW],
+          },
+        },
+      }),
+      prisma.booking.count({
+        where: {
+          clientId,
+          status: BookingStatus.CANCELLED,
+        },
+      }),
+      prisma.subscriptionContract.findMany({
+        where: {
+          clientId,
+          status: SubscriptionStatus.ACTIVE,
+          currentPeriodEnd: { gt: now },
+          OR: [{ endedAt: null }, { endedAt: { gt: now } }],
+        },
+        orderBy: { currentPeriodEnd: "asc" },
+        select: {
+          id: true,
+          status: true,
+          currentPeriodEnd: true,
+          cancelAtPeriodEnd: true,
+          product: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      }),
+      prisma.clientEntitlement.findMany({
+        where: {
+          clientId,
+          status: ClientEntitlementStatus.ACTIVE,
+          entitlementType: {
+            in: [EntitlementType.CREDIT_PACK, EntitlementType.SINGLE_USE],
+          },
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+        orderBy: [{ expiresAt: "asc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          status: true,
+          expiresAt: true,
+          product: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      }),
+      prisma.product.findMany({
+        where: {
+          isActive: true,
+          isArchived: false,
+          entitlementRules: {
+            some: {
+              isActive: true,
+              entitlementType: {
+                in: [EntitlementType.CREDIT_PACK, EntitlementType.SINGLE_USE],
+              },
+            },
+          },
+        },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        select: {
+          id: true,
+          name: true,
+        },
+      }),
+    ]);
+
+  const entitlementBalances =
+    creditEntitlements.length > 0
+      ? await prisma.creditLedgerEntry.groupBy({
+          by: ["entitlementId"],
+          where: {
+            clientId,
+            entitlementId: { in: creditEntitlements.map((entitlement) => entitlement.id) },
+          },
+          _sum: {
+            amount: true,
+          },
+        })
+      : [];
+  const balanceByEntitlementId = new Map(
+    entitlementBalances.map((row) => [row.entitlementId, row._sum.amount ?? 0]),
+  );
+
+  const entitlementRows = creditEntitlements
+    .map((entitlement) => ({
+      entitlementId: entitlement.id,
+      productName: entitlement.product.name,
+      status: entitlement.status,
+      expiresAt: entitlement.expiresAt?.toISOString() ?? null,
+      remainingCredits: balanceByEntitlementId.get(entitlement.id) ?? 0,
+    }))
+    .filter((entitlement) => entitlement.remainingCredits > 0);
+
+  const creditsRemaining = entitlementRows.reduce((sum, row) => sum + row.remainingCredits, 0);
+  const nextCreditExpiration =
+    entitlementRows
+      .map((row) => row.expiresAt)
+      .filter((value): value is string => Boolean(value))
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0] ?? null;
+
+  return {
+    plansBought: plansBought.map((entry) => ({
+      orderId: entry.orderId,
+      productName: entry.productNameSnapshot,
+      priceName: entry.priceNameSnapshot,
+      amountMinor: entry.lineTotalAmountMinor,
+      currencyCode: entry.currencyCode,
+      purchasedAt: entry.order.placedAt.toISOString(),
+    })),
+    classesBooked,
+    classesCancelled,
+    outstandingMemberships: outstandingMemberships.map((subscription) => ({
+      id: subscription.id,
+      productName: subscription.product.name,
+      status: subscription.status,
+      currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    })),
+    creditEntitlements: entitlementRows,
+    creditsRemaining,
+    nextCreditExpiration,
+    eligibleCreditProducts: creditProducts,
+  };
+}
+
+export async function adjustAdminClientCredits(input: {
+  clientId: string;
+  adminUserId: string;
+  amount: number;
+  entitlementId?: string;
+  productId?: string;
+  expiresAt?: Date | null;
+}) {
+  if (!Number.isInteger(input.amount) || input.amount === 0) {
+    throw new Error("INVALID_CREDIT_AMOUNT");
+  }
+
+  const now = new Date();
+  const [clientRecord, adminRecord] = await prisma.$transaction([
+    prisma.user.findUnique({
+      where: { id: input.clientId },
+      select: { id: true, role: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: input.adminUserId },
+      select: { id: true, role: true },
+    }),
+  ]);
+
+  if (!clientRecord || clientRecord.role !== Role.CLIENT) {
+    throw new Error("CLIENT_NOT_FOUND");
+  }
+
+  if (!adminRecord || (adminRecord.role !== Role.ADMIN && adminRecord.role !== Role.MASTER_ADMIN)) {
+    throw new Error("ADMIN_USER_NOT_FOUND");
+  }
+
+  if (input.entitlementId) {
+    const entitlement = await prisma.clientEntitlement.findFirst({
+      where: {
+        id: input.entitlementId,
+        clientId: input.clientId,
+        entitlementType: {
+          in: [EntitlementType.CREDIT_PACK, EntitlementType.SINGLE_USE],
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!entitlement) {
+      throw new Error("ENTITLEMENT_NOT_FOUND");
+    }
+
+    return prisma.$transaction(async (tx) => {
+      if (input.expiresAt !== undefined) {
+        await tx.clientEntitlement.update({
+          where: { id: entitlement.id },
+          data: { expiresAt: input.expiresAt ?? null },
+        });
+      }
+
+      await tx.creditLedgerEntry.create({
+        data: {
+          clientId: clientRecord.id,
+          entitlementId: entitlement.id,
+          entryType: CreditLedgerEntryType.ADJUSTMENT,
+          amount: input.amount,
+          happenedAt: now,
+          createdById: adminRecord.id,
+          notes: "Admin credit adjustment from client detail.",
+        },
+      });
+    });
+  }
+
+  if (!input.productId) {
+    throw new Error("PRODUCT_REQUIRED");
+  }
+  const targetProductId = input.productId;
+
+  if (input.amount < 1) {
+    throw new Error("POSITIVE_AMOUNT_REQUIRED");
+  }
+
+  const entitlementRule = await prisma.entitlementRule.findFirst({
+    where: {
+      productId: targetProductId,
+      isActive: true,
+      entitlementType: {
+        in: [EntitlementType.CREDIT_PACK, EntitlementType.SINGLE_USE],
+      },
+    },
+    orderBy: [{ updatedAt: "desc" }],
+    select: {
+      entitlementType: true,
+      entitlementScope: true,
+    },
+  });
+
+  if (!entitlementRule) {
+    throw new Error("PRODUCT_NOT_CREDIT_ELIGIBLE");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const entitlement = await tx.clientEntitlement.create({
+      data: {
+        clientId: clientRecord.id,
+        productId: targetProductId,
+        entitlementType: entitlementRule.entitlementType,
+        entitlementScope: entitlementRule.entitlementScope,
+        status: ClientEntitlementStatus.ACTIVE,
+        activatedAt: now,
+        expiresAt: input.expiresAt ?? null,
+        notes: "Admin-created credit entitlement.",
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    await tx.creditLedgerEntry.create({
+      data: {
+        clientId: clientRecord.id,
+        entitlementId: entitlement.id,
+        entryType: CreditLedgerEntryType.ADJUSTMENT,
+        amount: input.amount,
+        happenedAt: now,
+        createdById: adminRecord.id,
+        notes: "Admin created entitlement with starting credits.",
+      },
+    });
+  });
+}
+
+export async function cancelAdminClientMembership(input: {
+  clientId: string;
+  subscriptionContractId: string;
+}) {
+  const now = new Date();
+  const updated = await prisma.subscriptionContract.updateMany({
+    where: {
+      id: input.subscriptionContractId,
+      clientId: input.clientId,
+    },
+    data: {
+      status: SubscriptionStatus.CANCELLED,
+      cancelAtPeriodEnd: true,
+      cancelledAt: now,
+      endedAt: now,
+    },
+  });
+
+  if (updated.count === 0) {
+    throw new Error("SUBSCRIPTION_NOT_FOUND");
+  }
 }
 
 export async function createAdminUser(input: {
@@ -882,25 +1961,81 @@ export async function createAdminUser(input: {
 export async function updateAdminUser(
   id: string,
   input: {
-    name: string;
+    firstName?: string;
+    lastName?: string;
+    name?: string;
     email: string;
     role: Role;
     isActive: boolean;
+    phone?: string;
+    notes?: string;
+    bio?: string;
+    specialties?: string[];
+    certifications?: string[];
+    hireDate?: Date | null;
     password?: string;
   },
 ) {
   const passwordHash = input.password ? await hash(input.password, 12) : undefined;
+  const firstName = input.firstName?.trim() ?? "";
+  const lastName = input.lastName?.trim() ?? "";
+  const fullName = `${firstName} ${lastName}`.trim() || input.name?.trim() || "User";
+  const normalizedPhone = toNullable(input.phone);
+  const normalizedNotes = toNullable(input.notes);
+  const normalizedBio = toNullable(input.bio);
 
-  return prisma.user.update({
-    where: { id },
-    data: {
-      name: input.name.trim(),
-      email: input.email.trim().toLowerCase(),
-      role: input.role,
-      isActive: input.isActive,
-      isInactive: !input.isActive,
-      ...(passwordHash ? { passwordHash } : {}),
-    },
+  return prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id },
+      data: {
+        name: fullName,
+        firstName: firstName || null,
+        lastName: lastName || null,
+        email: input.email.trim().toLowerCase(),
+        role: input.role,
+        isActive: input.isActive,
+        isInactive: !input.isActive,
+        ...(passwordHash ? { passwordHash } : {}),
+      },
+    });
+
+    if (input.role === Role.TEACHER) {
+      await tx.teacherProfile.upsert({
+        where: { userId: id },
+        update: {
+          phone: normalizedPhone,
+          bio: normalizedBio,
+          specialties: input.specialties ?? [],
+          certifications: input.certifications ?? [],
+          hireDate: input.hireDate ?? null,
+        },
+        create: {
+          userId: id,
+          phone: normalizedPhone,
+          bio: normalizedBio,
+          specialties: input.specialties ?? [],
+          certifications: input.certifications ?? [],
+          hireDate: input.hireDate ?? null,
+        },
+      });
+    } else {
+      await tx.clientProfile.upsert({
+        where: { userId: id },
+        update: {
+          phone: normalizedPhone,
+          notes: normalizedNotes,
+        },
+        create: {
+          userId: id,
+          phone: normalizedPhone,
+          notes: normalizedNotes,
+        },
+      });
+    }
+
+    return tx.user.findUnique({
+      where: { id },
+    });
   });
 }
 
@@ -1187,6 +2322,17 @@ export async function getAdminLearningVideosData(): Promise<AdminLearningVideoIt
     ...item,
     updatedAt: item.updatedAt.toISOString(),
   }));
+}
+
+export async function getAdminOnlineLearningData(): Promise<{
+  programs: AdminLearningProgramItem[];
+  videos: AdminLearningVideoItem[];
+}> {
+  const [programs, videos] = await Promise.all([
+    getAdminLearningProgramsData(),
+    getAdminLearningVideosData(),
+  ]);
+  return { programs, videos };
 }
 
 export async function getAdminLearningVideoById(id: string) {

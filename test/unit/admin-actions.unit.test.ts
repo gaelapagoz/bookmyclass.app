@@ -17,7 +17,12 @@ vi.mock("@/auth", () => ({
 }));
 
 vi.mock("@/lib/admin/admin-service", () => ({
+  adjustAdminClientCredits: vi.fn(),
+  cancelAdminClientMembership: vi.fn(),
   createAdminClass: vi.fn(),
+  upsertAdminClassScheduleConfig: vi.fn(),
+  createAdminRecurringSessions: vi.fn(),
+  createAdminSession: vi.fn(),
   createAdminPlan: vi.fn(),
   createAdminSubscription: vi.fn(),
   updateAdminLearningVideo: vi.fn(),
@@ -35,15 +40,20 @@ vi.mock("@/lib/client-messages/client-message-service", () => ({
 
 import { auth } from "@/auth";
 import {
+  adjustAdminClientCredits,
+  cancelAdminClientMembership,
   createAdminClass,
   createAdminPlan,
   createAdminSubscription,
+  upsertAdminClassScheduleConfig,
   updateAdminLearningVideo,
   updateAdminPlan,
   updateAdminUser,
 } from "@/lib/admin/admin-service";
 
 import {
+  adjustClientCreditsAction,
+  cancelClientMembershipAction,
   createClassAction,
   createPlanAction,
   createSubscriptionAction,
@@ -82,7 +92,13 @@ describe("admin actions", () => {
 
   it("creates class and redirects on happy path", async () => {
     vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
-    vi.mocked(createAdminClass).mockResolvedValue({ id: "class-1" });
+    vi.mocked(createAdminClass).mockResolvedValue({
+      id: "class-1",
+      name: "Vinyasa",
+      slug: "vinyasa",
+      defaultCapacity: 12,
+      defaultDurationMinutes: 60,
+    });
 
     const formData = new FormData();
     formData.set("categoryId", "cat-1");
@@ -93,9 +109,14 @@ describe("admin actions", () => {
     formData.set("sortOrder", "1");
     formData.set("isActive", "on");
     formData.set("isVisible", "on");
+    formData.set("defaultTeacherId", "teacher-1");
+    formData.set("scheduleStartTime", "18:00");
+    formData.set("scheduleEndTime", "19:00");
+    formData.set("scheduleDate", "2026-04-01");
 
     await expect(createClassAction(formData)).rejects.toThrow("NEXT_REDIRECT:/admin/classes");
     expect(createAdminClass).toHaveBeenCalledTimes(1);
+    expect(upsertAdminClassScheduleConfig).toHaveBeenCalledTimes(1);
   });
 
   it("redirects with validation error when class payload is invalid", async () => {
@@ -110,6 +131,29 @@ describe("admin actions", () => {
     expect(createAdminClass).not.toHaveBeenCalled();
   });
 
+  it("rejects invalid recurring class schedule payload", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+
+    const formData = new FormData();
+    formData.set("categoryId", "cat-1");
+    formData.set("name", "Vinyasa");
+    formData.set("slug", "vinyasa");
+    formData.set("defaultDurationMinutes", "60");
+    formData.set("defaultCapacity", "12");
+    formData.set("sortOrder", "1");
+    formData.set("isActive", "on");
+    formData.set("isVisible", "on");
+    formData.set("defaultTeacherId", "teacher-1");
+    formData.set("scheduleStartTime", "18:00");
+    formData.set("scheduleEndTime", "19:00");
+    formData.set("isRecurring", "on");
+    formData.set("endsType", "never");
+
+    await expect(createClassAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/classes/new?error=Please%20complete%20all%20required%20class%20schedule%20fields.",
+    );
+    expect(createAdminClass).not.toHaveBeenCalled();
+  });
   it("creates plan with price on happy path", async () => {
     vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
     vi.mocked(createAdminPlan).mockResolvedValue({ id: "plan-1" });
@@ -241,7 +285,8 @@ describe("admin actions", () => {
     vi.mocked(updateAdminUser).mockResolvedValue({ id: "user-1" });
 
     const formData = new FormData();
-    formData.set("name", "Jane Doe");
+    formData.set("firstName", "Jane");
+    formData.set("lastName", "Doe");
     formData.set("email", "jane@example.test");
     formData.set("role", "ADMIN");
     formData.set("isActive", "on");
@@ -249,9 +294,79 @@ describe("admin actions", () => {
     await expect(updateUserAction("user-1", formData)).rejects.toThrow("NEXT_REDIRECT:/admin/users");
     expect(updateAdminUser).toHaveBeenCalledWith(
       "user-1",
-      expect.objectContaining({ name: "Jane Doe", email: "jane@example.test", role: "ADMIN" }),
+      expect.objectContaining({ firstName: "Jane", lastName: "Doe", email: "jane@example.test", role: "ADMIN" }),
     );
   });
+
+  it("adjusts client credits and redirects", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(adjustAdminClientCredits).mockResolvedValue(undefined);
+
+    const formData = new FormData();
+    formData.set("userId", "client-1");
+    formData.set("entitlementId", "ent-1");
+    formData.set("creditDelta", "2");
+
+    await expect(adjustClientCreditsAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/users/client-1/edit",
+    );
+    expect(adjustAdminClientCredits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientId: "client-1",
+        entitlementId: "ent-1",
+        amount: 2,
+      }),
+    );
+  });
+
+  it("rejects missing credits payload with explicit validation error", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+
+    const formData = new FormData();
+    formData.set("userId", "client-1");
+
+    await expect(adjustClientCreditsAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/users/client-1/edit?error=Invalid%20credits%20update%20payload.",
+    );
+    expect(adjustAdminClientCredits).not.toHaveBeenCalled();
+  });
+
+  it("returns actionable error when admin session user no longer exists", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(adjustAdminClientCredits).mockRejectedValue(new Error("ADMIN_USER_NOT_FOUND"));
+
+    const formData = new FormData();
+    formData.set("userId", "client-1");
+    formData.set("entitlementId", "ent-1");
+    formData.set("creditDelta", "1");
+
+    await expect(adjustClientCreditsAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/users/client-1/edit?error=Your%20admin%20session%20is%20no%20longer%20valid.%20Sign%20in%20again%20and%20retry.",
+    );
+  });
+  it("cancels client membership and redirects", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(cancelAdminClientMembership).mockResolvedValue(undefined);
+
+    const formData = new FormData();
+    formData.set("clientId", "client-1");
+    formData.set("subscriptionContractId", "sub-1");
+
+    await expect(cancelClientMembershipAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/users/client-1/edit",
+    );
+    expect(cancelAdminClientMembership).toHaveBeenCalledWith({
+      clientId: "client-1",
+      subscriptionContractId: "sub-1",
+    });
+  });
 });
+
+
+
+
+
+
+
 
 

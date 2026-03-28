@@ -2,7 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { updateClassAction } from "@/app/admin/(private)/actions";
-import { getAdminClassById, getClassCategoryOptions } from "@/lib/admin/admin-service";
+import ClassScheduleFields from "@/components/admin/ClassScheduleFields";
+import {
+  getAdminClassById,
+  getAdminClassScheduleOptions,
+  getClassCategoryOptions,
+} from "@/lib/admin/admin-service";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ error?: string }>;
@@ -15,7 +20,11 @@ export default async function AdminClassEditPage({
   searchParams: SearchParams;
 }) {
   const { id } = await params;
-  const [record, categories] = await Promise.all([getAdminClassById(id), getClassCategoryOptions()]);
+  const [record, categories, teachers] = await Promise.all([
+    getAdminClassById(id),
+    getClassCategoryOptions(),
+    getAdminClassScheduleOptions(),
+  ]);
 
   if (!record) {
     notFound();
@@ -34,7 +43,8 @@ export default async function AdminClassEditPage({
 
       {error ? <p className="text-sm text-[#7b2d2d]">{error}</p> : null}
 
-      <form action={updateClassAction.bind(null, id)} className="space-y-3 rounded-xl border border-[#d3dbe5] bg-white p-5">
+      <form action={updateClassAction.bind(null, id)} className="space-y-3">
+        <section className="space-y-3 rounded-xl border border-[#d3dbe5] bg-white p-5">
         <label className="block text-sm text-[#334155]">
           Category
           <select
@@ -127,6 +137,22 @@ export default async function AdminClassEditPage({
           </label>
         </div>
 
+        </section>
+        <ClassScheduleFields
+          teachers={teachers}
+          defaultValues={{
+            defaultTeacherId: record.schedule.defaultTeacherId,
+            startTime: record.schedule.startTime,
+            endTime: record.schedule.endTime,
+            isRecurring: record.schedule.isRecurring,
+            date: record.schedule.date,
+            repeatEveryWeeks: record.schedule.repeatEveryWeeks,
+            weekdays: record.schedule.weekdays,
+            endsType: record.schedule.endsType,
+            endDate: record.schedule.endDate,
+            occurrenceCount: record.schedule.occurrenceCount,
+          }}
+        />
         <button type="submit" className="rounded-md bg-[#1d3652] px-4 py-2 text-sm text-white">
           Update class
         </button>

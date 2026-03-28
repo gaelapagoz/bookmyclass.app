@@ -1,12 +1,13 @@
 import Link from "next/link";
 
 import { createClassAction } from "@/app/admin/(private)/actions";
-import { getClassCategoryOptions } from "@/lib/admin/admin-service";
+import ClassScheduleFields from "@/components/admin/ClassScheduleFields";
+import { getAdminClassScheduleOptions, getClassCategoryOptions } from "@/lib/admin/admin-service";
 
 type SearchParams = Promise<{ error?: string }>;
 
 export default async function AdminClassCreatePage({ searchParams }: { searchParams: SearchParams }) {
-  const categories = await getClassCategoryOptions();
+  const [categories, teachers] = await Promise.all([getClassCategoryOptions(), getAdminClassScheduleOptions()]);
   const { error } = await searchParams;
 
   return (
@@ -20,7 +21,8 @@ export default async function AdminClassCreatePage({ searchParams }: { searchPar
 
       {error ? <p className="text-sm text-[#7b2d2d]">{error}</p> : null}
 
-      <form action={createClassAction} className="space-y-3 rounded-xl border border-[#d3dbe5] bg-white p-5">
+      <form action={createClassAction} className="space-y-3">
+        <section className="space-y-3 rounded-xl border border-[#d3dbe5] bg-white p-5">
         <label className="block text-sm text-[#334155]">
           Category
           <select name="categoryId" required className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2">
@@ -93,6 +95,8 @@ export default async function AdminClassCreatePage({ searchParams }: { searchPar
           </label>
         </div>
 
+        </section>
+        <ClassScheduleFields teachers={teachers} />
         <button type="submit" className="rounded-md bg-[#1d3652] px-4 py-2 text-sm text-white">
           Save class
         </button>

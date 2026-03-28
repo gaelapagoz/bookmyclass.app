@@ -5,33 +5,7 @@ import { z } from "zod";
 import { siteConfig } from "@/lib/site-config";
 import { createContactMessage } from "@/lib/client-messages/client-message-service";
 import { getActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
-
-const weeklyAgenda = [
-  {
-    day: "Monday",
-    classes: ["18:00–19:00 Pilates with Props", "19:00–20:30 Rocket Vinyasa Yoga (Level 1/2)"],
-  },
-  {
-    day: "Tuesday",
-    classes: ["18:00–19:00 Pilates Functional Training (TRX)", "19:15–20:15 Vinyasa Yoga (Level 1/2)"],
-  },
-  {
-    day: "Wednesday",
-    classes: ["18:00–19:00 Pilates & Functional Training (TRX)", "19:15–20:15 Vinyasa Yoga (Level 1/2)"],
-  },
-  {
-    day: "Thursday",
-    classes: ["18:00–19:00 Pilates Stretch & Tone", "19:15–20:15 Rocket Vinyasa Yoga (Level 1)"],
-  },
-  {
-    day: "Friday",
-    classes: [],
-  },
-  {
-    day: "Saturday",
-    classes: ["10:30–11:30 Pilates with Props"],
-  },
-] as const;
+import { getHomeAgendaTableFromSchedule } from "@/lib/public-content/home-agenda-service";
 
 const serviceCards = [
   {
@@ -74,6 +48,7 @@ export default async function HomePage({
 }) {
   const params = await searchParams;
   const agendaPdf = await getActiveAgendaPdfDocument();
+  const weeklyAgenda = await getHomeAgendaTableFromSchedule();
   const contactSent = params.contact === "sent";
   const contactError = params.error === "contact_failed";
 
@@ -352,5 +327,7 @@ export default async function HomePage({
     </div>
   );
 }
+
+
 
 
