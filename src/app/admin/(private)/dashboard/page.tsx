@@ -70,7 +70,7 @@ export default async function AdminDashboardPage() {
                     <span className="text-xs uppercase tracking-wide">{booking.status}</span>
                   </div>
                   <p className="mt-1 text-xs text-[#5a6d86]">
-                    {booking.clientName} ({booking.clientEmail}) · {formatDateTime(booking.startsAt)}
+                    {booking.clientName} ({booking.clientEmail}) Â· {formatDateTime(booking.startsAt)}
                   </p>
                 </li>
               ))}
