@@ -7,8 +7,8 @@ Ensure the Next.js app starts automatically after a server reboot.
 If PM2 is only used to start the app manually, the process disappears after reboot and nginx returns `502 Bad Gateway` because nothing is listening on port `3000`.
 
 ## Assumptions
-- App lives at `/var/www/bookmyclass`
-- App runs as user `deploy`
+- app lives at `/var/www/bookmyclass`
+- app runs as user `deploy`
 - nginx proxies traffic to `127.0.0.1:3000`
 - PM2 is installed globally
 
@@ -65,6 +65,14 @@ Expected:
 enabled
 ```
 
+### Validate PM2 from root safely
+Use:
+```bash
+sudo -u deploy env PM2_HOME=/home/deploy/.pm2 pm2 status
+```
+
+Do not use root-owned PM2.
+
 ### Reboot test
 ```bash
 sudo reboot
@@ -72,8 +80,7 @@ sudo reboot
 
 After reconnecting:
 ```bash
-su - deploy
-pm2 status
+sudo -u deploy env PM2_HOME=/home/deploy/.pm2 pm2 status
 curl http://127.0.0.1:3000/api/health
 curl -i https://bookmyclass.app/api/health
 ```
@@ -87,17 +94,17 @@ Expected:
 
 ### See PM2-managed processes
 ```bash
-pm2 status
+sudo -u deploy env PM2_HOME=/home/deploy/.pm2 pm2 status
 ```
 
 ### Restart the app
 ```bash
-pm2 restart bookmyclass-app
+sudo -u deploy env PM2_HOME=/home/deploy/.pm2 pm2 restart bookmyclass-app
 ```
 
 ### View logs
 ```bash
-pm2 logs bookmyclass-app
+sudo -u deploy env PM2_HOME=/home/deploy/.pm2 pm2 logs bookmyclass-app
 ```
 
 ### Show the saved process dump
@@ -111,13 +118,14 @@ journalctl -u pm2-deploy -b --no-pager
 ```
 
 ## Common Mistakes
-- Running `pm2 save` but not executing the generated `pm2 startup` command
-- Running PM2 as `root` instead of `deploy`
-- Using a generic process name like `app`
-- Assuming it works without doing a real reboot test
-- Starting the app manually after reboot before validating auto-start
+- running `pm2 save` but not executing the generated `pm2 startup` command
+- running PM2 as `root` instead of `deploy`
+- checking PM2 as root and assuming the deploy-owned process is missing
+- using a generic process name like `app`
+- assuming it works without doing a real reboot test
+- starting the app manually after reboot before validating auto-start
 
 ## Production Notes
-- Keep PM2 owned by `deploy`, not `root`
-- Keep nginx separate as the public entrypoint
-- Treat reboot validation as mandatory whenever startup behavior changes
+- keep PM2 owned by `deploy`, not `root`
+- keep nginx separate as the public entrypoint
+- treat reboot validation as mandatory whenever startup behavior changes

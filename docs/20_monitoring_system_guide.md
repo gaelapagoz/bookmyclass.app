@@ -4,9 +4,10 @@
 
 This monitoring setup is designed to answer three different questions without overlapping responsibilities:
 
-* **Is something broken right now?** → `checks.bookmyclass.app`
-* **Is the application reachable and healthy from the outside?** → `monitor.bookmyclass.app` and `/api/health`
-* **Why is the server slow or unstable?** → Netdata at `localhost:19999`
+- **Is the public app reachable right now?** → `monitor.bookmyclass.app`
+- **Did the critical daily backup job complete?** → `checks.bookmyclass.app`
+- **Why is the server slow or unstable?** → Netdata at `localhost:19999`
+- **Is the app + DB technically healthy from inside the box?** → `/api/health` + local root healthcheck script
 
 The goal is to keep monitoring simple, production-safe, and useful for beta.
 
@@ -16,49 +17,62 @@ The goal is to keep monitoring simple, production-safe, and useful for beta.
 
 ### 1. `https://checks.bookmyclass.app/`
 
-This is the **critical alerting layer**.
+This is the **critical scheduled-job alerting layer**.
 
 Use it for:
 
-* backup heartbeat monitoring
-* other future critical push checks
+- backup heartbeat monitoring
+- future critical push checks if truly needed
 
 Current role:
 
-* confirms that the database backup job completed successfully
-* shows the last successful backup ping
+- confirms that the daily database backup job completed successfully enough to:
+  - create the dump
+  - verify a non-empty backup file
+  - upload to Backblaze B2
+  - send the success ping
 
 What it means:
 
-* **Green** = the backup job finished and pinged the check
-* **Red / overdue** = the backup job failed, did not run, or did not complete successfully
+- **Green / recent** = the backup job finished and pinged the check
+- **Red / overdue** = the backup job failed, did not run, or did not complete successfully enough to send the ping
 
-This is the first place to look for critical scheduled-job failures.
+Current source of ping:
+
+```text
+/usr/local/bin/bookmyclass-db-backup-run.sh
+```
+
+Do not use it for:
+
+- public HTTP uptime
+- PM2 state
+- CPU/RAM diagnosis
 
 ---
 
 ### 2. `https://monitor.bookmyclass.app/`
 
-This is the **external uptime dashboard**.
+This is the **external uptime dashboard** (Uptime Kuma).
 
 Use it for:
 
-* HTTP uptime checks
-* endpoint response time history
-* public-facing availability tracking
+- HTTP uptime checks
+- endpoint response-time history
+- public-facing availability tracking
 
 Current monitors include:
 
-* App Health (`/api/health`)
-* Book a Class page
-* Home page
+- App Health (`/api/health`)
+- Book a Class page
+- Home page
 
 What it means:
 
-* **Green / Up** = the monitored URL is reachable and responding as expected
-* **Red / Down** = the endpoint is failing from the outside
+- **Green / Up** = the monitored URL is reachable and responding as expected
+- **Red / Down** = the endpoint is failing from the outside
 
-This is useful for seeing whether the app is actually reachable over the internet and how stable it has been over time.
+This is the first place to look for public reachability and uptime issues.
 
 ---
 
@@ -68,8 +82,8 @@ This is the **application health truth endpoint**.
 
 Use it for:
 
-* confirming the app is running
-* confirming the database is reachable
+- confirming the app is running
+- confirming the database is reachable
 
 Healthy response example:
 
@@ -79,24 +93,56 @@ Healthy response example:
 
 What it means:
 
-* **200 OK** = application is running and database is reachable
-* **503** = database is not reachable or app health check failed
+- **200 OK** = application is running and database is reachable
+- **503** = database is not reachable or app health check failed
 
 This is the main technical truth for application readiness.
 
 ---
 
-### 4. Netdata (`http://localhost:19999/spaces/bookmyclass-prod/` via SSH tunnel)
+### 4. `/usr/local/bin/bookmyclass-healthcheck.sh`
+
+This is the **internal server validation layer**.
+
+Use it for:
+
+- local `/api/health` check
+- PM2 online check
+- disk threshold check
+- memory threshold check
+- recent non-empty DB backup presence
+
+Important implementation detail:
+- the script runs from **root cron**
+- PM2 is checked as **`deploy`**
+- backup files remain **root-owned**
+
+Current cron:
+
+```cron
+*/5 * * * * /usr/local/bin/bookmyclass-healthcheck.sh >> /var/log/bookmyclass-healthcheck.log 2>&1
+```
+
+Useful commands:
+
+```bash
+sudo /usr/local/bin/bookmyclass-healthcheck.sh
+sudo tail -n 100 /var/log/bookmyclass-healthcheck.log
+```
+
+---
+
+### 5. Netdata (`http://localhost:19999/` via SSH tunnel)
 
 This is the **server diagnostics layer**.
 
 Use it for:
 
-* CPU usage
-* RAM usage
-* disk usage
-* load spikes
-* process-level inspection
+- CPU usage
+- RAM usage
+- disk usage
+- load spikes
+- process-level inspection
 
 This is not your first alerting screen. It is where you go when you need to understand why the server is under pressure.
 
@@ -109,7 +155,7 @@ ssh -L 19999:127.0.0.1:19999 deploy@YOUR_SERVER_IP
 Then open:
 
 ```text
-http://localhost:19999/spaces/bookmyclass-prod/
+http://localhost:19999/
 ```
 
 ---
@@ -176,12 +222,17 @@ curl -i http://127.0.0.1:3000/api/health
 5. Check PM2:
 
 ```bash
-su - deploy
-pm2 status
-pm2 logs --lines 100
+sudo -u deploy env PM2_HOME=/home/deploy/.pm2 pm2 status
+sudo -u deploy env PM2_HOME=/home/deploy/.pm2 pm2 logs bookmyclass-app --lines 100
 ```
 
-6. If health endpoint still fails, check DB and server resources
+6. If needed, run the internal healthcheck:
+
+```bash
+sudo /usr/local/bin/bookmyclass-healthcheck.sh
+```
+
+7. If health endpoint still fails, check DB and server resources
 
 ---
 
@@ -191,11 +242,10 @@ pm2 logs --lines 100
 2. Check for response-time spikes
 3. Open Netdata
 4. Inspect:
-
-   * CPU
-   * RAM
-   * system load
-   * disk usage
+   - CPU
+   - RAM
+   - system load
+   - disk usage
 5. SSH into server if needed:
 
 ```bash
@@ -207,8 +257,7 @@ df -h
 6. Check PM2 logs for runtime issues:
 
 ```bash
-su - deploy
-pm2 logs --lines 100
+sudo -u deploy env PM2_HOME=/home/deploy/.pm2 pm2 logs bookmyclass-app --lines 100
 ```
 
 ---
@@ -219,45 +268,57 @@ pm2 logs --lines 100
 
 Responsible for:
 
-* critical scheduled checks
-* backup heartbeat monitoring
-* alerting for missed critical jobs
+- critical scheduled checks
+- backup heartbeat monitoring
+- alerting for missed critical jobs
 
 Do not use it for:
 
-* CPU/RAM diagnosis
-* debugging response-time spikes
+- CPU/RAM diagnosis
+- debugging response-time spikes
+- generic app uptime
 
 ### `monitor.bookmyclass.app`
 
 Responsible for:
 
-* uptime visibility
-* endpoint availability
-* response-time trends
+- uptime visibility
+- endpoint availability
+- response-time trends
 
 Do not use it for:
 
-* backup success confirmation
-* server resource diagnosis
+- backup success confirmation
+- server resource diagnosis
 
 ### `/api/health`
 
 Responsible for:
 
-* application + database readiness truth
+- application + database readiness truth
 
 Do not use it for:
 
-* backup status
-* CPU/RAM checks
+- backup status
+- CPU/RAM checks
+
+### `bookmyclass-healthcheck.sh`
+
+Responsible for:
+
+- local internal validation
+- PM2 online state
+- recent backup presence
+- disk/memory thresholds
+
+Do not use it as your public uptime dashboard.
 
 ### Netdata
 
 Responsible for:
 
-* infrastructure diagnosis
-* CPU/RAM/disk/load investigation
+- infrastructure diagnosis
+- CPU/RAM/disk/load investigation
 
 Do not use it as your first alert screen.
 
@@ -267,14 +328,14 @@ Do not use it as your first alert screen.
 
 A healthy beta system looks like this:
 
-* backup check is green in `checks.bookmyclass.app`
-* `App Health` is green in `monitor.bookmyclass.app`
-* `/api/health` returns `200`
-* Netdata shows:
-
-  * CPU not pinned for long periods
-  * available RAM still healthy
-  * disk comfortably below 80%
+- backup check is green in `checks.bookmyclass.app`
+- `App Health` is green in `monitor.bookmyclass.app`
+- `/api/health` returns `200`
+- `sudo /usr/local/bin/bookmyclass-healthcheck.sh` returns `[OK]`
+- Netdata shows:
+  - CPU not pinned for long periods
+  - available RAM still healthy
+  - disk comfortably below 80%
 
 ---
 
@@ -282,12 +343,13 @@ A healthy beta system looks like this:
 
 For this server, use these practical thresholds:
 
-* CPU sustained above **85%** for several minutes → investigate
-* RAM sustained above **85%** or very low available memory → investigate
-* disk above **80%** → action needed
-* disk above **90%** → urgent
-* backup heartbeat overdue → critical
-* `/api/health` failing → critical
+- CPU sustained above **85%** for several minutes → investigate
+- RAM sustained above **85%** or very low available memory → investigate
+- disk above **80%** → action needed
+- disk above **90%** → urgent
+- backup heartbeat overdue → critical
+- `/api/health` failing → critical
+- `bookmyclass-healthcheck.sh` failing → critical
 
 ---
 
@@ -295,14 +357,16 @@ For this server, use these practical thresholds:
 
 Use this mental model:
 
-* **Checks = alerts**
-* **Monitor = uptime visibility**
-* **/api/health = app truth**
-* **Netdata = diagnosis**
+- **Checks = scheduled-job alerts**
+- **Monitor = public uptime visibility**
+- **/api/health = app truth**
+- **Local healthcheck = internal validation**
+- **Netdata = diagnosis**
 
 And use them in this order:
 
 1. `checks.bookmyclass.app`
 2. `monitor.bookmyclass.app`
 3. `/api/health`
-4. Netdata
+4. `/usr/local/bin/bookmyclass-healthcheck.sh`
+5. Netdata

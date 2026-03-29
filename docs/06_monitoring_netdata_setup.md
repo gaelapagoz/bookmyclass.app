@@ -8,16 +8,17 @@ Netdata is for **server metrics and troubleshooting**.
 
 Use it for:
 - CPU usage
-- Load average
+- load average
 - RAM usage
-- Disk usage
-- Process visibility
+- disk usage
+- process visibility
 
 Do **not** use it as a replacement for the app health check.
 
 For this stack:
-- **Kuma** = app/database uptime via `/api/health`
-- **Netdata** = host resource visibility
+- **`monitor.bookmyclass.app` (Uptime Kuma)** = public uptime monitoring
+- **`checks.bookmyclass.app` (Healthchecks)** = backup heartbeat monitoring
+- **Netdata** = host resource visibility and diagnosis
 
 ## Install
 On Ubuntu:
@@ -81,7 +82,7 @@ On the welcome screen:
 ### CPU
 Watch:
 - CPU usage
-- Load average
+- load average
 
 Thresholds:
 - sustained CPU above `85%` = investigate
@@ -112,7 +113,7 @@ Thresholds:
 ### Processes
 Watch:
 - Node/PM2 process
-- postgres process if local
+- postgres Docker/container resource usage if relevant
 
 Useful when debugging slowdowns or leaks.
 
@@ -154,10 +155,13 @@ Do **not** run aggressive RAM stress tests on production.
 - Do not expose Netdata publicly
 - Do not add Netdata Cloud now
 - Do not proxy Netdata publicly through nginx
+- Do not replace `/api/health` or Uptime Kuma with Netdata
+- Do not replace backup heartbeat checks with Netdata
 - Do not add Prometheus/Grafana for beta
 - Do not add app-level CPU/RAM endpoints
 
 ## Production Notes
 - Netdata is for visibility, not your primary uptime monitor
-- Keep `/api/health` in Kuma as the main availability signal
+- Keep `/api/health` in Uptime Kuma as the main availability signal
+- Keep `checks.bookmyclass.app` for daily backup heartbeat only
 - Review CPU, RAM, and disk quickly once per day during beta
