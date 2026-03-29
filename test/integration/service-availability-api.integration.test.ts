@@ -60,14 +60,14 @@ async function createAvailabilityFixture() {
   });
 
   const now = new Date();
-  const firstSessionStart = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
-  firstSessionStart.setUTCMinutes(0, 0, 0);
-  firstSessionStart.setUTCHours(17, 0, 0, 0);
+  const firstSessionStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 5, 17, 0, 0, 0),
+  );
   const firstSessionEnd = new Date(firstSessionStart.getTime() + 60 * 60 * 1000);
 
-  const secondSessionStart = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
-  secondSessionStart.setUTCMinutes(0, 0, 0);
-  secondSessionStart.setUTCHours(19, 0, 0, 0);
+  const secondSessionStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 6, 19, 0, 0, 0),
+  );
   const secondSessionEnd = new Date(secondSessionStart.getTime() + 60 * 60 * 1000);
 
   const firstSession = await prisma.studioSession.create({
@@ -249,7 +249,4 @@ describe("service availability api", () => {
     expect(badDateResponse.status).toBe(400);
   });
 });
-
-
-
 

@@ -180,7 +180,6 @@ export async function getServiceMonthAvailability(params: { monthKey: string; sl
   }
 
   const { fromUtc, toUtc } = getMonthRangeUtc(monthKey);
-  const now = new Date();
 
   const sessions = await prisma.studioSession.findMany({
     where: {
@@ -188,7 +187,7 @@ export async function getServiceMonthAvailability(params: { monthKey: string; sl
       isPublished: true,
       status: StudioSessionStatus.SCHEDULED,
       startsAt: {
-        gte: fromUtc > now ? fromUtc : now,
+        gte: fromUtc,
         lt: toUtc,
       },
     },
