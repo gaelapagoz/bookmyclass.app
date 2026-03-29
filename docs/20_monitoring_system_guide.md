@@ -1,0 +1,308 @@
+# Monitoring System Guide
+
+## Purpose
+
+This monitoring setup is designed to answer three different questions without overlapping responsibilities:
+
+* **Is something broken right now?** → `checks.bookmyclass.app`
+* **Is the application reachable and healthy from the outside?** → `monitor.bookmyclass.app` and `/api/health`
+* **Why is the server slow or unstable?** → Netdata at `localhost:19999`
+
+The goal is to keep monitoring simple, production-safe, and useful for beta.
+
+---
+
+## Monitoring Components
+
+### 1. `https://checks.bookmyclass.app/`
+
+This is the **critical alerting layer**.
+
+Use it for:
+
+* backup heartbeat monitoring
+* other future critical push checks
+
+Current role:
+
+* confirms that the database backup job completed successfully
+* shows the last successful backup ping
+
+What it means:
+
+* **Green** = the backup job finished and pinged the check
+* **Red / overdue** = the backup job failed, did not run, or did not complete successfully
+
+This is the first place to look for critical scheduled-job failures.
+
+---
+
+### 2. `https://monitor.bookmyclass.app/`
+
+This is the **external uptime dashboard**.
+
+Use it for:
+
+* HTTP uptime checks
+* endpoint response time history
+* public-facing availability tracking
+
+Current monitors include:
+
+* App Health (`/api/health`)
+* Book a Class page
+* Home page
+
+What it means:
+
+* **Green / Up** = the monitored URL is reachable and responding as expected
+* **Red / Down** = the endpoint is failing from the outside
+
+This is useful for seeing whether the app is actually reachable over the internet and how stable it has been over time.
+
+---
+
+### 3. `https://bookmyclass.app/api/health`
+
+This is the **application health truth endpoint**.
+
+Use it for:
+
+* confirming the app is running
+* confirming the database is reachable
+
+Healthy response example:
+
+```json
+{"ok":true,"db":"up","timestamp":"..."}
+```
+
+What it means:
+
+* **200 OK** = application is running and database is reachable
+* **503** = database is not reachable or app health check failed
+
+This is the main technical truth for application readiness.
+
+---
+
+### 4. Netdata (`http://localhost:19999/spaces/bookmyclass-prod/` via SSH tunnel)
+
+This is the **server diagnostics layer**.
+
+Use it for:
+
+* CPU usage
+* RAM usage
+* disk usage
+* load spikes
+* process-level inspection
+
+This is not your first alerting screen. It is where you go when you need to understand why the server is under pressure.
+
+Use SSH tunnel:
+
+```bash
+ssh -L 19999:127.0.0.1:19999 deploy@YOUR_SERVER_IP
+```
+
+Then open:
+
+```text
+http://localhost:19999/spaces/bookmyclass-prod/
+```
+
+---
+
+## Correct Monitoring Flow
+
+Always use the same order.
+
+### Normal daily check
+
+1. Open `checks.bookmyclass.app`
+2. Confirm backup check is green and recent
+3. Open `monitor.bookmyclass.app`
+4. Confirm `App Health` is up
+5. Stop there if everything is green
+
+Do not open Netdata unless something looks wrong.
+
+---
+
+## Incident Flow
+
+### Case 1: Backup check is failing
+
+1. Open `checks.bookmyclass.app`
+2. Confirm the backup heartbeat is overdue or failed
+3. SSH into server
+4. Check backup log:
+
+```bash
+sudo tail -n 100 /var/log/bookmyclass-db-backup.log
+```
+
+5. Check latest backup files:
+
+```bash
+sudo ls -lt /var/backups/bookmyclass-postgres | head
+```
+
+6. If needed, run manual backup test:
+
+```bash
+sudo /usr/local/bin/bookmyclass-db-backup-run.sh
+```
+
+---
+
+### Case 2: App Health is down in monitor
+
+1. Open `monitor.bookmyclass.app`
+2. Confirm `App Health` is red/down
+3. Test health endpoint directly:
+
+```bash
+curl -i https://bookmyclass.app/api/health
+```
+
+4. SSH into server and test locally:
+
+```bash
+curl -i http://127.0.0.1:3000/api/health
+```
+
+5. Check PM2:
+
+```bash
+su - deploy
+pm2 status
+pm2 logs --lines 100
+```
+
+6. If health endpoint still fails, check DB and server resources
+
+---
+
+### Case 3: App is slow but not fully down
+
+1. Open `monitor.bookmyclass.app`
+2. Check for response-time spikes
+3. Open Netdata
+4. Inspect:
+
+   * CPU
+   * RAM
+   * system load
+   * disk usage
+5. SSH into server if needed:
+
+```bash
+top
+free -h
+df -h
+```
+
+6. Check PM2 logs for runtime issues:
+
+```bash
+su - deploy
+pm2 logs --lines 100
+```
+
+---
+
+## What Each Tool Is Responsible For
+
+### `checks.bookmyclass.app`
+
+Responsible for:
+
+* critical scheduled checks
+* backup heartbeat monitoring
+* alerting for missed critical jobs
+
+Do not use it for:
+
+* CPU/RAM diagnosis
+* debugging response-time spikes
+
+### `monitor.bookmyclass.app`
+
+Responsible for:
+
+* uptime visibility
+* endpoint availability
+* response-time trends
+
+Do not use it for:
+
+* backup success confirmation
+* server resource diagnosis
+
+### `/api/health`
+
+Responsible for:
+
+* application + database readiness truth
+
+Do not use it for:
+
+* backup status
+* CPU/RAM checks
+
+### Netdata
+
+Responsible for:
+
+* infrastructure diagnosis
+* CPU/RAM/disk/load investigation
+
+Do not use it as your first alert screen.
+
+---
+
+## Healthy System Checklist
+
+A healthy beta system looks like this:
+
+* backup check is green in `checks.bookmyclass.app`
+* `App Health` is green in `monitor.bookmyclass.app`
+* `/api/health` returns `200`
+* Netdata shows:
+
+  * CPU not pinned for long periods
+  * available RAM still healthy
+  * disk comfortably below 80%
+
+---
+
+## Operational Thresholds
+
+For this server, use these practical thresholds:
+
+* CPU sustained above **85%** for several minutes → investigate
+* RAM sustained above **85%** or very low available memory → investigate
+* disk above **80%** → action needed
+* disk above **90%** → urgent
+* backup heartbeat overdue → critical
+* `/api/health` failing → critical
+
+---
+
+## Summary
+
+Use this mental model:
+
+* **Checks = alerts**
+* **Monitor = uptime visibility**
+* **/api/health = app truth**
+* **Netdata = diagnosis**
+
+And use them in this order:
+
+1. `checks.bookmyclass.app`
+2. `monitor.bookmyclass.app`
+3. `/api/health`
+4. Netdata
