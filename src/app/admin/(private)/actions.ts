@@ -16,6 +16,7 @@ import { redirect } from "next/navigation";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import type { Session } from "next-auth";
 
 import { auth } from "@/auth";
 import {
@@ -395,7 +396,12 @@ function getAdminActionErrorMessage(error: unknown): string {
   return getPrismaErrorMessage(error);
 }
 
-type AdminSession = NonNullable<Awaited<ReturnType<typeof auth>>>;
+type AdminSession = Session & {
+  user: NonNullable<Session["user"]> & {
+    id: string;
+    role: Role;
+  };
+};
 
 async function assertAdminAccess(): Promise<AdminSession> {
   const session = await auth();
