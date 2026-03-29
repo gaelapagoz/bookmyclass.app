@@ -1,0 +1,254 @@
+# 🚀 Server Application Setup – BookMyClass (Run App + Bootstrap)
+
+This document starts **after** base server setup (SSH, firewall, etc.).
+
+---
+
+## 1. Goal
+
+Set up production runtime:
+
+- Node.js
+- PM2
+- PostgreSQL (Docker)
+- App deployment
+- Environment variables
+- Prisma (migrations + seed)
+- Nginx
+- SSL
+- Validation
+
+---
+
+## 2. Install Base Packages
+
+```bash
+apt update && apt upgrade -y
+apt install -y curl git unzip build-essential nginx
+```
+
+---
+
+## 3. Install Node.js 20 LTS
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt install -y nodejs
+node -v
+npm -v
+```
+
+---
+
+## 4. Install PM2
+
+```bash
+npm install -g pm2
+pm2 -v
+```
+
+---
+
+## 5. Install Docker
+
+```bash
+apt install -y docker.io
+systemctl enable docker
+systemctl start docker
+```
+
+---
+
+## 6. Create App User
+
+```bash
+adduser deploy
+usermod -aG sudo deploy
+usermod -aG docker deploy
+mkdir -p /var/www/bookmyclass
+chown -R deploy:deploy /var/www/bookmyclass
+```
+
+Then:
+
+```bash
+su - deploy
+```
+
+---
+
+## 7. Start PostgreSQL
+
+```bash
+docker run -d   --name bookmyclass-app-postgres   --restart unless-stopped   -e POSTGRES_DB=bookmyclass-app-db   -e POSTGRES_USER=bookmyclass-app-user   -e POSTGRES_PASSWORD='bookmyclass-app-password'   -p 5432:5432   -v pgdata:/var/lib/postgresql/data   postgres:16
+```
+
+Validate:
+
+```bash
+docker ps
+docker logs bookmyclass-app-postgres --tail 50
+```
+
+---
+
+## 8. Clone App
+
+```bash
+cd /var/www/bookmyclass
+git clone YOUR_REPO .
+```
+
+---
+
+## 9. Create .env
+
+```bash
+nano /var/www/bookmyclass/.env
+chmod 600 /var/www/bookmyclass/.env
+```
+
+Example:
+
+```env
+NODE_ENV=production
+PORT=3000
+
+DATABASE_URL=postgresql://bookmyclass-app-user:bookmyclass-app-password@localhost:5432/bookmyclass-app-db?schema=public
+
+NEXTAUTH_SECRET=xxx
+NEXTAUTH_URL=https://bookmyclass.app
+
+STRIPE_SECRET_KEY=xxx
+STRIPE_WEBHOOK_SECRET=xxx
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=xxx
+
+STRIPE_PRICE_ID_COLLECTIVE_DROP_IN=price_xxx
+STRIPE_PRICE_ID_COLLECTIVE_5_PACK=price_xxx
+STRIPE_PRICE_ID_COLLECTIVE_10_PACK=price_xxx
+STRIPE_PRICE_ID_MONTHLY_UNLIMITED_COLLECTIVE=price_xxx
+STRIPE_PRICE_ID_PRIVATE_5_PACK=price_xxx
+STRIPE_PRICE_ID_PRIVATE_10_PACK=price_xxx
+```
+
+---
+
+## 10. Install Dependencies
+
+```bash
+npm ci
+```
+
+---
+
+## 11. Prisma
+
+```bash
+npx prisma generate
+npx prisma migrate deploy
+```
+
+---
+
+## 11.5 Seed
+
+```bash
+npx prisma db seed
+```
+
+---
+
+## 11.6 Validate DB
+
+```bash
+docker exec -it bookmyclass-app-postgres psql -U bookmyclass-app-user -d bookmyclass-app-db -c "\dt"
+```
+
+---
+
+## 12. Build
+
+```bash
+npm run build
+```
+
+---
+
+## 13. PM2
+
+```bash
+pm2 start npm --name "bookmyclass-app" -- start
+pm2 save
+pm2 startup
+pm2 status
+pm2 logs bookmyclass-app --lines 50
+```
+
+---
+
+## 14. Local Check
+
+```bash
+curl -I http://127.0.0.1:3000
+```
+
+---
+
+## 15. Nginx
+
+```bash
+nano /etc/nginx/sites-available/bookmyclass
+```
+
+```nginx
+server {
+    listen 80;
+    server_name bookmyclass.app www.bookmyclass.app;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+```
+
+```bash
+ln -s /etc/nginx/sites-available/bookmyclass /etc/nginx/sites-enabled/bookmyclass
+rm -f /etc/nginx/sites-enabled/default
+nginx -t
+systemctl reload nginx
+```
+
+---
+
+## 16. SSL
+
+```bash
+apt install -y certbot python3-certbot-nginx
+certbot --nginx -d bookmyclass.app -d www.bookmyclass.app
+```
+
+---
+
+## 17. Update Flow
+
+```bash
+cd /var/www/bookmyclass
+git pull origin main
+npm ci
+npx prisma generate
+npx prisma migrate deploy
+npm run build
+pm2 restart bookmyclass-app --update-env
+```
+
+---
+
+## ✅ Done
+
+- DB seeded
+- App running
+- Nginx working
+- HTTPS working
+- Stripe working

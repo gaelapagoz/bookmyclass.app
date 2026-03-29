@@ -52,6 +52,7 @@ systemctl restart ssh
 
 ```bash
 ssh -i ~/.ssh/bookmyclass_hetzner root@46.62.208.152
+ssh -i ~/.ssh/bookmyclass_hetzner root@37.27.192.11
 ```
 
 ---
