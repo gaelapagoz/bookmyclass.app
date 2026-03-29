@@ -410,7 +410,8 @@ async function assertAdminAccess(): Promise<AdminSession> {
     throw new Error("UNAUTHENTICATED");
   }
 
-  if (!isAdminRole(session.user.role)) {
+  const role = session.user.role;
+  if (!role || !isAdminRole(role)) {
     throw new Error("FORBIDDEN");
   }
 
@@ -418,7 +419,14 @@ async function assertAdminAccess(): Promise<AdminSession> {
     throw new Error("UNAUTHENTICATED");
   }
 
-  return session;
+  return {
+    ...session,
+    user: {
+      ...session.user,
+      id: session.user.id,
+      role,
+    },
+  };
 }
 
 function redirectWithError(path: string, message: string): never {

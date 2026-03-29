@@ -389,6 +389,9 @@ async function getPeriodDiagnostics(input: {
       }),
       prisma.payment.groupBy({
         by: ["currencyCode"],
+        orderBy: {
+          currencyCode: "asc",
+        },
         where: {
           status: PaymentStatus.SUCCEEDED,
           createdAt: {
@@ -411,7 +414,7 @@ async function getPeriodDiagnostics(input: {
     totalCancellations,
     totalSalesByCurrency: totalSalesByCurrency.map((entry) => ({
       currencyCode: entry.currencyCode,
-      amountMinor: entry._sum.amountMinor ?? 0,
+      amountMinor: entry._sum?.amountMinor ?? 0,
     })),
   };
 }
