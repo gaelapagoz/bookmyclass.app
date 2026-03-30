@@ -14,7 +14,8 @@
     "learning:import": "tsx scripts/import-learning-platform.ts",
     "db:test:setup": "dotenv -e .env.test -- prisma migrate deploy",
     "db:test:reset": "dotenv -e .env.test -- prisma migrate reset --force",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "db:verify:dashboard-seed": "tsx scripts/verify-dashboard-seed-db.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",

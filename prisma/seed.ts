@@ -1,12 +1,23 @@
 import {
   BillingInterval,
+  BookingIntent,
+  BookingPaymentSelection,
+  BookingStatus,
+  ClientEntitlementStatus,
+  CreditLedgerEntryType,
   EntitlementScope,
   EntitlementType,
+  OrderStatus,
+  PaymentMethod,
+  PaymentProvider,
+  PaymentStatus,
   PriceType,
   ProductType,
   Role,
   ServicePricingMode,
+  StripeCheckoutMode,
   StudioSessionStatus,
+  SubscriptionStatus,
   Weekday,
 } from "@prisma/client";
 import { hash } from "bcryptjs";
@@ -30,6 +41,11 @@ scheduleWindowEnd.setUTCHours(23, 59, 59, 999);
 
 const SCHEDULE_BLACKOUT_DATES = new Set<string>();
 const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9]+$/;
+const COUNTED_BOOKING_STATUSES: BookingStatus[] = [
+  BookingStatus.CONFIRMED,
+  BookingStatus.COMPLETED,
+  BookingStatus.NO_SHOW,
+];
 
 type CatalogStripePriceEnvSpec = {
   productName: string;
@@ -259,6 +275,12 @@ function parseTime(time: string): { hour: number; minute: number } {
 
 function dateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+function daysAgo(days: number): Date {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return date;
 }
 
 function nextOccurrencesInWindow(params: {
@@ -1417,8 +1439,833 @@ async function seedLearningFromJson() {
   );
 }
 
+async function seedDashboardInsightsTraffic(seedClient: { id: string }) {
+  const teacherPasswordHash = await hash("Teacher123!", 12);
+  const clientPasswordHash = await hash("Client123!", 12);
+  const now = new Date();
+
+  const staffByName = new Map<string, { id: string }>();
+  for (const staff of [
+    { name: "Orsi", email: "orsi@yogapilatesfitness.local", phone: "+32000001001" },
+    { name: "Giulia Vago", email: "giulia.vago@yogapilatesfitness.local", phone: "+32000001002" },
+    { name: "Elisa", email: "elisa@yogapilatesfitness.local", phone: "+32000001003" },
+    { name: "Ourania", email: "ourania@yogapilatesfitness.local", phone: "+32000001004" },
+  ] as const) {
+    const record = await prisma.user.create({
+      data: {
+        name: staff.name,
+        firstName: staff.name.split(" ")[0] ?? staff.name,
+        lastName: staff.name.split(" ").slice(1).join(" ") || null,
+        email: staff.email,
+        role: Role.TEACHER,
+        passwordHash: teacherPasswordHash,
+        isActive: true,
+        isInactive: false,
+        teacherProfile: {
+          create: {
+            phone: staff.phone,
+            bio: `${staff.name} supports beta scheduling operations.`,
+            specialties: ["Yoga", "Pilates"],
+            certifications: ["Studio Internal"],
+            hireDate: new Date("2025-01-01T00:00:00.000Z"),
+          },
+        },
+      },
+      select: { id: true },
+    });
+    staffByName.set(staff.name, record);
+  }
+
+  const topClientNames = ["Katalin", "Maja Simunic", "Eline", "Batool Dodin", "Kriselda Deda"] as const;
+  const atRiskNames = [
+    "Engy Sawah",
+    "Nela O",
+    "Francesca",
+    "Nolwenn Bertrand",
+    "Svitlana Metelytsia",
+  ] as const;
+  const otherClientNames = [
+    "Alice",
+    "Beatrice",
+    "Celine",
+    "Diana",
+    "Eva",
+    "Fatima",
+    "Grace",
+    "Hana",
+    "Ines",
+    "Jade",
+    "Kenza",
+    "Lina",
+    "Marta",
+    "Nora",
+    "Olivia",
+  ] as const;
+  const additionalNamedClients = ["Recovered Client", "Never Booked Client", "Cancelled Pattern Client"] as const;
+
+  const clientRecords = new Map<string, { id: string }>();
+  for (const name of [...topClientNames, ...atRiskNames, ...otherClientNames, ...additionalNamedClients]) {
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/(^\\.|\\.$)/g, "");
+    const created = await prisma.user.create({
+      data: {
+        name,
+        firstName: name.split(" ")[0] ?? name,
+        lastName: name.split(" ").slice(1).join(" ") || null,
+        email: `${slug}@yogapilatesfitness.local`,
+        role: Role.CLIENT,
+        passwordHash: clientPasswordHash,
+        isActive: true,
+        isInactive: false,
+        clientProfile: {
+          create: {
+            phone: null,
+            notes: "Seeded dashboard insights traffic client.",
+          },
+        },
+      },
+      select: { id: true },
+    });
+    clientRecords.set(name, created);
+  }
+
+  const yogaCategory = await upsertClassCategory({
+    slug: "dashboard-seed-yoga",
+    name: "Dashboard Seed Yoga",
+    description: "Seed classes for dashboard insights.",
+    sortOrder: 90,
+  });
+  const pilatesCategory = await upsertClassCategory({
+    slug: "dashboard-seed-pilates",
+    name: "Dashboard Seed Pilates",
+    description: "Seed classes for dashboard insights.",
+    sortOrder: 91,
+  });
+  const fitnessCategory = await upsertClassCategory({
+    slug: "dashboard-seed-fitness",
+    name: "Dashboard Seed Fitness",
+    description: "Seed classes for dashboard insights.",
+    sortOrder: 92,
+  });
+
+  const classDefinitions = [
+    {
+      key: "pilatesProps",
+      className: "Pilates with Props",
+      classSlug: "seed-pilates-with-props",
+      templateSlug: "seed-template-pilates-with-props",
+      categoryId: pilatesCategory.id,
+      teacherName: "Orsi",
+      capacity: 12,
+      recentOffsets: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24],
+      recentTargets: [11, 10, 10, 9, 9, 10, 11, 10, 9, 8, 10, 9],
+      historicalOffsets: [34, 40, 46, 52, 58],
+      futureOffsets: [2, 9, 16],
+      hourUtc: 18,
+    },
+    {
+      key: "rocket",
+      className: "Rocket Yoga",
+      classSlug: "seed-rocket-yoga",
+      templateSlug: "seed-template-rocket-yoga",
+      categoryId: yogaCategory.id,
+      teacherName: "Orsi",
+      capacity: 12,
+      recentOffsets: [3, 5, 7, 9, 11, 13, 15, 17, 19, 21],
+      recentTargets: [10, 9, 9, 8, 8, 9, 9, 8, 8, 7],
+      historicalOffsets: [36, 43, 50, 57],
+      futureOffsets: [3, 10, 17],
+      hourUtc: 7,
+    },
+    {
+      key: "vinyasa",
+      className: "Vinyasa Yoga",
+      classSlug: "seed-vinyasa-yoga",
+      templateSlug: "seed-template-vinyasa-yoga",
+      categoryId: yogaCategory.id,
+      teacherName: "Giulia Vago",
+      capacity: 10,
+      recentOffsets: [2, 6, 10, 14, 18, 22, 26, 28],
+      recentTargets: [7, 6, 6, 5, 6, 5, 6, 5],
+      historicalOffsets: [35, 44, 53, 59],
+      futureOffsets: [4, 11],
+      hourUtc: 12,
+    },
+    {
+      key: "trx",
+      className: "Functional Training TRX",
+      classSlug: "seed-functional-training-trx",
+      templateSlug: "seed-template-functional-training-trx",
+      categoryId: fitnessCategory.id,
+      teacherName: "Giulia Vago",
+      capacity: 10,
+      recentOffsets: [4, 8, 12, 16, 20, 24, 28],
+      recentTargets: [5, 4, 5, 4, 4, 5, 4],
+      historicalOffsets: [33, 41, 49, 55],
+      futureOffsets: [5, 12],
+      hourUtc: 19,
+    },
+    {
+      key: "stretch",
+      className: "Stretch & Tone Pilates",
+      classSlug: "seed-stretch-tone-pilates",
+      templateSlug: "seed-template-stretch-tone-pilates",
+      categoryId: pilatesCategory.id,
+      teacherName: "Elisa",
+      capacity: 8,
+      recentOffsets: [5, 11, 17, 23, 29],
+      recentTargets: [3, 2, 3, 2, 3],
+      historicalOffsets: [37, 47, 54],
+      futureOffsets: [6, 13],
+      hourUtc: 17,
+    },
+    {
+      key: "mobility",
+      className: "Mobility Reset",
+      classSlug: "seed-mobility-reset",
+      templateSlug: "seed-template-mobility-reset",
+      categoryId: fitnessCategory.id,
+      teacherName: "Ourania",
+      capacity: 10,
+      recentOffsets: [7, 21],
+      recentTargets: [1, 1],
+      historicalOffsets: [45],
+      futureOffsets: [8],
+      hourUtc: 9,
+    },
+  ] as const;
+
+  type SessionTarget = { sessionId: string; startsAt: Date; capacity: number; target: number };
+  type EntitlementSeedState = {
+    id: string;
+    clientId: string;
+    orderId: string;
+    priceId: string;
+    activatedAt: Date;
+    expiresAt: Date | null;
+    entitlementType: EntitlementType;
+    entitlementScope: EntitlementScope;
+    creditsRemaining: number;
+    unlimitedAccess: boolean;
+  };
+  const recentSessionTargetsByClass = new Map<string, SessionTarget[]>();
+  const historicalSessionsByClass = new Map<string, Array<{ sessionId: string; startsAt: Date; capacity: number }>>();
+
+  function buildDate(offsetDays: number, hourUtc: number, isFuture: boolean) {
+    const date = new Date();
+    date.setUTCHours(hourUtc, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() + (isFuture ? offsetDays : -offsetDays));
+    return date;
+  }
+
+  function addDays(base: Date, days: number) {
+    const next = new Date(base);
+    next.setUTCDate(next.getUTCDate() + days);
+    return next;
+  }
+
+  function addMonths(base: Date, months: number) {
+    const next = new Date(base);
+    next.setUTCMonth(next.getUTCMonth() + months);
+    return next;
+  }
+
+  for (const definition of classDefinitions) {
+    const classType = await upsertClassType({
+      slug: definition.classSlug,
+      categoryId: definition.categoryId,
+      name: definition.className,
+      description: `${definition.className} seed class for dashboard insights.`,
+      imageUrl: undefined,
+      defaultDurationMinutes: 60,
+      defaultCapacity: definition.capacity,
+      pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
+      sortOrder: 100,
+    });
+    const template = await upsertClassTemplate({
+      slug: definition.templateSlug,
+      classTypeId: classType.id,
+      defaultTeacherId: staffByName.get(definition.teacherName)!.id,
+      title: definition.className,
+      description: `${definition.className} dashboard insights seed template.`,
+      location: "Ixelles Insights Studio",
+      defaultCapacity: definition.capacity,
+      defaultDurationMinutes: 60,
+    });
+
+    const recentTargets: SessionTarget[] = [];
+    for (let index = 0; index < definition.recentOffsets.length; index += 1) {
+      const startsAt = buildDate(definition.recentOffsets[index]!, definition.hourUtc, false);
+      const session = await upsertStudioSession({
+        classTemplateId: template.id,
+        classTypeId: classType.id,
+        teacherId: staffByName.get(definition.teacherName)!.id,
+        title: definition.className,
+        description: template.description ?? undefined,
+        location: template.location ?? undefined,
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
+        capacity: definition.capacity,
+      });
+      await prisma.studioSession.update({
+        where: { id: session.id },
+        data: { status: StudioSessionStatus.COMPLETED },
+      });
+      recentTargets.push({
+        sessionId: session.id,
+        startsAt,
+        capacity: definition.capacity,
+        target: definition.recentTargets[index]!,
+      });
+    }
+    recentSessionTargetsByClass.set(definition.key, recentTargets);
+
+    const historicalSessions: Array<{ sessionId: string; startsAt: Date; capacity: number }> = [];
+    for (const offset of definition.historicalOffsets) {
+      const startsAt = buildDate(offset, definition.hourUtc, false);
+      const session = await upsertStudioSession({
+        classTemplateId: template.id,
+        classTypeId: classType.id,
+        teacherId: staffByName.get(definition.teacherName)!.id,
+        title: definition.className,
+        description: template.description ?? undefined,
+        location: template.location ?? undefined,
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
+        capacity: definition.capacity,
+      });
+      await prisma.studioSession.update({
+        where: { id: session.id },
+        data: { status: StudioSessionStatus.COMPLETED },
+      });
+      historicalSessions.push({ sessionId: session.id, startsAt, capacity: definition.capacity });
+    }
+    historicalSessionsByClass.set(definition.key, historicalSessions);
+
+    for (const offset of definition.futureOffsets) {
+      const startsAt = buildDate(offset, definition.hourUtc, true);
+      await upsertStudioSession({
+        classTemplateId: template.id,
+        classTypeId: classType.id,
+        teacherId: staffByName.get(definition.teacherName)!.id,
+        title: definition.className,
+        description: template.description ?? undefined,
+        location: template.location ?? undefined,
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
+        capacity: definition.capacity,
+      });
+    }
+  }
+
+  const recentSessionTargets = [
+    ...(recentSessionTargetsByClass.get("pilatesProps") ?? []),
+    ...(recentSessionTargetsByClass.get("rocket") ?? []),
+    ...(recentSessionTargetsByClass.get("vinyasa") ?? []),
+    ...(recentSessionTargetsByClass.get("trx") ?? []),
+    ...(recentSessionTargetsByClass.get("stretch") ?? []),
+    ...(recentSessionTargetsByClass.get("mobility") ?? []),
+  ];
+
+  const lookupKeys = [
+    "collective-drop-in-eur-once-v1",
+    "qa-collective-5-pack-eur-once-v1",
+    "collective-10-pack-eur-once-v1",
+    "monthly-unlimited-collective-eur-monthly-v1",
+  ] as const;
+  const catalogPrices = await prisma.price.findMany({
+    where: {
+      lookupKey: { in: [...lookupKeys] },
+      isActive: true,
+      isArchived: false,
+    },
+    include: { product: true },
+  });
+  const priceByLookupKey = new Map(catalogPrices.map((price) => [price.lookupKey, price]));
+  const rules = await prisma.entitlementRule.findMany({
+    where: {
+      productId: { in: catalogPrices.map((price) => price.productId) },
+      isActive: true,
+    },
+  });
+  const ruleByProductId = new Map(rules.map((rule) => [rule.productId, rule]));
+
+  const entitlementsByClient = new Map<string, EntitlementSeedState[]>();
+  let seededCommercialPurchasesCount = 0;
+
+  function registerEntitlement(entitlement: EntitlementSeedState) {
+    const current = entitlementsByClient.get(entitlement.clientId) ?? [];
+    current.push(entitlement);
+    current.sort((a, b) => b.activatedAt.getTime() - a.activatedAt.getTime());
+    entitlementsByClient.set(entitlement.clientId, current);
+  }
+
+  async function createCommercialPurchase(input: {
+    clientId: string;
+    lookupKey: (typeof lookupKeys)[number];
+    purchasedAt: Date;
+  }) {
+    const price = priceByLookupKey.get(input.lookupKey);
+    if (!price) {
+      throw new Error(`Seed purchase configuration missing price ${input.lookupKey}`);
+    }
+    const rule = ruleByProductId.get(price.productId);
+    if (!rule) {
+      throw new Error(`Seed purchase configuration missing entitlement rule for product ${price.productId}`);
+    }
+
+    const totalAmountMinor = price.unitAmountMinor;
+    const order = await prisma.order.create({
+      data: {
+        clientId: input.clientId,
+        subtotalAmountMinor: totalAmountMinor,
+        discountAmountMinor: 0,
+        totalAmountMinor,
+        currencyCode: price.currencyCode,
+        status: OrderStatus.PAID,
+        placedAt: input.purchasedAt,
+      },
+    });
+
+    await prisma.orderItem.create({
+      data: {
+        orderId: order.id,
+        productId: price.productId,
+        priceId: price.id,
+        quantity: 1,
+        productNameSnapshot: price.product.name,
+        priceNameSnapshot: price.name,
+        unitAmountMinor: price.unitAmountMinor,
+        lineSubtotalAmountMinor: totalAmountMinor,
+        lineDiscountAmountMinor: 0,
+        lineTotalAmountMinor: totalAmountMinor,
+        currencyCode: price.currencyCode,
+      },
+    });
+
+    await prisma.payment.create({
+      data: {
+        orderId: order.id,
+        status: PaymentStatus.SUCCEEDED,
+        method: PaymentMethod.CARD,
+        provider: PaymentProvider.STRIPE,
+        providerReference: `seed-payment-${order.id}`,
+        stripeCheckoutSessionId: `cs_test_seed_${order.id.slice(0, 16)}`,
+        stripeCustomerId: `cus_seed_${input.clientId.slice(0, 12)}`,
+        stripeCheckoutMode:
+          price.priceType === PriceType.RECURRING
+            ? StripeCheckoutMode.SUBSCRIPTION
+            : StripeCheckoutMode.PAYMENT,
+        amountMinor: totalAmountMinor,
+        currencyCode: price.currencyCode,
+        authorizedAt: input.purchasedAt,
+        capturedAt: input.purchasedAt,
+        createdAt: input.purchasedAt,
+      },
+    });
+
+    let subscriptionContractId: string | null = null;
+    let entitlementExpiresAt: Date | null = null;
+    if (price.priceType === PriceType.RECURRING) {
+      const intervalCount = price.billingIntervalCount ?? 1;
+      const periodEnd =
+        price.billingInterval === BillingInterval.MONTH
+          ? addMonths(input.purchasedAt, intervalCount)
+          : addDays(input.purchasedAt, 30 * intervalCount);
+      const subscriptionStatus = periodEnd > now ? SubscriptionStatus.ACTIVE : SubscriptionStatus.EXPIRED;
+      const contract = await prisma.subscriptionContract.create({
+        data: {
+          clientId: input.clientId,
+          productId: price.productId,
+          priceId: price.id,
+          status: subscriptionStatus,
+          startsAt: input.purchasedAt,
+          currentPeriodStart: input.purchasedAt,
+          currentPeriodEnd: periodEnd,
+          cancelAtPeriodEnd: subscriptionStatus === SubscriptionStatus.EXPIRED,
+          endedAt: subscriptionStatus === SubscriptionStatus.EXPIRED ? periodEnd : null,
+          provider: PaymentProvider.STRIPE,
+          providerSubscriptionReference: `sub_seed_${order.id.slice(0, 20)}`,
+        },
+      });
+      subscriptionContractId = contract.id;
+      entitlementExpiresAt = periodEnd;
+    } else if (rule.validForDays && rule.validForDays > 0) {
+      entitlementExpiresAt = addDays(input.purchasedAt, rule.validForDays);
+    }
+
+    const entitlementStatus =
+      entitlementExpiresAt && entitlementExpiresAt <= now
+        ? ClientEntitlementStatus.EXPIRED
+        : ClientEntitlementStatus.ACTIVE;
+    const entitlement = await prisma.clientEntitlement.create({
+      data: {
+        clientId: input.clientId,
+        productId: price.productId,
+        orderId: order.id,
+        subscriptionContractId,
+        entitlementType: rule.entitlementType,
+        entitlementScope: rule.entitlementScope,
+        status: entitlementStatus,
+        activatedAt: input.purchasedAt,
+        expiresAt: entitlementExpiresAt,
+      },
+    });
+
+    let grantedCredits = 0;
+    if (rule.entitlementType === EntitlementType.CREDIT_PACK) {
+      grantedCredits = rule.quantity ?? 0;
+    }
+    if (rule.entitlementType === EntitlementType.SINGLE_USE) {
+      grantedCredits = 1;
+    }
+
+    if (grantedCredits > 0) {
+      await prisma.creditLedgerEntry.create({
+        data: {
+          clientId: input.clientId,
+          entryType: CreditLedgerEntryType.GRANT,
+          amount: grantedCredits,
+          happenedAt: input.purchasedAt,
+          entitlementId: entitlement.id,
+          orderId: order.id,
+          notes: `Seed purchase grant (${input.lookupKey})`,
+        },
+      });
+    }
+
+    registerEntitlement({
+      id: entitlement.id,
+      clientId: input.clientId,
+      orderId: order.id,
+      priceId: price.id,
+      activatedAt: input.purchasedAt,
+      expiresAt: entitlementExpiresAt,
+      entitlementType: rule.entitlementType,
+      entitlementScope: rule.entitlementScope,
+      creditsRemaining: grantedCredits,
+      unlimitedAccess: rule.entitlementType === EntitlementType.UNLIMITED_ACCESS,
+    });
+    seededCommercialPurchasesCount += 1;
+  }
+
+  const powerPurchasePlan: Record<string, Array<{ lookupKey: (typeof lookupKeys)[number]; daysAgo: number }>> = {
+    Katalin: [
+      { lookupKey: "collective-10-pack-eur-once-v1", daysAgo: 55 },
+      { lookupKey: "monthly-unlimited-collective-eur-monthly-v1", daysAgo: 27 },
+      { lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 8 },
+    ],
+    "Maja Simunic": [
+      { lookupKey: "monthly-unlimited-collective-eur-monthly-v1", daysAgo: 58 },
+      { lookupKey: "monthly-unlimited-collective-eur-monthly-v1", daysAgo: 26 },
+      { lookupKey: "collective-drop-in-eur-once-v1", daysAgo: 5 },
+    ],
+    Eline: [
+      { lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 50 },
+      { lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 15 },
+    ],
+    "Batool Dodin": [
+      { lookupKey: "monthly-unlimited-collective-eur-monthly-v1", daysAgo: 48 },
+      { lookupKey: "monthly-unlimited-collective-eur-monthly-v1", daysAgo: 12 },
+    ],
+    "Kriselda Deda": [
+      { lookupKey: "collective-10-pack-eur-once-v1", daysAgo: 45 },
+      { lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 6 },
+    ],
+  };
+  const regularPurchasePlan: Record<string, Array<{ lookupKey: (typeof lookupKeys)[number]; daysAgo: number }>> = {
+    Alice: [{ lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 24 }],
+    Beatrice: [{ lookupKey: "collective-drop-in-eur-once-v1", daysAgo: 9 }],
+    Celine: [
+      { lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 32 },
+      { lookupKey: "collective-drop-in-eur-once-v1", daysAgo: 10 },
+    ],
+    Diana: [{ lookupKey: "monthly-unlimited-collective-eur-monthly-v1", daysAgo: 20 }],
+    Eva: [{ lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 18 }],
+    Fatima: [{ lookupKey: "collective-drop-in-eur-once-v1", daysAgo: 7 }],
+    Grace: [{ lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 36 }],
+    Hana: [{ lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 14 }],
+    Ines: [{ lookupKey: "collective-drop-in-eur-once-v1", daysAgo: 13 }],
+    Jade: [{ lookupKey: "monthly-unlimited-collective-eur-monthly-v1", daysAgo: 11 }],
+    "Recovered Client": [
+      { lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 56 },
+      { lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 16 },
+    ],
+    "Cancelled Pattern Client": [
+      { lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 35 },
+      { lookupKey: "collective-drop-in-eur-once-v1", daysAgo: 9 },
+    ],
+  };
+  const atRiskPurchasePlan: Record<string, Array<{ lookupKey: (typeof lookupKeys)[number]; daysAgo: number }>> = {
+    "Engy Sawah": [{ lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 58 }],
+    "Nela O": [{ lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 57 }],
+    Francesca: [{ lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 59 }],
+    "Nolwenn Bertrand": [{ lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 54 }],
+    "Svitlana Metelytsia": [{ lookupKey: "qa-collective-5-pack-eur-once-v1", daysAgo: 52 }],
+  };
+
+  for (const [name, plan] of Object.entries(powerPurchasePlan)) {
+    for (const purchase of plan) {
+      await createCommercialPurchase({
+        clientId: clientRecords.get(name)!.id,
+        lookupKey: purchase.lookupKey,
+        purchasedAt: daysAgo(purchase.daysAgo),
+      });
+    }
+  }
+  for (const [name, plan] of Object.entries(regularPurchasePlan)) {
+    for (const purchase of plan) {
+      await createCommercialPurchase({
+        clientId: clientRecords.get(name)!.id,
+        lookupKey: purchase.lookupKey,
+        purchasedAt: daysAgo(purchase.daysAgo),
+      });
+    }
+  }
+  for (const [name, plan] of Object.entries(atRiskPurchasePlan)) {
+    for (const purchase of plan) {
+      await createCommercialPurchase({
+        clientId: clientRecords.get(name)!.id,
+        lookupKey: purchase.lookupKey,
+        purchasedAt: daysAgo(purchase.daysAgo),
+      });
+    }
+  }
+  await createCommercialPurchase({
+    clientId: seedClient.id,
+    lookupKey: "qa-collective-5-pack-eur-once-v1",
+    purchasedAt: daysAgo(19),
+  });
+  console.info(`[seed] Dashboard commercial purchases created: ${seededCommercialPurchasesCount}`);
+
+  const bookedPairSet = new Set<string>();
+  const validBookedCountBySessionId = new Map<string, number>();
+  for (const session of recentSessionTargets) {
+    validBookedCountBySessionId.set(session.sessionId, 0);
+  }
+
+  async function createBooking(input: {
+    clientId: string;
+    sessionId: string;
+    startsAt: Date;
+    status: BookingStatus;
+    cancelledAt?: Date;
+  }): Promise<boolean> {
+    const pairKey = `${input.clientId}::${input.sessionId}`;
+    if (bookedPairSet.has(pairKey)) {
+      return false;
+    }
+
+    const availableEntitlements = entitlementsByClient.get(input.clientId) ?? [];
+    const entitlement = availableEntitlements.find((candidate) => {
+      if (candidate.entitlementScope !== EntitlementScope.COLLECTIVE_CLASSES) {
+        return false;
+      }
+      if (input.startsAt < candidate.activatedAt) {
+        return false;
+      }
+      if (candidate.expiresAt && input.startsAt > candidate.expiresAt) {
+        return false;
+      }
+      if (candidate.unlimitedAccess) {
+        return true;
+      }
+      return candidate.creditsRemaining > 0;
+    });
+    if (!entitlement) {
+      return false;
+    }
+
+    const sessionTarget = recentSessionTargets.find((entry) => entry.sessionId === input.sessionId);
+    if (sessionTarget && COUNTED_BOOKING_STATUSES.includes(input.status)) {
+      const current = validBookedCountBySessionId.get(input.sessionId) ?? 0;
+      if (current >= sessionTarget.capacity) {
+        return false;
+      }
+    }
+
+    bookedPairSet.add(pairKey);
+    if (sessionTarget && COUNTED_BOOKING_STATUSES.includes(input.status)) {
+      validBookedCountBySessionId.set(input.sessionId, (validBookedCountBySessionId.get(input.sessionId) ?? 0) + 1);
+    }
+
+    const bookedAt = new Date(input.startsAt);
+    bookedAt.setUTCDate(bookedAt.getUTCDate() - 1);
+    const cancellationEligibleUntilAt = new Date(input.startsAt);
+    cancellationEligibleUntilAt.setUTCHours(cancellationEligibleUntilAt.getUTCHours() - 24);
+
+    const booking = await prisma.booking.create({
+      data: {
+        clientId: input.clientId,
+        studioSessionId: input.sessionId,
+        orderId: entitlement.orderId,
+        status: input.status,
+        bookingIntent: BookingIntent.USE_PLAN,
+        paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
+        selectedEntitlementId: entitlement.id,
+        selectedPriceId: entitlement.priceId,
+        bookedAt,
+        cancellationEligibleUntilAt,
+        cancelledAt: input.cancelledAt,
+        creditRefundedAt: input.status === BookingStatus.CANCELLED ? input.cancelledAt ?? bookedAt : null,
+      },
+    });
+
+    if (!entitlement.unlimitedAccess) {
+      entitlement.creditsRemaining -= 1;
+      await prisma.creditLedgerEntry.create({
+        data: {
+          clientId: input.clientId,
+          entryType: CreditLedgerEntryType.CONSUME,
+          amount: -1,
+          happenedAt: bookedAt,
+          entitlementId: entitlement.id,
+          bookingId: booking.id,
+          orderId: entitlement.orderId,
+          notes: "Seed booking credit consume",
+        },
+      });
+
+      if (input.status === BookingStatus.CANCELLED) {
+        entitlement.creditsRemaining += 1;
+        await prisma.creditLedgerEntry.create({
+          data: {
+            clientId: input.clientId,
+            entryType: CreditLedgerEntryType.RESTORE,
+            amount: 1,
+            happenedAt: input.cancelledAt ?? bookedAt,
+            entitlementId: entitlement.id,
+            bookingId: booking.id,
+            orderId: entitlement.orderId,
+            notes: "Seed booking cancellation credit restore",
+          },
+        });
+      }
+    }
+
+    return true;
+  }
+
+  const topClientTargets = [
+    { name: "Katalin", count: 11 },
+    { name: "Maja Simunic", count: 9 },
+    { name: "Eline", count: 7 },
+    { name: "Batool Dodin", count: 7 },
+    { name: "Kriselda Deda", count: 7 },
+  ] as const;
+
+  const recentSessionCursorByClient = new Map<string, number>();
+  for (const topClient of topClientTargets) {
+    let created = 0;
+    let attempts = 0;
+    while (created < topClient.count && attempts < recentSessionTargets.length * 10) {
+      const currentCursor = recentSessionCursorByClient.get(topClient.name) ?? 0;
+      const session = recentSessionTargets[currentCursor % recentSessionTargets.length];
+      recentSessionCursorByClient.set(topClient.name, currentCursor + 1);
+      attempts += 1;
+      if (!session) {
+        break;
+      }
+      const createdSuccessfully = await createBooking({
+        clientId: clientRecords.get(topClient.name)!.id,
+        sessionId: session.sessionId,
+        startsAt: session.startsAt,
+        status: BookingStatus.CONFIRMED,
+      });
+      if (createdSuccessfully) {
+        created += 1;
+      }
+    }
+  }
+
+  const fillerClients = [
+    seedClient.id,
+    ...otherClientNames.map((name) => clientRecords.get(name)!.id),
+    clientRecords.get("Recovered Client")!.id,
+  ];
+  let fillerCursor = 0;
+  for (const session of recentSessionTargets) {
+    const desired = session.target;
+    let attempts = 0;
+    while (
+      (validBookedCountBySessionId.get(session.sessionId) ?? 0) < desired &&
+      attempts < fillerClients.length * 8
+    ) {
+      const clientId = fillerClients[fillerCursor % fillerClients.length];
+      fillerCursor += 1;
+      attempts += 1;
+      const createdSuccessfully = await createBooking({
+        clientId,
+        sessionId: session.sessionId,
+        startsAt: session.startsAt,
+        status: BookingStatus.CONFIRMED,
+      });
+      if (createdSuccessfully) {
+        attempts = 0;
+      }
+    }
+  }
+
+  const historicalSessions = [
+    ...(historicalSessionsByClass.get("pilatesProps") ?? []),
+    ...(historicalSessionsByClass.get("rocket") ?? []),
+    ...(historicalSessionsByClass.get("vinyasa") ?? []),
+    ...(historicalSessionsByClass.get("trx") ?? []),
+    ...(historicalSessionsByClass.get("stretch") ?? []),
+  ];
+  let historicalCursor = 0;
+  for (const clientName of atRiskNames) {
+    for (let i = 0; i < 2; i += 1) {
+      const session = historicalSessions[historicalCursor % historicalSessions.length]!;
+      historicalCursor += 1;
+      await prisma.booking.create({
+        data: {
+          clientId: clientRecords.get(clientName)!.id,
+          studioSessionId: session.sessionId,
+          status: BookingStatus.COMPLETED,
+          bookedAt: new Date(session.startsAt.getTime() - 24 * 60 * 60 * 1000),
+        },
+      });
+    }
+  }
+
+  const recoveredHistoricalSession = historicalSessions[historicalCursor % historicalSessions.length]!;
+  await prisma.booking.create({
+    data: {
+      clientId: clientRecords.get("Recovered Client")!.id,
+      studioSessionId: recoveredHistoricalSession.sessionId,
+      status: BookingStatus.COMPLETED,
+      bookedAt: new Date(recoveredHistoricalSession.startsAt.getTime() - 24 * 60 * 60 * 1000),
+    },
+  });
+
+  const recoveredRecentSession = recentSessionTargets[0]!;
+  await createBooking({
+    clientId: clientRecords.get("Recovered Client")!.id,
+    sessionId: recoveredRecentSession.sessionId,
+    startsAt: recoveredRecentSession.startsAt,
+    status: BookingStatus.CONFIRMED,
+  });
+
+  const cancellationClients = [
+    clientRecords.get("Cancelled Pattern Client")!.id,
+    clientRecords.get("Engy Sawah")!.id,
+    clientRecords.get("Nela O")!.id,
+  ];
+  for (let index = 0; index < 12; index += 1) {
+    const session = recentSessionTargets[index % recentSessionTargets.length]!;
+    const bookedAt = new Date(session.startsAt.getTime() - 24 * 60 * 60 * 1000);
+    await createBooking({
+      clientId: cancellationClients[index % cancellationClients.length]!,
+      sessionId: session.sessionId,
+      startsAt: session.startsAt,
+      status: BookingStatus.CANCELLED,
+      cancelledAt: new Date(bookedAt.getTime() + 60 * 60 * 1000),
+    });
+  }
+}
+
 async function verifyCleanSeed(clientEmail: string) {
-  const [userCount, productCount, sessionCount, cancelledSessionCount] = await prisma.$transaction([
+  const [userCount, productCount, futureSessionCount, cancelledSessionCount] = await prisma.$transaction([
     prisma.user.count(),
     prisma.product.count({ where: { isActive: true, isArchived: false } }),
     prisma.studioSession.count({
@@ -1427,16 +2274,18 @@ async function verifyCleanSeed(clientEmail: string) {
     prisma.studioSession.count({ where: { status: StudioSessionStatus.CANCELLED } }),
   ]);
 
-  if (userCount !== 6) {
-    throw new Error(`Seed verification failed: expected 6 users, got ${userCount}.`);
+  if (userCount < 30) {
+    throw new Error(`Seed verification failed: expected at least 30 users, got ${userCount}.`);
   }
 
   if (productCount !== 6) {
     throw new Error(`Seed verification failed: expected 6 active products, got ${productCount}.`);
   }
 
-  if (sessionCount < 20) {
-    throw new Error(`Seed verification failed: expected at least 20 future sessions, got ${sessionCount}.`);
+  if (futureSessionCount < 20) {
+    throw new Error(
+      `Seed verification failed: expected at least 20 future sessions, got ${futureSessionCount}.`,
+    );
   }
 
   if (cancelledSessionCount !== 0) {
@@ -1460,36 +2309,46 @@ async function verifyCleanSeed(clientEmail: string) {
     throw new Error("Seed verification failed: QA client missing.");
   }
 
-  if (
-    client.clientBookings.length !== 0 ||
-    client.subscriptionContracts.length !== 0 ||
-    client.clientEntitlements.length !== 0 ||
-    client.creditLedgerEntries.length !== 0 ||
-    client.clientLoyaltyLedgerEntries.length !== 0 ||
-    client.orders.length !== 0
-  ) {
-    throw new Error("Seed verification failed: QA client is expected to have zero history and balances.");
-  }
-
-  const operationalCounts = await prisma.$transaction([
+  const [totalBookings, last30Bookings, topClientCount, atRiskNoRecentCount] = await prisma.$transaction([
     prisma.booking.count(),
-    prisma.waitlistEntry.count(),
-    prisma.attendanceRecord.count(),
-    prisma.order.count(),
-    prisma.payment.count(),
-    prisma.subscriptionContract.count(),
-    prisma.clientEntitlement.count(),
-    prisma.creditLedgerEntry.count(),
-    prisma.loyaltyLedgerEntry.count(),
-    prisma.adminNote.count(),
-    prisma.auditLog.count(),
-    prisma.contactMessage.count(),
-    prisma.clientMessage.count(),
-    prisma.publicDocument.count(),
+    prisma.booking.count({
+      where: {
+        status: { in: COUNTED_BOOKING_STATUSES },
+        bookedAt: { gte: daysAgo(30) },
+      },
+    }),
+    prisma.booking.count({
+      where: {
+        status: { in: COUNTED_BOOKING_STATUSES },
+        bookedAt: { gte: daysAgo(30) },
+        client: { is: { name: "Katalin" } },
+      },
+    }),
+    prisma.booking.count({
+      where: {
+        status: { in: COUNTED_BOOKING_STATUSES },
+        bookedAt: { gte: daysAgo(30) },
+        client: { is: { name: "Engy Sawah" } },
+      },
+    }),
   ]);
 
-  if (operationalCounts.some((count) => count !== 0)) {
-    throw new Error("Seed verification failed: operational history tables must be empty for clean QA seed.");
+  if (totalBookings < 100) {
+    throw new Error(`Seed verification failed: expected at least 100 bookings, got ${totalBookings}.`);
+  }
+
+  if (last30Bookings < 50) {
+    throw new Error(
+      `Seed verification failed: expected at least 50 counted bookings in last 30 days, got ${last30Bookings}.`,
+    );
+  }
+
+  if (topClientCount < 11) {
+    throw new Error(`Seed verification failed: expected Katalin to have at least 11 recent bookings.`);
+  }
+
+  if (atRiskNoRecentCount !== 0) {
+    throw new Error("Seed verification failed: Engy Sawah should have zero recent counted bookings.");
   }
 }
 
@@ -1504,10 +2363,11 @@ async function main() {
     elenaId: users.teachers.elena.id,
     sofiaId: users.teachers.sofia.id,
   });
+  await seedDashboardInsightsTraffic({ id: users.client.id });
   await seedLearningFromJson();
   await verifyCleanSeed(users.client.email);
 
-  console.info("Clean QA-style seed completed.");
+  console.info("Seed completed with deterministic dashboard insights traffic.");
 }
 
 main()
@@ -1519,3 +2379,4 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
+

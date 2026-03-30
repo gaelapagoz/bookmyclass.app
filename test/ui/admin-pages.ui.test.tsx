@@ -27,6 +27,8 @@ vi.mock("@/auth", () => ({
 }));
 vi.mock("@/lib/admin/admin-service", () => ({
   getAdminDashboardData: vi.fn(),
+  getAdminDashboardInsights: vi.fn(),
+  getOperationalMetricCards: vi.fn(),
   getAdminClassesData: vi.fn(),
   getAdminSessionsData: vi.fn(),
   getAdminPlansData: vi.fn(),
@@ -40,6 +42,8 @@ import {
   getAdminBookingsData,
   getAdminClassesData,
   getAdminDashboardData,
+  getAdminDashboardInsights,
+  getOperationalMetricCards,
   getAdminOnlineLearningData,
   getAdminPlansData,
   getAdminSessionsData,
@@ -71,17 +75,6 @@ describe("Admin pages branching", () => {
 
   it("renders dashboard data state", async () => {
     vi.mocked(getAdminDashboardData).mockResolvedValue({
-      diagnostics: [
-        {
-          key: "week",
-          label: "Current Week",
-          siteSessions: 18,
-          totalOrders: 6,
-          totalBookings: 12,
-          totalCancellations: 2,
-          totalSalesByCurrency: [{ currencyCode: "EUR", amountMinor: 19900 }],
-        },
-      ],
       upcomingSessions: [
         {
           id: "s1",
@@ -92,16 +85,192 @@ describe("Admin pages branching", () => {
         },
       ],
     });
+    vi.mocked(getOperationalMetricCards).mockResolvedValue([
+      {
+        key: "siteSessions",
+        label: "Site Sessions",
+        total: 18,
+        previousTotal: 12,
+        deltaPercentage: 50,
+        currentDailyValue: 3,
+        previousDailyValue: 2,
+        trendDirection: "up",
+        format: "number",
+      },
+      {
+        key: "totalSales",
+        label: "Total Sales",
+        total: 19900,
+        previousTotal: 15000,
+        deltaPercentage: 32.7,
+        currentDailyValue: 3900,
+        previousDailyValue: 2000,
+        trendDirection: "up",
+        format: "currency",
+      },
+      {
+        key: "totalOrders",
+        label: "Total Orders",
+        total: 6,
+        previousTotal: 4,
+        deltaPercentage: 50,
+        currentDailyValue: 2,
+        previousDailyValue: 1,
+        trendDirection: "up",
+        format: "number",
+      },
+      {
+        key: "bookings",
+        label: "Total Bookings",
+        total: 12,
+        previousTotal: 10,
+        deltaPercentage: 20,
+        currentDailyValue: 3,
+        previousDailyValue: 2,
+        trendDirection: "up",
+        format: "number",
+      },
+      {
+        key: "cancellations",
+        label: "Total Cancellations",
+        total: 2,
+        previousTotal: 2,
+        deltaPercentage: 0,
+        currentDailyValue: 0,
+        previousDailyValue: 1,
+        trendDirection: "flat",
+        format: "number",
+      },
+    ]);
+    vi.mocked(getAdminDashboardInsights).mockResolvedValue({
+      topClassSessions: [
+        {
+          classTemplateId: "tmpl-1",
+          classTitle: "Pilates with Props",
+          teacherName: "Orsi",
+          bookedCount: 28,
+          sessionCount: 6,
+          averageCapacity: 10,
+        },
+      ],
+      topClients: [
+        {
+          clientId: "client-1",
+          clientName: "Katalin",
+          bookedCount: 11,
+        },
+      ],
+      atRiskClients: [
+        {
+          clientId: "client-risk-1",
+          clientName: "Engy Sawah",
+          lastBookingAt: new Date().toISOString(),
+        },
+      ],
+      staffPerformance: [
+        {
+          staffId: "staff-1",
+          staffName: "Orsi",
+          totalBookedPeople: 62,
+          classesDone: 12,
+          occupancyRatePercentage: 78.4,
+        },
+      ],
+    });
 
-    render(await AdminDashboardPage());
+    render(
+      await AdminDashboardPage({
+        searchParams: Promise.resolve({ period: "last30Days" }),
+      }),
+    );
 
+    expect(vi.mocked(getOperationalMetricCards)).toHaveBeenCalledWith("last30Days");
+    expect(vi.mocked(getAdminDashboardInsights)).toHaveBeenCalledWith("last30Days");
+    expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
     expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
-    expect(screen.getByText("Operational Diagnostics")).toBeInTheDocument();
+    expect(screen.getByText("Operational Metrics")).toBeInTheDocument();
+    expect(screen.getByText("Dashboard Insights")).toBeInTheDocument();
+    expect(screen.getByText("Top Class Sessions")).toBeInTheDocument();
+    expect(screen.getByText("Top Clients")).toBeInTheDocument();
+    expect(screen.getByText("At-Risk Clients")).toBeInTheDocument();
+    expect(screen.getByText("Staff Performance")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Period" })).toBeInTheDocument();
+    expect(screen.getByText("Site Sessions")).toBeInTheDocument();
     expect(screen.getByText("Morning Flow")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Inbox" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Manage Site" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Inbox" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Manage Site" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Dashboard Insights (Last 30 Days)")).not.toBeInTheDocument();
   });
 
+  it("defaults dashboard period to last30Days when missing", async () => {
+    vi.mocked(getAdminDashboardData).mockResolvedValue({
+      upcomingSessions: [],
+    });
+    vi.mocked(getAdminDashboardInsights).mockResolvedValue({
+      topClassSessions: [],
+      topClients: [],
+      atRiskClients: [],
+      staffPerformance: [],
+    });
+    vi.mocked(getOperationalMetricCards).mockResolvedValue([]);
+
+    render(
+      await AdminDashboardPage({
+        searchParams: Promise.resolve({}),
+      }),
+    );
+
+    expect(vi.mocked(getOperationalMetricCards)).toHaveBeenCalledWith("last30Days");
+    expect(vi.mocked(getAdminDashboardInsights)).toHaveBeenCalledWith("last30Days");
+    expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
+  });
+
+
+  it("passes last7Days period to metrics and insights", async () => {
+    vi.mocked(getAdminDashboardData).mockResolvedValue({
+      upcomingSessions: [],
+    });
+    vi.mocked(getAdminDashboardInsights).mockResolvedValue({
+      topClassSessions: [],
+      topClients: [],
+      atRiskClients: [],
+      staffPerformance: [],
+    });
+    vi.mocked(getOperationalMetricCards).mockResolvedValue([]);
+
+    render(
+      await AdminDashboardPage({
+        searchParams: Promise.resolve({ period: "last7Days" }),
+      }),
+    );
+
+    expect(vi.mocked(getOperationalMetricCards)).toHaveBeenCalledWith("last7Days");
+    expect(vi.mocked(getAdminDashboardInsights)).toHaveBeenCalledWith("last7Days");
+    expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
+  });
+
+  it("passes last90Days period to metrics and insights", async () => {
+    vi.mocked(getAdminDashboardData).mockResolvedValue({
+      upcomingSessions: [],
+    });
+    vi.mocked(getAdminDashboardInsights).mockResolvedValue({
+      topClassSessions: [],
+      topClients: [],
+      atRiskClients: [],
+      staffPerformance: [],
+    });
+    vi.mocked(getOperationalMetricCards).mockResolvedValue([]);
+
+    render(
+      await AdminDashboardPage({
+        searchParams: Promise.resolve({ period: "last90Days" }),
+      }),
+    );
+
+    expect(vi.mocked(getOperationalMetricCards)).toHaveBeenCalledWith("last90Days");
+    expect(vi.mocked(getAdminDashboardInsights)).toHaveBeenCalledWith("last90Days");
+    expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
+  });
   it("renders classes empty state", async () => {
     vi.mocked(getAdminClassesData).mockResolvedValue([]);
 
@@ -353,3 +522,11 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Unable to load online learning right now.")).toBeInTheDocument();
   });
 });
+
+
+
+
+
+
+
+

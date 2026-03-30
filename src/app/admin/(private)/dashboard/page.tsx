@@ -1,6 +1,19 @@
 import Link from "next/link";
 
-import { getAdminDashboardData } from "@/lib/admin/admin-service";
+import AdminAtRiskClientsCard from "@/components/admin/AdminAtRiskClientsCard";
+import AdminDashboardPeriodSelect from "@/components/admin/AdminDashboardPeriodSelect";
+import AdminMetricCard from "@/components/admin/AdminMetricCard";
+import AdminStaffPerformanceTable from "@/components/admin/AdminStaffPerformanceTable";
+import AdminTopClassSessionsCard from "@/components/admin/AdminTopClassSessionsCard";
+import AdminTopClientsCard from "@/components/admin/AdminTopClientsCard";
+import {
+  type AdminPeriod,
+  getAdminDashboardData,
+  getAdminDashboardInsights,
+  getOperationalMetricCards,
+} from "@/lib/admin/admin-service";
+
+type SearchParams = Promise<{ period?: string | string[] }>;
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("en-BE", {
@@ -9,118 +22,82 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-function formatSalesByCurrency(
-  rows: Array<{
-    currencyCode: string;
-    amountMinor: number;
-  }>,
-): string {
-  if (rows.length === 0) {
-    return "-";
+function resolvePeriod(value: string | string[] | undefined): AdminPeriod {
+  if (value === "last7Days" || value === "last30Days" || value === "last90Days") {
+    return value;
   }
 
-  return rows
-    .map((row) =>
-      new Intl.NumberFormat("en-BE", {
-        style: "currency",
-        currency: row.currencyCode,
-      }).format(row.amountMinor / 100),
-    )
-    .join(" + ");
+  return "last30Days";
 }
 
-export default async function AdminDashboardPage() {
+export default async function AdminDashboardPage({ searchParams }: { searchParams: SearchParams }) {
   try {
-    const data = await getAdminDashboardData();
+    const { period: rawPeriod } = await searchParams;
+    const period = resolvePeriod(rawPeriod);
+    const [data, metricCards, insights] = await Promise.all([
+      getAdminDashboardData(),
+      getOperationalMetricCards(period),
+      getAdminDashboardInsights(period),
+    ]);
 
     return (
       <section className="space-y-6">
-        <header className="flex items-center justify-between">
+        <header>
           <div>
             <h1 className="text-2xl font-semibold text-[#1f2735]">Dashboard</h1>
             <p className="mt-1 text-sm text-[#4b5a72]">Operational summary for the studio.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Link href="/admin/inbox" className="text-sm text-[#2a4f78] underline underline-offset-4">
-              Inbox
-            </Link>
-            <Link href="/admin/manage-site" className="text-sm text-[#2a4f78] underline underline-offset-4">
-              Manage Site
-            </Link>
-          </div>
         </header>
 
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold text-[#1f2735]">Operational Diagnostics</h2>
+          <h2 className="text-lg font-semibold text-[#1f2735]">Operational Metrics</h2>
+          <AdminDashboardPeriodSelect period={period} />
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            {metricCards.map((card) => {
+              const { key, ...cardProps } = card;
+              return <AdminMetricCard key={key} {...cardProps} />;
+            })}
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold text-[#1f2735]">Dashboard Insights</h2>
+
           <div className="grid gap-4 xl:grid-cols-3">
-            {data.diagnostics.map((period) => (
-              <article key={period.key} className="rounded-xl border border-[#d3dbe5] bg-white p-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-[#2a4f78]">{period.label}</h3>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-md bg-[#f3f6fb] px-3 py-2">
-                    <p className="text-xs uppercase tracking-wide text-[#5a6d86]">Site Sessions</p>
-                    <p className="mt-1 text-lg font-semibold text-[#1f2735]">{period.siteSessions}</p>
-                  </div>
-                  <div className="rounded-md bg-[#f3f6fb] px-3 py-2">
-                    <p className="text-xs uppercase tracking-wide text-[#5a6d86]">Total Sales</p>
-                    <p className="mt-1 text-lg font-semibold text-[#1f2735]">
-                      {formatSalesByCurrency(period.totalSalesByCurrency)}
-                    </p>
-                  </div>
-                  <div className="rounded-md bg-[#f3f6fb] px-3 py-2">
-                    <p className="text-xs uppercase tracking-wide text-[#5a6d86]">Total Orders</p>
-                    <p className="mt-1 text-lg font-semibold text-[#1f2735]">{period.totalOrders}</p>
-                  </div>
-                  <div className="rounded-md bg-[#f3f6fb] px-3 py-2">
-                    <p className="text-xs uppercase tracking-wide text-[#5a6d86]">Total Bookings</p>
-                    <p className="mt-1 text-lg font-semibold text-[#1f2735]">{period.totalBookings}</p>
-                  </div>
-                  <div className="rounded-md bg-[#f3f6fb] px-3 py-2 sm:col-span-2">
-                    <p className="text-xs uppercase tracking-wide text-[#5a6d86]">Total Cancellations</p>
-                    <p className="mt-1 text-lg font-semibold text-[#1f2735]">{period.totalCancellations}</p>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
+            <AdminTopClassSessionsCard items={insights.topClassSessions} className="xl:col-span-2" />
+            <article className="rounded-xl border border-[#d3dbe5] bg-white p-4 xl:col-span-1">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-base font-semibold text-[#1f2735]">Upcoming Sessions</h3>
+                <Link href="/admin/sessions" className="text-xs text-[#2a4f78] underline underline-offset-4">
+                  View all
+                </Link>
+              </div>
 
-        <section className="rounded-xl border border-[#d3dbe5] bg-white p-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-[#1f2735]">Upcoming Sessions</h2>
-            <Link href="/admin/sessions" className="text-sm text-[#2a4f78] underline underline-offset-4">
-              View session schedule
-            </Link>
-          </div>
-
-          {data.upcomingSessions.length === 0 ? (
-            <p className="mt-3 text-sm text-[#4b5a72]">No upcoming sessions.</p>
-          ) : (
-            <div className="mt-3 overflow-x-auto rounded-lg border border-[#e2e8f0]">
-              <table className="min-w-full text-sm">
-                <thead className="bg-[#f3f6fb] text-left text-xs uppercase tracking-wide text-[#5a6d86]">
-                  <tr>
-                    <th className="px-3 py-2">Session</th>
-                    <th className="px-3 py-2">Date / Time</th>
-                    <th className="px-3 py-2">Booked</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.upcomingSessions.map((session) => (
-                    <tr key={session.id} className="border-t border-[#e2e8f0] text-[#334155]">
-                      <td className="px-3 py-2 font-medium">{session.title}</td>
-                      <td className="px-3 py-2">{formatDateTime(session.startsAt)}</td>
-                      <td className="px-3 py-2">
-                        {session.bookedSpots}/{session.capacity}
-                      </td>
-                    </tr>
+              {data.upcomingSessions.length === 0 ? (
+                <p className="mt-2 text-sm text-[#4b5a72]">No upcoming sessions.</p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {data.upcomingSessions.slice(0, 8).map((session) => (
+                    <li key={session.id} className="rounded-md border border-[#e2e8f0] px-3 py-2">
+                      <p className="text-sm font-medium text-[#1f2735]">{session.title}</p>
+                      <p className="text-xs text-[#5a6d86]">{formatDateTime(session.startsAt)}</p>
+                      <p className="text-xs text-[#5a6d86]">
+                        {session.bookedSpots}/{session.capacity} booked
+                      </p>
+                    </li>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+                </ul>
+              )}
+            </article>
+          </div>
 
+          <div className="grid gap-4 xl:grid-cols-2">
+            <AdminTopClientsCard items={insights.topClients} />
+            <AdminAtRiskClientsCard items={insights.atRiskClients} />
+          </div>
+
+          <AdminStaffPerformanceTable items={insights.staffPerformance} />
+        </section>
       </section>
     );
   } catch {

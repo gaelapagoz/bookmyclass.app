@@ -22,18 +22,6 @@ import { ensureEntitlementRuleForProduct } from "@/lib/admin/plan-entitlement-ru
 import { provisionPlanOnStripe, resolveStripeProductIdFromPrice } from "@/lib/admin/plan-provisioning";
 
 export type AdminDashboardData = {
-  diagnostics: Array<{
-    key: "week" | "month" | "quarter";
-    label: string;
-    siteSessions: number;
-    totalOrders: number;
-    totalBookings: number;
-    totalCancellations: number;
-    totalSalesByCurrency: Array<{
-      currencyCode: string;
-      amountMinor: number;
-    }>;
-  }>;
   upcomingSessions: Array<{
     id: string;
     title: string;
@@ -41,6 +29,63 @@ export type AdminDashboardData = {
     bookedSpots: number;
     capacity: number;
   }>;
+};
+
+export type AdminPeriod = "last7Days" | "last30Days" | "last90Days";
+
+export type AdminMetricKey =
+  | "siteSessions"
+  | "totalSales"
+  | "totalOrders"
+  | "bookings"
+  | "cancellations";
+
+export type AdminMetricCard = {
+  key: AdminMetricKey;
+  label: string;
+  total: number;
+  previousTotal: number;
+  deltaPercentage: number | null;
+  currentDailyValue: number;
+  previousDailyValue: number;
+  trendDirection: "up" | "down" | "flat";
+  format: "number" | "currency";
+};
+
+export type TopClassSessionItem = {
+  classTemplateId: string;
+  classTitle: string;
+  teacherName: string | null;
+  bookedCount: number;
+  sessionCount: number;
+  averageCapacity: number;
+};
+
+export type TopClientItem = {
+  clientId: string;
+  clientName: string;
+  bookedCount: number;
+};
+
+export type AtRiskClientItem = {
+  clientId: string;
+  clientName: string;
+  lastBookingAt: string;
+};
+
+export type StaffPerformanceItem = {
+  staffId: string;
+  staffName: string;
+  totalBookedPeople: number;
+  classesDone: number;
+  occupancyRatePercentage: number;
+};
+
+export type AdminDashboardInsights = {
+  topClassSessions: TopClassSessionItem[];
+  topClients: TopClientItem[];
+  atRiskClients: AtRiskClientItem[];
+  staffPerformance: StaffPerformanceItem[];
 };
 
 export type AdminClassItem = {
@@ -317,145 +362,327 @@ function buildRecurringOccurrences(input: AdminRecurringSessionScheduleInput): A
 
 type DateRange = { start: Date; end: Date };
 
-function getCurrentWeekRange(now: Date): DateRange {
-  const dayOfWeek = now.getDay();
-  const diffToMonday = (dayOfWeek + 6) % 7;
-  const start = new Date(now);
-  start.setDate(now.getDate() - diffToMonday);
-  start.setHours(0, 0, 0, 0);
+const VALID_BOOKING_STATUSES: BookingStatus[] = [
+  BookingStatus.CONFIRMED,
+  BookingStatus.COMPLETED,
+  BookingStatus.NO_SHOW,
+];
 
-  const end = new Date(start);
-  end.setDate(start.getDate() + 7);
+const UPCOMING_BOOKED_STATUSES: BookingStatus[] = [
+  BookingStatus.PENDING,
+  BookingStatus.CONFIRMED,
+];
 
-  return { start, end };
-}
+type AdminPeriodRanges = {
+  currentStart: Date;
+  currentEnd: Date;
+  previousStart: Date;
+  previousEnd: Date;
+  todayStart: Date;
+  yesterdayStart: Date;
+};
 
-function getCurrentMonthRange(now: Date): DateRange {
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  return { start, end };
-}
+export function getRollingPeriodRange(period: AdminPeriod, now: Date): AdminPeriodRanges {
+  const durationDays =
+    period === "last7Days"
+      ? 7
+      : period === "last30Days"
+        ? 30
+        : 90;
 
-function getCurrentQuarterRange(now: Date): DateRange {
-  const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3;
-  const start = new Date(now.getFullYear(), quarterStartMonth, 1);
-  const end = new Date(now.getFullYear(), quarterStartMonth + 3, 1);
-  return { start, end };
-}
-
-async function getPeriodDiagnostics(input: {
-  key: "week" | "month" | "quarter";
-  label: string;
-  range: DateRange;
-}) {
-  const [siteSessions, totalOrders, totalBookings, totalCancellations, totalSalesByCurrency] =
-    await prisma.$transaction([
-      prisma.session.count({
-        where: {
-          createdAt: {
-            gte: input.range.start,
-            lt: input.range.end,
-          },
-        },
-      }),
-      prisma.order.count({
-        where: {
-          status: OrderStatus.PAID,
-          placedAt: {
-            gte: input.range.start,
-            lt: input.range.end,
-          },
-        },
-      }),
-      prisma.booking.count({
-        where: {
-          status: {
-            in: [BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.NO_SHOW],
-          },
-          bookedAt: {
-            gte: input.range.start,
-            lt: input.range.end,
-          },
-        },
-      }),
-      prisma.booking.count({
-        where: {
-          status: BookingStatus.CANCELLED,
-          cancelledAt: {
-            gte: input.range.start,
-            lt: input.range.end,
-          },
-        },
-      }),
-      prisma.payment.groupBy({
-        by: ["currencyCode"],
-        orderBy: {
-          currencyCode: "asc",
-        },
-        where: {
-          status: PaymentStatus.SUCCEEDED,
-          createdAt: {
-            gte: input.range.start,
-            lt: input.range.end,
-          },
-        },
-        _sum: {
-          amountMinor: true,
-        },
-      }),
-    ]);
+  const currentEnd = new Date(now);
+  const currentStart = addDays(currentEnd, -durationDays);
+  const previousEnd = new Date(currentStart);
+  const previousStart = addDays(previousEnd, -durationDays);
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const yesterdayStart = addDays(todayStart, -1);
 
   return {
-    key: input.key,
-    label: input.label,
-    siteSessions,
-    totalOrders,
-    totalBookings,
-    totalCancellations,
-    totalSalesByCurrency: totalSalesByCurrency.map((entry) => ({
-      currencyCode: entry.currencyCode,
-      amountMinor: entry._sum?.amountMinor ?? 0,
-    })),
+    currentStart,
+    currentEnd,
+    previousStart,
+    previousEnd,
+    todayStart,
+    yesterdayStart,
   };
+}
+
+type MetricDefinition = {
+  key: AdminMetricKey;
+  label: string;
+  format: AdminMetricCard["format"];
+  getValue: (range: DateRange) => Promise<number>;
+};
+
+function getMetricDelta(total: number, previousTotal: number) {
+  if (previousTotal === 0 && total === 0) {
+    return {
+      deltaPercentage: 0,
+      trendDirection: "flat" as const,
+    };
+  }
+
+  if (previousTotal === 0 && total > 0) {
+    return {
+      deltaPercentage: null,
+      trendDirection: "up" as const,
+    };
+  }
+
+  const rawDelta = ((total - previousTotal) / previousTotal) * 100;
+  const deltaPercentage = Number(rawDelta.toFixed(1));
+  if (deltaPercentage > 0) {
+    return { deltaPercentage, trendDirection: "up" as const };
+  }
+  if (deltaPercentage < 0) {
+    return { deltaPercentage, trendDirection: "down" as const };
+  }
+
+  return { deltaPercentage, trendDirection: "flat" as const };
+}
+
+export async function getOperationalMetricCards(period: AdminPeriod): Promise<AdminMetricCard[]> {
+  const now = new Date();
+  const ranges = getRollingPeriodRange(period, now);
+  const todayEnd = addDays(ranges.todayStart, 1);
+
+  const metricDefinitions: MetricDefinition[] = [
+    {
+      key: "siteSessions",
+      label: "Site Sessions",
+      format: "number",
+      getValue: (range) =>
+        prisma.session.count({
+          where: {
+            createdAt: {
+              gte: range.start,
+              lt: range.end,
+            },
+          },
+        }),
+    },
+    {
+      key: "totalSales",
+      label: "Total Sales",
+      format: "currency",
+      getValue: async (range) => {
+        const result = await prisma.payment.aggregate({
+          _sum: {
+            amountMinor: true,
+          },
+          where: {
+            status: PaymentStatus.SUCCEEDED,
+            createdAt: {
+              gte: range.start,
+              lt: range.end,
+            },
+          },
+        });
+        return result._sum.amountMinor ?? 0;
+      },
+    },
+    {
+      key: "totalOrders",
+      label: "Total Orders",
+      format: "number",
+      getValue: (range) =>
+        prisma.order.count({
+          where: {
+            status: OrderStatus.PAID,
+            placedAt: {
+              gte: range.start,
+              lt: range.end,
+            },
+          },
+        }),
+    },
+    {
+      key: "bookings",
+      label: "Total Bookings",
+      format: "number",
+      getValue: (range) =>
+        prisma.booking.count({
+          where: {
+            status: {
+              in: VALID_BOOKING_STATUSES,
+            },
+            bookedAt: {
+              gte: range.start,
+              lt: range.end,
+            },
+          },
+        }),
+    },
+    {
+      key: "cancellations",
+      label: "Total Cancellations",
+      format: "number",
+      getValue: (range) =>
+        prisma.booking.count({
+          where: {
+            status: BookingStatus.CANCELLED,
+            cancelledAt: {
+              gte: range.start,
+              lt: range.end,
+            },
+          },
+        }),
+    },
+  ];
+
+  const cards = await Promise.all(
+    metricDefinitions.map(async (metric): Promise<AdminMetricCard> => {
+      const [total, previousTotal, currentDailyValue, previousDailyValue] = await Promise.all([
+        metric.getValue({ start: ranges.currentStart, end: ranges.currentEnd }),
+        metric.getValue({ start: ranges.previousStart, end: ranges.previousEnd }),
+        metric.getValue({ start: ranges.todayStart, end: todayEnd }),
+        metric.getValue({ start: ranges.yesterdayStart, end: ranges.todayStart }),
+      ]);
+      const delta = getMetricDelta(total, previousTotal);
+
+      return {
+        key: metric.key,
+        label: metric.label,
+        total,
+        previousTotal,
+        deltaPercentage: delta.deltaPercentage,
+        currentDailyValue,
+        previousDailyValue,
+        trendDirection: delta.trendDirection,
+        format: metric.format,
+      };
+    }),
+  );
+
+  return cards;
 }
 
 export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   const now = new Date();
-  const [diagnostics, upcomingSessions] = await Promise.all([
-    Promise.all([
-      getPeriodDiagnostics({
-        key: "week",
-        label: "Current Week",
-        range: getCurrentWeekRange(now),
-      }),
-      getPeriodDiagnostics({
-        key: "month",
-        label: "Current Month",
-        range: getCurrentMonthRange(now),
-      }),
-      getPeriodDiagnostics({
-        key: "quarter",
-        label: "Current Quarter",
-        range: getCurrentQuarterRange(now),
-      }),
-    ]),
-    prisma.studioSession.findMany({
-      where: {
-        startsAt: { gt: now },
-        status: StudioSessionStatus.SCHEDULED,
+  const upcomingSessions = await prisma.studioSession.findMany({
+    where: {
+      startsAt: { gt: now },
+      status: StudioSessionStatus.SCHEDULED,
+    },
+    orderBy: [{ startsAt: "asc" }],
+    take: 20,
+    select: {
+      id: true,
+      title: true,
+      startsAt: true,
+      capacity: true,
+      bookings: {
+        where: {
+          status: {
+            in: UPCOMING_BOOKED_STATUSES,
+          },
+        },
+        select: {
+          id: true,
+        },
       },
-      orderBy: [{ startsAt: "asc" }],
-      take: 20,
+    },
+  });
+
+  return {
+    upcomingSessions: upcomingSessions.map((session) => ({
+      id: session.id,
+      title: session.title,
+      startsAt: session.startsAt.toISOString(),
+      bookedSpots: session.bookings.length,
+      capacity: session.capacity,
+    })),
+  };
+}
+
+export async function getAdminDashboardInsights(period: AdminPeriod): Promise<AdminDashboardInsights> {
+  const periodRange = getRollingPeriodRange(period, new Date());
+
+  const [bookingsInWindow, bookingsBeforeWindow, staffSessionsInWindow] = await Promise.all([
+    prisma.booking.findMany({
+      where: {
+        status: { in: VALID_BOOKING_STATUSES },
+        bookedAt: {
+          gte: periodRange.currentStart,
+          lt: periodRange.currentEnd,
+        },
+      },
       select: {
         id: true,
-        title: true,
-        startsAt: true,
+        clientId: true,
+        bookedAt: true,
+        client: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        studioSession: {
+          select: {
+            id: true,
+            classTemplateId: true,
+            title: true,
+            capacity: true,
+            teacher: {
+              select: {
+                name: true,
+              },
+            },
+            classTemplate: {
+              select: {
+                title: true,
+                defaultTeacher: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.booking.findMany({
+      where: {
+        status: { in: VALID_BOOKING_STATUSES },
+        bookedAt: {
+          lt: periodRange.currentStart,
+        },
+      },
+      select: {
+        clientId: true,
+        bookedAt: true,
+        client: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    }),
+    prisma.studioSession.findMany({
+      where: {
+        startsAt: {
+          gte: periodRange.currentStart,
+          lt: periodRange.currentEnd,
+        },
+        status: {
+          in: [StudioSessionStatus.SCHEDULED, StudioSessionStatus.COMPLETED],
+        },
+      },
+      select: {
+        id: true,
         capacity: true,
+        teacherId: true,
+        teacher: {
+          select: {
+            name: true,
+          },
+        },
         bookings: {
           where: {
-            status: {
-              in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
-            },
+            status: { in: VALID_BOOKING_STATUSES },
           },
           select: {
             id: true,
@@ -465,15 +692,184 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     }),
   ]);
 
+  const classAggregateMap = new Map<
+    string,
+    {
+      classTemplateId: string;
+      classTitle: string;
+      teacherName: string | null;
+      bookedCount: number;
+      sessionIds: Set<string>;
+      capacitySum: number;
+    }
+  >();
+
+  const clientAggregateMap = new Map<
+    string,
+    {
+      clientId: string;
+      clientName: string;
+      bookedCount: number;
+    }
+  >();
+
+  for (const booking of bookingsInWindow) {
+    const classTemplateId = booking.studioSession.classTemplateId;
+    const classTitle = booking.studioSession.classTemplate.title || booking.studioSession.title;
+    const teacherName =
+      booking.studioSession.teacher.name ||
+      booking.studioSession.classTemplate.defaultTeacher.name ||
+      null;
+
+    const existingClass = classAggregateMap.get(classTemplateId);
+    if (existingClass) {
+      existingClass.bookedCount += 1;
+      if (!existingClass.sessionIds.has(booking.studioSession.id)) {
+        existingClass.sessionIds.add(booking.studioSession.id);
+        existingClass.capacitySum += booking.studioSession.capacity;
+      }
+    } else {
+      classAggregateMap.set(classTemplateId, {
+        classTemplateId,
+        classTitle,
+        teacherName,
+        bookedCount: 1,
+        sessionIds: new Set([booking.studioSession.id]),
+        capacitySum: booking.studioSession.capacity,
+      });
+    }
+
+    if (booking.clientId && booking.client) {
+      const existingClient = clientAggregateMap.get(booking.clientId);
+      if (existingClient) {
+        existingClient.bookedCount += 1;
+      } else {
+        clientAggregateMap.set(booking.clientId, {
+          clientId: booking.clientId,
+          clientName: booking.client.name,
+          bookedCount: 1,
+        });
+      }
+    }
+  }
+
+  const topClassSessions = [...classAggregateMap.values()]
+    .map((item): TopClassSessionItem => ({
+      classTemplateId: item.classTemplateId,
+      classTitle: item.classTitle,
+      teacherName: item.teacherName,
+      bookedCount: item.bookedCount,
+      sessionCount: item.sessionIds.size,
+      averageCapacity:
+        item.sessionIds.size > 0 ? Math.round(item.capacitySum / item.sessionIds.size) : 0,
+    }))
+    .sort((a, b) => {
+      if (b.bookedCount !== a.bookedCount) {
+        return b.bookedCount - a.bookedCount;
+      }
+      return a.classTitle.localeCompare(b.classTitle);
+    })
+    .slice(0, 5);
+
+  const topClients = [...clientAggregateMap.values()]
+    .sort((a, b) => {
+      if (b.bookedCount !== a.bookedCount) {
+        return b.bookedCount - a.bookedCount;
+      }
+      return a.clientName.localeCompare(b.clientName);
+    })
+    .slice(0, 5);
+
+  const currentlyActiveClientIds = new Set(topClients.map((entry) => entry.clientId));
+  for (const clientId of clientAggregateMap.keys()) {
+    currentlyActiveClientIds.add(clientId);
+  }
+
+  const historicalClientMap = new Map<
+    string,
+    {
+      clientId: string;
+      clientName: string;
+      lastBookingAt: Date;
+    }
+  >();
+  for (const booking of bookingsBeforeWindow) {
+    if (!booking.clientId || !booking.client) {
+      continue;
+    }
+    const existing = historicalClientMap.get(booking.clientId);
+    if (!existing || booking.bookedAt > existing.lastBookingAt) {
+      historicalClientMap.set(booking.clientId, {
+        clientId: booking.clientId,
+        clientName: booking.client.name,
+        lastBookingAt: booking.bookedAt,
+      });
+    }
+  }
+
+  const atRiskClients = [...historicalClientMap.values()]
+    .filter((entry) => !currentlyActiveClientIds.has(entry.clientId))
+    .sort((a, b) => b.lastBookingAt.getTime() - a.lastBookingAt.getTime())
+    .slice(0, 5)
+    .map((entry): AtRiskClientItem => ({
+      clientId: entry.clientId,
+      clientName: entry.clientName,
+      lastBookingAt: entry.lastBookingAt.toISOString(),
+    }));
+
+  const staffPerformanceMap = new Map<
+    string,
+    {
+      staffId: string;
+      staffName: string;
+      totalBookedPeople: number;
+      classesDone: number;
+      capacityTotal: number;
+    }
+  >();
+  for (const session of staffSessionsInWindow) {
+    const existing = staffPerformanceMap.get(session.teacherId);
+    if (existing) {
+      existing.classesDone += 1;
+      existing.capacityTotal += session.capacity;
+      existing.totalBookedPeople += session.bookings.length;
+    } else {
+      staffPerformanceMap.set(session.teacherId, {
+        staffId: session.teacherId,
+        staffName: session.teacher.name,
+        totalBookedPeople: session.bookings.length,
+        classesDone: 1,
+        capacityTotal: session.capacity,
+      });
+    }
+  }
+
+  const staffPerformance = [...staffPerformanceMap.values()]
+    .map((entry): StaffPerformanceItem => ({
+      staffId: entry.staffId,
+      staffName: entry.staffName,
+      totalBookedPeople: entry.totalBookedPeople,
+      classesDone: entry.classesDone,
+      occupancyRatePercentage:
+        entry.capacityTotal > 0
+          ? Number(((entry.totalBookedPeople / entry.capacityTotal) * 100).toFixed(1))
+          : 0,
+    }))
+    .sort((a, b) => {
+      if (b.totalBookedPeople !== a.totalBookedPeople) {
+        return b.totalBookedPeople - a.totalBookedPeople;
+      }
+      if (b.classesDone !== a.classesDone) {
+        return b.classesDone - a.classesDone;
+      }
+      return a.staffName.localeCompare(b.staffName);
+    });
+
   return {
-    diagnostics,
-    upcomingSessions: upcomingSessions.map((session) => ({
-      id: session.id,
-      title: session.title,
-      startsAt: session.startsAt.toISOString(),
-      bookedSpots: session.bookings.length,
-      capacity: session.capacity,
-    })),
+    topClassSessions,
+    topClients,
+    atRiskClients,
+    staffPerformance,
   };
 }
 
@@ -2416,6 +2812,7 @@ export async function updateAdminLearningVideo(
     },
   });
 }
+
 
 
 
