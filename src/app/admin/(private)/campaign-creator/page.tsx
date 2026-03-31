@@ -1,5 +1,5 @@
-import AdminPlaceholderPage from "@/components/admin/AdminPlaceholderPage";
+import { redirect } from "next/navigation";
 
 export default function AdminCampaignCreatorPage() {
-  return <AdminPlaceholderPage title="Campaign Creator" />;
+  redirect("/admin/marketing/campaigns/new");
 }

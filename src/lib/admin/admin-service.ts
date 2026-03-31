@@ -4,6 +4,7 @@ import {
   ClientEntitlementStatus,
   CreditLedgerEntryType,
   EntitlementType,
+  MarketingCampaignStatus,
   OrderStatus,
   PaymentProvider,
   PaymentStatus,
@@ -52,6 +53,22 @@ export type AdminMetricCard = {
   format: "number" | "currency";
 };
 
+export type DashboardMetricKey =
+  | "sessions"
+  | "sales"
+  | "orders"
+  | "bookings"
+  | "cancellations";
+
+export type DashboardTrendPoint = {
+  date: string;
+  sessions: number;
+  sales: number;
+  orders: number;
+  bookings: number;
+  cancellations: number;
+};
+
 export type TopClassSessionItem = {
   classTemplateId: string;
   classTitle: string;
@@ -86,6 +103,31 @@ export type AdminDashboardInsights = {
   topClients: TopClientItem[];
   atRiskClients: AtRiskClientItem[];
   staffPerformance: StaffPerformanceItem[];
+};
+
+export type AdminMarketingCampaignMetric = {
+  id: string;
+  name: string;
+  sentAt: string | null;
+  recipients: number;
+  sent: number;
+  opened: number;
+  clicked: number;
+  unsubscribed: number;
+  openRate: number;
+  clickRate: number;
+};
+
+export type AdminMarketingAnalytics = {
+  campaignsSent: number;
+  recipients: number;
+  sent: number;
+  opened: number;
+  clicked: number;
+  unsubscribed: number;
+  openRate: number;
+  clickRate: number;
+  byCampaign: AdminMarketingCampaignMetric[];
 };
 
 export type AdminClassItem = {
@@ -150,6 +192,11 @@ export type AdminBookingItem = {
   customerEmail: string;
   sessionTitle: string;
   startsAt: string;
+};
+
+export type AdminBookingsPageData = {
+  data: AdminBookingItem[];
+  totalPages: number;
 };
 
 export type AdminUserItem = {
@@ -453,6 +500,42 @@ function getAdminOrderFilterStart(filter: AdminOrderDateFilter, now: Date): Date
   return null;
 }
 
+function periodDayCount(period: AdminPeriod): number {
+  if (period === "last7Days") {
+    return 7;
+  }
+  if (period === "last30Days") {
+    return 30;
+  }
+  return 90;
+}
+
+function toDayKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function buildTrendBase(now: Date, totalDays: number): Map<string, DashboardTrendPoint> {
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const start = addDays(todayStart, -(totalDays - 1));
+  const buckets = new Map<string, DashboardTrendPoint>();
+
+  for (let dayOffset = 0; dayOffset < totalDays; dayOffset += 1) {
+    const date = addDays(start, dayOffset);
+    const key = toDayKey(date);
+    buckets.set(key, {
+      date: key,
+      sessions: 0,
+      sales: 0,
+      orders: 0,
+      bookings: 0,
+      cancellations: 0,
+    });
+  }
+
+  return buckets;
+}
+
 type MetricDefinition = {
   key: AdminMetricKey;
   label: string;
@@ -601,6 +684,116 @@ export async function getOperationalMetricCards(period: AdminPeriod): Promise<Ad
   );
 
   return cards;
+}
+
+export async function getDashboardTrendData(period: AdminPeriod): Promise<DashboardTrendPoint[]> {
+  const now = new Date();
+  const days = periodDayCount(period);
+  const totalDays = 100;
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const start = addDays(todayStart, -(totalDays - 1));
+  const end = addDays(todayStart, 1);
+
+  const [sessions, sales, orders, bookings, cancellations] = await Promise.all([
+    prisma.session.findMany({
+      where: {
+        createdAt: {
+          gte: start,
+          lt: end,
+        },
+      },
+      select: { createdAt: true },
+    }),
+    prisma.payment.findMany({
+      where: {
+        status: PaymentStatus.SUCCEEDED,
+        createdAt: {
+          gte: start,
+          lt: end,
+        },
+      },
+      select: {
+        createdAt: true,
+        amountMinor: true,
+      },
+    }),
+    prisma.order.findMany({
+      where: {
+        status: OrderStatus.PAID,
+        placedAt: {
+          gte: start,
+          lt: end,
+        },
+      },
+      select: { placedAt: true },
+    }),
+    prisma.booking.findMany({
+      where: {
+        status: {
+          in: VALID_BOOKING_STATUSES,
+        },
+        bookedAt: {
+          gte: start,
+          lt: end,
+        },
+      },
+      select: { bookedAt: true },
+    }),
+    prisma.booking.findMany({
+      where: {
+        status: BookingStatus.CANCELLED,
+        cancelledAt: {
+          gte: start,
+          lt: end,
+        },
+      },
+      select: { cancelledAt: true },
+    }),
+  ]);
+
+  const buckets = buildTrendBase(now, totalDays);
+
+  for (const row of sessions) {
+    const bucket = buckets.get(toDayKey(row.createdAt));
+    if (bucket) {
+      bucket.sessions += 1;
+    }
+  }
+
+  for (const row of sales) {
+    const bucket = buckets.get(toDayKey(row.createdAt));
+    if (bucket) {
+      bucket.sales += row.amountMinor;
+    }
+  }
+
+  for (const row of orders) {
+    const bucket = buckets.get(toDayKey(row.placedAt));
+    if (bucket) {
+      bucket.orders += 1;
+    }
+  }
+
+  for (const row of bookings) {
+    const bucket = buckets.get(toDayKey(row.bookedAt));
+    if (bucket) {
+      bucket.bookings += 1;
+    }
+  }
+
+  for (const row of cancellations) {
+    if (!row.cancelledAt) {
+      continue;
+    }
+    const bucket = buckets.get(toDayKey(row.cancelledAt));
+    if (bucket) {
+      bucket.cancellations += 1;
+    }
+  }
+
+  const fullDataset = [...buckets.values()];
+  return fullDataset.slice(-days);
 }
 
 export async function getAdminDashboardData(): Promise<AdminDashboardData> {
@@ -915,6 +1108,76 @@ export async function getAdminDashboardInsights(period: AdminPeriod): Promise<Ad
     topClients,
     atRiskClients,
     staffPerformance,
+  };
+}
+
+export async function getMarketingAnalytics(period: AdminPeriod): Promise<AdminMarketingAnalytics> {
+  const periodRange = getRollingPeriodRange(period, new Date());
+  const campaigns = await prisma.marketingCampaign.findMany({
+    where: {
+      status: MarketingCampaignStatus.SENT,
+      sentAt: {
+        gte: periodRange.currentStart,
+        lt: periodRange.currentEnd,
+      },
+    },
+    include: {
+      recipients: {
+        select: {
+          id: true,
+          sentAt: true,
+          openedAt: true,
+          clickedAt: true,
+          unsubscribedAt: true,
+        },
+      },
+    },
+    orderBy: [{ sentAt: "desc" }, { updatedAt: "desc" }],
+  });
+
+  let recipients = 0;
+  let sent = 0;
+  let opened = 0;
+  let clicked = 0;
+  let unsubscribed = 0;
+
+  const byCampaign: AdminMarketingCampaignMetric[] = campaigns.map((campaign) => {
+    const localRecipients = campaign.recipients.length;
+    const localSent = campaign.recipients.filter((row) => Boolean(row.sentAt)).length;
+    const localOpened = campaign.recipients.filter((row) => Boolean(row.openedAt)).length;
+    const localClicked = campaign.recipients.filter((row) => Boolean(row.clickedAt)).length;
+    const localUnsubscribed = campaign.recipients.filter((row) => Boolean(row.unsubscribedAt)).length;
+
+    recipients += localRecipients;
+    sent += localSent;
+    opened += localOpened;
+    clicked += localClicked;
+    unsubscribed += localUnsubscribed;
+
+    return {
+      id: campaign.id,
+      name: campaign.name,
+      sentAt: campaign.sentAt?.toISOString() ?? null,
+      recipients: localRecipients,
+      sent: localSent,
+      opened: localOpened,
+      clicked: localClicked,
+      unsubscribed: localUnsubscribed,
+      openRate: localSent > 0 ? Number(((localOpened / localSent) * 100).toFixed(1)) : 0,
+      clickRate: localSent > 0 ? Number(((localClicked / localSent) * 100).toFixed(1)) : 0,
+    };
+  });
+
+  return {
+    campaignsSent: campaigns.length,
+    recipients,
+    sent,
+    opened,
+    clicked,
+    unsubscribed,
+    openRate: sent > 0 ? Number(((opened / sent) * 100).toFixed(1)) : 0,
+    clickRate: sent > 0 ? Number(((clicked / sent) * 100).toFixed(1)) : 0,
+    byCampaign,
   };
 }
 
@@ -1943,42 +2206,58 @@ export async function updateAdminPlan(
   return prisma.product.findUnique({ where: { id } });
 }
 
-export async function getAdminBookingsData(): Promise<AdminBookingItem[]> {
-  const bookings = await prisma.booking.findMany({
-    orderBy: [{ bookedAt: "desc" }],
-    take: 100,
-    select: {
-      id: true,
-      status: true,
-      paymentSelection: true,
-      bookedAt: true,
-      customerName: true,
-      customerEmail: true,
-      client: {
-        select: {
-          name: true,
-          email: true,
-        },
-      },
-      studioSession: {
-        select: {
-          title: true,
-          startsAt: true,
-        },
-      },
-    },
-  });
+export async function getBookings(input: { page: number; pageSize?: number }): Promise<AdminBookingsPageData> {
+  const pageSize = Math.max(1, Math.min(input.pageSize ?? 20, 100));
+  const page = Math.max(1, Math.floor(input.page));
+  const skip = (page - 1) * pageSize;
 
-  return bookings.map((item) => ({
-    id: item.id,
-    status: item.status,
-    paymentSelection: item.paymentSelection,
-    bookedAt: item.bookedAt.toISOString(),
-    customerName: item.customerName ?? item.client?.name ?? "Guest",
-    customerEmail: item.customerEmail ?? item.client?.email ?? "-",
-    sessionTitle: item.studioSession.title,
-    startsAt: item.studioSession.startsAt.toISOString(),
-  }));
+  const [totalItems, bookings] = await prisma.$transaction([
+    prisma.booking.count(),
+    prisma.booking.findMany({
+      orderBy: [{ bookedAt: "desc" }],
+      skip,
+      take: pageSize,
+      select: {
+        id: true,
+        status: true,
+        paymentSelection: true,
+        bookedAt: true,
+        customerName: true,
+        customerEmail: true,
+        client: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+        studioSession: {
+          select: {
+            title: true,
+            startsAt: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  return {
+    data: bookings.map((item) => ({
+      id: item.id,
+      status: item.status,
+      paymentSelection: item.paymentSelection,
+      bookedAt: item.bookedAt.toISOString(),
+      customerName: item.customerName ?? item.client?.name ?? "Guest",
+      customerEmail: item.customerEmail ?? item.client?.email ?? "-",
+      sessionTitle: item.studioSession.title,
+      startsAt: item.studioSession.startsAt.toISOString(),
+    })),
+    totalPages: Math.max(1, Math.ceil(totalItems / pageSize)),
+  };
+}
+
+export async function getAdminBookingsData(): Promise<AdminBookingItem[]> {
+  const page = await getBookings({ page: 1, pageSize: 100 });
+  return page.data;
 }
 
 export async function getAdminUsersData(): Promise<AdminUserItem[]> {

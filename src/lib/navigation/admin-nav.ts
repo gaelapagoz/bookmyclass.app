@@ -53,11 +53,12 @@ export const adminNavConfig: AdminNavItem[] = [
     key: "marketing",
     label: "Marketing",
     children: [
-      { type: "link", href: "/admin/campaign-creator", label: "Campaign Creator" },
-      { type: "link", href: "/admin/campaign-activity", label: "Campaign Activity" },
+      { type: "link", href: "/admin/marketing/campaigns", label: "Campaigns" },
+      { type: "link", href: "/admin/marketing/campaigns/new", label: "Create Campaign" },
+      { type: "link", href: "/admin/marketing/audiences", label: "Audiences" },
+      { type: "link", href: "/admin/marketing/categories", label: "Categories" },
     ],
   },
-  { type: "link", href: "/admin/analytics", label: "Analytics" },
   {
     type: "link",
     href: "/admin/online-learning",

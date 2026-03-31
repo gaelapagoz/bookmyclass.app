@@ -1,4 +1,4 @@
-/* @vitest-environment jsdom */
+﻿/* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
@@ -93,7 +93,6 @@ describe("/admin private layout", () => {
     expect(screen.getByRole("button", { name: "Sales+" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Catalog+" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Marketing+" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Analytics" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Online Learning" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Manage Site" })).toBeInTheDocument();
     expect(screen.getByText("Admin Content")).toBeInTheDocument();
@@ -183,6 +182,7 @@ describe("/admin private layout", () => {
     expect(screen.getByLabelText("Inbox unread 3")).toBeInTheDocument();
   });
 });
+
 
 
 

@@ -1,6 +1,35 @@
 import Link from "next/link";
 
-import { getAdminBookingsData } from "@/lib/admin/admin-service";
+import AdminPagination from "@/components/admin/AdminPagination";
+import { getBookings } from "@/lib/admin/admin-service";
+
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+function parsePage(value: string | string[] | undefined): number {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return 1;
+  }
+  return Math.floor(parsed);
+}
+
+function buildPageHref(params: Record<string, string | string[] | undefined>, page: number) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (key === "page") {
+      continue;
+    }
+
+    const normalized = Array.isArray(value) ? value[0] : value;
+    if (normalized) {
+      query.set(key, normalized);
+    }
+  }
+
+  query.set("page", String(page));
+  return `/admin/bookings?${query.toString()}`;
+}
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("en-BE", {
@@ -9,9 +38,12 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-export default async function AdminBookingsPage() {
+export default async function AdminBookingsPage({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const page = parsePage(params.page);
+
   try {
-    const bookings = await getAdminBookingsData();
+    const bookings = await getBookings({ page, pageSize: 20 });
 
     return (
       <section className="space-y-4">
@@ -22,7 +54,7 @@ export default async function AdminBookingsPage() {
           </div>
         </header>
 
-        {bookings.length === 0 ? (
+        {bookings.data.length === 0 ? (
           <div className="rounded-xl border border-[#d3dbe5] bg-white p-5 text-sm text-[#4b5a72]">
             No bookings found.
           </div>
@@ -40,7 +72,7 @@ export default async function AdminBookingsPage() {
                 </tr>
               </thead>
               <tbody>
-                {bookings.map((item) => (
+                {bookings.data.map((item) => (
                   <tr key={item.id} className="border-t border-[#e2e8f0] text-[#334155]">
                     <td className="px-3 py-2 font-medium">
                       {item.customerName}
@@ -64,6 +96,12 @@ export default async function AdminBookingsPage() {
             </table>
           </div>
         )}
+
+        <AdminPagination
+          page={page}
+          totalPages={bookings.totalPages}
+          onChange={(nextPage) => buildPageHref(params, nextPage)}
+        />
       </section>
     );
   } catch {

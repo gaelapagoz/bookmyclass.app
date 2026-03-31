@@ -3,6 +3,9 @@ import {
   BookingIntent,
   BookingPaymentSelection,
   BookingStatus,
+  MarketingAudienceType,
+  MarketingCampaignStatus,
+  MarketingRecipientStatus,
   ClientEntitlementStatus,
   CreditLedgerEntryType,
   EntitlementScope,
@@ -332,6 +335,13 @@ function nextOccurrencesInWindow(params: {
 }
 
 async function purgeForCleanSeed() {
+  await prisma.marketingCampaignLinkClick.deleteMany();
+  await prisma.marketingCampaignLink.deleteMany();
+  await prisma.marketingCampaignRecipient.deleteMany();
+  await prisma.marketingCampaign.deleteMany();
+  await prisma.marketingCategory.deleteMany();
+  await prisma.marketingUnsubscribe.deleteMany();
+
   await prisma.attendanceRecord.deleteMany();
   await prisma.waitlistEntry.deleteMany();
   await prisma.booking.deleteMany();
@@ -366,6 +376,421 @@ async function purgeForCleanSeed() {
   await prisma.session.deleteMany();
   await prisma.verificationToken.deleteMany();
   await prisma.user.deleteMany();
+}
+
+async function seedMarketingDemoData(input: { createdById: string }) {
+  const announcementCategory = await prisma.marketingCategory.upsert({
+    where: { slug: "announcement" },
+    update: { name: "Announcement", isActive: true },
+    create: {
+      name: "Announcement",
+      slug: "announcement",
+      isActive: true,
+    },
+  });
+
+  const promotionCategory = await prisma.marketingCategory.upsert({
+    where: { slug: "promotion" },
+    update: { name: "Promotion", isActive: true },
+    create: {
+      name: "Promotion",
+      slug: "promotion",
+      isActive: true,
+    },
+  });
+
+  await prisma.marketingCategory.upsert({
+    where: { slug: "newsletter" },
+    update: { name: "Newsletter", isActive: true },
+    create: {
+      name: "Newsletter",
+      slug: "newsletter",
+      isActive: true,
+    },
+  });
+
+  const draftCampaign = await prisma.marketingCampaign.upsert({
+    where: { id: "seed-marketing-draft-campaign" },
+    update: {
+      name: "Beta Welcome Announcement Draft",
+      status: MarketingCampaignStatus.DRAFT,
+      categoryId: announcementCategory.id,
+      audienceType: MarketingAudienceType.ALL_USERS,
+      manualAudienceJson: { emails: [], userIds: [] },
+      subject: "Welcome to our beta studio updates",
+      previewText: "A quick look at what members can expect this month.",
+      fromName: "BookMyClass Studio",
+      fromEmail: "hello@bookmyclass.local",
+      replyTo: "support@bookmyclass.local",
+      contentJson: {
+        blocks: [
+          { type: "heading", text: "Welcome to BookMyClass Beta" },
+          {
+            type: "paragraph",
+            text: "Thanks for joining us. This draft demonstrates the editor and delivery workflow.",
+          },
+          { type: "button", text: "View classes", url: "https://bookmyclass.local/book-a-class" },
+        ],
+      },
+      htmlSnapshot: null,
+      sentAt: null,
+      createdById: input.createdById,
+    },
+    create: {
+      id: "seed-marketing-draft-campaign",
+      name: "Beta Welcome Announcement Draft",
+      status: MarketingCampaignStatus.DRAFT,
+      categoryId: announcementCategory.id,
+      audienceType: MarketingAudienceType.ALL_USERS,
+      manualAudienceJson: { emails: [], userIds: [] },
+      subject: "Welcome to our beta studio updates",
+      previewText: "A quick look at what members can expect this month.",
+      fromName: "BookMyClass Studio",
+      fromEmail: "hello@bookmyclass.local",
+      replyTo: "support@bookmyclass.local",
+      contentJson: {
+        blocks: [
+          { type: "heading", text: "Welcome to BookMyClass Beta" },
+          {
+            type: "paragraph",
+            text: "Thanks for joining us. This draft demonstrates the editor and delivery workflow.",
+          },
+          { type: "button", text: "View classes", url: "https://bookmyclass.local/book-a-class" },
+        ],
+      },
+      createdById: input.createdById,
+    },
+  });
+
+  const sentCampaignSentAt = new Date("2026-03-25T10:00:00.000Z");
+  const sentCampaign = await prisma.marketingCampaign.upsert({
+    where: { id: "seed-marketing-sent-campaign" },
+    update: {
+      name: "Spring Studio Promotion",
+      status: MarketingCampaignStatus.SENT,
+      categoryId: promotionCategory.id,
+      audienceType: MarketingAudienceType.PAYING_SUBSCRIBERS,
+      manualAudienceJson: { emails: [], userIds: [] },
+      subject: "Spring promo: extra classes this week",
+      previewText: "Members get bonus class access while spots last.",
+      fromName: "BookMyClass Studio",
+      fromEmail: "offers@bookmyclass.local",
+      replyTo: "support@bookmyclass.local",
+      contentJson: {
+        blocks: [
+          { type: "heading", text: "Spring Promo Is Live" },
+          {
+            type: "paragraph",
+            text: "Book this week's classes early and get access to bonus member-only sessions.",
+          },
+          { type: "button", text: "Claim your spot", url: "https://bookmyclass.local/dashboard/bookings" },
+          { type: "button", text: "View plans", url: "https://bookmyclass.local/subscription" },
+        ],
+      },
+      htmlSnapshot:
+        "<html><body><h2>Spring Promo Is Live</h2><p>Members get bonus sessions this week.</p></body></html>",
+      sentAt: sentCampaignSentAt,
+      createdById: input.createdById,
+    },
+    create: {
+      id: "seed-marketing-sent-campaign",
+      name: "Spring Studio Promotion",
+      status: MarketingCampaignStatus.SENT,
+      categoryId: promotionCategory.id,
+      audienceType: MarketingAudienceType.PAYING_SUBSCRIBERS,
+      manualAudienceJson: { emails: [], userIds: [] },
+      subject: "Spring promo: extra classes this week",
+      previewText: "Members get bonus class access while spots last.",
+      fromName: "BookMyClass Studio",
+      fromEmail: "offers@bookmyclass.local",
+      replyTo: "support@bookmyclass.local",
+      contentJson: {
+        blocks: [
+          { type: "heading", text: "Spring Promo Is Live" },
+          {
+            type: "paragraph",
+            text: "Book this week's classes early and get access to bonus member-only sessions.",
+          },
+          { type: "button", text: "Claim your spot", url: "https://bookmyclass.local/dashboard/bookings" },
+          { type: "button", text: "View plans", url: "https://bookmyclass.local/subscription" },
+        ],
+      },
+      htmlSnapshot:
+        "<html><body><h2>Spring Promo Is Live</h2><p>Members get bonus sessions this week.</p></body></html>",
+      sentAt: sentCampaignSentAt,
+      createdById: input.createdById,
+    },
+  });
+
+  const recipientFixtures: Array<{
+    id: string;
+    email: string;
+    status: MarketingRecipientStatus;
+    sentAt: Date | null;
+    deliveredAt: Date | null;
+    openedAt: Date | null;
+    clickedAt: Date | null;
+    unsubscribedAt: Date | null;
+  }> = [
+    {
+      id: "seed-mkt-recipient-01",
+      email: "alice.seed+marketing@bookmyclass.local",
+      status: MarketingRecipientStatus.DELIVERED,
+      sentAt: new Date("2026-03-25T10:01:00.000Z"),
+      deliveredAt: new Date("2026-03-25T10:01:20.000Z"),
+      openedAt: new Date("2026-03-25T10:10:00.000Z"),
+      clickedAt: new Date("2026-03-25T10:12:00.000Z"),
+      unsubscribedAt: null,
+    },
+    {
+      id: "seed-mkt-recipient-02",
+      email: "beatrice.seed+marketing@bookmyclass.local",
+      status: MarketingRecipientStatus.SENT,
+      sentAt: new Date("2026-03-25T10:02:00.000Z"),
+      deliveredAt: null,
+      openedAt: null,
+      clickedAt: null,
+      unsubscribedAt: null,
+    },
+    {
+      id: "seed-mkt-recipient-03",
+      email: "celine.seed+marketing@bookmyclass.local",
+      status: MarketingRecipientStatus.DELIVERED,
+      sentAt: new Date("2026-03-25T10:03:00.000Z"),
+      deliveredAt: new Date("2026-03-25T10:03:10.000Z"),
+      openedAt: new Date("2026-03-25T10:14:00.000Z"),
+      clickedAt: null,
+      unsubscribedAt: null,
+    },
+    {
+      id: "seed-mkt-recipient-04",
+      email: "diana.seed+marketing@bookmyclass.local",
+      status: MarketingRecipientStatus.BOUNCED,
+      sentAt: new Date("2026-03-25T10:04:00.000Z"),
+      deliveredAt: null,
+      openedAt: null,
+      clickedAt: null,
+      unsubscribedAt: null,
+    },
+    {
+      id: "seed-mkt-recipient-05",
+      email: "eva.seed+marketing@bookmyclass.local",
+      status: MarketingRecipientStatus.DELIVERED,
+      sentAt: new Date("2026-03-25T10:05:00.000Z"),
+      deliveredAt: new Date("2026-03-25T10:05:12.000Z"),
+      openedAt: new Date("2026-03-25T10:20:00.000Z"),
+      clickedAt: new Date("2026-03-25T10:24:00.000Z"),
+      unsubscribedAt: null,
+    },
+    {
+      id: "seed-mkt-recipient-06",
+      email: "fatima.seed+marketing@bookmyclass.local",
+      status: MarketingRecipientStatus.FAILED,
+      sentAt: null,
+      deliveredAt: null,
+      openedAt: null,
+      clickedAt: null,
+      unsubscribedAt: null,
+    },
+    {
+      id: "seed-mkt-recipient-07",
+      email: "grace.seed+marketing@bookmyclass.local",
+      status: MarketingRecipientStatus.DELIVERED,
+      sentAt: new Date("2026-03-25T10:06:00.000Z"),
+      deliveredAt: new Date("2026-03-25T10:06:14.000Z"),
+      openedAt: null,
+      clickedAt: null,
+      unsubscribedAt: null,
+    },
+    {
+      id: "seed-mkt-recipient-08",
+      email: "hana.seed+marketing@bookmyclass.local",
+      status: MarketingRecipientStatus.SENT,
+      sentAt: new Date("2026-03-25T10:07:00.000Z"),
+      deliveredAt: null,
+      openedAt: null,
+      clickedAt: null,
+      unsubscribedAt: null,
+    },
+    {
+      id: "seed-mkt-recipient-09",
+      email: "ines.seed+marketing@bookmyclass.local",
+      status: MarketingRecipientStatus.DELIVERED,
+      sentAt: new Date("2026-03-25T10:08:00.000Z"),
+      deliveredAt: new Date("2026-03-25T10:08:16.000Z"),
+      openedAt: new Date("2026-03-25T10:18:00.000Z"),
+      clickedAt: new Date("2026-03-25T10:31:00.000Z"),
+      unsubscribedAt: new Date("2026-03-25T10:40:00.000Z"),
+    },
+    {
+      id: "seed-mkt-recipient-10",
+      email: "jade.seed+marketing@bookmyclass.local",
+      status: MarketingRecipientStatus.DELIVERED,
+      sentAt: new Date("2026-03-25T10:09:00.000Z"),
+      deliveredAt: new Date("2026-03-25T10:09:14.000Z"),
+      openedAt: null,
+      clickedAt: null,
+      unsubscribedAt: null,
+    },
+  ];
+
+  for (const recipient of recipientFixtures) {
+    await prisma.marketingCampaignRecipient.upsert({
+      where: { id: recipient.id },
+      update: {
+        campaignId: sentCampaign.id,
+        userId: null,
+        email: recipient.email,
+        status: recipient.status,
+        sentAt: recipient.sentAt,
+        deliveredAt: recipient.deliveredAt,
+        openedAt: recipient.openedAt,
+        clickedAt: recipient.clickedAt,
+        unsubscribedAt: recipient.unsubscribedAt,
+      },
+      create: {
+        id: recipient.id,
+        campaignId: sentCampaign.id,
+        userId: null,
+        email: recipient.email,
+        status: recipient.status,
+        sentAt: recipient.sentAt,
+        deliveredAt: recipient.deliveredAt,
+        openedAt: recipient.openedAt,
+        clickedAt: recipient.clickedAt,
+        unsubscribedAt: recipient.unsubscribedAt,
+      },
+    });
+  }
+
+  const firstLink = await prisma.marketingCampaignLink.upsert({
+    where: { token: "seed-mkt-link-bookings" },
+    update: {
+      campaignId: sentCampaign.id,
+      url: "https://bookmyclass.local/dashboard/bookings",
+      clickCount: 0,
+    },
+    create: {
+      campaignId: sentCampaign.id,
+      url: "https://bookmyclass.local/dashboard/bookings",
+      token: "seed-mkt-link-bookings",
+      clickCount: 0,
+    },
+  });
+
+  const secondLink = await prisma.marketingCampaignLink.upsert({
+    where: { token: "seed-mkt-link-subscription" },
+    update: {
+      campaignId: sentCampaign.id,
+      url: "https://bookmyclass.local/subscription",
+      clickCount: 0,
+    },
+    create: {
+      campaignId: sentCampaign.id,
+      url: "https://bookmyclass.local/subscription",
+      token: "seed-mkt-link-subscription",
+      clickCount: 0,
+    },
+  });
+
+  const recipientsById = new Map(
+    (
+      await prisma.marketingCampaignRecipient.findMany({
+        where: { campaignId: sentCampaign.id },
+        select: { id: true, email: true },
+      })
+    ).map((recipient) => [recipient.id, recipient]),
+  );
+
+  const clickFixtures: Array<{
+    id: string;
+    linkId: string;
+    recipientId: string;
+    clickedAt: Date;
+  }> = [
+    {
+      id: "seed-mkt-click-01",
+      linkId: firstLink.id,
+      recipientId: "seed-mkt-recipient-01",
+      clickedAt: new Date("2026-03-25T10:12:00.000Z"),
+    },
+    {
+      id: "seed-mkt-click-02",
+      linkId: firstLink.id,
+      recipientId: "seed-mkt-recipient-05",
+      clickedAt: new Date("2026-03-25T10:24:00.000Z"),
+    },
+    {
+      id: "seed-mkt-click-03",
+      linkId: secondLink.id,
+      recipientId: "seed-mkt-recipient-09",
+      clickedAt: new Date("2026-03-25T10:31:00.000Z"),
+    },
+    {
+      id: "seed-mkt-click-04",
+      linkId: secondLink.id,
+      recipientId: "seed-mkt-recipient-01",
+      clickedAt: new Date("2026-03-25T10:33:00.000Z"),
+    },
+  ];
+
+  for (const click of clickFixtures) {
+    if (!recipientsById.has(click.recipientId)) {
+      continue;
+    }
+
+    await prisma.marketingCampaignLinkClick.upsert({
+      where: { id: click.id },
+      update: {
+        campaignLinkId: click.linkId,
+        recipientId: click.recipientId,
+        clickedAt: click.clickedAt,
+        ip: "127.0.0.1",
+        userAgent: "seed-agent",
+      },
+      create: {
+        id: click.id,
+        campaignLinkId: click.linkId,
+        recipientId: click.recipientId,
+        clickedAt: click.clickedAt,
+        ip: "127.0.0.1",
+        userAgent: "seed-agent",
+      },
+    });
+  }
+
+  const firstLinkClickCount = await prisma.marketingCampaignLinkClick.count({
+    where: { campaignLinkId: firstLink.id },
+  });
+  const secondLinkClickCount = await prisma.marketingCampaignLinkClick.count({
+    where: { campaignLinkId: secondLink.id },
+  });
+
+  await prisma.marketingCampaignLink.update({
+    where: { id: firstLink.id },
+    data: { clickCount: firstLinkClickCount },
+  });
+  await prisma.marketingCampaignLink.update({
+    where: { id: secondLink.id },
+    data: { clickCount: secondLinkClickCount },
+  });
+
+  await prisma.marketingUnsubscribe.upsert({
+    where: { email: "ines.seed+marketing@bookmyclass.local" },
+    update: {
+      userId: null,
+      unsubscribedAt: new Date("2026-03-25T10:40:00.000Z"),
+    },
+    create: {
+      email: "ines.seed+marketing@bookmyclass.local",
+      userId: null,
+      unsubscribedAt: new Date("2026-03-25T10:40:00.000Z"),
+    },
+  });
+
+  console.info(
+    `[seed] Marketing demo data ready (draft=${draftCampaign.id}, sent=${sentCampaign.id}, recipients=${recipientFixtures.length}).`,
+  );
 }
 
 async function seedUsers() {
@@ -1440,6 +1865,8 @@ async function seedLearningFromJson() {
 }
 
 async function seedDashboardInsightsTraffic(seedClient: { id: string }) {
+  const DASHBOARD_TREND_MARKER = "seed-demo-trend";
+  const DASHBOARD_TREND_CUSTOMER_EMAIL = "seed-demo-trend@yogapilatesfitness.local";
   const teacherPasswordHash = await hash("Teacher123!", 12);
   const clientPasswordHash = await hash("Client123!", 12);
   const now = new Date();
@@ -1667,6 +2094,12 @@ async function seedDashboardInsightsTraffic(seedClient: { id: string }) {
     const next = new Date(base);
     next.setUTCMonth(next.getUTCMonth() + months);
     return next;
+  }
+
+  function startOfUtcDay(value: Date) {
+    const date = new Date(value);
+    date.setUTCHours(0, 0, 0, 0);
+    return date;
   }
 
   for (const definition of classDefinitions) {
@@ -2262,6 +2695,249 @@ async function seedDashboardInsightsTraffic(seedClient: { id: string }) {
       cancelledAt: new Date(bookedAt.getTime() + 60 * 60 * 1000),
     });
   }
+
+  const trendCategory = await upsertClassCategory({
+    slug: "seed-demo-trend-analytics-category",
+    name: "Seed Demo Trend Analytics",
+    description: "Deterministic dashboard trend demo classes.",
+    sortOrder: 99,
+  });
+  const trendClassType = await upsertClassType({
+    slug: "seed-demo-trend-analytics-class",
+    categoryId: trendCategory.id,
+    name: "Seed Demo Trend Session Class",
+    description: "Dashboard trend analytics seed class.",
+    defaultDurationMinutes: 60,
+    defaultCapacity: 42,
+    pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
+    sortOrder: 999,
+  });
+  const trendTemplate = await upsertClassTemplate({
+    slug: "seed-demo-trend-analytics-template",
+    classTypeId: trendClassType.id,
+    defaultTeacherId: staffByName.get("Orsi")!.id,
+    title: "Seed Demo Trend Session",
+    description: "Deterministic trend template",
+    location: "Ixelles Insights Studio",
+    defaultCapacity: 42,
+    defaultDurationMinutes: 60,
+  });
+
+  const trendPrice = priceByLookupKey.get("collective-drop-in-eur-once-v1");
+  if (!trendPrice) {
+    throw new Error("Dashboard trend seed requires collective-drop-in-eur-once-v1 price.");
+  }
+
+  await prisma.session.deleteMany({
+    where: {
+      sessionToken: {
+        startsWith: `${DASHBOARD_TREND_MARKER}-session-`,
+      },
+    },
+  });
+  await prisma.booking.deleteMany({
+    where: {
+      customerEmail: DASHBOARD_TREND_CUSTOMER_EMAIL,
+    },
+  });
+  await prisma.payment.deleteMany({
+    where: {
+      providerReference: {
+        startsWith: `${DASHBOARD_TREND_MARKER}-payment-`,
+      },
+    },
+  });
+  await prisma.order.deleteMany({
+    where: {
+      notes: {
+        startsWith: `${DASHBOARD_TREND_MARKER}-order-`,
+      },
+    },
+  });
+  await prisma.studioSession.deleteMany({
+    where: {
+      classTemplateId: trendTemplate.id,
+      title: {
+        startsWith: "Seed Demo Trend Session ",
+      },
+    },
+  });
+
+  const trendClientPool: string[] = [];
+  for (let index = 0; index < 48; index += 1) {
+    const label = String(index + 1).padStart(2, "0");
+    const trendUser = await prisma.user.upsert({
+      where: {
+        email: `seed-demo-trend-client-${label}@yogapilatesfitness.local`,
+      },
+      update: {
+        name: `Seed Demo Trend Client ${label}`,
+        firstName: "Seed",
+        lastName: `Trend${label}`,
+        role: Role.CLIENT,
+        isActive: true,
+        isInactive: false,
+        emailVerified: new Date("2026-01-01T00:00:00.000Z"),
+      },
+      create: {
+        name: `Seed Demo Trend Client ${label}`,
+        firstName: "Seed",
+        lastName: `Trend${label}`,
+        email: `seed-demo-trend-client-${label}@yogapilatesfitness.local`,
+        role: Role.CLIENT,
+        isActive: true,
+        isInactive: false,
+        emailVerified: new Date("2026-01-01T00:00:00.000Z"),
+      },
+      select: { id: true },
+    });
+    trendClientPool.push(trendUser.id);
+  }
+  const trendToday = startOfUtcDay(new Date());
+  const trendStart = addDays(trendToday, -99);
+
+  for (let dayIndex = 0; dayIndex < 100; dayIndex += 1) {
+    const day = addDays(trendStart, dayIndex);
+    const dayKey = dateKey(day);
+    const weekday = day.getUTCDay();
+    const weekendMultiplier = weekday === 0 || weekday === 6 ? 0.76 : 1;
+    const weeklyWave = Math.sin((dayIndex / 7) * Math.PI * 2);
+    const monthlyWave = Math.sin((dayIndex / 30) * Math.PI * 2);
+    const spike = dayIndex % 19 === 0 || dayIndex % 31 === 0 ? 1.22 : 1;
+
+    const sessionsCount = Math.max(
+      5,
+      Math.round((8 + weeklyWave * 2.6 + monthlyWave * 2.1) * weekendMultiplier * spike),
+    );
+    const rawBookingsCount = Math.max(
+      sessionsCount + 3,
+      Math.round(sessionsCount * (2.1 + ((weeklyWave + 1) / 2) * 0.45)),
+    );
+    const bookingsCount = Math.min(rawBookingsCount, trendClientPool.length);
+    const cancellationsCount = Math.min(
+      Math.max(1, Math.round(bookingsCount * (0.11 + (dayIndex % 14 === 0 ? 0.03 : 0)))),
+      bookingsCount - 1,
+    );
+    const ordersCount = Math.max(1, Math.round(bookingsCount * (0.39 + ((monthlyWave + 1) / 2) * 0.06)));
+
+    for (let sessionIndex = 0; sessionIndex < sessionsCount; sessionIndex += 1) {
+      const createdAt = new Date(day);
+      createdAt.setUTCHours(6 + (sessionIndex % 12), (sessionIndex * 7) % 60, 0, 0);
+      await prisma.session.create({
+        data: {
+          sessionToken: `${DASHBOARD_TREND_MARKER}-session-${dayKey}-${sessionIndex}`,
+          userId: seedClient.id,
+          expires: addDays(createdAt, 30),
+          createdAt,
+        },
+      });
+    }
+
+    const startsAt = new Date(day);
+    startsAt.setUTCHours(18, 0, 0, 0);
+    const trendStudioSession = await upsertStudioSession({
+      classTemplateId: trendTemplate.id,
+      classTypeId: trendClassType.id,
+      teacherId: staffByName.get("Orsi")!.id,
+      title: `Seed Demo Trend Session ${dayKey}`,
+      description: "Deterministic dashboard analytics trend session.",
+      location: trendTemplate.location ?? undefined,
+      startsAt,
+      endsAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
+      capacity: Math.max(bookingsCount + 6, 22),
+    });
+    await prisma.studioSession.update({
+      where: { id: trendStudioSession.id },
+      data: { status: StudioSessionStatus.COMPLETED },
+    });
+
+    for (let bookingIndex = 0; bookingIndex < bookingsCount; bookingIndex += 1) {
+      const bookingClientId = trendClientPool[(dayIndex * 41 + bookingIndex) % trendClientPool.length]!;
+      const isCancelled = bookingIndex < cancellationsCount;
+      const bookedAt = new Date(day);
+      bookedAt.setUTCHours(9, (bookingIndex * 5) % 60, 0, 0);
+      const cancelledAt = isCancelled
+        ? (() => {
+            const value = new Date(day);
+            value.setUTCHours(15, (bookingIndex * 3) % 60, 0, 0);
+            return value;
+          })()
+        : undefined;
+
+      await prisma.booking.create({
+        data: {
+          clientId: bookingClientId,
+          studioSessionId: trendStudioSession.id,
+          status: isCancelled ? BookingStatus.CANCELLED : BookingStatus.CONFIRMED,
+          bookingIntent: BookingIntent.SINGLE_BOOKING,
+          paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+          customerName: "Seed Demo Trend",
+          customerEmail: DASHBOARD_TREND_CUSTOMER_EMAIL,
+          bookedAt,
+          cancelledAt,
+          cancellationReason: isCancelled ? `${DASHBOARD_TREND_MARKER}-cancel-${dayKey}` : null,
+        },
+      });
+    }
+
+    for (let orderIndex = 0; orderIndex < ordersCount; orderIndex += 1) {
+      const orderClientId = trendClientPool[(dayIndex * 13 + orderIndex) % trendClientPool.length]!;
+      const placedAt = new Date(day);
+      placedAt.setUTCHours(11, (orderIndex * 4) % 60, 0, 0);
+      const totalAmountMinor = Math.max(
+        1200,
+        Math.round(
+          trendPrice.unitAmountMinor * (0.92 + ((monthlyWave + 1) / 2) * 0.18) +
+            bookingsCount * 30 +
+            sessionsCount * 22,
+        ),
+      );
+
+      const order = await prisma.order.create({
+        data: {
+          clientId: orderClientId,
+          subtotalAmountMinor: totalAmountMinor,
+          discountAmountMinor: 0,
+          totalAmountMinor: totalAmountMinor,
+          currencyCode: trendPrice.currencyCode,
+          status: OrderStatus.PAID,
+          placedAt,
+          notes: `${DASHBOARD_TREND_MARKER}-order-${dayKey}-${orderIndex}`,
+        },
+      });
+
+      await prisma.orderItem.create({
+        data: {
+          orderId: order.id,
+          productId: trendPrice.productId,
+          priceId: trendPrice.id,
+          quantity: 1,
+          productNameSnapshot: trendPrice.product.name,
+          priceNameSnapshot: trendPrice.name,
+          unitAmountMinor: totalAmountMinor,
+          lineSubtotalAmountMinor: totalAmountMinor,
+          lineDiscountAmountMinor: 0,
+          lineTotalAmountMinor: totalAmountMinor,
+          currencyCode: trendPrice.currencyCode,
+        },
+      });
+
+      await prisma.payment.create({
+        data: {
+          orderId: order.id,
+          status: PaymentStatus.SUCCEEDED,
+          method: PaymentMethod.CARD,
+          provider: PaymentProvider.STRIPE,
+          providerReference: `${DASHBOARD_TREND_MARKER}-payment-${dayKey}-${orderIndex}`,
+          amountMinor: totalAmountMinor,
+          currencyCode: trendPrice.currencyCode,
+          authorizedAt: placedAt,
+          capturedAt: placedAt,
+          createdAt: placedAt,
+        },
+      });
+    }
+  }
 }
 
 async function verifyCleanSeed(clientEmail: string) {
@@ -2365,6 +3041,7 @@ async function main() {
   });
   await seedDashboardInsightsTraffic({ id: users.client.id });
   await seedLearningFromJson();
+  await seedMarketingDemoData({ createdById: users.admin.id });
   await verifyCleanSeed(users.client.email);
 
   console.info("Seed completed with deterministic dashboard insights traffic.");

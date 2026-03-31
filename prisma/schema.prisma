@@ -188,6 +188,27 @@ enum ClientMessageStatus {
   ARCHIVED
 }
 
+enum MarketingCampaignStatus {
+  DRAFT
+  SENDING
+  SENT
+}
+
+enum MarketingAudienceType {
+  ALL_USERS
+  ACTIVE_USERS
+  PAYING_SUBSCRIBERS
+  MANUAL
+}
+
+enum MarketingRecipientStatus {
+  PENDING
+  SENT
+  DELIVERED
+  BOUNCED
+  FAILED
+}
+
 model User {
   id                         String                 @id @default(cuid())
   name                       String
@@ -223,6 +244,9 @@ model User {
   contactMessages            ContactMessage[]       @relation("ContactMessageClient")
   resolvedContactMessages    ContactMessage[]       @relation("ContactMessageResolvedBy")
   clientMessagesUnified      ClientMessage[]        @relation("ClientMessageUser")
+  createdMarketingCampaigns  MarketingCampaign[]    @relation("MarketingCampaignCreatedBy")
+  marketingRecipients        MarketingCampaignRecipient[] @relation("MarketingRecipientUser")
+  marketingUnsubscribes      MarketingUnsubscribe[] @relation("MarketingUnsubscribeUser")
   accounts                   Account[]
   sessions                   Session[]
   passwordResetTokens        PasswordResetToken[]
@@ -837,6 +861,104 @@ model PublicDocument {
   createdAt DateTime @default(now())
 
   @@index([key, isActive])
+}
+
+model MarketingCategory {
+  id          String              @id @default(cuid())
+  name        String
+  slug        String              @unique
+  isActive    Boolean             @default(true)
+  campaigns   MarketingCampaign[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+
+model MarketingCampaign {
+  id                String                  @id @default(cuid())
+  name              String
+  status            MarketingCampaignStatus @default(DRAFT)
+  categoryId        String?
+  audienceType      MarketingAudienceType
+  manualAudienceJson Json?
+  subject           String
+  previewText       String
+  fromName          String
+  fromEmail         String
+  replyTo           String?
+  contentJson       Json
+  htmlSnapshot      String?
+  sentAt            DateTime?
+  createdById       String
+  category          MarketingCategory?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdBy         User                    @relation("MarketingCampaignCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  recipients        MarketingCampaignRecipient[]
+  links             MarketingCampaignLink[]
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([categoryId])
+  @@index([sentAt])
+}
+
+model MarketingCampaignRecipient {
+  id             String                 @id @default(cuid())
+  campaignId     String
+  userId         String?
+  email          String
+  status         MarketingRecipientStatus @default(PENDING)
+  sentAt         DateTime?
+  deliveredAt    DateTime?
+  openedAt       DateTime?
+  clickedAt      DateTime?
+  unsubscribedAt DateTime?
+  campaign       MarketingCampaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user           User?                  @relation("MarketingRecipientUser", fields: [userId], references: [id], onDelete: SetNull)
+  clicks         MarketingCampaignLinkClick[]
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@unique([campaignId, email])
+  @@index([campaignId, status])
+  @@index([email])
+}
+
+model MarketingCampaignLink {
+  id          String                     @id @default(cuid())
+  campaignId  String
+  url         String
+  token       String                     @unique
+  clickCount  Int                        @default(0)
+  campaign    MarketingCampaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  clicks      MarketingCampaignLinkClick[]
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+
+  @@index([campaignId])
+}
+
+model MarketingCampaignLinkClick {
+  id             String                @id @default(cuid())
+  campaignLinkId String
+  recipientId    String?
+  clickedAt      DateTime              @default(now())
+  ip             String?
+  userAgent      String?
+  campaignLink   MarketingCampaignLink @relation(fields: [campaignLinkId], references: [id], onDelete: Cascade)
+  recipient      MarketingCampaignRecipient? @relation(fields: [recipientId], references: [id], onDelete: SetNull)
+
+  @@index([campaignLinkId, clickedAt])
+  @@index([recipientId])
+}
+
+model MarketingUnsubscribe {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  userId         String?
+  unsubscribedAt DateTime @default(now())
+  user           User?    @relation("MarketingUnsubscribeUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
 }
 
 model Account {

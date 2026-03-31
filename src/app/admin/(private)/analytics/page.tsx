@@ -1,5 +1,5 @@
-import AdminPlaceholderPage from "@/components/admin/AdminPlaceholderPage";
+import { redirect } from "next/navigation";
 
 export default function AdminAnalyticsPage() {
-  return <AdminPlaceholderPage title="Analytics" />;
+  redirect("/admin/dashboard");
 }

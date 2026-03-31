@@ -1,5 +1,10 @@
 import type { AdminMetricCard as AdminMetricCardData } from "@/lib/admin/admin-service";
 
+type AdminMetricCardProps = AdminMetricCardData & {
+  isSelected?: boolean;
+  onSelect?: () => void;
+};
+
 const CURRENCY_CODE = "EUR";
 
 function formatMetricValue(value: number, format: AdminMetricCardData["format"]) {
@@ -38,9 +43,9 @@ function getDeltaClassName(direction: AdminMetricCardData["trendDirection"]) {
   return "border-[#d3dbe5] bg-[#f3f6fb] text-[#334155]";
 }
 
-export default function AdminMetricCard(props: AdminMetricCardData) {
+function AdminMetricCardContent(props: AdminMetricCardProps) {
   return (
-    <article className="rounded-xl border border-[#d3dbe5] bg-white p-4">
+    <>
       <p className="text-xs uppercase tracking-wide text-[#5a6d86]">{props.label}</p>
       <div className="mt-2 flex items-start justify-between gap-3">
         <p className="text-2xl font-semibold text-[#1f2735]">{formatMetricValue(props.total, props.format)}</p>
@@ -54,7 +59,28 @@ export default function AdminMetricCard(props: AdminMetricCardData) {
         {formatMetricValue(props.currentDailyValue, props.format)} today - {" "}
         {formatMetricValue(props.previousDailyValue, props.format)} yesterday
       </p>
-    </article>
+    </>
+  );
+}
+
+export default function AdminMetricCard(props: AdminMetricCardProps) {
+  if (!props.onSelect) {
+    return (
+      <article className="rounded-xl border border-[#d3dbe5] bg-white p-4">
+        <AdminMetricCardContent {...props} />
+      </article>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={props.onSelect}
+      className="relative rounded-xl border border-[#d3dbe5] bg-white p-4 text-left transition hover:border-[#9fb4cd]"
+    >
+      <AdminMetricCardContent {...props} />
+      {props.isSelected ? <span className="absolute inset-x-0 bottom-0 h-1 rounded-b-xl bg-[#2563eb]" aria-hidden="true" /> : null}
+    </button>
   );
 }
 

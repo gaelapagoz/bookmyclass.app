@@ -2,14 +2,17 @@ import Link from "next/link";
 
 import AdminAtRiskClientsCard from "@/components/admin/AdminAtRiskClientsCard";
 import AdminDashboardPeriodSelect from "@/components/admin/AdminDashboardPeriodSelect";
-import AdminMetricCard from "@/components/admin/AdminMetricCard";
+import AdminDashboardSalesAnalytics from "@/components/admin/AdminDashboardSalesAnalytics";
 import AdminStaffPerformanceTable from "@/components/admin/AdminStaffPerformanceTable";
 import AdminTopClassSessionsCard from "@/components/admin/AdminTopClassSessionsCard";
 import AdminTopClientsCard from "@/components/admin/AdminTopClientsCard";
+import MarketingAnalyticsSummary from "@/components/admin/marketing/MarketingAnalyticsSummary";
 import {
   type AdminPeriod,
   getAdminDashboardData,
   getAdminDashboardInsights,
+  getDashboardTrendData,
+  getMarketingAnalytics,
   getOperationalMetricCards,
 } from "@/lib/admin/admin-service";
 
@@ -34,10 +37,12 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   try {
     const { period: rawPeriod } = await searchParams;
     const period = resolvePeriod(rawPeriod);
-    const [data, metricCards, insights] = await Promise.all([
+    const [data, metricCards, trendData, insights, marketingAnalytics] = await Promise.all([
       getAdminDashboardData(),
       getOperationalMetricCards(period),
+      getDashboardTrendData(period),
       getAdminDashboardInsights(period),
+      getMarketingAnalytics(period),
     ]);
 
     return (
@@ -50,18 +55,13 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
         </header>
 
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold text-[#1f2735]">Operational Metrics</h2>
+          <h2 className="text-lg font-semibold text-[#1f2735]">Sales Analytics</h2>
           <AdminDashboardPeriodSelect period={period} />
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            {metricCards.map((card) => {
-              const { key, ...cardProps } = card;
-              return <AdminMetricCard key={key} {...cardProps} />;
-            })}
-          </div>
+          <AdminDashboardSalesAnalytics cards={metricCards} trend={trendData} period={period} />
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-[#1f2735]">Dashboard Insights</h2>
+          <h2 className="text-lg font-semibold text-[#1f2735]">Booking Analytics</h2>
 
           <div className="grid gap-4 xl:grid-cols-3">
             <AdminTopClassSessionsCard items={insights.topClassSessions} className="xl:col-span-2" />
@@ -97,6 +97,11 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
           </div>
 
           <AdminStaffPerformanceTable items={insights.staffPerformance} />
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold text-[#1f2735]">Marketing Analytics</h2>
+          <MarketingAnalyticsSummary summary={marketingAnalytics} />
         </section>
       </section>
     );

@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import AdminPagination from "@/components/admin/AdminPagination";
 import { getAdminSubscriptionsPageData } from "@/lib/admin/admin-service";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -111,31 +112,11 @@ export default async function AdminSubscriptionsPage({ searchParams }: { searchP
           </div>
         )}
 
-        {data.totalItems > data.pageSize ? (
-          <div className="flex items-center justify-between rounded-xl border border-[#d3dbe5] bg-white px-4 py-3 text-sm text-[#334155]">
-            <p>
-              Page {data.page} of {data.totalPages}
-            </p>
-            <div className="flex items-center gap-2">
-              {data.page > 1 ? (
-                <Link
-                  href={buildPageHref(params, data.page - 1)}
-                  className="rounded-md border border-[#d3dbe5] px-3 py-1.5 hover:bg-[#f3f6fb]"
-                >
-                  Previous
-                </Link>
-              ) : null}
-              {data.page < data.totalPages ? (
-                <Link
-                  href={buildPageHref(params, data.page + 1)}
-                  className="rounded-md border border-[#d3dbe5] px-3 py-1.5 hover:bg-[#f3f6fb]"
-                >
-                  Next
-                </Link>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
+        <AdminPagination
+          page={data.page}
+          totalPages={data.totalPages}
+          onChange={(nextPage) => buildPageHref(params, nextPage)}
+        />
       </section>
     );
   } catch {
