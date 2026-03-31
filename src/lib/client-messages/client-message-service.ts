@@ -89,6 +89,14 @@ export async function listClientMessages(filters: ListClientMessagesFilters = {}
   });
 }
 
+export async function getUnreadClientMessagesCount() {
+  return prisma.clientMessage.count({
+    where: {
+      status: ClientMessageStatus.NEW,
+    },
+  });
+}
+
 export async function updateClientMessageStatus(id: string, status: ClientMessageStatus) {
   return prisma.clientMessage.update({
     where: { id },

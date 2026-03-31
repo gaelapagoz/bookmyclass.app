@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
 import { getAdminSessionsData, type AdminSessionItem } from "@/lib/admin/admin-service";
 
@@ -116,7 +116,7 @@ export default async function AdminSessionsPage({
       <section className="space-y-4">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold text-[#1f2735]">Sessions</h1>
+            <h1 className="text-2xl font-semibold text-[#1f2735]">Calendar</h1>
             <p className="mt-1 text-sm text-[#4b5a72]">Weekly scheduling calendar for studio operations.</p>
           </div>
 
@@ -190,7 +190,7 @@ export default async function AdminSessionsPage({
                                 className="block rounded-md border border-[#bfd1e7] bg-[#eff5fb] px-2 py-1.5 text-xs text-[#1e293b] hover:bg-[#e2edf9]"
                               >
                                 <p className="font-semibold leading-tight">
-                                  {session.className} · {session.title}
+                                  {session.className} - {session.title}
                                 </p>
                                 <p className="mt-1 text-[11px] text-[#334155]">
                                   {formatTime(session.startsAt)} - {formatTime(session.endsAt)}
@@ -219,9 +219,10 @@ export default async function AdminSessionsPage({
   } catch {
     return (
       <section className="rounded-xl border border-[#d3dbe5] bg-white p-6">
-        <h1 className="text-2xl font-semibold text-[#1f2735]">Sessions</h1>
-        <p className="mt-2 text-sm text-[#7b2d2d]">Unable to load sessions right now.</p>
+        <h1 className="text-2xl font-semibold text-[#1f2735]">Calendar</h1>
+        <p className="mt-2 text-sm text-[#7b2d2d]">Unable to load calendar right now.</p>
       </section>
     );
   }
 }
+

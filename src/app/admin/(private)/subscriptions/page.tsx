@@ -1,6 +1,35 @@
 import Link from "next/link";
 
-import { getAdminSubscriptionsData } from "@/lib/admin/admin-service";
+import { getAdminSubscriptionsPageData } from "@/lib/admin/admin-service";
+
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+function parsePage(value: string | string[] | undefined): number {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return 1;
+  }
+  return Math.floor(parsed);
+}
+
+function buildPageHref(params: Record<string, string | string[] | undefined>, page: number) {
+  const query = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (key === "page") {
+      continue;
+    }
+
+    const normalized = Array.isArray(value) ? value[0] : value;
+    if (normalized) {
+      query.set(key, normalized);
+    }
+  }
+
+  query.set("page", String(page));
+  return `/admin/subscriptions?${query.toString()}`;
+}
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -13,9 +42,12 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
-export default async function AdminSubscriptionsPage() {
+export default async function AdminSubscriptionsPage({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const page = parsePage(params.page);
+
   try {
-    const subscriptions = await getAdminSubscriptionsData();
+    const data = await getAdminSubscriptionsPageData({ page, pageSize: 20 });
 
     return (
       <section className="space-y-4">
@@ -29,10 +61,8 @@ export default async function AdminSubscriptionsPage() {
           </Link>
         </header>
 
-        {subscriptions.length === 0 ? (
-          <div className="rounded-xl border border-[#d3dbe5] bg-white p-5 text-sm text-[#4b5a72]">
-            No subscriptions found.
-          </div>
+        {data.items.length === 0 ? (
+          <div className="rounded-xl border border-[#d3dbe5] bg-white p-5 text-sm text-[#4b5a72]">No subscriptions found.</div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-[#d3dbe5] bg-white">
             <table className="min-w-full text-sm">
@@ -47,7 +77,7 @@ export default async function AdminSubscriptionsPage() {
                 </tr>
               </thead>
               <tbody>
-                {subscriptions.map((item) => (
+                {data.items.map((item) => (
                   <tr key={item.id} className="border-t border-[#e2e8f0] text-[#334155]">
                     <td className="px-3 py-2 font-medium">
                       {item.clientName}
@@ -80,6 +110,32 @@ export default async function AdminSubscriptionsPage() {
             </table>
           </div>
         )}
+
+        {data.totalItems > data.pageSize ? (
+          <div className="flex items-center justify-between rounded-xl border border-[#d3dbe5] bg-white px-4 py-3 text-sm text-[#334155]">
+            <p>
+              Page {data.page} of {data.totalPages}
+            </p>
+            <div className="flex items-center gap-2">
+              {data.page > 1 ? (
+                <Link
+                  href={buildPageHref(params, data.page - 1)}
+                  className="rounded-md border border-[#d3dbe5] px-3 py-1.5 hover:bg-[#f3f6fb]"
+                >
+                  Previous
+                </Link>
+              ) : null}
+              {data.page < data.totalPages ? (
+                <Link
+                  href={buildPageHref(params, data.page + 1)}
+                  className="rounded-md border border-[#d3dbe5] px-3 py-1.5 hover:bg-[#f3f6fb]"
+                >
+                  Next
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </section>
     );
   } catch {

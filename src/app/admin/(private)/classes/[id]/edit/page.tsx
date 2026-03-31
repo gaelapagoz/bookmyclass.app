@@ -35,9 +35,9 @@ export default async function AdminClassEditPage({
   return (
     <section className="space-y-4">
       <header className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-[#1f2735]">Edit Class</h1>
+        <h1 className="text-2xl font-semibold text-[#1f2735]">Edit Booking Service</h1>
         <Link href="/admin/classes" className="text-sm text-[#2a4f78] underline underline-offset-4">
-          Back to classes
+          Back to booking services
         </Link>
       </header>
 
@@ -160,3 +160,4 @@ export default async function AdminClassEditPage({
     </section>
   );
 }
+

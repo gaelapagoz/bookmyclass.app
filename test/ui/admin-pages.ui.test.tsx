@@ -34,7 +34,8 @@ vi.mock("@/lib/admin/admin-service", () => ({
   getAdminPlansData: vi.fn(),
   getAdminBookingsData: vi.fn(),
   getAdminUsersData: vi.fn(),
-  getAdminSubscriptionsData: vi.fn(),
+  getAdminSubscriptionsPageData: vi.fn(),
+  getAdminOrdersPageData: vi.fn(),
   getAdminOnlineLearningData: vi.fn(),
 }));
 
@@ -47,7 +48,8 @@ import {
   getAdminOnlineLearningData,
   getAdminPlansData,
   getAdminSessionsData,
-  getAdminSubscriptionsData,
+  getAdminSubscriptionsPageData,
+  getAdminOrdersPageData,
   getAdminUsersData,
 } from "@/lib/admin/admin-service";
 import { listClientMessages } from "@/lib/client-messages/client-message-service";
@@ -64,6 +66,7 @@ import AdminPlansPage from "../../src/app/admin/(private)/plans/page";
 import AdminBookingsPage from "../../src/app/admin/(private)/bookings/page";
 import AdminUsersPage from "../../src/app/admin/(private)/users/page";
 import AdminSubscriptionsPage from "../../src/app/admin/(private)/subscriptions/page";
+import AdminOrdersPage from "../../src/app/admin/(private)/orders/page";
 import AdminOnlineLearningPage from "../../src/app/admin/(private)/online-learning/page";
 import AdminInboxPage from "../../src/app/admin/(private)/inbox/page";
 import AdminManageSitePage from "../../src/app/admin/(private)/manage-site/page";
@@ -276,7 +279,8 @@ describe("Admin pages branching", () => {
 
     render(await AdminClassesPage());
 
-    expect(screen.getByText("No classes found.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Booking Services" })).toBeInTheDocument();
+    expect(screen.getByText("No booking services found.")).toBeInTheDocument();
   });
 
   it("renders sessions error state", async () => {
@@ -288,7 +292,7 @@ describe("Admin pages branching", () => {
       }),
     );
 
-    expect(screen.getByText("Unable to load sessions right now.")).toBeInTheDocument();
+    expect(screen.getByText("Unable to load calendar right now.")).toBeInTheDocument();
   });
 
   it("renders plans data with clear pricing/billing columns", async () => {
@@ -350,6 +354,7 @@ describe("Admin pages branching", () => {
 
     render(await AdminBookingsPage());
 
+    expect(screen.getByRole("heading", { name: "Booking List" })).toBeInTheDocument();
     expect(screen.getByText("Jane")).toBeInTheDocument();
     expect(screen.getByText("Morning Flow")).toBeInTheDocument();
   });
@@ -376,45 +381,133 @@ describe("Admin pages branching", () => {
   });
 
   it("renders subscriptions data state", async () => {
-    vi.mocked(getAdminSubscriptionsData).mockResolvedValue([
-      {
-        id: "s1",
-        clientName: "Client A",
-        clientEmail: "client@example.test",
-        productName: "Monthly Unlimited",
-        priceName: "Monthly",
-        status: "ACTIVE",
-        startsAt: new Date().toISOString(),
-        currentPeriodStart: new Date().toISOString(),
-        currentPeriodEnd: new Date(Date.now() + 86400000).toISOString(),
-        cancelAtPeriodEnd: false,
-        cancelledAt: null,
-        endedAt: null,
-        provider: "STRIPE",
-      },
-    ]);
+    vi.mocked(getAdminSubscriptionsPageData).mockResolvedValue({
+      page: 1,
+      pageSize: 20,
+      totalItems: 1,
+      totalPages: 1,
+      items: [
+        {
+          id: "s1",
+          clientName: "Client A",
+          clientEmail: "client@example.test",
+          productName: "Monthly Unlimited",
+          priceName: "Monthly",
+          status: "ACTIVE",
+          startsAt: new Date().toISOString(),
+          currentPeriodStart: new Date().toISOString(),
+          currentPeriodEnd: new Date(Date.now() + 86400000).toISOString(),
+          cancelAtPeriodEnd: false,
+          cancelledAt: null,
+          endedAt: null,
+          provider: "STRIPE",
+        },
+      ],
+    });
 
-    render(await AdminSubscriptionsPage());
+    render(await AdminSubscriptionsPage({ searchParams: Promise.resolve({}) }));
 
+    expect(vi.mocked(getAdminSubscriptionsPageData)).toHaveBeenCalledWith({ page: 1, pageSize: 20 });
     expect(screen.getByRole("heading", { name: "Subscriptions" })).toBeInTheDocument();
     expect(screen.getByText("Client A")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Create subscription" })).toBeInTheDocument();
   });
 
-  it("renders subscriptions empty state", async () => {
-    vi.mocked(getAdminSubscriptionsData).mockResolvedValue([]);
+  it("renders subscriptions pagination when more than one page exists", async () => {
+    vi.mocked(getAdminSubscriptionsPageData).mockResolvedValue({
+      page: 2,
+      pageSize: 20,
+      totalItems: 45,
+      totalPages: 3,
+      items: [
+        {
+          id: "s2",
+          clientName: "Client B",
+          clientEmail: "clientb@example.test",
+          productName: "Monthly Unlimited",
+          priceName: "Monthly",
+          status: "ACTIVE",
+          startsAt: new Date().toISOString(),
+          currentPeriodStart: new Date().toISOString(),
+          currentPeriodEnd: new Date(Date.now() + 86400000).toISOString(),
+          cancelAtPeriodEnd: false,
+          cancelledAt: null,
+          endedAt: null,
+          provider: "STRIPE",
+        },
+      ],
+    });
 
-    render(await AdminSubscriptionsPage());
+    render(await AdminSubscriptionsPage({ searchParams: Promise.resolve({ page: "2", status: "active" }) }));
+
+    expect(vi.mocked(getAdminSubscriptionsPageData)).toHaveBeenCalledWith({ page: 2, pageSize: 20 });
+    expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute("href", "/admin/subscriptions?status=active&page=1");
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/admin/subscriptions?status=active&page=3");
+  });
+
+  it("renders subscriptions empty state", async () => {
+    vi.mocked(getAdminSubscriptionsPageData).mockResolvedValue({
+      page: 1,
+      pageSize: 20,
+      totalItems: 0,
+      totalPages: 1,
+      items: [],
+    });
+
+    render(await AdminSubscriptionsPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText("No subscriptions found.")).toBeInTheDocument();
   });
 
   it("renders subscriptions error state", async () => {
-    vi.mocked(getAdminSubscriptionsData).mockRejectedValue(new Error("DB error"));
+    vi.mocked(getAdminSubscriptionsPageData).mockRejectedValue(new Error("DB error"));
 
-    render(await AdminSubscriptionsPage());
+    render(await AdminSubscriptionsPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText("Unable to load subscriptions right now.")).toBeInTheDocument();
+  });
+
+  it("renders orders filter and pagination state", async () => {
+    vi.mocked(getAdminOrdersPageData).mockResolvedValue({
+      filter: "last30Days",
+      page: 2,
+      pageSize: 20,
+      totalItems: 41,
+      totalPages: 3,
+      items: [
+        {
+          id: "oi-1",
+          orderId: "order-1",
+          purchasedAt: new Date().toISOString(),
+          clientName: "Client A",
+          clientEmail: "client@example.test",
+          productName: "Pilates Pack",
+          priceName: "10 Credits",
+          quantity: 1,
+          lineTotalAmountMinor: 12900,
+          currencyCode: "EUR",
+        },
+      ],
+    });
+
+    render(await AdminOrdersPage({ searchParams: Promise.resolve({ page: "2", filter: "last30Days" }) }));
+
+    expect(vi.mocked(getAdminOrdersPageData)).toHaveBeenCalledWith({ page: 2, filter: "last30Days", pageSize: 20 });
+    expect(screen.getByRole("heading", { name: "Orders" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Filter")).toBeInTheDocument();
+    const resetPageInput = screen.getByDisplayValue("1");
+    expect(resetPageInput).toHaveAttribute("name", "page");
+    expect(screen.getByDisplayValue("Last 30 days")).toBeInTheDocument();
+    expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute(
+      "href",
+      "/admin/orders?page=1&filter=last30Days",
+    );
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute(
+      "href",
+      "/admin/orders?page=3&filter=last30Days",
+    );
   });
 
   it("renders inbox data and message status controls", async () => {
@@ -522,6 +615,13 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Unable to load online learning right now.")).toBeInTheDocument();
   });
 });
+
+
+
+
+
+
+
 
 
 

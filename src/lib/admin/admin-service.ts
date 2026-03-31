@@ -227,6 +227,38 @@ export type AdminSubscriptionItem = {
   provider: PaymentProvider;
 };
 
+export type AdminOrderDateFilter = "all" | "last7Days" | "last30Days" | "last90Days";
+
+export type AdminOrdersPageItem = {
+  id: string;
+  orderId: string;
+  purchasedAt: string;
+  clientName: string;
+  clientEmail: string;
+  productName: string;
+  priceName: string;
+  quantity: number;
+  lineTotalAmountMinor: number;
+  currencyCode: string;
+};
+
+export type AdminOrdersPageData = {
+  filter: AdminOrderDateFilter;
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  items: AdminOrdersPageItem[];
+};
+
+export type AdminSubscriptionsPageData = {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  items: AdminSubscriptionItem[];
+};
+
 export type AdminLearningProgramItem = {
   id: string;
   legacyId: string;
@@ -406,6 +438,19 @@ export function getRollingPeriodRange(period: AdminPeriod, now: Date): AdminPeri
     todayStart,
     yesterdayStart,
   };
+}
+
+function getAdminOrderFilterStart(filter: AdminOrderDateFilter, now: Date): Date | null {
+  if (filter === "last7Days") {
+    return addDays(now, -7);
+  }
+  if (filter === "last30Days") {
+    return addDays(now, -30);
+  }
+  if (filter === "last90Days") {
+    return addDays(now, -90);
+  }
+  return null;
 }
 
 type MetricDefinition = {
@@ -2439,53 +2484,144 @@ export async function updateAdminUser(
 }
 
 export async function getAdminSubscriptionsData(): Promise<AdminSubscriptionItem[]> {
-  const rows = await prisma.subscriptionContract.findMany({
-    orderBy: [{ createdAt: "desc" }],
-    take: 150,
-    select: {
-      id: true,
-      status: true,
-      startsAt: true,
-      currentPeriodStart: true,
-      currentPeriodEnd: true,
-      cancelAtPeriodEnd: true,
-      cancelledAt: true,
-      endedAt: true,
-      provider: true,
-      client: {
-        select: {
-          name: true,
-          email: true,
-        },
-      },
-      product: {
-        select: {
-          name: true,
-        },
-      },
-      price: {
-        select: {
-          name: true,
-        },
-      },
-    },
-  });
+  const result = await getAdminSubscriptionsPageData({ page: 1, pageSize: 150 });
+  return result.items;
+}
 
-  return rows.map((row) => ({
-    id: row.id,
-    clientName: row.client.name,
-    clientEmail: row.client.email,
-    productName: row.product.name,
-    priceName: row.price.name,
-    status: row.status,
-    startsAt: row.startsAt.toISOString(),
-    currentPeriodStart: row.currentPeriodStart.toISOString(),
-    currentPeriodEnd: row.currentPeriodEnd.toISOString(),
-    cancelAtPeriodEnd: row.cancelAtPeriodEnd,
-    cancelledAt: row.cancelledAt?.toISOString() ?? null,
-    endedAt: row.endedAt?.toISOString() ?? null,
-    provider: row.provider,
-  }));
+export async function getAdminOrdersPageData(input: {
+  page: number;
+  pageSize?: number;
+  filter: AdminOrderDateFilter;
+}): Promise<AdminOrdersPageData> {
+  const pageSize = Math.max(1, Math.min(input.pageSize ?? 20, 100));
+  const page = Math.max(1, Math.floor(input.page));
+  const now = new Date();
+  const start = getAdminOrderFilterStart(input.filter, now);
+  const skip = (page - 1) * pageSize;
+
+  const where = {
+    order: {
+      status: OrderStatus.PAID,
+      ...(start ? { placedAt: { gte: start } } : {}),
+    },
+  };
+
+  const [totalItems, rows] = await prisma.$transaction([
+    prisma.orderItem.count({ where }),
+    prisma.orderItem.findMany({
+      where,
+      orderBy: [{ order: { placedAt: "desc" } }, { createdAt: "desc" }],
+      skip,
+      take: pageSize,
+      select: {
+        id: true,
+        quantity: true,
+        productNameSnapshot: true,
+        priceNameSnapshot: true,
+        lineTotalAmountMinor: true,
+        currencyCode: true,
+        order: {
+          select: {
+            id: true,
+            placedAt: true,
+            client: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  return {
+    filter: input.filter,
+    page,
+    pageSize,
+    totalItems,
+    totalPages: Math.max(1, Math.ceil(totalItems / pageSize)),
+    items: rows.map((row) => ({
+      id: row.id,
+      orderId: row.order.id,
+      purchasedAt: row.order.placedAt.toISOString(),
+      clientName: row.order.client.name,
+      clientEmail: row.order.client.email,
+      productName: row.productNameSnapshot,
+      priceName: row.priceNameSnapshot,
+      quantity: row.quantity,
+      lineTotalAmountMinor: row.lineTotalAmountMinor,
+      currencyCode: row.currencyCode,
+    })),
+  };
+}
+
+export async function getAdminSubscriptionsPageData(input: {
+  page: number;
+  pageSize?: number;
+}): Promise<AdminSubscriptionsPageData> {
+  const pageSize = Math.max(1, Math.min(input.pageSize ?? 20, 100));
+  const page = Math.max(1, Math.floor(input.page));
+  const skip = (page - 1) * pageSize;
+
+  const [totalItems, rows] = await prisma.$transaction([
+    prisma.subscriptionContract.count(),
+    prisma.subscriptionContract.findMany({
+      orderBy: [{ createdAt: "desc" }],
+      skip,
+      take: pageSize,
+      select: {
+        id: true,
+        status: true,
+        startsAt: true,
+        currentPeriodStart: true,
+        currentPeriodEnd: true,
+        cancelAtPeriodEnd: true,
+        cancelledAt: true,
+        endedAt: true,
+        provider: true,
+        client: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+        product: {
+          select: {
+            name: true,
+          },
+        },
+        price: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  return {
+    page,
+    pageSize,
+    totalItems,
+    totalPages: Math.max(1, Math.ceil(totalItems / pageSize)),
+    items: rows.map((row) => ({
+      id: row.id,
+      clientName: row.client.name,
+      clientEmail: row.client.email,
+      productName: row.product.name,
+      priceName: row.price.name,
+      status: row.status,
+      startsAt: row.startsAt.toISOString(),
+      currentPeriodStart: row.currentPeriodStart.toISOString(),
+      currentPeriodEnd: row.currentPeriodEnd.toISOString(),
+      cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+      cancelledAt: row.cancelledAt?.toISOString() ?? null,
+      endedAt: row.endedAt?.toISOString() ?? null,
+      provider: row.provider,
+    })),
+  };
 }
 
 export async function getAdminSubscriptionById(id: string) {

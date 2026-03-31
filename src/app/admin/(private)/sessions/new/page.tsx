@@ -13,9 +13,9 @@ export default async function AdminSessionCreatePage({ searchParams }: { searchP
   return (
     <section className="space-y-4">
       <header className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-[#1f2735]">Create Session</h1>
+        <h1 className="text-2xl font-semibold text-[#1f2735]">Create Calendar Session</h1>
         <Link href="/admin/sessions" className="text-sm text-[#2a4f78] underline underline-offset-4">
-          Back to sessions
+          Back to calendar
         </Link>
       </header>
 
@@ -83,3 +83,4 @@ export default async function AdminSessionCreatePage({ searchParams }: { searchP
     </section>
   );
 }
+

@@ -25,12 +25,20 @@ vi.mock("@/auth", () => ({
   auth: vi.fn(async () => null),
 }));
 
+vi.mock("@/lib/client-messages/client-message-service", () => ({
+  getUnreadClientMessagesCount: vi.fn(async () => 0),
+}));
+
+import { usePathname } from "next/navigation";
 import { auth } from "@/auth";
+import { getUnreadClientMessagesCount } from "@/lib/client-messages/client-message-service";
 import AdminPrivateLayout from "../../src/app/admin/(private)/layout";
 
 describe("/admin private layout", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(usePathname).mockReturnValue("/admin/dashboard");
+    vi.mocked(getUnreadClientMessagesCount).mockResolvedValue(0);
   });
 
   it("redirects unauthenticated users to /admin", async () => {
@@ -60,7 +68,7 @@ describe("/admin private layout", () => {
     ).rejects.toThrow("NEXT_REDIRECT:/admin?error=unauthorized");
   });
 
-  it("renders sidebar and content for admin users", async () => {
+  it("renders grouped sidebar and content for admin users", async () => {
     vi.mocked(auth).mockResolvedValue({
       user: {
         id: "admin-1",
@@ -78,32 +86,103 @@ describe("/admin private layout", () => {
 
     expect(screen.getByText("Admin")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveClass("bg-[#1d3652]");
     expect(screen.getByRole("link", { name: "Users" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sessions" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Bookings" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Subscriptions" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Inbox" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Classes" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Plans" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Manage Site" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Booking+" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sales+" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Catalog+" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Marketing+" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Analytics" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Online Learning" })).toBeInTheDocument();
-    const navOrder = screen
-      .getAllByRole("link")
-      .map((element) => element.textContent?.trim())
-      .filter(Boolean);
-    expect(navOrder).toEqual([
-      "Dashboard",
-      "Users",
-      "Sessions",
-      "Bookings",
-      "Subscriptions",
-      "Inbox",
-      "Classes",
-      "Plans",
-      "Manage Site",
-      "Online Learning",
-    ]);
+    expect(screen.getByRole("link", { name: "Manage Site" })).toBeInTheDocument();
     expect(screen.getByText("Admin Content")).toBeInTheDocument();
     expect(screen.queryByText("Book a Class")).not.toBeInTheDocument();
   });
+
+  it("auto-expands parent group when current path matches child route", async () => {
+    vi.mocked(usePathname).mockReturnValue("/admin/subscriptions");
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: "admin-1",
+        email: "admin@example.test",
+        role: "ADMIN",
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    render(
+      await AdminPrivateLayout({
+        children: <div>Admin Content</div>,
+      }),
+    );
+
+    expect(screen.getByRole("button", { name: "Sales-" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: "Orders" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Subscriptions" })).toBeInTheDocument();
+  });
+
+  it("auto-expands booking group for calendar deep links", async () => {
+    vi.mocked(usePathname).mockReturnValue("/admin/sessions");
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: "admin-1",
+        email: "admin@example.test",
+        role: "ADMIN",
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    render(
+      await AdminPrivateLayout({
+        children: <div>Admin Content</div>,
+      }),
+    );
+
+    expect(screen.getByRole("button", { name: "Booking-" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: "Calendar" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Booking List" })).toBeInTheDocument();
+  });
+  it("hides inbox unread badge when unread count is 0", async () => {
+    vi.mocked(getUnreadClientMessagesCount).mockResolvedValue(0);
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: "admin-1",
+        email: "admin@example.test",
+        role: "ADMIN",
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    render(
+      await AdminPrivateLayout({
+        children: <div>Admin Content</div>,
+      }),
+    );
+
+    expect(screen.queryByLabelText(/Inbox unread/i)).not.toBeInTheDocument();
+  });
+
+  it("shows inbox unread badge when unread count is greater than 0", async () => {
+    vi.mocked(getUnreadClientMessagesCount).mockResolvedValue(3);
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: "admin-1",
+        email: "admin@example.test",
+        role: "ADMIN",
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    render(
+      await AdminPrivateLayout({
+        children: <div>Admin Content</div>,
+      }),
+    );
+
+    expect(screen.getByLabelText("Inbox unread 3")).toBeInTheDocument();
+  });
 });
+
+
+

@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
 import { getAdminBookingsData } from "@/lib/admin/admin-service";
 
@@ -17,8 +17,8 @@ export default async function AdminBookingsPage() {
       <section className="space-y-4">
         <header className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-[#1f2735]">Bookings</h1>
-            <p className="mt-1 text-sm text-[#4b5a72]">Track booking status and customer information.</p>
+            <h1 className="text-2xl font-semibold text-[#1f2735]">Booking List</h1>
+            <p className="mt-1 text-sm text-[#4b5a72]">Track booking-list status and customer information.</p>
           </div>
         </header>
 
@@ -69,10 +69,11 @@ export default async function AdminBookingsPage() {
   } catch {
     return (
       <section className="rounded-xl border border-[#d3dbe5] bg-white p-6">
-        <h1 className="text-2xl font-semibold text-[#1f2735]">Bookings</h1>
-        <p className="mt-2 text-sm text-[#7b2d2d]">Unable to load bookings right now.</p>
+        <h1 className="text-2xl font-semibold text-[#1f2735]">Booking List</h1>
+        <p className="mt-2 text-sm text-[#7b2d2d]">Unable to load booking list right now.</p>
       </section>
     );
   }
 }
+
 
