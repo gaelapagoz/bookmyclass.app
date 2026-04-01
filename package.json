@@ -23,6 +23,7 @@
     "@auth/prisma-adapter": "^2.11.1",
     "@prisma/adapter-pg": "^7.5.0",
     "@prisma/client": "^7.5.0",
+    "@sentry/nextjs": "^10.47.0",
     "@tiptap/extension-link": "^3.22.0",
     "@tiptap/extension-text-align": "^3.22.0",
     "@tiptap/extension-text-style": "^3.22.0",

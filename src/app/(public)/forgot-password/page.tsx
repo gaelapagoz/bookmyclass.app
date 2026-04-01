@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import * as Sentry from "@sentry/nextjs";
 import { auth } from "@/auth";
 import { PasswordServiceError, requestPasswordReset } from "@/lib/auth/password-service";
 
@@ -26,30 +27,37 @@ export default async function ForgotPasswordPage({
   async function requestResetAction(formData: FormData) {
     "use server";
 
-    const email = String(formData.get("email") ?? "").trim().toLowerCase();
-    if (process.env.NODE_ENV !== "production" && process.env.AUTH_DEBUG_PASSWORD_RESET === "1") {
-      console.info("[forgot-password] request-entered", {
-        hasEmail: email.length > 0,
-        hasResendApiKey: Boolean(process.env.RESEND_API_KEY?.trim()),
-        hasEmailFrom: Boolean(process.env.EMAIL_FROM?.trim()),
-        hasAppUrl: Boolean(process.env.APP_URL?.trim()),
-      });
-    }
+    return Sentry.withServerActionInstrumentation(
+      "auth.requestResetAction",
+      { recordResponse: false },
+      async () => {
+        const email = String(formData.get("email") ?? "").trim().toLowerCase();
+        if (process.env.NODE_ENV !== "production" && process.env.AUTH_DEBUG_PASSWORD_RESET === "1") {
+          console.info("[forgot-password] request-entered", {
+            hasEmail: email.length > 0,
+            hasResendApiKey: Boolean(process.env.RESEND_API_KEY?.trim()),
+            hasEmailFrom: Boolean(process.env.EMAIL_FROM?.trim()),
+            hasAppUrl: Boolean(process.env.APP_URL?.trim()),
+          });
+        }
 
-    try {
-      await requestPasswordReset({
-        email,
-        appUrl: process.env.APP_URL,
-      });
-    } catch (error) {
-      console.error("[forgot-password] request failed", { error });
-      if (error instanceof PasswordServiceError && error.code === "PASSWORD_RESET_DELIVERY_FAILED") {
-        redirect("/forgot-password?error=delivery_failed");
+        try {
+          await requestPasswordReset({
+            email,
+            appUrl: process.env.APP_URL,
+          });
+        } catch (error) {
+          Sentry.captureException(error);
+          console.error("[forgot-password] request failed", { error });
+          if (error instanceof PasswordServiceError && error.code === "PASSWORD_RESET_DELIVERY_FAILED") {
+            redirect("/forgot-password?error=delivery_failed");
+          }
+          redirect("/forgot-password?error=request_failed");
+        }
+
+        redirect("/forgot-password?sent=1");
       }
-      redirect("/forgot-password?error=request_failed");
-    }
-
-    redirect("/forgot-password?sent=1");
+    );
   }
 
   return (
@@ -103,3 +111,4 @@ export default async function ForgotPasswordPage({
     </main>
   );
 }
+

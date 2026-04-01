@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { auth } from "../../../../../auth";
 import {
   BookingPaymentOptionsError,
@@ -58,7 +59,8 @@ export async function POST(
   let rawBody: unknown;
   try {
     rawBody = await request.json();
-  } catch {
+  } catch (error) {
+    Sentry.captureException(error);
     return Response.json({ error: "Invalid JSON payload." }, { status: 400 });
   }
 
@@ -92,9 +94,11 @@ export async function POST(
     return Response.json({ selection }, { status: 200 });
   } catch (error) {
     if (error instanceof BookingPaymentOptionsError) {
+      Sentry.captureException(error);
       return Response.json({ error: error.message, code: error.code }, { status: toStatus(error.code) });
     }
 
+    Sentry.captureException(error);
     return Response.json({ error: "Unexpected error while applying selection." }, { status: 500 });
   }
 }

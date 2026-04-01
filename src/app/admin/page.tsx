@@ -1,7 +1,8 @@
-﻿import Image from "next/image";
+import Image from "next/image";
 import Link from "next/link";
 import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
+import * as Sentry from "@sentry/nextjs";
 
 import { auth, signIn } from "@/auth";
 import { isAdminRole } from "@/lib/auth/admin-access";
@@ -14,26 +15,33 @@ type SearchParams = Promise<{
 export async function adminSignInAction(formData: FormData) {
   "use server";
 
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const password = String(formData.get("password") ?? "");
-  const callbackUrl = String(formData.get("callbackUrl") ?? "/admin/dashboard");
+  return Sentry.withServerActionInstrumentation(
+    "auth.adminSignInAction",
+    { recordResponse: false },
+    async () => {
+      const email = String(formData.get("email") ?? "").trim().toLowerCase();
+      const password = String(formData.get("password") ?? "");
+      const callbackUrl = String(formData.get("callbackUrl") ?? "/admin/dashboard");
 
-  if (!email || !password) {
-    redirect(`/admin?error=invalid_input&callbackUrl=${encodeURIComponent(callbackUrl)}`);
-  }
+      if (!email || !password) {
+        redirect(`/admin?error=invalid_input&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+      }
 
-  try {
-    await signIn("credentials", {
-      email,
-      password,
-      redirectTo: callbackUrl || "/admin/dashboard",
-    });
-  } catch (error) {
-    if (error instanceof AuthError) {
-      redirect(`/admin?error=invalid_credentials&callbackUrl=${encodeURIComponent(callbackUrl)}`);
-    }
-    throw error;
-  }
+      try {
+        await signIn("credentials", {
+          email,
+          password,
+          redirectTo: callbackUrl || "/admin/dashboard",
+        });
+      } catch (error) {
+        if (error instanceof AuthError) {
+          Sentry.captureException(error);
+          redirect(`/admin?error=invalid_credentials&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+        }
+        throw error;
+      }
+    },
+  );
 }
 
 function getErrorMessage(error?: string) {
@@ -133,5 +141,7 @@ export default async function AdminEntryPage({ searchParams }: { searchParams: S
     </main>
   );
 }
+
+
 
 

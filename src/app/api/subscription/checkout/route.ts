@@ -1,4 +1,5 @@
 import { z } from "zod";
+import * as Sentry from "@sentry/nextjs";
 import { auth } from "@/auth";
 import { CatalogCheckoutError, createCheckoutSessionForCatalogProduct } from "@/lib/public-booking/checkout-service";
 import { getStripeServerEnv } from "@/lib/payments/stripe";
@@ -16,7 +17,8 @@ export async function POST(request: Request) {
   let payload: unknown;
   try {
     payload = await request.json();
-  } catch {
+  } catch (error) {
+    Sentry.captureException(error);
     return Response.json({ error: "Invalid JSON payload." }, { status: 400 });
   }
 
@@ -43,6 +45,7 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     if (error instanceof CatalogCheckoutError) {
+      Sentry.captureException(error);
       const status =
         error.code === "PRODUCT_NOT_FOUND"
           ? 404
@@ -52,6 +55,7 @@ export async function POST(request: Request) {
       return Response.json({ error: error.message }, { status });
     }
 
+    Sentry.captureException(error);
     if (process.env.NODE_ENV !== "production") {
       console.error("[subscription/checkout] unexpected error", error);
     }

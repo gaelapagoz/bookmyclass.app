@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import * as Sentry from "@sentry/nextjs";
 
 import { auth } from "@/auth";
 import { hashPassword } from "@/lib/auth/password-service";
@@ -62,86 +63,94 @@ async function isSignupRateLimited(email: string, now: Date): Promise<boolean> {
 export async function registerAction(formData: FormData) {
   "use server";
 
-  const firstName = String(formData.get("firstName") ?? "").trim();
-  const lastName = String(formData.get("lastName") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const password = String(formData.get("password") ?? "");
-  const callbackUrl = getSafeCallbackPath(formData.get("callbackUrl"), "/dashboard");
+  return Sentry.withServerActionInstrumentation(
+    "auth.registerAction",
+    { recordResponse: false },
+    async () => {
+      const firstName = String(formData.get("firstName") ?? "").trim();
+      const lastName = String(formData.get("lastName") ?? "").trim();
+      const email = String(formData.get("email") ?? "").trim().toLowerCase();
+      const password = String(formData.get("password") ?? "");
+      const callbackUrl = getSafeCallbackPath(formData.get("callbackUrl"), "/dashboard");
 
-  if (!firstName || !lastName || !email || !password || password.length < 8) {
-    redirect(`/sign-up?error=invalid_input&callbackUrl=${encodeURIComponent(callbackUrl)}`);
-  }
+      if (!firstName || !lastName || !email || !password || password.length < 8) {
+        redirect(`/sign-up?error=invalid_input&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+      }
 
-  const rateLimited = await isSignupRateLimited(email, new Date());
-  if (rateLimited) {
-    redirect(`/sign-up?error=rate_limited&callbackUrl=${encodeURIComponent(callbackUrl)}&email=${encodeURIComponent(email)}`);
-  }
+      const rateLimited = await isSignupRateLimited(email, new Date());
+      if (rateLimited) {
+        redirect(`/sign-up?error=rate_limited&callbackUrl=${encodeURIComponent(callbackUrl)}&email=${encodeURIComponent(email)}`);
+      }
 
-  const existingUser = await prisma.user.findFirst({
-    where: {
-      email: {
-        equals: email,
-        mode: "insensitive",
-      },
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          email: {
+            equals: email,
+            mode: "insensitive",
+          },
+        },
+        select: { id: true, emailVerified: true },
+      });
+
+      if (existingUser?.emailVerified) {
+        redirect(`/sign-up?error=email_exists&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+      }
+
+      const passwordHash = await hashPassword(password);
+      const baseData = {
+        name: parseName(firstName, lastName),
+        email,
+        passwordHash,
+        role: "CLIENT" as const,
+        isActive: true,
+        isInactive: false,
+        emailVerified: null,
+      };
+
+      try {
+        if (existingUser) {
+          await prisma.user.update({
+            where: { id: existingUser.id },
+            data: {
+              ...baseData,
+              firstName,
+              lastName,
+            },
+            select: { id: true },
+          });
+        } else {
+          await prisma.user.create({
+            data: {
+              ...baseData,
+              firstName,
+              lastName,
+            },
+            select: { id: true },
+          });
+        }
+      } catch (error: unknown) {
+        Sentry.captureException(error);
+        if (isPrismaKnownError(error) && error.code === "P2002") {
+          redirect(`/sign-up?error=email_exists&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+        }
+
+        redirect(`/sign-up?error=signup_failed&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+      }
+
+      try {
+        await requestEmailVerification({
+          email,
+          appUrl: process.env.APP_URL,
+        });
+      } catch (error) {
+        Sentry.captureException(error);
+        console.error("[sign-up] verification send failed", error);
+        redirect(`/sign-up?error=verification_send_failed&callbackUrl=${encodeURIComponent(callbackUrl)}&email=${encodeURIComponent(email)}`);
+      }
+
+      redirect(`/verify-email?sent=1&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`);
     },
-    select: { id: true, emailVerified: true },
-  });
-
-  if (existingUser?.emailVerified) {
-    redirect(`/sign-up?error=email_exists&callbackUrl=${encodeURIComponent(callbackUrl)}`);
-  }
-
-  const passwordHash = await hashPassword(password);
-  const baseData = {
-    name: parseName(firstName, lastName),
-    email,
-    passwordHash,
-    role: "CLIENT" as const,
-    isActive: true,
-    isInactive: false,
-    emailVerified: null,
-  };
-
-  try {
-    if (existingUser) {
-      await prisma.user.update({
-        where: { id: existingUser.id },
-        data: {
-          ...baseData,
-          firstName,
-          lastName,
-        },
-        select: { id: true },
-      });
-    } else {
-      await prisma.user.create({
-        data: {
-          ...baseData,
-          firstName,
-          lastName,
-        },
-        select: { id: true },
-      });
-    }
-  } catch (error: unknown) {
-    if (isPrismaKnownError(error) && error.code === "P2002") {
-      redirect(`/sign-up?error=email_exists&callbackUrl=${encodeURIComponent(callbackUrl)}`);
-    }
-
-    redirect(`/sign-up?error=signup_failed&callbackUrl=${encodeURIComponent(callbackUrl)}`);
-  }
-
-  try {
-    await requestEmailVerification({
-      email,
-      appUrl: process.env.APP_URL,
-    });
-  } catch (error) {
-    console.error("[sign-up] verification send failed", error);
-    redirect(`/sign-up?error=verification_send_failed&callbackUrl=${encodeURIComponent(callbackUrl)}&email=${encodeURIComponent(email)}`);
-  }
-
-  redirect(`/verify-email?sent=1&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+  );
 }
 
 function getErrorMessage(error?: string) {
@@ -256,3 +265,4 @@ export default async function SignUpPage({
     </main>
   );
 }
+

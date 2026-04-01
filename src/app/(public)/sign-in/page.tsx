@@ -1,6 +1,7 @@
 import { AuthError } from "next-auth";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import * as Sentry from "@sentry/nextjs";
 
 import { auth, signIn } from "@/auth";
 import { prisma } from "@/lib/db";
@@ -16,44 +17,51 @@ type SearchParams = Promise<{
 export async function signInAction(formData: FormData) {
   "use server";
 
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const password = String(formData.get("password") ?? "");
-  const callbackUrl = getSafeCallbackPath(formData.get("callbackUrl"), "/dashboard");
+  return Sentry.withServerActionInstrumentation(
+    "auth.signInAction",
+    { recordResponse: false },
+    async () => {
+      const email = String(formData.get("email") ?? "").trim().toLowerCase();
+      const password = String(formData.get("password") ?? "");
+      const callbackUrl = getSafeCallbackPath(formData.get("callbackUrl"), "/dashboard");
 
-  if (!email || !password) {
-    redirect(`/sign-in?error=invalid_input&callbackUrl=${encodeURIComponent(callbackUrl)}`);
-  }
+      if (!email || !password) {
+        redirect(`/sign-in?error=invalid_input&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+      }
 
-  const user = await prisma.user.findFirst({
-    where: {
-      email: {
-        equals: email,
-        mode: "insensitive",
-      },
+      const user = await prisma.user.findFirst({
+        where: {
+          email: {
+            equals: email,
+            mode: "insensitive",
+          },
+        },
+        select: {
+          emailVerified: true,
+        },
+      });
+
+      if (user && !user.emailVerified) {
+        redirect(
+          `/sign-in?error=email_not_verified&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`,
+        );
+      }
+
+      try {
+        await signIn("credentials", {
+          email,
+          password,
+          redirectTo: callbackUrl,
+        });
+      } catch (error) {
+        if (error instanceof AuthError) {
+          Sentry.captureException(error);
+          redirect(`/sign-in?error=invalid_credentials&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+        }
+        throw error;
+      }
     },
-    select: {
-      emailVerified: true,
-    },
-  });
-
-  if (user && !user.emailVerified) {
-    redirect(
-      `/sign-in?error=email_not_verified&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`,
-    );
-  }
-
-  try {
-    await signIn("credentials", {
-      email,
-      password,
-      redirectTo: callbackUrl,
-    });
-  } catch (error) {
-    if (error instanceof AuthError) {
-      redirect(`/sign-in?error=invalid_credentials&callbackUrl=${encodeURIComponent(callbackUrl)}`);
-    }
-    throw error;
-  }
+  );
 }
 
 function getErrorMessage(error?: string) {
@@ -163,3 +171,4 @@ export default async function SignInPage({
     </main>
   );
 }
+

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import * as Sentry from "@sentry/nextjs";
 import { auth } from "../../../../auth";
 import {
   CheckoutError,
@@ -31,7 +32,8 @@ export async function POST(request: Request) {
   let rawBody: unknown;
   try {
     rawBody = await request.json();
-  } catch {
+  } catch (error) {
+    Sentry.captureException(error);
     return Response.json({ error: "Invalid JSON payload." }, { status: 400 });
   }
 
@@ -52,9 +54,11 @@ export async function POST(request: Request) {
     return Response.json({ checkout }, { status: 200 });
   } catch (error) {
     if (error instanceof CheckoutError) {
+      Sentry.captureException(error);
       return Response.json({ error: error.message, code: error.code }, { status: toStatus(error.code) });
     }
 
+    Sentry.captureException(error);
     const details = error instanceof Error ? error.message : "Unknown error";
     if (process.env.NODE_ENV !== "production") {
       console.error("[checkout/session] unexpected error", error);

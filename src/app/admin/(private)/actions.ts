@@ -16,6 +16,7 @@ import { redirect } from "next/navigation";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import * as Sentry from "@sentry/nextjs";
 import type { Session } from "next-auth";
 import type { MarketingAudienceType as MarketingAudienceTypeValue } from "@prisma/client";
 
@@ -539,71 +540,78 @@ function getMarketingActionErrorMessage(error: unknown): string {
 }
 
 export async function createClassAction(formData: FormData) {
-  await assertAdminAccess();
+  return Sentry.withServerActionInstrumentation(
+    "admin.createClassAction",
+    { recordResponse: false },
+    async () => {
+      await assertAdminAccess();
 
-  const parsed = classSchema.safeParse({
-    categoryId: formData.get("categoryId"),
-    name: formData.get("name"),
-    slug: formData.get("slug"),
-    description: formData.get("description") ?? undefined,
-    defaultDurationMinutes: formData.get("defaultDurationMinutes"),
-    defaultCapacity: formData.get("defaultCapacity"),
-    isActive: isChecked(formData, "isActive"),
-    isVisible: isChecked(formData, "isVisible"),
-    sortOrder: formData.get("sortOrder"),
-  });
+      const parsed = classSchema.safeParse({
+        categoryId: formData.get("categoryId"),
+        name: formData.get("name"),
+        slug: formData.get("slug"),
+        description: formData.get("description") ?? undefined,
+        defaultDurationMinutes: formData.get("defaultDurationMinutes"),
+        defaultCapacity: formData.get("defaultCapacity"),
+        isActive: isChecked(formData, "isActive"),
+        isVisible: isChecked(formData, "isVisible"),
+        sortOrder: formData.get("sortOrder"),
+      });
 
-  if (!parsed.success) {
-    redirectWithError("/admin/classes/new", "Please complete all required class fields.");
-  }
+      if (!parsed.success) {
+        redirectWithError("/admin/classes/new", "Please complete all required class fields.");
+      }
 
-  const scheduleParsed = classScheduleSchema.safeParse({
-    defaultTeacherId: formData.get("defaultTeacherId"),
-    startTime: formData.get("scheduleStartTime"),
-    endTime: formData.get("scheduleEndTime"),
-    isRecurring: isChecked(formData, "isRecurring"),
-    date: toNullableDate(formData.get("scheduleDate")),
-    repeatEveryWeeks: formData.get("repeatEveryWeeks") || undefined,
-    weekdays: formData
-      .getAll("repeatWeekdays")
-      .map((value) => String(value).trim())
-      .filter(Boolean),
-    endsType: formData.get("endsType") || undefined,
-    endDate: toNullableDate(formData.get("endDate")),
-    occurrenceCount: (() => {
-      const raw = String(formData.get("occurrenceCount") ?? "").trim();
-      return raw ? Number.parseInt(raw, 10) : null;
-    })(),
-  });
+      const scheduleParsed = classScheduleSchema.safeParse({
+        defaultTeacherId: formData.get("defaultTeacherId"),
+        startTime: formData.get("scheduleStartTime"),
+        endTime: formData.get("scheduleEndTime"),
+        isRecurring: isChecked(formData, "isRecurring"),
+        date: toNullableDate(formData.get("scheduleDate")),
+        repeatEveryWeeks: formData.get("repeatEveryWeeks") || undefined,
+        weekdays: formData
+          .getAll("repeatWeekdays")
+          .map((value) => String(value).trim())
+          .filter(Boolean),
+        endsType: formData.get("endsType") || undefined,
+        endDate: toNullableDate(formData.get("endDate")),
+        occurrenceCount: (() => {
+          const raw = String(formData.get("occurrenceCount") ?? "").trim();
+          return raw ? Number.parseInt(raw, 10) : null;
+        })(),
+      });
 
-  if (!scheduleParsed.success) {
-    redirectWithError("/admin/classes/new", "Please complete all required class schedule fields.");
-  }
+      if (!scheduleParsed.success) {
+        redirectWithError("/admin/classes/new", "Please complete all required class schedule fields.");
+      }
 
-  try {
-    const createdClass = await createAdminClass(parsed.data);
-    await upsertAdminClassScheduleConfig({
-      classTypeId: createdClass.id,
-      className: createdClass.name,
-      classSlug: createdClass.slug,
-      defaultCapacity: createdClass.defaultCapacity,
-      defaultDurationMinutes: createdClass.defaultDurationMinutes,
-      defaultTeacherId: scheduleParsed.data.defaultTeacherId,
-      startTime: scheduleParsed.data.startTime,
-      endTime: scheduleParsed.data.endTime,
-      isRecurring: scheduleParsed.data.isRecurring,
-      date: scheduleParsed.data.date ?? null,
-      repeatEveryWeeks: scheduleParsed.data.repeatEveryWeeks ?? 1,
-      weekdays: scheduleParsed.data.weekdays ?? [],
-      endsType: scheduleParsed.data.endsType ?? "never",
-      endDate: scheduleParsed.data.endDate ?? null,
-      occurrenceCount: scheduleParsed.data.occurrenceCount ?? null,
-    });
-  } catch (error) {
-    redirectWithError("/admin/classes/new", getAdminActionErrorMessage(error));
-  }
+      try {
+        const createdClass = await createAdminClass(parsed.data);
+        await upsertAdminClassScheduleConfig({
+          classTypeId: createdClass.id,
+          className: createdClass.name,
+          classSlug: createdClass.slug,
+          defaultCapacity: createdClass.defaultCapacity,
+          defaultDurationMinutes: createdClass.defaultDurationMinutes,
+          defaultTeacherId: scheduleParsed.data.defaultTeacherId,
+          startTime: scheduleParsed.data.startTime,
+          endTime: scheduleParsed.data.endTime,
+          isRecurring: scheduleParsed.data.isRecurring,
+          date: scheduleParsed.data.date ?? null,
+          repeatEveryWeeks: scheduleParsed.data.repeatEveryWeeks ?? 1,
+          weekdays: scheduleParsed.data.weekdays ?? [],
+          endsType: scheduleParsed.data.endsType ?? "never",
+          endDate: scheduleParsed.data.endDate ?? null,
+          occurrenceCount: scheduleParsed.data.occurrenceCount ?? null,
+        });
+      } catch (error) {
+        Sentry.captureException(error);
+        redirectWithError("/admin/classes/new", getAdminActionErrorMessage(error));
+      }
 
-  redirect("/admin/classes");
+      redirect("/admin/classes");
+    },
+  );
 }
 
 export async function updateClassAction(id: string, formData: FormData) {
@@ -668,6 +676,7 @@ export async function updateClassAction(id: string, formData: FormData) {
       occurrenceCount: scheduleParsed.data.occurrenceCount ?? null,
     });
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError(`/admin/classes/${id}/edit`, getAdminActionErrorMessage(error));
   }
 
@@ -740,6 +749,7 @@ export async function createSessionAction(formData: FormData) {
       await createAdminSession(parsed.data);
     }
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError("/admin/sessions/new", getAdminActionErrorMessage(error));
   }
 
@@ -769,6 +779,7 @@ export async function updateSessionAction(id: string, formData: FormData) {
   try {
     await updateAdminSession(id, parsed.data);
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError(`/admin/sessions/${id}/edit`, getPrismaErrorMessage(error));
   }
 
@@ -811,6 +822,7 @@ export async function createPlanAction(formData: FormData) {
       billingIntervalCount: parsed.data.priceType === PriceType.RECURRING ? parsed.data.billingIntervalCount ?? 1 : undefined,
     });
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError("/admin/plans/new", getPrismaErrorMessage(error));
   }
 
@@ -853,6 +865,7 @@ export async function updatePlanAction(id: string, formData: FormData) {
       billingIntervalCount: parsed.data.priceType === PriceType.RECURRING ? parsed.data.billingIntervalCount ?? 1 : undefined,
     });
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError(`/admin/plans/${id}/edit`, getPrismaErrorMessage(error));
   }
 
@@ -860,195 +873,237 @@ export async function updatePlanAction(id: string, formData: FormData) {
 }
 
 export async function createUserAction(formData: FormData) {
-  await assertAdminAccess();
+  return Sentry.withServerActionInstrumentation(
+    "admin.createUserAction",
+    { recordResponse: false },
+    async () => {
+      await assertAdminAccess();
 
-  const parsed = createUserSchema.safeParse({
-    name: formData.get("name"),
-    email: formData.get("email"),
-    role: formData.get("role"),
-    isActive: isChecked(formData, "isActive"),
-    password: formData.get("password"),
-  });
+      const parsed = createUserSchema.safeParse({
+        name: formData.get("name"),
+        email: formData.get("email"),
+        role: formData.get("role"),
+        isActive: isChecked(formData, "isActive"),
+        password: formData.get("password"),
+      });
 
-  if (!parsed.success) {
-    redirectWithError("/admin/users/new", "Please complete all required user fields.");
-  }
+      if (!parsed.success) {
+        redirectWithError("/admin/users/new", "Please complete all required user fields.");
+      }
 
-  try {
-    await createAdminUser(parsed.data);
-  } catch (error) {
-    redirectWithError("/admin/users/new", getPrismaErrorMessage(error));
-  }
+      try {
+        await createAdminUser(parsed.data);
+      } catch (error) {
+        Sentry.captureException(error);
+        redirectWithError("/admin/users/new", getPrismaErrorMessage(error));
+      }
 
-  redirect("/admin/users");
+      redirect("/admin/users");
+    },
+  );
 }
 
 export async function updateUserAction(id: string, formData: FormData) {
-  await assertAdminAccess();
+  return Sentry.withServerActionInstrumentation(
+    "admin.updateUserAction",
+    { recordResponse: false },
+    async () => {
+      await assertAdminAccess();
 
-  const parsed = updateUserSchema.safeParse({
-    firstName: formData.get("firstName"),
-    lastName: formData.get("lastName"),
-    email: formData.get("email"),
-    role: formData.get("role"),
-    isActive: isChecked(formData, "isActive"),
-    phone: formData.get("phone") ?? undefined,
-    notes: formData.get("notes") ?? undefined,
-    bio: formData.get("bio") ?? undefined,
-    specialties: toStringArray(formData.get("specialties")),
-    certifications: toStringArray(formData.get("certifications")),
-    hireDate: toNullableDate(formData.get("hireDate")),
-    password: formData.get("password") || undefined,
-  });
+      const parsed = updateUserSchema.safeParse({
+        firstName: formData.get("firstName"),
+        lastName: formData.get("lastName"),
+        email: formData.get("email"),
+        role: formData.get("role"),
+        isActive: isChecked(formData, "isActive"),
+        phone: formData.get("phone") ?? undefined,
+        notes: formData.get("notes") ?? undefined,
+        bio: formData.get("bio") ?? undefined,
+        specialties: toStringArray(formData.get("specialties")),
+        certifications: toStringArray(formData.get("certifications")),
+        hireDate: toNullableDate(formData.get("hireDate")),
+        password: formData.get("password") || undefined,
+      });
 
-  if (!parsed.success) {
-    redirectWithError(`/admin/users/${id}/edit`, "Please complete required user fields.");
-  }
+      if (!parsed.success) {
+        redirectWithError(`/admin/users/${id}/edit`, "Please complete required user fields.");
+      }
 
-  try {
-    await updateAdminUser(id, parsed.data);
-  } catch (error) {
-    redirectWithError(`/admin/users/${id}/edit`, getPrismaErrorMessage(error));
-  }
+      try {
+        await updateAdminUser(id, parsed.data);
+      } catch (error) {
+        Sentry.captureException(error);
+        redirectWithError(`/admin/users/${id}/edit`, getPrismaErrorMessage(error));
+      }
 
-  redirect("/admin/users");
+      redirect("/admin/users");
+    },
+  );
 }
 
 export async function adjustClientCreditsAction(formData: FormData) {
-  const session = await assertAdminAccess();
-  const userId =
-    String(formData.get("userId") ?? "").trim() ||
-    String(formData.get("clientId") ?? "").trim();
-  const returnPath = userId ? `/admin/users/${userId}/edit` : "/admin/users";
-  const rawEntitlementId = String(formData.get("entitlementId") ?? "").trim();
-  const rawProductId = String(formData.get("productId") ?? "").trim();
+  return Sentry.withServerActionInstrumentation(
+    "admin.adjustClientCreditsAction",
+    { recordResponse: false },
+    async () => {
+      const session = await assertAdminAccess();
+      const userId =
+        String(formData.get("userId") ?? "").trim() ||
+        String(formData.get("clientId") ?? "").trim();
+      const returnPath = userId ? `/admin/users/${userId}/edit` : "/admin/users";
+      const rawEntitlementId = String(formData.get("entitlementId") ?? "").trim();
+      const rawProductId = String(formData.get("productId") ?? "").trim();
 
-  const parsed = adjustClientCreditsSchema.safeParse({
-    userId,
-    entitlementId: rawEntitlementId || undefined,
-    productId: rawProductId || undefined,
-    creditDelta: formData.get("creditDelta") ?? formData.get("amount"),
-    expiresAt: toNullableDate(formData.get("expiresAt")),
-  });
+      const parsed = adjustClientCreditsSchema.safeParse({
+        userId,
+        entitlementId: rawEntitlementId || undefined,
+        productId: rawProductId || undefined,
+        creditDelta: formData.get("creditDelta") ?? formData.get("amount"),
+        expiresAt: toNullableDate(formData.get("expiresAt")),
+      });
 
-  if (!parsed.success) {
-    console.error("[admin/adjust-client-credits] validation_failed", {
-      userId,
-      rawEntitlementId,
-      rawProductId,
-      rawCreditDelta: String(formData.get("creditDelta") ?? formData.get("amount") ?? ""),
-      rawExpiresAt: String(formData.get("expiresAt") ?? ""),
-      issues: parsed.error.issues.map((issue) => ({
-        path: issue.path.join("."),
-        message: issue.message,
-      })),
-    });
-    redirectWithError(returnPath, "Invalid credits update payload.");
-  }
+      if (!parsed.success) {
+        console.error("[admin/adjust-client-credits] validation_failed", {
+          userId,
+          rawEntitlementId,
+          rawProductId,
+          rawCreditDelta: String(formData.get("creditDelta") ?? formData.get("amount") ?? ""),
+          rawExpiresAt: String(formData.get("expiresAt") ?? ""),
+          issues: parsed.error.issues.map((issue) => ({
+            path: issue.path.join("."),
+            message: issue.message,
+          })),
+        });
+        redirectWithError(returnPath, "Invalid credits update payload.");
+      }
 
-  try {
-    await adjustAdminClientCredits({
-      clientId: parsed.data.userId,
-      amount: parsed.data.creditDelta,
-      entitlementId: parsed.data.entitlementId,
-      productId: parsed.data.productId,
-      expiresAt: parsed.data.expiresAt,
-      adminUserId: session.user.id,
-    });
-  } catch (error) {
-    console.error("[admin/adjust-client-credits] service_failed", {
-      userId: parsed.data.userId,
-      entitlementId: parsed.data.entitlementId ?? null,
-      productId: parsed.data.productId ?? null,
-      creditDelta: parsed.data.creditDelta,
-      expiresAt: parsed.data.expiresAt?.toISOString() ?? null,
-      adminUserId: session.user.id,
-      error:
-        error instanceof Error
-          ? { name: error.name, message: error.message, stack: error.stack }
-          : String(error),
-    });
-    redirectWithError(returnPath, getAdminActionErrorMessage(error));
-  }
+      try {
+        await adjustAdminClientCredits({
+          clientId: parsed.data.userId,
+          amount: parsed.data.creditDelta,
+          entitlementId: parsed.data.entitlementId,
+          productId: parsed.data.productId,
+          expiresAt: parsed.data.expiresAt,
+          adminUserId: session.user.id,
+        });
+      } catch (error) {
+        Sentry.captureException(error);
+        console.error("[admin/adjust-client-credits] service_failed", {
+          userId: parsed.data.userId,
+          entitlementId: parsed.data.entitlementId ?? null,
+          productId: parsed.data.productId ?? null,
+          creditDelta: parsed.data.creditDelta,
+          expiresAt: parsed.data.expiresAt?.toISOString() ?? null,
+          adminUserId: session.user.id,
+          error:
+            error instanceof Error
+              ? { name: error.name, message: error.message, stack: error.stack }
+              : String(error),
+        });
+        redirectWithError(returnPath, getAdminActionErrorMessage(error));
+      }
 
-  redirect(returnPath);
+      redirect(returnPath);
+    },
+  );
 }
 
 export async function cancelClientMembershipAction(formData: FormData) {
-  await assertAdminAccess();
+  return Sentry.withServerActionInstrumentation(
+    "admin.cancelClientMembershipAction",
+    { recordResponse: false },
+    async () => {
+      await assertAdminAccess();
 
-  const parsed = cancelClientMembershipSchema.safeParse({
-    clientId: formData.get("clientId"),
-    subscriptionContractId: formData.get("subscriptionContractId"),
-  });
-  const returnPath = `/admin/users/${String(formData.get("clientId") ?? "").trim()}/edit`;
+      const parsed = cancelClientMembershipSchema.safeParse({
+        clientId: formData.get("clientId"),
+        subscriptionContractId: formData.get("subscriptionContractId"),
+      });
+      const returnPath = `/admin/users/${String(formData.get("clientId") ?? "").trim()}/edit`;
 
-  if (!parsed.success) {
-    redirectWithError(returnPath, "Invalid membership cancellation payload.");
-  }
+      if (!parsed.success) {
+        redirectWithError(returnPath, "Invalid membership cancellation payload.");
+      }
 
-  try {
-    await cancelAdminClientMembership(parsed.data);
-  } catch (error) {
-    redirectWithError(returnPath, getAdminActionErrorMessage(error));
-  }
+      try {
+        await cancelAdminClientMembership(parsed.data);
+      } catch (error) {
+        Sentry.captureException(error);
+        redirectWithError(returnPath, getAdminActionErrorMessage(error));
+      }
 
-  redirect(returnPath);
+      redirect(returnPath);
+    },
+  );
 }
 
 export async function createSubscriptionAction(formData: FormData) {
-  await assertAdminAccess();
+  return Sentry.withServerActionInstrumentation(
+    "admin.createSubscriptionAction",
+    { recordResponse: false },
+    async () => {
+      await assertAdminAccess();
 
-  const parsed = createSubscriptionSchema.safeParse({
-    clientId: formData.get("clientId"),
-    productId: formData.get("productId"),
-    priceId: formData.get("priceId"),
-    status: formData.get("status"),
-    startsAt: formData.get("startsAt"),
-    currentPeriodStart: formData.get("currentPeriodStart"),
-    currentPeriodEnd: formData.get("currentPeriodEnd"),
-    cancelAtPeriodEnd: isChecked(formData, "cancelAtPeriodEnd"),
-    provider: formData.get("provider"),
-    providerSubscriptionReference: formData.get("providerSubscriptionReference") ?? undefined,
-  });
+      const parsed = createSubscriptionSchema.safeParse({
+        clientId: formData.get("clientId"),
+        productId: formData.get("productId"),
+        priceId: formData.get("priceId"),
+        status: formData.get("status"),
+        startsAt: formData.get("startsAt"),
+        currentPeriodStart: formData.get("currentPeriodStart"),
+        currentPeriodEnd: formData.get("currentPeriodEnd"),
+        cancelAtPeriodEnd: isChecked(formData, "cancelAtPeriodEnd"),
+        provider: formData.get("provider"),
+        providerSubscriptionReference: formData.get("providerSubscriptionReference") ?? undefined,
+      });
 
-  if (!parsed.success) {
-    redirectWithError("/admin/subscriptions/new", "Please complete all required subscription fields.");
-  }
+      if (!parsed.success) {
+        redirectWithError("/admin/subscriptions/new", "Please complete all required subscription fields.");
+      }
 
-  try {
-    await createAdminSubscription(parsed.data);
-  } catch (error) {
-    redirectWithError("/admin/subscriptions/new", getPrismaErrorMessage(error));
-  }
+      try {
+        await createAdminSubscription(parsed.data);
+      } catch (error) {
+        Sentry.captureException(error);
+        redirectWithError("/admin/subscriptions/new", getPrismaErrorMessage(error));
+      }
 
-  redirect("/admin/subscriptions");
+      redirect("/admin/subscriptions");
+    },
+  );
 }
 
 export async function updateSubscriptionAction(id: string, formData: FormData) {
-  await assertAdminAccess();
+  return Sentry.withServerActionInstrumentation(
+    "admin.updateSubscriptionAction",
+    { recordResponse: false },
+    async () => {
+      await assertAdminAccess();
 
-  const parsed = updateSubscriptionSchema.safeParse({
-    status: formData.get("status"),
-    currentPeriodStart: formData.get("currentPeriodStart"),
-    currentPeriodEnd: formData.get("currentPeriodEnd"),
-    cancelAtPeriodEnd: isChecked(formData, "cancelAtPeriodEnd"),
-    cancelledAt: toNullableDate(formData.get("cancelledAt")),
-    endedAt: toNullableDate(formData.get("endedAt")),
-    providerSubscriptionReference: formData.get("providerSubscriptionReference") ?? undefined,
-  });
+      const parsed = updateSubscriptionSchema.safeParse({
+        status: formData.get("status"),
+        currentPeriodStart: formData.get("currentPeriodStart"),
+        currentPeriodEnd: formData.get("currentPeriodEnd"),
+        cancelAtPeriodEnd: isChecked(formData, "cancelAtPeriodEnd"),
+        cancelledAt: toNullableDate(formData.get("cancelledAt")),
+        endedAt: toNullableDate(formData.get("endedAt")),
+        providerSubscriptionReference: formData.get("providerSubscriptionReference") ?? undefined,
+      });
 
-  if (!parsed.success) {
-    redirectWithError(`/admin/subscriptions/${id}/edit`, "Please complete required subscription fields.");
-  }
+      if (!parsed.success) {
+        redirectWithError(`/admin/subscriptions/${id}/edit`, "Please complete required subscription fields.");
+      }
 
-  try {
-    await updateAdminSubscription(id, parsed.data);
-  } catch (error) {
-    redirectWithError(`/admin/subscriptions/${id}/edit`, getPrismaErrorMessage(error));
-  }
+      try {
+        await updateAdminSubscription(id, parsed.data);
+      } catch (error) {
+        Sentry.captureException(error);
+        redirectWithError(`/admin/subscriptions/${id}/edit`, getPrismaErrorMessage(error));
+      }
 
-  redirect("/admin/subscriptions");
+      redirect("/admin/subscriptions");
+    },
+  );
 }
 
 export async function createLearningProgramAction(formData: FormData) {
@@ -1076,6 +1131,7 @@ export async function createLearningProgramAction(formData: FormData) {
   try {
     await createAdminLearningProgram(parsed.data);
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError("/admin/learning-programs/new", getPrismaErrorMessage(error));
   }
 
@@ -1107,6 +1163,7 @@ export async function updateLearningProgramAction(id: string, formData: FormData
   try {
     await updateAdminLearningProgram(id, parsed.data);
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError(`/admin/learning-programs/${id}/edit`, getPrismaErrorMessage(error));
   }
 
@@ -1136,6 +1193,7 @@ export async function createLearningVideoAction(formData: FormData) {
   try {
     await createAdminLearningVideo(parsed.data);
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError("/admin/learning-videos/new", getPrismaErrorMessage(error));
   }
 
@@ -1165,6 +1223,7 @@ export async function updateLearningVideoAction(id: string, formData: FormData) 
   try {
     await updateAdminLearningVideo(id, parsed.data);
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError(`/admin/learning-videos/${id}/edit`, getPrismaErrorMessage(error));
   }
 
@@ -1187,6 +1246,7 @@ export async function updateClientMessageStatusAction(formData: FormData) {
   try {
     await updateClientMessageStatus(parsed.data.id, parsed.data.status);
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError(returnTo, getPrismaErrorMessage(error));
   }
 
@@ -1216,6 +1276,7 @@ export async function uploadAgendaPdfAction(formData: FormData) {
     await writeFile(targetAbsolutePath, Buffer.from(bytes));
     await upsertActiveAgendaPdfDocument(`/uploads/${targetFileName}`);
   } catch (error) {
+    Sentry.captureException(error);
     console.error("[admin/upload-agenda-pdf] failed", error);
     redirectWithError(returnTo, "Could not upload agenda PDF.");
   }
@@ -1269,6 +1330,7 @@ export async function createMarketingCampaignDraftAction(formData: FormData) {
     });
     redirect(`/admin/marketing/campaigns/${created.id}/edit?success=${encodeURIComponent("Draft created.")}`);
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError(returnTo, getMarketingActionErrorMessage(error));
   }
 }
@@ -1319,6 +1381,7 @@ export async function updateMarketingCampaignDraftAction(formData: FormData) {
       contentJson,
     });
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError(returnTo, getMarketingActionErrorMessage(error));
   }
 
@@ -1372,6 +1435,7 @@ export async function generateMarketingCampaignAiDraftAction(formData: FormData)
       contentJson: draft.contentJson,
     });
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError(returnTo, getMarketingActionErrorMessage(error));
   }
 
@@ -1396,6 +1460,7 @@ export async function sendMarketingCampaignTestAction(formData: FormData) {
   try {
     await sendMarketingCampaignTest(parsed.data);
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError(returnTo, getMarketingActionErrorMessage(error));
   }
 
@@ -1416,6 +1481,7 @@ export async function sendMarketingCampaignNowAction(formData: FormData) {
   try {
     await sendMarketingCampaignNow(parsed.data.campaignId);
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError(returnTo, getMarketingActionErrorMessage(error));
   }
 
@@ -1437,6 +1503,7 @@ export async function duplicateMarketingCampaignAction(formData: FormData) {
     const duplicated = await duplicateMarketingCampaign(parsed.data.campaignId, session.user.id);
     redirect(`/admin/marketing/campaigns/${duplicated.id}/edit?success=${encodeURIComponent("Campaign duplicated.")}`);
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError(returnTo, getMarketingActionErrorMessage(error));
   }
 }
@@ -1455,6 +1522,7 @@ export async function deleteMarketingCampaignDraftAction(formData: FormData) {
   try {
     await deleteMarketingCampaignDraft(parsed.data.campaignId);
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError(returnTo, getMarketingActionErrorMessage(error));
   }
 
@@ -1477,6 +1545,7 @@ export async function createMarketingCategoryAction(formData: FormData) {
   try {
     await createMarketingCategory(parsed.data);
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError(returnTo, getMarketingActionErrorMessage(error));
   }
 
@@ -1500,9 +1569,12 @@ export async function updateMarketingCategoryAction(formData: FormData) {
   try {
     await updateMarketingCategory(parsed.data);
   } catch (error) {
+    Sentry.captureException(error);
     redirectWithError(returnTo, getMarketingActionErrorMessage(error));
   }
 
   redirect(`${returnTo}?success=${encodeURIComponent("Category updated.")}`);
 }
+
+
 

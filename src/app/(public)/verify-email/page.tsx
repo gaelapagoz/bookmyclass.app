@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import * as Sentry from "@sentry/nextjs";
 
 import { auth } from "@/auth";
 import { requestEmailVerification, verifyEmailByToken } from "@/lib/auth/email-verification-service";
@@ -82,6 +83,7 @@ export default async function VerifyEmailPage({
       }
       redirect(`/verify-email?sent=1&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`);
     } catch (error) {
+      Sentry.captureException(error);
       console.error("[verify-email] resend failed", error);
       redirect(`/verify-email?error=send_failed&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`);
     }
@@ -93,35 +95,42 @@ export default async function VerifyEmailPage({
   async function resendVerificationAction(formData: FormData) {
     "use server";
 
-    const parsed = resendSchema.safeParse({
-      email: formData.get("email"),
-      callbackUrl: formData.get("callbackUrl") ?? undefined,
-    });
+    return Sentry.withServerActionInstrumentation(
+      "auth.resendVerificationAction",
+      { recordResponse: false },
+      async () => {
+        const parsed = resendSchema.safeParse({
+          email: formData.get("email"),
+          callbackUrl: formData.get("callbackUrl") ?? undefined,
+        });
 
-    if (!parsed.success) {
-      redirect("/verify-email?error=send_failed");
-    }
+        if (!parsed.success) {
+          redirect("/verify-email?error=send_failed");
+        }
 
-    const nextCallbackUrl = getSafeCallbackPath(parsed.data.callbackUrl, "/dashboard");
-    try {
-      const result = await requestEmailVerification({
-        email: parsed.data.email,
-        appUrl: process.env.APP_URL,
-      });
-      if (result.outcome === "RATE_LIMITED") {
+        const nextCallbackUrl = getSafeCallbackPath(parsed.data.callbackUrl, "/dashboard");
+        try {
+          const result = await requestEmailVerification({
+            email: parsed.data.email,
+            appUrl: process.env.APP_URL,
+          });
+          if (result.outcome === "RATE_LIMITED") {
+            redirect(
+              `/verify-email?error=rate_limited&email=${encodeURIComponent(parsed.data.email)}&callbackUrl=${encodeURIComponent(nextCallbackUrl)}`,
+            );
+          }
+        } catch (error) {
+          Sentry.captureException(error);
+          console.error("[verify-email] resend action failed", error);
+          redirect(
+            `/verify-email?error=send_failed&email=${encodeURIComponent(parsed.data.email)}&callbackUrl=${encodeURIComponent(nextCallbackUrl)}`,
+          );
+        }
+
         redirect(
-          `/verify-email?error=rate_limited&email=${encodeURIComponent(parsed.data.email)}&callbackUrl=${encodeURIComponent(nextCallbackUrl)}`,
+          `/verify-email?sent=1&email=${encodeURIComponent(parsed.data.email)}&callbackUrl=${encodeURIComponent(nextCallbackUrl)}`,
         );
-      }
-    } catch (error) {
-      console.error("[verify-email] resend action failed", error);
-      redirect(
-        `/verify-email?error=send_failed&email=${encodeURIComponent(parsed.data.email)}&callbackUrl=${encodeURIComponent(nextCallbackUrl)}`,
-      );
-    }
-
-    redirect(
-      `/verify-email?sent=1&email=${encodeURIComponent(parsed.data.email)}&callbackUrl=${encodeURIComponent(nextCallbackUrl)}`,
+      },
     );
   }
 
@@ -181,3 +190,4 @@ export default async function VerifyEmailPage({
     </main>
   );
 }
+

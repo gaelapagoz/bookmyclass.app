@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import * as Sentry from "@sentry/nextjs";
 import { PasswordServiceError, resetPasswordWithToken } from "@/lib/auth/password-service";
 import { TokenFromHashBridge } from "./token-from-hash-bridge";
 
@@ -44,31 +45,38 @@ export default async function ResetPasswordPage({
   async function resetPasswordAction(formData: FormData) {
     "use server";
 
-    const submittedToken = String(formData.get("token") ?? "").trim();
-    const newPassword = String(formData.get("newPassword") ?? "");
-    const confirmNewPassword = String(formData.get("confirmNewPassword") ?? "");
+    return Sentry.withServerActionInstrumentation(
+      "auth.resetPasswordAction",
+      { recordResponse: false },
+      async () => {
+        const submittedToken = String(formData.get("token") ?? "").trim();
+        const newPassword = String(formData.get("newPassword") ?? "");
+        const confirmNewPassword = String(formData.get("confirmNewPassword") ?? "");
 
-    try {
-      await resetPasswordWithToken({
-        token: submittedToken,
-        newPassword,
-        confirmNewPassword,
-      });
-    } catch (error) {
-      if (error instanceof PasswordServiceError) {
-        if (error.code === "TOKEN_INVALID_OR_EXPIRED") {
-          redirect("/reset-password?error=invalid_token");
+        try {
+          await resetPasswordWithToken({
+            token: submittedToken,
+            newPassword,
+            confirmNewPassword,
+          });
+        } catch (error) {
+          Sentry.captureException(error);
+          if (error instanceof PasswordServiceError) {
+            if (error.code === "TOKEN_INVALID_OR_EXPIRED") {
+              redirect("/reset-password?error=invalid_token");
+            }
+
+            if (error.code === "INVALID_PASSWORD" || error.code === "PASSWORD_MISMATCH") {
+              redirect(`/reset-password?token=${encodeURIComponent(submittedToken)}&error=invalid_input`);
+            }
+          }
+
+          redirect(`/reset-password?token=${encodeURIComponent(submittedToken)}&error=reset_failed`);
         }
 
-        if (error.code === "INVALID_PASSWORD" || error.code === "PASSWORD_MISMATCH") {
-          redirect(`/reset-password?token=${encodeURIComponent(submittedToken)}&error=invalid_input`);
-        }
-      }
-
-      redirect(`/reset-password?token=${encodeURIComponent(submittedToken)}&error=reset_failed`);
-    }
-
-    redirect("/sign-in?password_reset=1");
+        redirect("/sign-in?password_reset=1");
+      },
+    );
   }
 
   return (
@@ -130,3 +138,4 @@ export default async function ResetPasswordPage({
     </main>
   );
 }
+

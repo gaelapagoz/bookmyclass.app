@@ -370,3 +370,34 @@ And use them in this order:
 3. `/api/health`
 4. `/usr/local/bin/bookmyclass-healthcheck.sh`
 5. Netdata
+
+## Sentry Verification Checklist
+
+After deploying with Sentry env vars configured, verify all core paths:
+
+1. API error capture
+- Trigger a known API failure (for example invalid checkout payload on `/api/checkout/session`).
+- Confirm the error appears in Sentry with route context.
+
+2. Server action error capture
+- Trigger a controlled server action failure (for example invalid admin mutation input).
+- Confirm the exception is visible in Sentry under a `serverAction/*` transaction.
+
+3. Stripe webhook error capture
+- Send a webhook event that fails processing in staging.
+- Confirm Sentry event includes safe tags:
+  - `stripe.event_type`
+  - `stripe.event_id`
+  - `checkout_session_id` (when available)
+  - `customer_id` (when available)
+
+4. Render/global error capture
+- Trigger a render-time crash in a non-critical page.
+- Confirm `app/global-error.tsx` captures the exception and event is visible in Sentry.
+
+5. Validate required event metadata
+- Confirm each test event includes:
+  - `environment` (production on live deploys)
+  - `release` (deploy version or commit SHA)
+  - actionable route/action naming context
+- For webhook errors, confirm Stripe tags are present and no raw payload dump is captured.

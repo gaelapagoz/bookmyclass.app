@@ -1,5 +1,6 @@
 import { BookingIntent } from "@prisma/client";
 import { z } from "zod";
+import * as Sentry from "@sentry/nextjs";
 import { auth } from "../../../../auth";
 import { BookingDraftError, createPendingBookingDraft } from "../../../../lib/public-booking/booking-draft-service";
 
@@ -76,7 +77,8 @@ export async function POST(request: Request) {
   let body: unknown;
   try {
     body = await request.json();
-  } catch {
+  } catch (error) {
+    Sentry.captureException(error);
     return Response.json({ error: "Invalid JSON payload." }, { status: 400 });
   }
 
@@ -109,9 +111,11 @@ export async function POST(request: Request) {
     return Response.json({ draft: result }, { status: 201 });
   } catch (error) {
     if (error instanceof BookingDraftError) {
+      Sentry.captureException(error);
       return Response.json({ error: error.message, code: error.code }, { status: toStatusCode(error.code) });
     }
 
+    Sentry.captureException(error);
     if (process.env.NODE_ENV !== "production") {
       console.error("[bookings/draft] unexpected error", error);
     }

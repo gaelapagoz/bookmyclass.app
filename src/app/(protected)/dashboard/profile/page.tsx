@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import * as Sentry from "@sentry/nextjs";
 import { requireAuth } from "@/lib/auth/require-auth";
 import {
   changeAuthenticatedUserPassword,
@@ -152,83 +153,104 @@ export default async function DashboardProfilePage({
   async function saveProfileAction(formData: FormData) {
     "use server";
 
-    const authSession = await requireAuth();
+    return Sentry.withServerActionInstrumentation(
+      "dashboard.saveProfileAction",
+      { recordResponse: false },
+      async () => {
+        const authSession = await requireAuth();
 
-    try {
-      await updateDashboardProfile(authSession.user.id, {
-        firstName: String(formData.get("firstName") ?? ""),
-        lastName: String(formData.get("lastName") ?? ""),
-        email: String(formData.get("email") ?? ""),
-        phone: String(formData.get("phone") ?? ""),
-      });
-    } catch (error) {
-      if (error instanceof DashboardServiceError) {
-        if (error.code === "EMAIL_ALREADY_IN_USE") {
-          redirect("/dashboard/profile?profile_error=email_exists");
+        try {
+          await updateDashboardProfile(authSession.user.id, {
+            firstName: String(formData.get("firstName") ?? ""),
+            lastName: String(formData.get("lastName") ?? ""),
+            email: String(formData.get("email") ?? ""),
+            phone: String(formData.get("phone") ?? ""),
+          });
+        } catch (error) {
+          Sentry.captureException(error);
+          if (error instanceof DashboardServiceError) {
+            if (error.code === "EMAIL_ALREADY_IN_USE") {
+              redirect("/dashboard/profile?profile_error=email_exists");
+            }
+
+            if (error.code === "INVALID_PROFILE_INPUT") {
+              redirect("/dashboard/profile?profile_error=invalid_input");
+            }
+          }
+
+          redirect("/dashboard/profile?profile_error=save_failed");
         }
 
-        if (error.code === "INVALID_PROFILE_INPUT") {
-          redirect("/dashboard/profile?profile_error=invalid_input");
-        }
-      }
-
-      redirect("/dashboard/profile?profile_error=save_failed");
-    }
-
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/profile");
-    redirect("/dashboard/profile?profile_saved=1");
+        revalidatePath("/dashboard");
+        revalidatePath("/dashboard/profile");
+        redirect("/dashboard/profile?profile_saved=1");
+      },
+    );
   }
 
   async function changePasswordAction(formData: FormData) {
     "use server";
 
-    const authSession = await requireAuth();
-    const currentPassword = String(formData.get("currentPassword") ?? "");
-    const newPassword = String(formData.get("newPassword") ?? "");
-    const confirmPassword = String(formData.get("confirmPassword") ?? "");
+    return Sentry.withServerActionInstrumentation(
+      "dashboard.changePasswordAction",
+      { recordResponse: false },
+      async () => {
+        const authSession = await requireAuth();
+        const currentPassword = String(formData.get("currentPassword") ?? "");
+        const newPassword = String(formData.get("newPassword") ?? "");
+        const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
-    try {
-      await changeAuthenticatedUserPassword({
-        userId: authSession.user.id,
-        currentPassword,
-        newPassword,
-        confirmNewPassword: confirmPassword,
-      });
-    } catch (error) {
-      const mappedError = mapPasswordActionError(error);
-      if (mappedError) {
-        redirect(`/dashboard/profile?password_error=${mappedError}`);
-      }
+        try {
+          await changeAuthenticatedUserPassword({
+            userId: authSession.user.id,
+            currentPassword,
+            newPassword,
+            confirmNewPassword: confirmPassword,
+          });
+        } catch (error) {
+          Sentry.captureException(error);
+          const mappedError = mapPasswordActionError(error);
+          if (mappedError) {
+            redirect(`/dashboard/profile?password_error=${mappedError}`);
+          }
 
-      redirect("/dashboard/profile?password_error=save_failed");
-    }
+          redirect("/dashboard/profile?password_error=save_failed");
+        }
 
-    revalidatePath("/dashboard/profile");
-    redirect("/dashboard/profile?password_saved=1");
+        revalidatePath("/dashboard/profile");
+        redirect("/dashboard/profile?password_saved=1");
+      },
+    );
   }
 
   async function sendPasswordResetAction() {
     "use server";
 
-    const authSession = await requireAuth();
+    return Sentry.withServerActionInstrumentation(
+      "dashboard.sendPasswordResetAction",
+      { recordResponse: false },
+      async () => {
+        const authSession = await requireAuth();
 
-    try {
-      await requestDashboardPasswordResetByUserId({
-        userId: authSession.user.id,
-        appUrl: process.env.APP_URL,
-      });
-    } catch (error) {
-      console.error("[dashboard/profile] failed to trigger reset email", {
-        userId: authSession.user.id,
-        errorName: error instanceof Error ? error.name : null,
-        errorMessage: error instanceof Error ? error.message : String(error),
-      });
-      redirect("/dashboard/profile?reset_error=send_failed");
-    }
+        try {
+          await requestDashboardPasswordResetByUserId({
+            userId: authSession.user.id,
+            appUrl: process.env.APP_URL,
+          });
+        } catch (error) {
+          Sentry.captureException(error);
+          console.error("[dashboard/profile] failed to trigger reset email", {
+            userId: authSession.user.id,
+            errorName: error instanceof Error ? error.name : null,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          });
+          redirect("/dashboard/profile?reset_error=send_failed");
+        }
 
-    revalidatePath("/dashboard/profile");
-    redirect("/dashboard/profile?reset_sent=1");
+        revalidatePath("/dashboard/profile");
+        redirect("/dashboard/profile?reset_sent=1");
+      },
+    );
   }
 
   return (
@@ -368,3 +390,4 @@ export default async function DashboardProfilePage({
     </section>
   );
 }
+

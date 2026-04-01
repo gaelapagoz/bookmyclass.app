@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import * as Sentry from "@sentry/nextjs";
 import { requireAuth } from "@/lib/auth/require-auth";
 import {
   cancelClientBooking,
@@ -53,38 +54,45 @@ function renderBookingCard(booking: DashboardBookingItem, showCancel: boolean) {
 async function cancelBookingAction(formData: FormData) {
   "use server";
 
-  const session = await requireAuth();
-  const bookingId = String(formData.get("bookingId") ?? "");
-  if (!bookingId) {
-    redirect("/dashboard/bookings?error=invalid_request");
-  }
-
-  try {
-    await cancelClientBooking({
-      bookingId,
-      clientId: session.user.id,
-    });
-  } catch (error) {
-    if (error instanceof DashboardServiceError) {
-      if (error.code === "BOOKING_TOO_LATE_TO_CANCEL") {
-        redirect("/dashboard/bookings?error=too_late");
+  return Sentry.withServerActionInstrumentation(
+    "booking.cancelBookingAction",
+    { recordResponse: false },
+    async () => {
+      const session = await requireAuth();
+      const bookingId = String(formData.get("bookingId") ?? "");
+      if (!bookingId) {
+        redirect("/dashboard/bookings?error=invalid_request");
       }
 
-      if (
-        error.code === "BOOKING_NOT_FOUND" ||
-        error.code === "BOOKING_NOT_OWNED" ||
-        error.code === "BOOKING_NOT_CANCELLABLE"
-      ) {
-        redirect("/dashboard/bookings?error=not_cancellable");
+      try {
+        await cancelClientBooking({
+          bookingId,
+          clientId: session.user.id,
+        });
+      } catch (error) {
+        Sentry.captureException(error);
+        if (error instanceof DashboardServiceError) {
+          if (error.code === "BOOKING_TOO_LATE_TO_CANCEL") {
+            redirect("/dashboard/bookings?error=too_late");
+          }
+
+          if (
+            error.code === "BOOKING_NOT_FOUND" ||
+            error.code === "BOOKING_NOT_OWNED" ||
+            error.code === "BOOKING_NOT_CANCELLABLE"
+          ) {
+            redirect("/dashboard/bookings?error=not_cancellable");
+          }
+        }
+
+        redirect("/dashboard/bookings?error=cancel_failed");
       }
-    }
 
-    redirect("/dashboard/bookings?error=cancel_failed");
-  }
-
-  revalidatePath("/dashboard");
-  revalidatePath("/dashboard/bookings");
-  redirect("/dashboard/bookings?cancelled=1");
+      revalidatePath("/dashboard");
+      revalidatePath("/dashboard/bookings");
+      redirect("/dashboard/bookings?cancelled=1");
+    },
+  );
 }
 
 function getMessage(params: { cancelled?: string; error?: string }) {
@@ -169,3 +177,4 @@ export default async function DashboardBookingsPage({
     </section>
   );
 }
+

@@ -1,4 +1,5 @@
 import { BookingIntent } from "@prisma/client";
+import * as Sentry from "@sentry/nextjs";
 import { auth } from "../../../../auth";
 import {
   BookingPaymentOptionsError,
@@ -43,9 +44,11 @@ export async function GET(request: Request) {
     return Response.json({ paymentOptions }, { status: 200 });
   } catch (error) {
     if (error instanceof BookingPaymentOptionsError) {
+      Sentry.captureException(error);
       return Response.json({ error: error.message, code: error.code }, { status: toStatus(error.code) });
     }
 
+    Sentry.captureException(error);
     return Response.json({ error: "Unexpected error while loading payment options." }, { status: 500 });
   }
 }
