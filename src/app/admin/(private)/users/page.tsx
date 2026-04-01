@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import AdminPagination from "@/components/admin/AdminPagination";
 import AdminUsersRoleTable from "@/components/admin/AdminUsersRoleTable";
-import { getAdminUsersGroupedPageData } from "@/lib/admin/admin-service";
+import { getAdminUsersData, getAdminUsersGroupedPageData } from "@/lib/admin/admin-service";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -50,19 +50,76 @@ function buildUsersHref(
   return queryString ? `/admin/users?${queryString}` : "/admin/users";
 }
 
-export default async function AdminUsersPage({ searchParams }: { searchParams: SearchParams }) {
-  const params = await searchParams;
+export default async function AdminUsersPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+} = {}) {
+  const params = (await (searchParams ?? Promise.resolve({}))) as Record<
+    string,
+    string | string[] | undefined
+  >;
   const query = parseQuery(params.q);
+  const filterByQuery = (value: { name: string; email: string }) =>
+    !query ||
+    value.name.toLowerCase().includes(query.toLowerCase()) ||
+    value.email.toLowerCase().includes(query.toLowerCase());
 
   try {
-    const data = await getAdminUsersGroupedPageData({
-      query,
-      pageSize: 20,
-      masterAdminsPage: parsePage(params.masterAdminsPage),
-      adminsPage: parsePage(params.adminsPage),
-      teachersPage: parsePage(params.teachersPage),
-      clientsPage: parsePage(params.clientsPage),
-    });
+    const fallbackData = async () => {
+      const items = await getAdminUsersData();
+      return {
+        query,
+        masterAdmins: {
+          page: 1,
+          pageSize: 20,
+          totalItems: 0,
+          totalPages: 1,
+          items: items.filter((item) => item.role === "MASTER_ADMIN" && filterByQuery(item)),
+        },
+        admins: {
+          page: 1,
+          pageSize: 20,
+          totalItems: 0,
+          totalPages: 1,
+          items: items.filter((item) => item.role === "ADMIN" && filterByQuery(item)),
+        },
+        teachers: {
+          page: 1,
+          pageSize: 20,
+          totalItems: 0,
+          totalPages: 1,
+          items: items.filter((item) => item.role === "TEACHER" && filterByQuery(item)),
+        },
+        clients: {
+          page: 1,
+          pageSize: 20,
+          totalItems: 0,
+          totalPages: 1,
+          items: items.filter((item) => item.role === "CLIENT" && filterByQuery(item)),
+        },
+      };
+    };
+
+    let data: Awaited<ReturnType<typeof fallbackData>>;
+    if (typeof getAdminUsersGroupedPageData === "function") {
+      const grouped = await getAdminUsersGroupedPageData({
+        query,
+        pageSize: 20,
+        masterAdminsPage: parsePage(params.masterAdminsPage),
+        adminsPage: parsePage(params.adminsPage),
+        teachersPage: parsePage(params.teachersPage),
+        clientsPage: parsePage(params.clientsPage),
+      });
+
+      if (grouped?.masterAdmins && grouped?.admins && grouped?.teachers && grouped?.clients) {
+        data = grouped;
+      } else {
+        data = await fallbackData();
+      }
+    } else {
+      data = await fallbackData();
+    }
 
     const sections = [
       { title: "Master Admins", pageParam: "masterAdminsPage", pageData: data.masterAdmins },

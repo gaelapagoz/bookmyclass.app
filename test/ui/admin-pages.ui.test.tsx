@@ -37,6 +37,7 @@ vi.mock("@/lib/admin/admin-service", () => ({
   getBookings: vi.fn(),
   getAdminUsersData: vi.fn(),
   getAdminSubscriptionsPageData: vi.fn(),
+  getAdminUsersGroupedPageData: vi.fn(),
   getAdminOrdersPageData: vi.fn(),
   getAdminOnlineLearningData: vi.fn(),
 }));
@@ -55,6 +56,7 @@ import {
   getAdminSubscriptionsPageData,
   getAdminOrdersPageData,
   getAdminUsersData,
+  getAdminUsersGroupedPageData,
 } from "@/lib/admin/admin-service";
 import { listClientMessages } from "@/lib/client-messages/client-message-service";
 import { getActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
@@ -387,19 +389,31 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Morning Flow")).toBeInTheDocument();
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
   });
-
   it("renders users data with create link", async () => {
-    vi.mocked(getAdminUsersData).mockResolvedValue([
-      {
-        id: "u1",
-        name: "Admin User",
-        email: "admin@example.test",
-        role: "ADMIN",
-        isActive: true,
-        lastLoginAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
+    vi.mocked(getAdminUsersGroupedPageData).mockResolvedValue({
+      query: "",
+      masterAdmins: { page: 1, pageSize: 20, totalItems: 0, totalPages: 1, items: [] },
+      admins: {
+        page: 1,
+        pageSize: 20,
+        totalItems: 1,
+        totalPages: 1,
+        items: [
+          {
+            id: "u1",
+            name: "Admin User",
+            email: "admin@example.test",
+            role: "ADMIN",
+            isActive: true,
+            lastLoginAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+          },
+        ],
       },
-    ]);
+      teachers: { page: 1, pageSize: 20, totalItems: 0, totalPages: 1, items: [] },
+      clients: { page: 1, pageSize: 20, totalItems: 0, totalPages: 1, items: [] },
+    });
+
 
     render(await AdminUsersPage());
 
