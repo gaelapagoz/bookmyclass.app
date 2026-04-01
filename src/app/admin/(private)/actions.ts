@@ -17,10 +17,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
-import type { Session } from "next-auth";
 import type { MarketingAudienceType as MarketingAudienceTypeValue } from "@prisma/client";
 
-import { auth } from "@/auth";
 import {
   adjustAdminClientCredits,
   cancelAdminClientMembership,
@@ -41,7 +39,7 @@ import {
   updateAdminSubscription,
   updateAdminUser,
 } from "@/lib/admin/admin-service";
-import { isAdminRole } from "@/lib/auth/admin-access";
+import { requireAdminSession } from "@/lib/auth/require-auth";
 import { upsertActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
 import { updateClientMessageStatus } from "@/lib/client-messages/client-message-service";
 import { normalizeMarketingContentJson } from "@/lib/marketing/marketing-renderer";
@@ -449,37 +447,10 @@ function getAdminActionErrorMessage(error: unknown): string {
   return getPrismaErrorMessage(error);
 }
 
-type AdminSession = Session & {
-  user: NonNullable<Session["user"]> & {
-    id: string;
-    role: Role;
-  };
-};
+type AdminSession = Awaited<ReturnType<typeof requireAdminSession>>;
 
 async function assertAdminAccess(): Promise<AdminSession> {
-  const session = await auth();
-
-  if (!session?.user) {
-    throw new Error("UNAUTHENTICATED");
-  }
-
-  const role = session.user.role;
-  if (!role || !isAdminRole(role)) {
-    throw new Error("FORBIDDEN");
-  }
-
-  if (!session.user.id) {
-    throw new Error("UNAUTHENTICATED");
-  }
-
-  return {
-    ...session,
-    user: {
-      ...session.user,
-      id: session.user.id,
-      role,
-    },
-  };
+  return requireAdminSession({ throwOnFailure: true });
 }
 
 function redirectWithError(path: string, message: string): never {

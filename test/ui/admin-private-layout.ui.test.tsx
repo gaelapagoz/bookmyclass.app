@@ -1,7 +1,7 @@
-﻿/* @vitest-environment jsdom */
+/* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { redirectMock } = vi.hoisted(() => ({
@@ -23,6 +23,7 @@ vi.mock("next/navigation", async () => {
 
 vi.mock("@/auth", () => ({
   auth: vi.fn(async () => null),
+  signOut: vi.fn(async () => undefined),
 }));
 
 vi.mock("@/lib/client-messages/client-message-service", () => ({
@@ -30,13 +31,14 @@ vi.mock("@/lib/client-messages/client-message-service", () => ({
 }));
 
 import { usePathname } from "next/navigation";
-import { auth } from "@/auth";
+import { auth, signOut } from "@/auth";
 import { getUnreadClientMessagesCount } from "@/lib/client-messages/client-message-service";
 import AdminPrivateLayout from "../../src/app/admin/(private)/layout";
 
 describe("/admin private layout", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(signOut).mockResolvedValue(undefined);
     vi.mocked(usePathname).mockReturnValue("/admin/dashboard");
     vi.mocked(getUnreadClientMessagesCount).mockResolvedValue(0);
   });
@@ -85,6 +87,13 @@ describe("/admin private layout", () => {
     );
 
     expect(screen.getByText("Admin")).toBeInTheDocument();
+    const navList = screen.getByTestId("admin-nav-list");
+    const logoutItem = screen.getByTestId("admin-nav-logout-item");
+    const navItems = within(navList).getAllByRole("listitem");
+    expect(navItems.at(-1)).toBe(logoutItem);
+    expect(within(logoutItem).getByRole("button", { name: "Logout" })).toBeInTheDocument();
+    const main = screen.getByRole("main");
+    expect(within(main).queryByRole("button", { name: "Logout" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Dashboard" })).toHaveClass("bg-[#1d3652]");
     expect(screen.getByRole("link", { name: "Users" })).toBeInTheDocument();
@@ -142,6 +151,7 @@ describe("/admin private layout", () => {
     expect(screen.getByRole("link", { name: "Calendar" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Booking List" })).toBeInTheDocument();
   });
+
   it("hides inbox unread badge when unread count is 0", async () => {
     vi.mocked(getUnreadClientMessagesCount).mockResolvedValue(0);
     vi.mocked(auth).mockResolvedValue({
@@ -182,7 +192,3 @@ describe("/admin private layout", () => {
     expect(screen.getByLabelText("Inbox unread 3")).toBeInTheDocument();
   });
 });
-
-
-
-

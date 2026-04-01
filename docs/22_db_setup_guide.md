@@ -1,151 +1,245 @@
-# Database Setup Guide (Production Server)
+# Database Setup Guide (Docker-Based Production Server)
 
-This guide explains how to set up the PostgreSQL database from scratch on the server and how to run Prisma Studio safely.
+This guide explains the correct setup for the **database on the server when PostgreSQL runs in Docker**, and how to access it safely with Prisma and Prisma Studio.
 
 ---
 
 ## Overview
 
-Goal:
-- Clean database setup
-- Prisma connected correctly
-- Safe access via SSH tunnel
+This production setup uses:
+
+- **PostgreSQL inside a Docker container**
+- **App running on the server**
+- **Prisma migrations applied from the app**
+- **Prisma Studio accessed only through SSH tunnel**
+
+This keeps the database private and consistent with the current hosting architecture.
 
 ---
 
-## 1. Install PostgreSQL (if not installed)
+## 1. Verify Docker Is Installed
 
 ```bash
-sudo apt update
-sudo apt install postgresql postgresql-contrib -y
+docker --version
+docker compose version
 ```
 
-Start service:
-```bash
-sudo systemctl start postgresql
-sudo systemctl enable postgresql
-```
+If Docker is missing, install Docker first before continuing.
 
 ---
 
-## 2. Create Database and User
+## 2. Create Persistent Storage for PostgreSQL
 
-Login as postgres:
+Create a directory for DB persistence:
+
 ```bash
-sudo -u postgres psql
+mkdir -p ~/bookmyclass/postgres-data
 ```
 
-Create DB + user:
-```sql
-CREATE DATABASE bookmyclass;
-CREATE USER bookmyclass_user WITH PASSWORD 'strong_password';
-ALTER ROLE bookmyclass_user SET client_encoding TO 'utf8';
-ALTER ROLE bookmyclass_user SET default_transaction_isolation TO 'read committed';
-ALTER ROLE bookmyclass_user SET timezone TO 'UTC';
-GRANT ALL PRIVILEGES ON DATABASE bookmyclass TO bookmyclass_user;
+This ensures DB data survives container restarts and deployments.
+
+---
+
+## 3. Add PostgreSQL Service to Docker Compose
+
+Use a dedicated PostgreSQL container in your server `docker-compose.yml` or `compose.yml`.
+
+Example:
+
+```yaml
+services:
+  postgres:
+    image: postgres:16
+    container_name: bookmyclass-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bookmyclass
+      POSTGRES_USER: bookmyclass_user
+      POSTGRES_PASSWORD: CHANGE_THIS_STRONG_PASSWORD
+    volumes:
+      - ~/bookmyclass/postgres-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
 ```
 
-Exit:
+### Why this is the correct setup
+- Data is persistent
+- DB restarts automatically
+- Port is bound to `127.0.0.1`, not public internet
+- Works with your current Docker-based hosting
+
+---
+
+## 4. Start the Database Container
+
+```bash
+docker compose up -d postgres
+```
+
+Check that it is running:
+
+```bash
+docker ps
+```
+
+You should see the `bookmyclass-postgres` container up.
+
+---
+
+## 5. Configure the App DATABASE_URL
+
+In the app `.env` on the server:
+
+```env
+DATABASE_URL="postgresql://bookmyclass_user:CHANGE_THIS_STRONG_PASSWORD@localhost:5432/bookmyclass"
+```
+
+### Important
+Use `localhost:5432` on the server because Docker exposes the container port to loopback only.
+
+---
+
+## 6. Validate Database Connectivity
+
+From the server, test access:
+
+```bash
+docker exec -it bookmyclass-postgres psql -U bookmyclass_user -d bookmyclass
+```
+
+If this opens `psql`, the DB is working.
+
+Exit with:
+
 ```bash
 \q
 ```
 
 ---
 
-## 3. Configure Connection URL
+## 7. Apply Prisma Migrations
 
-In your `.env`:
-
-```env
-DATABASE_URL="postgresql://bookmyclass_user:strong_password@localhost:5432/bookmyclass"
-```
-
----
-
-## 4. Run Prisma Migrations
-
-From project root:
+From the app project root on the server:
 
 ```bash
 npx prisma migrate deploy
 ```
 
-If first setup (no migrations yet):
-
-```bash
-npx prisma migrate dev --name init
-```
+### Rule
+Use `migrate deploy` in production.  
+Do **not** use `prisma migrate dev` on production.
 
 ---
 
-## 5. Generate Prisma Client
+## 8. Generate Prisma Client
 
 ```bash
 npx prisma generate
 ```
 
+This ensures the app uses the current schema.
+
 ---
 
-## 6. Verify DB Connection
+## 9. Start Prisma Studio on the Server
+
+From the app project root:
 
 ```bash
-npx prisma db pull
+npx prisma studio --port 51212 --hostname 127.0.0.1
+npx prisma studio --browser none
 ```
 
-If this works → DB is correctly connected
+### Why this matters
+- Runs Prisma Studio on a known port
+- Binds it only to local server access
+- Prevents public exposure
 
 ---
 
-## 7. Run Prisma Studio (Server)
+## 10. Access Prisma Studio From Your Local Machine
+
+Open the SSH tunnel from your local machine:
 
 ```bash
-npx prisma studio
+ssh -L 51212:localhost:51212 deploy@46.62.208.152
 ```
 
-By default runs on:
-```
-http://localhost:5555
+Then open in your local browser:
+
+```text
+http://localhost:51212
 ```
 
 ---
 
-## 8. Access Prisma Studio (From Local)
+## 11. Access PostgreSQL From Your Local Machine
 
-Open SSH tunnel:
+Open the DB tunnel:
 
 ```bash
-ssh -L 5555:localhost:5555 deploy@46.62.208.152
+ssh -L 5432:localhost:5432 deploy@46.62.208.152
 ```
 
-Then open:
+Then connect from your DB client with:
+
+- Host: `localhost`
+- Port: `5432`
+- Database: `bookmyclass`
+- User: `bookmyclass_user`
+- Password: the PostgreSQL password
+
+---
+
+## 12. Useful Docker Commands
+
+### See running containers
+```bash
+docker ps
 ```
-http://localhost:5555
+
+### View DB logs
+```bash
+docker logs bookmyclass-postgres
+```
+
+### Restart DB container
+```bash
+docker restart bookmyclass-postgres
+```
+
+### Open psql inside the container
+```bash
+docker exec -it bookmyclass-postgres psql -U bookmyclass_user -d bookmyclass
 ```
 
 ---
 
-## 9. Production Safety Rules
+## 13. Production Safety Rules
 
-- Never expose port 5432 publicly
-- Never expose Prisma Studio publicly
-- Always use SSH tunnels
-- Use strong DB passwords
-- Do NOT run `migrate dev` in production (only `deploy`)
+- Do not expose PostgreSQL publicly
+- Do not expose Prisma Studio publicly
+- Bind DB to `127.0.0.1`
+- Use SSH tunnels for all admin access
+- Use `prisma migrate deploy` only in production
+- Keep DB credentials in environment variables, not hardcoded in app code
 
 ---
 
-## 10. Quick Checklist
+## 14. Quick Checklist
 
-- [ ] PostgreSQL installed
-- [ ] DB + user created
-- [ ] `.env` configured
-- [ ] Migrations applied
-- [ ] Prisma client generated
-- [ ] Prisma Studio accessible via tunnel
+- [ ] Docker is installed
+- [ ] PostgreSQL container exists
+- [ ] Persistent volume is configured
+- [ ] DB port is bound only to `127.0.0.1`
+- [ ] `DATABASE_URL` is correct
+- [ ] Prisma migrations applied
+- [ ] Prisma Studio started on `127.0.0.1:51212`
+- [ ] SSH tunnel works locally
 
 ---
 
 ## Key Principle
 
-> Database is the source of truth.  
-> Never bypass migrations or manual consistency rules.
+> Keep PostgreSQL private, Dockerized, and persistent.  
+> Use Prisma migrations as the only schema change path.

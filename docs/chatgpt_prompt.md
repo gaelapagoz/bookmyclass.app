@@ -16,7 +16,6 @@ Rules:
 - Ensure production safety (no hidden failures)
 - Check the rules on the sources and the previous chats
 
-
 Output format:
 - Recommendation
 - Steps

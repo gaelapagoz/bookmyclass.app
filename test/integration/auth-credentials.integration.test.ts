@@ -85,4 +85,30 @@ describe("credentials authorize integration", () => {
 
     expect(result).toBeNull();
   });
+
+  it("accepts unverified admin users with valid credentials", async () => {
+    const password = "Password123!";
+    const passwordHash = await hash(password, 12);
+
+    const user = await prisma.user.create({
+      data: {
+        name: "Unverified Admin",
+        firstName: "Unverified",
+        lastName: "Admin",
+        email: "unverified.admin@example.test",
+        role: Role.ADMIN,
+        passwordHash,
+        emailVerified: null,
+      },
+    });
+
+    const result = await authorizeCredentials({
+      email: "unverified.admin@example.test",
+      password,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.id).toBe(user.id);
+    expect(result?.role).toBe(Role.ADMIN);
+  });
 });

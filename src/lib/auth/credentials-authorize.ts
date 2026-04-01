@@ -1,6 +1,7 @@
 import type { Role } from "@prisma/client";
 import { z } from "zod";
 
+import { isAdminRole } from "@/lib/auth/admin-access";
 import { verifyPassword } from "@/lib/auth/password-service";
 import { prisma } from "@/lib/db";
 
@@ -43,7 +44,11 @@ export async function authorizeCredentials(rawCredentials: unknown): Promise<Aut
     },
   });
 
-  if (!user?.passwordHash || !user.emailVerified) {
+  if (!user?.passwordHash) {
+    return null;
+  }
+
+  if (!user.emailVerified && !isAdminRole(user.role)) {
     return null;
   }
 

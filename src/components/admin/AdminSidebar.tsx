@@ -8,6 +8,7 @@ import { adminNavConfig, type AdminNavGroupItem, type AdminNavLinkItem } from "@
 
 type AdminSidebarProps = {
   unreadInboxCount?: number;
+  onSignOutAction?: (formData: FormData) => Promise<void>;
 };
 
 function isActiveLink(pathname: string, item: AdminNavLinkItem) {
@@ -22,7 +23,7 @@ function isActiveGroup(pathname: string, group: AdminNavGroupItem) {
   return group.children.some((child) => isActiveLink(pathname, child));
 }
 
-export default function AdminSidebar({ unreadInboxCount = 0 }: AdminSidebarProps) {
+export default function AdminSidebar({ unreadInboxCount = 0, onSignOutAction }: AdminSidebarProps) {
   const pathname = usePathname();
 
   const activeGroupKeys = useMemo(() => {
@@ -58,7 +59,7 @@ export default function AdminSidebar({ unreadInboxCount = 0 }: AdminSidebarProps
       </div>
 
       <nav className="p-3">
-        <ul className="space-y-1">
+        <ul className="space-y-1" data-testid="admin-nav-list">
           {adminNavConfig.map((item) => {
             if (item.type === "link") {
               const active = isActiveLink(pathname, item);
@@ -131,6 +132,18 @@ export default function AdminSidebar({ unreadInboxCount = 0 }: AdminSidebarProps
               </li>
             );
           })}
+          {onSignOutAction ? (
+            <li data-testid="admin-nav-logout-item">
+              <form action={onSignOutAction}>
+                <button
+                  type="submit"
+                  className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm text-[#d9c8be] transition-colors hover:bg-[#1b2f47] hover:text-[#f4eee8]"
+                >
+                  Logout
+                </button>
+              </form>
+            </li>
+          ) : null}
         </ul>
       </nav>
     </aside>

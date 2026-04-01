@@ -1,22 +1,17 @@
-import { redirect } from "next/navigation";
-
-import { auth } from "@/auth";
+import { signOut } from "@/auth";
 import AdminSidebar from "@/components/admin/AdminSidebar";
-import { isAdminRole } from "@/lib/auth/admin-access";
+import { requireAdminSession } from "@/lib/auth/require-auth";
 import { getUnreadClientMessagesCount } from "@/lib/client-messages/client-message-service";
 
 export default async function AdminPrivateLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const session = await auth();
-
-  if (!session?.user) {
-    redirect("/admin");
+  async function handleAdminSignOut(_formData: FormData) {
+    "use server";
+    await signOut({ redirectTo: "/admin" });
   }
 
-  if (!isAdminRole(session.user.role)) {
-    redirect("/admin?error=unauthorized");
-  }
+  await requireAdminSession();
 
   let unreadInboxCount = 0;
   try {
@@ -27,7 +22,7 @@ export default async function AdminPrivateLayout({
 
   return (
     <div className="min-h-screen bg-[#e8edf3] text-[#1f2735] md:flex">
-      <AdminSidebar unreadInboxCount={unreadInboxCount} />
+      <AdminSidebar unreadInboxCount={unreadInboxCount} onSignOutAction={handleAdminSignOut} />
       <main className="flex-1 p-5 md:p-8">{children}</main>
     </div>
   );
