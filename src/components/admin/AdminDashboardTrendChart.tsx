@@ -26,6 +26,14 @@ function formatValue(value: number, format: "number" | "currency") {
   return new Intl.NumberFormat("en-BE").format(Math.round(value));
 }
 
+function formatDayLabel(dateKey: string, options: Intl.DateTimeFormatOptions): string {
+  const date = new Date(`${dateKey}T00:00:00.000Z`);
+  return new Intl.DateTimeFormat("en-BE", {
+    ...options,
+    timeZone: "UTC",
+  }).format(date);
+}
+
 function pointValue(point: DashboardTrendPoint, metric: DashboardMetricKey): number {
   return point[metric];
 }
@@ -102,17 +110,16 @@ export default function AdminDashboardTrendChart({ data, selectedMetric, period 
             <path d={path} fill="none" stroke="#3b82f6" strokeWidth="2.5" />
             {points.map((point, index) => (
               <circle key={`p-${index}`} cx={point.x} cy={point.y} r="2.5" fill="#3b82f6">
-                <title>
-                  {new Intl.DateTimeFormat("en-BE", { dateStyle: "medium" }).format(new Date(data[index]?.date ?? ""))}
-                  {" - "}
-                  {formatValue(values[index] ?? 0, metricMeta.format)}
-                </title>
+                <title>{`${formatDayLabel(data[index]?.date ?? "", { dateStyle: "medium" })} - ${formatValue(values[index] ?? 0, metricMeta.format)}`}</title>
               </circle>
             ))}
 
             {xTickIndexes.map((index) => {
               const x = paddingLeft + (index / Math.max(data.length - 1, 1)) * plotWidth;
-              const label = new Intl.DateTimeFormat("en-BE", { month: "short", day: "numeric" }).format(new Date(data[index]?.date ?? ""));
+              const label = formatDayLabel(data[index]?.date ?? "", {
+                month: "short",
+                day: "numeric",
+              });
               return (
                 <text key={`x-${index}`} x={x} y={chartHeight - 10} textAnchor="middle" fontSize="10" fill="#5a6d86">
                   {label}
