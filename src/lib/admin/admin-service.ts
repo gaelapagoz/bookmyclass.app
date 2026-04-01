@@ -15,6 +15,7 @@ import {
   SubscriptionStatus,
   Weekday,
 } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 import { prisma } from "@/lib/db";
@@ -207,6 +208,22 @@ export type AdminUserItem = {
   isActive: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+};
+
+export type AdminUsersRolePageData = {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  items: AdminUserItem[];
+};
+
+export type AdminUsersGroupedPageData = {
+  query: string;
+  masterAdmins: AdminUsersRolePageData;
+  admins: AdminUsersRolePageData;
+  teachers: AdminUsersRolePageData;
+  clients: AdminUsersRolePageData;
 };
 
 export type AdminUserDetail = {
@@ -2260,6 +2277,131 @@ export async function getAdminBookingsData(): Promise<AdminBookingItem[]> {
   return page.data;
 }
 
+function mapAdminUserItem(user: {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  isActive: boolean;
+  lastLoginAt: Date | null;
+  createdAt: Date;
+}): AdminUserItem {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    isActive: user.isActive,
+    lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
+    createdAt: user.createdAt.toISOString(),
+  };
+}
+
+async function getAdminUsersRolePage(input: {
+  role: Role;
+  page: number;
+  pageSize: number;
+  query: string;
+}): Promise<AdminUsersRolePageData> {
+  const where: Prisma.UserWhereInput = {
+    role: input.role,
+    ...(input.query
+      ? {
+          OR: [
+            {
+              name: {
+                contains: input.query,
+                mode: "insensitive",
+              },
+            },
+            {
+              email: {
+                contains: input.query,
+                mode: "insensitive",
+              },
+            },
+          ],
+        }
+      : {}),
+  };
+
+  const skip = (input.page - 1) * input.pageSize;
+  const [totalItems, rows] = await prisma.$transaction([
+    prisma.user.count({ where }),
+    prisma.user.findMany({
+      where,
+      orderBy: [{ createdAt: "desc" }],
+      skip,
+      take: input.pageSize,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        lastLoginAt: true,
+        createdAt: true,
+      },
+    }),
+  ]);
+
+  return {
+    page: input.page,
+    pageSize: input.pageSize,
+    totalItems,
+    totalPages: Math.max(1, Math.ceil(totalItems / input.pageSize)),
+    items: rows.map(mapAdminUserItem),
+  };
+}
+
+export async function getAdminUsersGroupedPageData(input: {
+  query?: string;
+  pageSize?: number;
+  masterAdminsPage: number;
+  adminsPage: number;
+  teachersPage: number;
+  clientsPage: number;
+}): Promise<AdminUsersGroupedPageData> {
+  const query = input.query?.trim() ?? "";
+  const pageSize = Math.max(1, Math.min(input.pageSize ?? 20, 100));
+  const normalizePage = (value: number) => Math.max(1, Math.floor(value));
+
+  const [masterAdmins, admins, teachers, clients] = await Promise.all([
+    getAdminUsersRolePage({
+      role: Role.MASTER_ADMIN,
+      page: normalizePage(input.masterAdminsPage),
+      pageSize,
+      query,
+    }),
+    getAdminUsersRolePage({
+      role: Role.ADMIN,
+      page: normalizePage(input.adminsPage),
+      pageSize,
+      query,
+    }),
+    getAdminUsersRolePage({
+      role: Role.TEACHER,
+      page: normalizePage(input.teachersPage),
+      pageSize,
+      query,
+    }),
+    getAdminUsersRolePage({
+      role: Role.CLIENT,
+      page: normalizePage(input.clientsPage),
+      pageSize,
+      query,
+    }),
+  ]);
+
+  return {
+    query,
+    masterAdmins,
+    admins,
+    teachers,
+    clients,
+  };
+}
+
 export async function getAdminUsersData(): Promise<AdminUserItem[]> {
   const users = await prisma.user.findMany({
     orderBy: [{ createdAt: "desc" }],
@@ -2275,15 +2417,7 @@ export async function getAdminUsersData(): Promise<AdminUserItem[]> {
     },
   });
 
-  return users.map((user) => ({
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    isActive: user.isActive,
-    lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
-    createdAt: user.createdAt.toISOString(),
-  }));
+  return users.map(mapAdminUserItem);
 }
 
 export async function getAdminUserById(id: string): Promise<AdminUserDetail | null> {
