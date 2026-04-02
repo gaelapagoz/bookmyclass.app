@@ -1,3 +1,4 @@
+import { UserActivationStatus } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import { compare, hash } from "bcryptjs";
 import { prisma } from "@/lib/db";
@@ -370,11 +371,12 @@ export async function requestPasswordReset(input: {
       id: true,
       email: true,
       name: true,
+      activationStatus: true,
     },
   });
   logPasswordResetDebug("user-lookup", { userFound: Boolean(user) });
 
-  if (!user) {
+  if (!user || user.activationStatus !== UserActivationStatus.ACTIVE) {
     return { outcome: "SKIPPED" };
   }
 

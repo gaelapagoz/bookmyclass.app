@@ -24,7 +24,6 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     user: {
       findFirst: vi.fn(),
-      create: vi.fn(),
     },
   },
 }));
@@ -96,17 +95,15 @@ describe("Auth pages UI", () => {
       screen.getByText("Please fill all fields correctly. Password must be at least 8 characters."),
     ).toBeInTheDocument();
 
-    render(await SignUpPage({ searchParams: Promise.resolve({ error: "email_exists" }) }));
-    expect(screen.getByText("An account with this email already exists.")).toBeInTheDocument();
-
     render(await SignUpPage({ searchParams: Promise.resolve({ error: "signup_failed" }) }));
     expect(screen.getByText("Could not create account right now. Please try again.")).toBeInTheDocument();
 
-    render(await SignUpPage({ searchParams: Promise.resolve({ error: "verification_send_failed" }) }));
+    render(await SignUpPage({ searchParams: Promise.resolve({ error: "disposable_email" }) }));
     expect(
-      screen.getByText("Account created, but verification email could not be sent right now."),
+      screen.getByText("Please use a non-temporary email address."),
     ).toBeInTheDocument();
   });
+
   it("sign-up page sanitizes external callbackUrl for authenticated users", async () => {
     vi.mocked(auth).mockResolvedValueOnce({
       user: {
@@ -124,4 +121,3 @@ describe("Auth pages UI", () => {
     expect(redirect).toHaveBeenCalledWith("/dashboard");
   });
 });
-

@@ -1,4 +1,5 @@
 import "./helpers/setup-env";
+import { hash } from "bcryptjs";
 import {
   BillingInterval,
   BookingStatus,
@@ -14,7 +15,7 @@ import {
   StudioSessionStatus,
   SubscriptionStatus,
 } from "@prisma/client";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cancelClientBooking,
   DashboardServiceError,
@@ -151,6 +152,12 @@ async function createSessionFixture(
 describe("dashboard-service integration", () => {
   beforeEach(async () => {
     await resetDb();
+    process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || "test-resend-key";
+    process.env.EMAIL_FROM = process.env.EMAIL_FROM || "Test <test@example.test>";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ id: "email_1" }, { status: 200 })),
+    );
   });
 
   it("cancels eligible future booking and restores credit", async () => {
@@ -264,7 +271,7 @@ describe("dashboard-service integration", () => {
     expect(bookings.upcoming[0]?.canCancel).toBe(false);
     expect(bookings.upcoming[0]?.cancellationBlockedReason).toMatch(/less than 24 hour/i);
   });
-  it("updates profile and blocks duplicate email", async () => {
+  it("updates profile and enforces verified email change flow", async () => {
     const userOne = await prisma.user.create({
       data: {
         name: "User One",
@@ -272,6 +279,9 @@ describe("dashboard-service integration", () => {
         lastName: "One",
         email: `user.one.${Date.now()}@example.test`,
         role: Role.CLIENT,
+        passwordHash: await hash("Password123!", 12),
+        emailVerified: new Date(),
+        emailVerifiedAt: new Date(),
       },
     });
     const userTwo = await prisma.user.create({
@@ -297,12 +307,16 @@ describe("dashboard-service integration", () => {
         firstName: true,
         lastName: true,
         name: true,
+        email: true,
+        pendingEmail: true,
         clientProfile: { select: { phone: true } },
       },
     });
     expect(updated?.firstName).toBe("Updated");
     expect(updated?.lastName).toBe("Name");
     expect(updated?.name).toBe("Updated Name");
+    expect(updated?.email).toBe(userOne.email);
+    expect(updated?.pendingEmail).toBeNull();
     expect(updated?.clientProfile?.phone).toBe("+32000000001");
 
     await expect(
@@ -311,10 +325,38 @@ describe("dashboard-service integration", () => {
         lastName: "Name",
         email: userTwo.email,
         phone: "",
+        currentPasswordForEmailChange: "Password123!",
+        appUrl: "http://localhost:3000",
       }),
     ).rejects.toMatchObject<Partial<DashboardServiceError>>({
       code: "EMAIL_ALREADY_IN_USE",
     });
+
+    const newEmail = `user.one.changed.${Date.now()}@example.test`;
+    const result = await updateDashboardProfile(userOne.id, {
+      firstName: "Updated",
+      lastName: "Name",
+      email: newEmail,
+      phone: "+32000000001",
+      currentPasswordForEmailChange: "Password123!",
+      appUrl: "http://localhost:3000",
+    });
+
+    expect(result.emailChangeRequested).toBe(true);
+
+    const pending = await prisma.user.findUnique({
+      where: { id: userOne.id },
+      select: {
+        email: true,
+        pendingEmail: true,
+        pendingEmailTokenHash: true,
+        pendingEmailTokenExpiresAt: true,
+      },
+    });
+    expect(pending?.email).toBe(userOne.email);
+    expect(pending?.pendingEmail).toBe(newEmail);
+    expect(pending?.pendingEmailTokenHash).toBeTruthy();
+    expect(pending?.pendingEmailTokenExpiresAt).not.toBeNull();
   });
 
   it("returns dashboard home summary with upcoming booking and credits", async () => {
@@ -555,4 +597,10 @@ describe("dashboard-service integration", () => {
     expect(membership.ownedOneTimeProducts[0]?.orderId).toBe(paidOrder.id);
   });
 });
+
+
+
+
+
+
 

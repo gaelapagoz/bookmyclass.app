@@ -17,6 +17,8 @@ function hasRequiredDelegates(client: PrismaClient): boolean {
   const runtimeClient = client as unknown as {
     passwordResetToken?: unknown;
     passwordResetRateLimit?: unknown;
+    pendingUserRegistration?: unknown;
+    publicAuthRateLimit?: unknown;
     marketingCampaign?: unknown;
     marketingCampaignRecipient?: unknown;
     marketingCampaignLink?: unknown;
@@ -25,8 +27,10 @@ function hasRequiredDelegates(client: PrismaClient): boolean {
     marketingUnsubscribe?: unknown;
   };
   return Boolean(
-    runtimeClient.passwordResetToken &&
+      runtimeClient.passwordResetToken &&
       runtimeClient.passwordResetRateLimit &&
+      runtimeClient.pendingUserRegistration &&
+      runtimeClient.publicAuthRateLimit &&
       runtimeClient.marketingCampaign &&
       runtimeClient.marketingCampaignRecipient &&
       runtimeClient.marketingCampaignLink &&

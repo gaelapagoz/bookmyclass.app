@@ -4,7 +4,12 @@ import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
 
 import { auth } from "@/auth";
-import { requestEmailVerification, verifyEmailByToken } from "@/lib/auth/email-verification-service";
+import {
+  confirmEmailChangeByToken,
+  requestEmailVerification,
+  verifyEmailByToken,
+  verifyPendingRegistrationByToken,
+} from "@/lib/auth/email-verification-service";
 import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
 
 type SearchParams = Promise<{
@@ -14,6 +19,8 @@ type SearchParams = Promise<{
   error?: string;
   resend?: string;
   sent?: string;
+  registrationToken?: string;
+  emailChangeToken?: string;
   token?: string;
   verified?: string;
 }>;
@@ -59,6 +66,30 @@ export default async function VerifyEmailPage({
   const params = await searchParams;
   const callbackUrl = getSafeCallbackPath(params.callbackUrl, "/dashboard");
   const email = String(params.email ?? session?.user?.email ?? "").trim().toLowerCase();
+
+  if (params.registrationToken) {
+    const result = await verifyPendingRegistrationByToken({
+      token: params.registrationToken,
+    });
+    const nextEmail = result.email ?? email;
+    redirect(
+      result.verified
+        ? `/verify-email?verified=1&email=${encodeURIComponent(nextEmail)}&callbackUrl=${encodeURIComponent(callbackUrl)}`
+        : `/verify-email?error=invalid_token&email=${encodeURIComponent(nextEmail)}&callbackUrl=${encodeURIComponent(callbackUrl)}`,
+    );
+  }
+
+  if (params.emailChangeToken) {
+    const result = await confirmEmailChangeByToken({
+      token: params.emailChangeToken,
+    });
+    const nextEmail = result.email ?? email;
+    redirect(
+      result.verified
+        ? `/verify-email?verified=1&email=${encodeURIComponent(nextEmail)}&callbackUrl=${encodeURIComponent(callbackUrl)}`
+        : `/verify-email?error=invalid_token&email=${encodeURIComponent(nextEmail)}&callbackUrl=${encodeURIComponent(callbackUrl)}`,
+    );
+  }
 
   if (params.token && email) {
     const verified = await verifyEmailByToken({

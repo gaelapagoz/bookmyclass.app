@@ -8,6 +8,7 @@ import {
   StudioSessionStatus,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { requestEmailChange, UserIdentityError } from "@/lib/auth/user-identity-service";
 import {
   getLatestStripeCustomerIdForUser,
   getOwnedOneTimeProducts,
@@ -26,7 +27,9 @@ type DashboardServiceErrorCode =
   | "BOOKING_NOT_CANCELLABLE"
   | "BOOKING_TOO_LATE_TO_CANCEL"
   | "EMAIL_ALREADY_IN_USE"
-  | "INVALID_PROFILE_INPUT";
+  | "INVALID_PROFILE_INPUT"
+  | "EMAIL_CHANGE_REQUIRES_PASSWORD"
+  | "INVALID_CURRENT_PASSWORD";
 
 export class DashboardServiceError extends Error {
   constructor(
@@ -310,8 +313,10 @@ export async function updateDashboardProfile(
     lastName: string;
     email: string;
     phone: string;
+    currentPasswordForEmailChange?: string;
+    appUrl?: string;
   },
-): Promise<void> {
+): Promise<{ emailChangeRequested: boolean }> {
   const firstName = input.firstName.trim();
   const lastName = input.lastName.trim();
   const email = input.email.trim().toLowerCase();
@@ -322,6 +327,15 @@ export async function updateDashboardProfile(
     throw new DashboardServiceError("INVALID_PROFILE_INPUT", "Invalid profile input.");
   }
 
+  const currentUser = await prisma.user.findUnique({
+    where: { id: clientId },
+    select: { email: true },
+  });
+
+  if (!currentUser) {
+    throw new DashboardServiceError("INVALID_PROFILE_INPUT", "Invalid profile input.");
+  }
+
   try {
     await prisma.user.update({
       where: { id: clientId },
@@ -329,7 +343,6 @@ export async function updateDashboardProfile(
         firstName,
         lastName,
         name,
-        email,
         clientProfile: {
           upsert: {
             update: { phone: phone || null },
@@ -338,7 +351,63 @@ export async function updateDashboardProfile(
         },
       },
     });
+
+    const currentEmail = currentUser.email.trim().toLowerCase();
+    if (email !== currentEmail) {
+      const currentPasswordForEmailChange = input.currentPasswordForEmailChange?.trim() ?? "";
+      if (!currentPasswordForEmailChange) {
+        throw new DashboardServiceError(
+          "EMAIL_CHANGE_REQUIRES_PASSWORD",
+          "Current password is required to change email.",
+        );
+      }
+
+      const result = await requestEmailChange({
+        userId: clientId,
+        newEmail: email,
+        currentPassword: currentPasswordForEmailChange,
+        appUrl: input.appUrl,
+      });
+
+      if (result.outcome === "RATE_LIMITED") {
+        throw new DashboardServiceError(
+          "INVALID_PROFILE_INPUT",
+          "Please wait before requesting another email change.",
+        );
+      }
+
+      return { emailChangeRequested: result.outcome === "SENT" };
+    }
+
+    return { emailChangeRequested: false };
   } catch (error) {
+    if (error instanceof DashboardServiceError) {
+      throw error;
+    }
+
+    if (error instanceof UserIdentityError) {
+      if (error.code === "EMAIL_ALREADY_IN_USE") {
+        throw new DashboardServiceError(
+          "EMAIL_ALREADY_IN_USE",
+          "That email address is already in use.",
+        );
+      }
+
+      if (error.code === "INVALID_CURRENT_PASSWORD") {
+        throw new DashboardServiceError(
+          "INVALID_CURRENT_PASSWORD",
+          "Current password is incorrect.",
+        );
+      }
+
+      if (error.code === "EMAIL_CHANGE_REQUIRES_PASSWORD") {
+        throw new DashboardServiceError(
+          "EMAIL_CHANGE_REQUIRES_PASSWORD",
+          "Current password is required to change email.",
+        );
+      }
+    }
+
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"

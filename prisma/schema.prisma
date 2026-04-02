@@ -16,6 +16,21 @@ enum Role {
   CLIENT
 }
 
+enum UserCreatedVia {
+  PUBLIC_SIGNUP
+  ADMIN
+  BOOKING_FLOW
+  SUBSCRIPTION_FLOW
+  OAUTH
+  IMPORT
+}
+
+enum UserActivationStatus {
+  PENDING
+  ACTIVE
+  DISABLED
+}
+
 enum ProductType {
   DROP_IN_CLASS
   CLASS_PACK
@@ -188,6 +203,11 @@ enum ClientMessageStatus {
   ARCHIVED
 }
 
+enum ClientMessageContactStatus {
+  INBOX
+  SPAM
+}
+
 enum MarketingCampaignStatus {
   DRAFT
   SENDING
@@ -217,11 +237,23 @@ model User {
   email                      String                 @unique
   passwordHash               String?
   emailVerified              DateTime?
+  emailVerifiedAt            DateTime?
   image                      String?
   role                       Role                   @default(CLIENT)
   isActive                   Boolean                @default(true)
   isInactive                 Boolean                @default(false)
+  createdVia                 UserCreatedVia         @default(IMPORT)
+  createdByUserId            String?
+  createdIp                  String?
+  activationStatus           UserActivationStatus   @default(ACTIVE)
+  lastEmailChangeAt          DateTime?
+  pendingEmail               String?
+  pendingEmailTokenHash      String?                @unique
+  pendingEmailTokenExpiresAt DateTime?
   lastLoginAt                DateTime?
+  createdByUser              User?                  @relation("UserCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdUsers               User[]                 @relation("UserCreatedBy")
+  pendingRegistrations       PendingUserRegistration[]
   clientProfile              ClientProfile?
   teacherProfile             TeacherProfile?
   defaultTeachingTemplates   ClassTemplate[]        @relation("TemplateDefaultTeacher")
@@ -256,7 +288,32 @@ model User {
 
   @@index([role])
   @@index([isActive, isInactive])
+  @@index([activationStatus])
+  @@index([createdVia, createdAt])
+  @@index([createdByUserId, createdAt])
+  @@index([pendingEmail, pendingEmailTokenExpiresAt])
   @@index([lastLoginAt])
+}
+
+model PendingUserRegistration {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  firstName     String
+  lastName      String
+  passwordHash  String
+  role          Role     @default(CLIENT)
+  createdVia    UserCreatedVia @default(PUBLIC_SIGNUP)
+  createdIp     String?
+  tokenHash     String   @unique
+  tokenExpiresAt DateTime
+  consumedAt    DateTime?
+  userId        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email, tokenExpiresAt])
 }
 
 model ClientProfile {
@@ -840,7 +897,9 @@ model ClientMessage {
   phone     String?
   subject   String?
   message   String
-  status    ClientMessageStatus @default(NEW)
+  status    ClientMessageStatus        @default(NEW)
+  contactStatus ClientMessageContactStatus @default(INBOX)
+  spamReason String?
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
@@ -848,8 +907,30 @@ model ClientMessage {
   booking Booking? @relation("ClientMessageBooking", fields: [bookingId], references: [id], onDelete: SetNull)
 
   @@index([type, status, createdAt])
+  @@index([type, contactStatus, createdAt])
   @@index([bookingId, createdAt])
   @@index([email, createdAt])
+}
+
+model ContactMessageRateLimit {
+  id              String   @id @default(cuid())
+  ipHash          String   @unique
+  windowStartedAt DateTime
+  requestCount    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([windowStartedAt])
+}
+
+model PublicAuthRateLimit {
+  id              String   @id @default(cuid())
+  keyHash         String   @unique
+  lastRequestedAt DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([lastRequestedAt])
 }
 
 model PublicDocument {

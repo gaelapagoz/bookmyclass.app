@@ -360,6 +360,7 @@ async function purgeForCleanSeed() {
   await prisma.auditLog.deleteMany();
   await prisma.contactMessage.deleteMany();
   await prisma.clientMessage.deleteMany();
+  await prisma.contactMessageRateLimit.deleteMany();
   await prisma.order.deleteMany();
   await prisma.subscriptionContract.deleteMany();
   await prisma.publicDocument.deleteMany();
@@ -375,6 +376,8 @@ async function purgeForCleanSeed() {
   await prisma.account.deleteMany();
   await prisma.session.deleteMany();
   await prisma.verificationToken.deleteMany();
+  await prisma.publicAuthRateLimit.deleteMany();
+  await prisma.pendingUserRegistration.deleteMany();
   await prisma.user.deleteMany();
 }
 
@@ -3056,4 +3059,6 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
+
+
 

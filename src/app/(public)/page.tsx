@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { z } from "zod";
 import { siteConfig } from "@/lib/site-config";
 import { createContactMessage } from "@/lib/client-messages/client-message-service";
 import { getActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
@@ -34,13 +34,6 @@ function headingClassName(size: "lg" | "md" = "lg") {
   return `${size === "lg" ? "text-3xl md:text-5xl" : "text-2xl md:text-4xl"} font-semibold tracking-tight text-[#682c2f]`;
 }
 
-const contactSchema = z.object({
-  name: z.string().trim().min(1).max(120),
-  email: z.string().trim().email().max(180),
-  phone: z.string().trim().max(40).optional(),
-  message: z.string().trim().min(1).max(2000),
-});
-
 export default async function HomePage({
   searchParams,
 }: {
@@ -55,27 +48,20 @@ export default async function HomePage({
   async function submitContactAction(formData: FormData) {
     "use server";
 
-    const parsed = contactSchema.safeParse({
-      name: formData.get("name"),
-      email: formData.get("email"),
-      phone: formData.get("phone") || undefined,
-      message: formData.get("message"),
-    });
-
-    if (!parsed.success) {
-      console.error("[home/contact] validation failed", {
-        issues: parsed.error.issues.map((issue) => issue.message),
-      });
-      redirect("/?error=contact_failed");
-    }
+    const requestHeaders = await headers();
+    const forwardedFor = requestHeaders.get("x-forwarded-for");
+    const firstForwardedIp = forwardedFor?.split(",")[0]?.trim();
+    const ipAddress = firstForwardedIp || requestHeaders.get("x-real-ip") || "unknown";
 
     try {
       await createContactMessage({
-        name: parsed.data.name,
-        email: parsed.data.email,
-        phone: parsed.data.phone ?? null,
+        name: String(formData.get("name") ?? ""),
+        email: String(formData.get("email") ?? ""),
+        phone: String(formData.get("phone") ?? ""),
         subject: "Contact form",
-        message: parsed.data.message,
+        message: String(formData.get("message") ?? ""),
+        honeypot: String(formData.get("company") ?? ""),
+        ipAddress,
       });
     } catch (error) {
       console.error("[home/contact] createContactMessage failed", error);
@@ -306,6 +292,14 @@ export default async function HomePage({
                 name="phone"
                 placeholder="Phone"
                 className="rounded-xl border border-[#e4d8cf] bg-[#fff] px-4 py-3 text-sm outline-none transition focus:border-[#cba4a4] sm:col-span-2"
+              />
+              <input
+                type="text"
+                name="company"
+                autoComplete="off"
+                tabIndex={-1}
+                className="hidden"
+                aria-hidden="true"
               />
               <textarea
                 name="message"

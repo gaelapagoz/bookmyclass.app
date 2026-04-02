@@ -22,6 +22,10 @@ import { prisma } from "@/lib/db";
 import { generatePlanSlug } from "@/lib/admin/plan-slug";
 import { ensureEntitlementRuleForProduct } from "@/lib/admin/plan-entitlement-rules";
 import { provisionPlanOnStripe, resolveStripeProductIdFromPrice } from "@/lib/admin/plan-provisioning";
+import {
+  applyTrustedAdminEmailChange,
+  createUserFromTrustedFlow,
+} from "@/lib/auth/user-identity-service";
 
 export type AdminDashboardData = {
   upcomingSessions: Array<{
@@ -357,6 +361,18 @@ export type AdminRecurringSessionScheduleInput = {
 function toNullable(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+function splitName(fullName: string): { firstName: string; lastName: string } {
+  const normalized = fullName.trim().replace(/\s+/g, " ");
+  if (!normalized) {
+    return { firstName: "User", lastName: "Account" };
+  }
+
+  const parts = normalized.split(" ");
+  const firstName = parts.shift() ?? "User";
+  const lastName = parts.join(" ") || "Account";
+  return { firstName, lastName };
 }
 
 const WEEKDAY_TO_INDEX: Record<Weekday, number> = {
@@ -2800,18 +2816,23 @@ export async function createAdminUser(input: {
   role: Role;
   isActive: boolean;
   password: string;
+  createdByUserId?: string;
 }) {
   const passwordHash = await hash(input.password, 12);
+  const { firstName, lastName } = splitName(input.name);
 
-  return prisma.user.create({
-    data: {
-      name: input.name.trim(),
-      email: input.email.trim().toLowerCase(),
-      role: input.role,
-      isActive: input.isActive,
-      isInactive: !input.isActive,
-      passwordHash,
-    },
+  return createUserFromTrustedFlow({
+    firstName,
+    lastName,
+    email: input.email,
+    passwordHash,
+    role: input.role,
+    createdVia: "ADMIN",
+    createdByUserId: input.createdByUserId ?? null,
+    createdIp: "admin-panel",
+    activationStatus: input.isActive ? "ACTIVE" : "DISABLED",
+    isActive: input.isActive,
+    markEmailVerified: true,
   });
 }
 
@@ -2837,24 +2858,38 @@ export async function updateAdminUser(
   const firstName = input.firstName?.trim() ?? "";
   const lastName = input.lastName?.trim() ?? "";
   const fullName = `${firstName} ${lastName}`.trim() || input.name?.trim() || "User";
+  const normalizedEmail = input.email.trim().toLowerCase();
   const normalizedPhone = toNullable(input.phone);
   const normalizedNotes = toNullable(input.notes);
   const normalizedBio = toNullable(input.bio);
 
   return prisma.$transaction(async (tx) => {
+    const existing = await tx.user.findUnique({
+      where: { id },
+      select: { email: true },
+    });
+
     await tx.user.update({
       where: { id },
       data: {
         name: fullName,
         firstName: firstName || null,
         lastName: lastName || null,
-        email: input.email.trim().toLowerCase(),
+        email: normalizedEmail,
         role: input.role,
         isActive: input.isActive,
         isInactive: !input.isActive,
+        activationStatus: input.isActive ? "ACTIVE" : "DISABLED",
         ...(passwordHash ? { passwordHash } : {}),
       },
     });
+
+    if (existing && existing.email.toLowerCase() !== normalizedEmail) {
+      await applyTrustedAdminEmailChange({
+        userId: id,
+        newEmail: normalizedEmail,
+      });
+    }
 
     if (input.role === Role.TEACHER) {
       await tx.teacherProfile.upsert({

@@ -178,6 +178,37 @@ describe("password-service integration", () => {
     expect(sendResetEmail).not.toHaveBeenCalled();
   });
 
+  it("forgot password never creates user records", async () => {
+    const email = `forgot.nocreate.${Date.now()}@example.test`;
+    const before = await prisma.user.count({
+      where: {
+        email: {
+          equals: email,
+          mode: "insensitive",
+        },
+      },
+    });
+
+    const result = await requestPasswordReset({
+      email,
+      appUrl: "http://localhost:3000",
+      sendResetEmail: async () => undefined,
+    });
+
+    const after = await prisma.user.count({
+      where: {
+        email: {
+          equals: email,
+          mode: "insensitive",
+        },
+      },
+    });
+
+    expect(result).toEqual({ outcome: "SKIPPED" });
+    expect(before).toBe(0);
+    expect(after).toBe(0);
+  });
+
   it("forgot password repeated requests are blocked within the limiter window", async () => {
     const user = await createClientUser(`forgot.limit.${Date.now()}@example.test`, "Password123!");
     const sendResetEmail = vi.fn(async () => undefined);
@@ -378,6 +409,8 @@ describe("password-service integration", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+
 
 
 

@@ -1,3 +1,4 @@
+import { UserActivationStatus } from "@prisma/client";
 import type { Role } from "@prisma/client";
 import { z } from "zod";
 
@@ -40,9 +41,14 @@ export async function authorizeCredentials(rawCredentials: unknown): Promise<Aut
       name: true,
       role: true,
       emailVerified: true,
+      activationStatus: true,
       passwordHash: true,
     },
   });
+
+  if (!user || user.activationStatus !== UserActivationStatus.ACTIVE) {
+    return null;
+  }
 
   if (!user?.passwordHash) {
     return null;

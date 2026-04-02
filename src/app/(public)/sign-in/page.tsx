@@ -1,3 +1,4 @@
+import { UserActivationStatus } from "@prisma/client";
 import { AuthError } from "next-auth";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -38,10 +39,11 @@ export async function signInAction(formData: FormData) {
         },
         select: {
           emailVerified: true,
+          activationStatus: true,
         },
       });
 
-      if (user && !user.emailVerified) {
+      if (user && (user.activationStatus !== UserActivationStatus.ACTIVE || !user.emailVerified)) {
         redirect(
           `/sign-in?error=email_not_verified&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`,
         );

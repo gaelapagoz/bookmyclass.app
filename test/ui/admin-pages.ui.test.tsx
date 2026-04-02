@@ -566,12 +566,15 @@ describe("Admin pages branching", () => {
         subject: "Help",
         message: "Need details",
         status: "NEW",
+        contactStatus: "INBOX",
+        spamReason: null,
         createdAt: new Date(),
       },
     ]);
 
     render(await AdminInboxPage({ searchParams: Promise.resolve({}) }));
 
+    expect(vi.mocked(listClientMessages)).toHaveBeenCalledWith({ limit: 50, mailbox: "INBOX" });
     expect(screen.getByRole("heading", { name: "Inbox" })).toBeInTheDocument();
     expect(screen.getByText(/Jane/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
@@ -658,3 +661,4 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Unable to load online learning right now.")).toBeInTheDocument();
   });
 });
+

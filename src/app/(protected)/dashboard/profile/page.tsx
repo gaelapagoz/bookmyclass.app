@@ -16,6 +16,7 @@ import { requestDashboardPasswordResetByUserId } from "@/lib/dashboard/dashboard
 
 type SearchParams = Promise<{
   profile_error?: string;
+  profile_email_change?: string;
   profile_saved?: string;
   password_error?: string;
   password_saved?: string;
@@ -72,6 +73,7 @@ function mapPasswordActionError(error: unknown): string | null {
 
 function getMessages(params: {
   profile_saved?: string;
+  profile_email_change?: string;
   profile_error?: string;
   password_saved?: string;
   password_error?: string;
@@ -82,6 +84,13 @@ function getMessages(params: {
 
   if (params.profile_saved === "1") {
     messages.push({ type: "success", text: "Profile updated successfully." });
+  }
+
+  if (params.profile_email_change === "1") {
+    messages.push({
+      type: "success",
+      text: "Email change requested. Verify the new email address to complete the update.",
+    });
   }
 
   if (params.password_saved === "1") {
@@ -101,6 +110,17 @@ function getMessages(params: {
 
   if (params.profile_error === "invalid_input") {
     messages.push({ type: "error", text: "Please complete first name, last name, and email." });
+  }
+
+  if (params.profile_error === "email_change_requires_password") {
+    messages.push({
+      type: "error",
+      text: "Current password is required to request an email change.",
+    });
+  }
+
+  if (params.profile_error === "invalid_current_password") {
+    messages.push({ type: "error", text: "Current password is incorrect for email change." });
   }
 
   if (params.profile_error === "save_failed") {
@@ -165,6 +185,8 @@ export default async function DashboardProfilePage({
             lastName: String(formData.get("lastName") ?? ""),
             email: String(formData.get("email") ?? ""),
             phone: String(formData.get("phone") ?? ""),
+            currentPasswordForEmailChange: String(formData.get("currentPasswordForEmailChange") ?? ""),
+            appUrl: process.env.APP_URL,
           });
         } catch (error) {
           Sentry.captureException(error);
@@ -176,6 +198,14 @@ export default async function DashboardProfilePage({
             if (error.code === "INVALID_PROFILE_INPUT") {
               redirect("/dashboard/profile?profile_error=invalid_input");
             }
+
+            if (error.code === "EMAIL_CHANGE_REQUIRES_PASSWORD") {
+              redirect("/dashboard/profile?profile_error=email_change_requires_password");
+            }
+
+            if (error.code === "INVALID_CURRENT_PASSWORD") {
+              redirect("/dashboard/profile?profile_error=invalid_current_password");
+            }
           }
 
           redirect("/dashboard/profile?profile_error=save_failed");
@@ -183,6 +213,10 @@ export default async function DashboardProfilePage({
 
         revalidatePath("/dashboard");
         revalidatePath("/dashboard/profile");
+        const emailChanged = String(formData.get("email") ?? "").trim().toLowerCase() !== profile.email.toLowerCase();
+        if (emailChanged) {
+          redirect("/dashboard/profile?profile_saved=1&profile_email_change=1");
+        }
         redirect("/dashboard/profile?profile_saved=1");
       },
     );
@@ -314,6 +348,17 @@ export default async function DashboardProfilePage({
               <input
                 name="phone"
                 defaultValue={profile.phone}
+                className="mt-1 w-full rounded-md border border-[#d8cec6] px-3 py-2"
+              />
+            </label>
+          </div>
+
+          <div className="mt-4">
+            <label className="text-sm text-[#5f4040]">
+              Current password (required only when changing email)
+              <input
+                type="password"
+                name="currentPasswordForEmailChange"
                 className="mt-1 w-full rounded-md border border-[#d8cec6] px-3 py-2"
               />
             </label>

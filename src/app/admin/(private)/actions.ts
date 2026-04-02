@@ -848,7 +848,7 @@ export async function createUserAction(formData: FormData) {
     "admin.createUserAction",
     { recordResponse: false },
     async () => {
-      await assertAdminAccess();
+      const session = await assertAdminAccess();
 
       const parsed = createUserSchema.safeParse({
         name: formData.get("name"),
@@ -863,7 +863,10 @@ export async function createUserAction(formData: FormData) {
       }
 
       try {
-        await createAdminUser(parsed.data);
+        await createAdminUser({
+          ...parsed.data,
+          createdByUserId: session.user.id,
+        });
       } catch (error) {
         Sentry.captureException(error);
         redirectWithError("/admin/users/new", getPrismaErrorMessage(error));

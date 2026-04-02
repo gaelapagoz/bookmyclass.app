@@ -1,3 +1,4 @@
+import { UserActivationStatus } from "@prisma/client";
 import { redirect } from "next/navigation";
 import type { Role } from "@prisma/client";
 import type { Session } from "next-auth";
@@ -85,14 +86,14 @@ export async function requireVerifiedUser(options?: {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { email: true, emailVerified: true },
+    select: { email: true, emailVerified: true, activationStatus: true },
   });
 
   if (!user) {
     redirect(withCallback(staleSessionPath, callbackUrl));
   }
 
-  if (!user.emailVerified) {
+  if (user.activationStatus !== UserActivationStatus.ACTIVE || !user.emailVerified) {
     redirect(`${verifyEmailPath}?blocked=1&email=${encodeURIComponent(user.email)}`);
   }
 
