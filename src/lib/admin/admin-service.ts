@@ -2875,7 +2875,6 @@ export async function updateAdminUser(
         name: fullName,
         firstName: firstName || null,
         lastName: lastName || null,
-        email: normalizedEmail,
         role: input.role,
         isActive: input.isActive,
         isInactive: !input.isActive,
