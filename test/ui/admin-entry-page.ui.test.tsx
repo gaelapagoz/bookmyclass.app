@@ -1,4 +1,4 @@
-﻿/* @vitest-environment jsdom */
+/* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
@@ -35,6 +35,19 @@ vi.mock("next/navigation", async () => {
     redirect: redirectMock,
   };
 });
+
+const { captureExceptionMock } = vi.hoisted(() => ({
+  captureExceptionMock: vi.fn(),
+}));
+
+vi.mock("@sentry/nextjs", () => ({
+  withServerActionInstrumentation: async (
+    _name: string,
+    _options: { recordResponse?: boolean },
+    callback: () => Promise<unknown>,
+  ) => callback(),
+  captureException: captureExceptionMock,
+}));
 
 vi.mock("@/auth", () => ({
   auth: vi.fn(async () => null),
@@ -113,6 +126,21 @@ describe("/admin entry flow", () => {
     await expect(adminSignInAction(formData)).rejects.toThrow(
       "NEXT_REDIRECT:/admin?error=invalid_credentials&callbackUrl=%2Fadmin%2Fdashboard",
     );
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+  });
+
+  it("adminSignInAction reports unexpected auth errors", async () => {
+    vi.mocked(signIn).mockRejectedValue(new AuthError("CallbackRouteError"));
+
+    const formData = new FormData();
+    formData.set("email", "admin@example.test");
+    formData.set("password", "wrong-password");
+    formData.set("callbackUrl", "/admin/dashboard");
+
+    await expect(adminSignInAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin?error=auth_failed&callbackUrl=%2Fadmin%2Fdashboard",
+    );
+    expect(captureExceptionMock).toHaveBeenCalledTimes(1);
   });
 
   it("adminSignInAction submits credentials on valid input", async () => {
@@ -132,5 +160,4 @@ describe("/admin entry flow", () => {
     });
   });
 });
-
 

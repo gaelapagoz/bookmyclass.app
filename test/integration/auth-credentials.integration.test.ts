@@ -2,7 +2,18 @@ import "./helpers/setup-env";
 
 import { hash } from "bcryptjs";
 import { Role } from "@prisma/client";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { captureMessageMock } = vi.hoisted(() => ({
+  captureMessageMock: vi.fn(),
+}));
+
+vi.mock("@sentry/nextjs", () => ({
+  withScope: (
+    callback: (scope: { setTag: (key: string, value: string) => void; setExtra: (key: string, value: unknown) => void }) => void,
+  ) => callback({ setTag: () => undefined, setExtra: () => undefined }),
+  captureMessage: captureMessageMock,
+}));
 
 import { authorizeCredentials } from "../../src/lib/auth/credentials-authorize";
 import { prisma } from "./helpers/db";
@@ -11,6 +22,7 @@ import { resetDb } from "./helpers/reset-db";
 describe("credentials authorize integration", () => {
   beforeEach(async () => {
     await resetDb();
+    captureMessageMock.mockReset();
   });
 
   it("accepts valid credentials", async () => {
@@ -110,5 +122,51 @@ describe("credentials authorize integration", () => {
     expect(result).not.toBeNull();
     expect(result?.id).toBe(user.id);
     expect(result?.role).toBe(Role.ADMIN);
+  });
+
+  it("blocks repeated failed attempts via credentials rate limiter", async () => {
+    const email = `rate-limit.${Date.now()}@example.test`;
+    const password = "Password123!";
+    const passwordHash = await hash(password, 12);
+
+    await prisma.user.create({
+      data: {
+        name: "Rate Limited User",
+        firstName: "Rate",
+        lastName: "Limited",
+        email,
+        role: Role.CLIENT,
+        passwordHash,
+        emailVerified: new Date(),
+      },
+    });
+
+    const request = {
+      headers: new Headers({
+        "x-forwarded-for": "203.0.113.10",
+      }),
+    };
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const result = await authorizeCredentials(
+        {
+          email,
+          password: "WrongPass123!",
+        },
+        request,
+      );
+      expect(result).toBeNull();
+    }
+
+    const blockedResult = await authorizeCredentials(
+      {
+        email,
+        password,
+      },
+      request,
+    );
+
+    expect(blockedResult).toBeNull();
+    expect(captureMessageMock).toHaveBeenCalledWith("rate_limit_triggered");
   });
 });

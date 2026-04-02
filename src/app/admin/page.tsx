@@ -6,6 +6,7 @@ import * as Sentry from "@sentry/nextjs";
 
 import { auth, signIn } from "@/auth";
 import { isAdminRole } from "@/lib/auth/admin-access";
+import { isInvalidCredentialsAuthError } from "@/lib/auth/auth-error-utils";
 
 type SearchParams = Promise<{
   callbackUrl?: string;
@@ -34,10 +35,15 @@ export async function adminSignInAction(formData: FormData) {
           redirectTo: callbackUrl || "/admin/dashboard",
         });
       } catch (error) {
-        if (error instanceof AuthError) {
-          Sentry.captureException(error);
+        if (isInvalidCredentialsAuthError(error)) {
           redirect(`/admin?error=invalid_credentials&callbackUrl=${encodeURIComponent(callbackUrl)}`);
         }
+
+        if (error instanceof AuthError) {
+          Sentry.captureException(error);
+          redirect(`/admin?error=auth_failed&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+        }
+
         throw error;
       }
     },
@@ -59,6 +65,10 @@ function getErrorMessage(error?: string) {
 
   if (error === "unauthorized") {
     return "Your account does not have admin access.";
+  }
+
+  if (error === "auth_failed") {
+    return "Could not sign in right now. Please try again.";
   }
 
   return "Could not sign in right now. Please try again.";

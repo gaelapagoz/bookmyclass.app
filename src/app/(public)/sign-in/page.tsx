@@ -7,6 +7,7 @@ import * as Sentry from "@sentry/nextjs";
 import { auth, signIn } from "@/auth";
 import { prisma } from "@/lib/db";
 import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
+import { isInvalidCredentialsAuthError } from "@/lib/auth/auth-error-utils";
 
 type SearchParams = Promise<{
   callbackUrl?: string;
@@ -56,10 +57,15 @@ export async function signInAction(formData: FormData) {
           redirectTo: callbackUrl,
         });
       } catch (error) {
-        if (error instanceof AuthError) {
-          Sentry.captureException(error);
+        if (isInvalidCredentialsAuthError(error)) {
           redirect(`/sign-in?error=invalid_credentials&callbackUrl=${encodeURIComponent(callbackUrl)}`);
         }
+
+        if (error instanceof AuthError) {
+          Sentry.captureException(error);
+          redirect(`/sign-in?error=auth_failed&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+        }
+
         throw error;
       }
     },
@@ -81,6 +87,10 @@ function getErrorMessage(error?: string) {
 
   if (error === "email_not_verified") {
     return "Please verify your email before signing in.";
+  }
+
+  if (error === "auth_failed") {
+    return "Could not sign in right now. Please try again.";
   }
 
   return "Could not sign in right now. Please try again.";

@@ -32,6 +32,19 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
+const { captureExceptionMock } = vi.hoisted(() => ({
+  captureExceptionMock: vi.fn(),
+}));
+
+vi.mock("@sentry/nextjs", () => ({
+  withServerActionInstrumentation: async (
+    _name: string,
+    _options: { recordResponse?: boolean },
+    callback: () => Promise<unknown>,
+  ) => callback(),
+  captureException: captureExceptionMock,
+}));
+
 vi.mock("@/auth", () => ({
   auth: vi.fn(async () => null),
   signIn: vi.fn(),
@@ -94,6 +107,7 @@ describe("auth actions integration", () => {
     await resetDb();
     vi.mocked(signIn).mockReset();
     vi.mocked(auth).mockResolvedValue(null);
+    captureExceptionMock.mockReset();
 
     process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || "test-resend-key";
     process.env.EMAIL_FROM = process.env.EMAIL_FROM || "Test <test@example.test>";
@@ -299,5 +313,16 @@ describe("auth actions integration", () => {
     await expect(
       signInAction(makeSignInForm({ email: "bad@example.test", password: "wrong" })),
     ).rejects.toThrow("NEXT_REDIRECT:/sign-in?error=invalid_credentials&callbackUrl=%2Fdashboard");
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+  });
+
+  it("sign-in action reports unexpected auth errors", async () => {
+    vi.mocked(signIn).mockRejectedValue(new AuthError("CallbackRouteError"));
+
+    await expect(
+      signInAction(makeSignInForm({ email: "valid@example.test", password: "Password123!" })),
+    ).rejects.toThrow("NEXT_REDIRECT:/sign-in?error=auth_failed&callbackUrl=%2Fdashboard");
+    expect(captureExceptionMock).toHaveBeenCalledTimes(1);
   });
 });
+
