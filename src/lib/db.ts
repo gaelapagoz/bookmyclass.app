@@ -19,6 +19,7 @@ function hasRequiredDelegates(client: PrismaClient): boolean {
     passwordResetRateLimit?: unknown;
     pendingUserRegistration?: unknown;
     publicAuthRateLimit?: unknown;
+    adminLoginAbuseCounter?: unknown;
     marketingCampaign?: unknown;
     marketingCampaignRecipient?: unknown;
     marketingCampaignLink?: unknown;
@@ -31,6 +32,7 @@ function hasRequiredDelegates(client: PrismaClient): boolean {
       runtimeClient.passwordResetRateLimit &&
       runtimeClient.pendingUserRegistration &&
       runtimeClient.publicAuthRateLimit &&
+      runtimeClient.adminLoginAbuseCounter &&
       runtimeClient.marketingCampaign &&
       runtimeClient.marketingCampaignRecipient &&
       runtimeClient.marketingCampaignLink &&

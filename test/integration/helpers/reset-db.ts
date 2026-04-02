@@ -31,10 +31,8 @@ export async function resetDb() {
   await prisma.passwordResetToken.deleteMany();
   await prisma.passwordResetRateLimit.deleteMany();
   await prisma.publicAuthRateLimit.deleteMany();
+  await prisma.adminLoginAbuseCounter.deleteMany();
   await prisma.pendingUserRegistration.deleteMany();
   await prisma.verificationToken.deleteMany();
   await prisma.user.deleteMany();
 }
-
-
-

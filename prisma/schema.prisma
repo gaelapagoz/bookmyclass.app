@@ -229,6 +229,12 @@ enum MarketingRecipientStatus {
   FAILED
 }
 
+enum AdminLoginAbuseKeyType {
+  IP
+  EMAIL
+  IP_EMAIL
+}
+
 model User {
   id                         String                 @id @default(cuid())
   name                       String
@@ -931,6 +937,25 @@ model PublicAuthRateLimit {
   updatedAt       DateTime @updatedAt
 
   @@index([lastRequestedAt])
+}
+
+model AdminLoginAbuseCounter {
+  id                  String                @id @default(cuid())
+  keyType             AdminLoginAbuseKeyType
+  keyHash             String
+  failedAttempts      Int                   @default(0)
+  firstFailedAt       DateTime?
+  lastFailedAt        DateTime?
+  lockedUntil         DateTime?
+  captchaRequiredUntil DateTime?
+  lastSuccessAt       DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  @@unique([keyType, keyHash])
+  @@index([lockedUntil])
+  @@index([captchaRequiredUntil])
+  @@index([lastFailedAt])
 }
 
 model PublicDocument {

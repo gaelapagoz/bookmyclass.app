@@ -1,22 +1,26 @@
 import { UserActivationStatus } from "@prisma/client";
 import type { Role } from "@prisma/client";
-import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
 
+import {
+  getAdminLoginAbuseState,
+  isAdminLoginCaptchaEnforced,
+  recordAdminLoginFailure,
+  resetAdminLoginFailureCounters,
+} from "@/lib/auth/admin-login-abuse-service";
 import { isAdminRole } from "@/lib/auth/admin-access";
+import { verifyAdminLoginCaptcha } from "@/lib/auth/admin-login-captcha";
 import { verifyPassword } from "@/lib/auth/password-service";
 import { prisma } from "@/lib/db";
-import { createRateLimiter, getClientIpFromHeaders } from "@/lib/security/rate-limit";
+import { getClientIpFromHeaders } from "@/lib/security/rate-limit";
 
 const credentialsSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(1),
-});
-
-const loginRateLimiter = createRateLimiter({
-  maxAttempts: 5,
-  windowMs: 10 * 60 * 1000,
-  blockDurationMs: 15 * 60 * 1000,
+  authFlow: z.enum(["admin"]).optional(),
+  captchaToken: z.string().trim().optional(),
+  turnstileToken: z.string().trim().optional(),
+  "cf-turnstile-response": z.string().trim().optional(),
 });
 
 export type AuthUser = {
@@ -41,15 +45,16 @@ function getHeadersFromAuthorizeRequest(rawRequest: unknown): Headers | undefine
   return undefined;
 }
 
-function captureLoginRateLimitBlocked(ip: string, email: string) {
-  Sentry.withScope((scope) => {
-    scope.setTag("event", "rate_limit_triggered");
-    scope.setExtra("route", "/auth/credentials");
-    scope.setExtra("userId", null);
-    scope.setExtra("ip", ip);
-    scope.setExtra("email", email);
-    Sentry.captureMessage("rate_limit_triggered");
-  });
+function resolveCaptchaToken(parsedCredentials: z.infer<typeof credentialsSchema>): string | null {
+  const token =
+    parsedCredentials.captchaToken ?? parsedCredentials.turnstileToken ?? parsedCredentials["cf-turnstile-response"];
+
+  if (!token) {
+    return null;
+  }
+
+  const trimmed = token.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 export async function authorizeCredentials(rawCredentials: unknown, rawRequest?: unknown): Promise<AuthUser | null> {
@@ -59,21 +64,49 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
     return null;
   }
 
-  const email = parsed.data.email.toLowerCase();
+  const normalizedEmail = parsed.data.email.toLowerCase();
   const password = parsed.data.password;
   const ip = getClientIpFromHeaders(getHeadersFromAuthorizeRequest(rawRequest));
-  const rateLimitKey = `${ip}:${email}`;
+  const isAdminSignInFlow = parsed.data.authFlow === "admin";
+  const captchaToken = resolveCaptchaToken(parsed.data);
+  const captchaEnforced = isAdminLoginCaptchaEnforced();
 
-  const limit = loginRateLimiter.checkLimit(rateLimitKey);
-  if (!limit.allowed) {
-    captureLoginRateLimitBlocked(ip, email);
-    return null;
+  if (isAdminSignInFlow) {
+    const preState = await getAdminLoginAbuseState({
+      ip,
+      normalizedEmail,
+    });
+
+    if (preState.isLocked) {
+      await recordAdminLoginFailure({
+        ip,
+        normalizedEmail,
+        reason: "prelocked",
+      });
+      return null;
+    }
+
+    if (preState.requiresCaptcha && captchaEnforced) {
+      const captchaIsValid = await verifyAdminLoginCaptcha({
+        token: captchaToken,
+        ip,
+      });
+
+      if (!captchaIsValid) {
+        await recordAdminLoginFailure({
+          ip,
+          normalizedEmail,
+          reason: "captcha_failed",
+        });
+        return null;
+      }
+    }
   }
 
   const user = await prisma.user.findFirst({
     where: {
       email: {
-        equals: email,
+        equals: normalizedEmail,
         mode: "insensitive",
       },
     },
@@ -88,28 +121,91 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
     },
   });
 
+  const shouldApplyAdminAbuseGuard = isAdminSignInFlow || (user ? isAdminRole(user.role) : false);
+
+  if (shouldApplyAdminAbuseGuard && !isAdminSignInFlow) {
+    const state = await getAdminLoginAbuseState({
+      ip,
+      normalizedEmail,
+    });
+
+    if (state.isLocked) {
+      await recordAdminLoginFailure({
+        ip,
+        normalizedEmail,
+        reason: "prelocked",
+      });
+      return null;
+    }
+
+    if (state.requiresCaptcha && captchaEnforced) {
+      const captchaIsValid = await verifyAdminLoginCaptcha({
+        token: captchaToken,
+        ip,
+      });
+
+      if (!captchaIsValid) {
+        await recordAdminLoginFailure({
+          ip,
+          normalizedEmail,
+          reason: "captcha_failed",
+        });
+        return null;
+      }
+    }
+  }
+
   if (!user || user.activationStatus !== UserActivationStatus.ACTIVE) {
-    loginRateLimiter.recordFailure(rateLimitKey);
+    if (shouldApplyAdminAbuseGuard) {
+      await recordAdminLoginFailure({
+        ip,
+        normalizedEmail,
+        reason: "invalid_user",
+      });
+    }
     return null;
   }
 
   if (!user.passwordHash) {
-    loginRateLimiter.recordFailure(rateLimitKey);
+    if (shouldApplyAdminAbuseGuard) {
+      await recordAdminLoginFailure({
+        ip,
+        normalizedEmail,
+        reason: "missing_password_hash",
+      });
+    }
     return null;
   }
 
   if (!user.emailVerified && !isAdminRole(user.role)) {
-    loginRateLimiter.recordFailure(rateLimitKey);
+    if (shouldApplyAdminAbuseGuard) {
+      await recordAdminLoginFailure({
+        ip,
+        normalizedEmail,
+        reason: "email_not_verified",
+      });
+    }
     return null;
   }
 
   const isValidPassword = await verifyPassword(password, user.passwordHash);
   if (!isValidPassword) {
-    loginRateLimiter.recordFailure(rateLimitKey);
+    if (shouldApplyAdminAbuseGuard) {
+      await recordAdminLoginFailure({
+        ip,
+        normalizedEmail,
+        reason: "invalid_password",
+      });
+    }
     return null;
   }
 
-  loginRateLimiter.reset(rateLimitKey);
+  if (shouldApplyAdminAbuseGuard) {
+    await resetAdminLoginFailureCounters({
+      ip,
+      normalizedEmail,
+    });
+  }
 
   return {
     id: user.id,

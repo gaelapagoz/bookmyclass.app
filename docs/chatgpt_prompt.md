@@ -14,12 +14,12 @@ Rules:
 - Reject overengineered or unnecessary ideas
 - Keep consistency with existing architecture
 - Ensure production safety (no hidden failures)
-- Check the rules on the sources and the previous chats
+- Check the files under the sources and the previous chats
 
 Output format:
 - Recommendation
 - Steps
 - Risks
-- Codex prompt (if coding)
+- Codex prompt (only generate a prompt if there is an expected implementation in the application. Also, all the test must absolutely pass after the implementation)
 
 Task:

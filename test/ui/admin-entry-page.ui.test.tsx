@@ -49,9 +49,35 @@ vi.mock("@sentry/nextjs", () => ({
   captureException: captureExceptionMock,
 }));
 
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () =>
+    new Headers({
+      "x-forwarded-for": "203.0.113.200",
+    }),
+  ),
+}));
+
 vi.mock("@/auth", () => ({
   auth: vi.fn(async () => null),
   signIn: vi.fn(),
+}));
+
+const { getAdminLoginAbuseStateMock, isAdminLoginCaptchaEnforcedMock } = vi.hoisted(() => ({
+  getAdminLoginAbuseStateMock: vi.fn(async () => ({ isLocked: false, requiresCaptcha: false, retryAfterMs: null })),
+  isAdminLoginCaptchaEnforcedMock: vi.fn(() => false),
+}));
+
+vi.mock("@/lib/auth/admin-login-abuse-service", () => ({
+  getAdminLoginAbuseState: getAdminLoginAbuseStateMock,
+  isAdminLoginCaptchaEnforced: isAdminLoginCaptchaEnforcedMock,
+}));
+
+const { getAdminLoginCaptchaSiteKeyMock } = vi.hoisted(() => ({
+  getAdminLoginCaptchaSiteKeyMock: vi.fn(() => null),
+}));
+
+vi.mock("@/lib/auth/admin-login-captcha", () => ({
+  getAdminLoginCaptchaSiteKey: getAdminLoginCaptchaSiteKeyMock,
 }));
 
 import { AuthError } from "next-auth";
@@ -61,6 +87,10 @@ import AdminEntryPage, { adminSignInAction } from "../../src/app/admin/page";
 describe("/admin entry flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(auth).mockResolvedValue(null);
+    getAdminLoginAbuseStateMock.mockResolvedValue({ isLocked: false, requiresCaptcha: false, retryAfterMs: null });
+    isAdminLoginCaptchaEnforcedMock.mockReturnValue(false);
+    getAdminLoginCaptchaSiteKeyMock.mockReturnValue(null);
   });
 
   it("unauthenticated user sees branded admin sign-in page", async () => {
@@ -156,8 +186,27 @@ describe("/admin entry flow", () => {
     expect(signIn).toHaveBeenCalledWith("credentials", {
       email: "admin@example.test",
       password: "very-secure-password",
+      authFlow: "admin",
+      captchaToken: undefined,
       redirectTo: "/admin/dashboard",
     });
   });
+
+  it("renders captcha challenge when backend marks request as suspicious", async () => {
+    getAdminLoginCaptchaSiteKeyMock.mockReturnValue("site-key");
+
+    render(
+      await AdminEntryPage({
+        searchParams: Promise.resolve({
+          error: "invalid_credentials",
+          guard: "captcha_required",
+        }),
+      }),
+    );
+
+    expect(screen.getByText("Complete the verification challenge", { exact: false })).toBeInTheDocument();
+    expect(document.querySelector(".cf-turnstile")).not.toBeNull();
+  });
 });
+
 

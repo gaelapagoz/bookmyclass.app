@@ -48,11 +48,22 @@ function shouldLogPasswordResetDebug(): boolean {
   return process.env.NODE_ENV !== "production" && process.env.AUTH_DEBUG_PASSWORD_RESET === "1";
 }
 
+function shouldLogPasswordChangeDebug(): boolean {
+  return process.env.NODE_ENV !== "production" && process.env.AUTH_DEBUG_PASSWORD_CHANGE === "1";
+}
+
 function logPasswordResetDebug(checkpoint: string, meta: PasswordResetDebugMeta = {}): void {
   if (!shouldLogPasswordResetDebug()) {
     return;
   }
   console.info(`[password-reset] ${checkpoint}`, meta);
+}
+
+function logPasswordChangeDebug(checkpoint: string, meta: PasswordResetDebugMeta = {}): void {
+  if (!shouldLogPasswordChangeDebug()) {
+    return;
+  }
+  console.info(`[password-change] ${checkpoint}`, meta);
 }
 
 function getResendFallbackFrom(from: string): string {
@@ -271,68 +282,54 @@ export async function changeAuthenticatedUserPassword(input: {
   const currentPassword = input.currentPassword;
   const newPassword = input.newPassword;
   const confirmNewPassword = input.confirmNewPassword;
-  if (process.env.NODE_ENV !== "production") {
-    console.info("[password-service] change password start", {
-      hasUserId: Boolean(input.userId),
-      hasCurrentPassword: currentPassword.length > 0,
-      hasNewPassword: newPassword.length > 0,
-      hasConfirmPassword: confirmNewPassword.length > 0,
-    });
-  }
+  logPasswordChangeDebug("start", {
+    hasUserId: Boolean(input.userId),
+    hasCurrentPassword: currentPassword.length > 0,
+    hasNewPassword: newPassword.length > 0,
+    hasConfirmPassword: confirmNewPassword.length > 0,
+  });
   validateNewPasswordOrThrow(newPassword, confirmNewPassword);
-  if (process.env.NODE_ENV !== "production") {
-    console.info("[password-service] validation checkpoint passed");
-  }
+  logPasswordChangeDebug("validation-passed");
 
   const user = await prisma.user.findUnique({
     where: { id: input.userId },
     select: { id: true, passwordHash: true },
   });
-  if (process.env.NODE_ENV !== "production") {
-    console.info("[password-service] user lookup result", {
-      userFound: Boolean(user),
-      hasPasswordHash: Boolean(user?.passwordHash),
-    });
-  }
+  logPasswordChangeDebug("user-lookup", {
+    userFound: Boolean(user),
+    hasPasswordHash: Boolean(user?.passwordHash),
+  });
 
   if (!user?.passwordHash) {
     throw new PasswordServiceError("PASSWORD_NOT_SET", "Password login is not enabled for this account.");
   }
 
   const isCurrentPasswordValid = await verifyPassword(currentPassword, user.passwordHash);
-  if (process.env.NODE_ENV !== "production") {
-    console.info("[password-service] verify password result", {
-      isCurrentPasswordValid,
-    });
-  }
+  logPasswordChangeDebug("verify-current-password", {
+    isCurrentPasswordValid,
+  });
   if (!isCurrentPasswordValid) {
     throw new PasswordServiceError("INVALID_CURRENT_PASSWORD", "Current password is incorrect.");
   }
 
   const newPasswordHash = await hashPassword(newPassword);
-  if (process.env.NODE_ENV !== "production") {
-    console.info("[password-service] before prisma password update");
-  }
+  logPasswordChangeDebug("before-user-update");
 
   try {
     await prisma.user.update({
       where: { id: input.userId },
       data: { passwordHash: newPasswordHash },
     });
-    if (process.env.NODE_ENV !== "production") {
-      console.info("[password-service] after prisma password update");
-    }
+    logPasswordChangeDebug("after-user-update");
   } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[password-service] prisma update failed", {
-        errorName: error instanceof Error ? error.name : null,
-        errorMessage: error instanceof Error ? error.message : String(error),
-        errorObject:
-          typeof error === "object" && error !== null
-            ? JSON.stringify(error, Object.getOwnPropertyNames(error))
-            : String(error),
-      });
-    }
+    logPasswordChangeDebug("user-update-failed", {
+      errorName: error instanceof Error ? error.name : null,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorObject:
+        typeof error === "object" && error !== null
+          ? JSON.stringify(error, Object.getOwnPropertyNames(error))
+          : String(error),
+    });
     throw error;
   }
 }

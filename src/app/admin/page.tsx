@@ -1,17 +1,31 @@
 import Image from "next/image";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 
 import { auth, signIn } from "@/auth";
+import { isAdminLoginCaptchaEnforced, getAdminLoginAbuseState } from "@/lib/auth/admin-login-abuse-service";
 import { isAdminRole } from "@/lib/auth/admin-access";
+import { getAdminLoginCaptchaSiteKey } from "@/lib/auth/admin-login-captcha";
 import { isInvalidCredentialsAuthError } from "@/lib/auth/auth-error-utils";
+import { getClientIpFromHeaders } from "@/lib/security/rate-limit";
 
 type SearchParams = Promise<{
   callbackUrl?: string;
   error?: string;
+  guard?: string;
 }>;
+
+function resolveCaptchaToken(formData: FormData): string | null {
+  const raw =
+    String(formData.get("captchaToken") ?? "").trim() ||
+    String(formData.get("turnstileToken") ?? "").trim() ||
+    String(formData.get("cf-turnstile-response") ?? "").trim();
+
+  return raw || null;
+}
 
 export async function adminSignInAction(formData: FormData) {
   "use server";
@@ -23,20 +37,52 @@ export async function adminSignInAction(formData: FormData) {
       const email = String(formData.get("email") ?? "").trim().toLowerCase();
       const password = String(formData.get("password") ?? "");
       const callbackUrl = String(formData.get("callbackUrl") ?? "/admin/dashboard");
+      const requestHeaders = await headers();
+      const ip = getClientIpFromHeaders(requestHeaders);
+      const captchaToken = resolveCaptchaToken(formData);
+      const captchaEnforced = isAdminLoginCaptchaEnforced();
 
       if (!email || !password) {
         redirect(`/admin?error=invalid_input&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+      }
+
+      const preState = await getAdminLoginAbuseState({
+        ip,
+        normalizedEmail: email,
+      });
+
+      if (preState.isLocked) {
+        redirect(`/admin?error=invalid_credentials&guard=locked&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+      }
+
+      if (preState.requiresCaptcha && captchaEnforced && !captchaToken) {
+        redirect(`/admin?error=invalid_credentials&guard=captcha_required&callbackUrl=${encodeURIComponent(callbackUrl)}`);
       }
 
       try {
         await signIn("credentials", {
           email,
           password,
+          authFlow: "admin",
+          captchaToken: captchaToken ?? undefined,
           redirectTo: callbackUrl || "/admin/dashboard",
         });
       } catch (error) {
         if (isInvalidCredentialsAuthError(error)) {
-          redirect(`/admin?error=invalid_credentials&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+          const postFailureState = await getAdminLoginAbuseState({
+            ip,
+            normalizedEmail: email,
+          });
+
+          const guard = postFailureState.isLocked
+            ? "locked"
+            : postFailureState.requiresCaptcha && captchaEnforced
+              ? "captcha_required"
+              : "none";
+
+          const guardQuery = guard === "none" ? "" : `&guard=${encodeURIComponent(guard)}`;
+
+          redirect(`/admin?error=invalid_credentials${guardQuery}&callbackUrl=${encodeURIComponent(callbackUrl)}`);
         }
 
         if (error instanceof AuthError) {
@@ -50,7 +96,7 @@ export async function adminSignInAction(formData: FormData) {
   );
 }
 
-function getErrorMessage(error?: string) {
+function getErrorMessage(error?: string, guard?: string) {
   if (!error) {
     return null;
   }
@@ -60,6 +106,14 @@ function getErrorMessage(error?: string) {
   }
 
   if (error === "invalid_credentials" || error === "CredentialsSignin") {
+    if (guard === "locked") {
+      return "Invalid email or password. Please wait a few minutes and try again.";
+    }
+
+    if (guard === "captcha_required") {
+      return "Invalid email or password. Complete the verification challenge and try again.";
+    }
+
     return "Invalid email or password.";
   }
 
@@ -81,8 +135,10 @@ export default async function AdminEntryPage({ searchParams }: { searchParams: S
     redirect("/admin/dashboard");
   }
 
-  const { callbackUrl = "/admin/dashboard", error } = await searchParams;
-  const errorMessage = getErrorMessage(error);
+  const { callbackUrl = "/admin/dashboard", error, guard } = await searchParams;
+  const errorMessage = getErrorMessage(error, guard);
+  const captchaSiteKey = getAdminLoginCaptchaSiteKey();
+  const shouldRenderCaptcha = guard === "captcha_required" && Boolean(captchaSiteKey);
 
   const isNonAdminUser = Boolean(session?.user) && !isAdminRole(session?.user?.role);
 
@@ -138,6 +194,13 @@ export default async function AdminEntryPage({ searchParams }: { searchParams: S
                 />
               </label>
 
+              {shouldRenderCaptcha ? (
+                <>
+                  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer />
+                  <div className="cf-turnstile" data-sitekey={captchaSiteKey ?? ""} data-theme="light" />
+                </>
+              ) : null}
+
               <button
                 type="submit"
                 className="w-full rounded-md bg-[#7b2d2d] px-4 py-2 text-sm text-[#f4eee8] hover:opacity-90"
@@ -151,7 +214,3 @@ export default async function AdminEntryPage({ searchParams }: { searchParams: S
     </main>
   );
 }
-
-
-
-

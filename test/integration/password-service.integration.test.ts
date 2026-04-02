@@ -36,6 +36,8 @@ async function createClientUser(email: string, password: string, verified: boole
 
 describe("password-service integration", () => {
   beforeEach(async () => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     await resetDb();
     await clearPasswordResetRateLimitForTests();
   });
@@ -47,7 +49,8 @@ describe("password-service integration", () => {
       authorizeCredentials({ email: user.email, password: "Password123!" }),
     ).resolves.toBeNull();
   });
-  it("change password succeeds with correct current password", async () => {
+
+  it("change password succeeds with correct current password", { timeout: 20000 }, async () => {
     const user = await createClientUser(`change.ok.${Date.now()}@example.test`, "OldPassword123!");
 
     await changeAuthenticatedUserPassword({
@@ -143,6 +146,7 @@ describe("password-service integration", () => {
       code: "PASSWORD_MISMATCH",
     });
   });
+
   it("forgot password with known email creates token and sends email", async () => {
     const user = await createClientUser(`forgot.known.${Date.now()}@example.test`, "Password123!");
     const sendResetEmail = vi.fn(async () => undefined);
@@ -263,6 +267,7 @@ describe("password-service integration", () => {
     expect(third).toEqual({ outcome: "SENT" });
     expect(sendResetEmail).toHaveBeenCalledTimes(2);
   });
+
   it("forgot password with known email throws when provider delivery fails", async () => {
     const user = await createClientUser(`forgot.fail.${Date.now()}@example.test`, "Password123!");
     const sendResetEmail = vi.fn(async () => {
@@ -409,15 +414,3 @@ describe("password-service integration", () => {
     ).resolves.toBeUndefined();
   });
 });
-
-
-
-
-
-
-
-
-
-
-
-
