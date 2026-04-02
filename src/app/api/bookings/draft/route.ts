@@ -3,6 +3,7 @@ import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
 import { auth } from "../../../../auth";
 import { BookingDraftError, createPendingBookingDraft } from "../../../../lib/public-booking/booking-draft-service";
+import { createRateLimiter, getClientIpFromHeaders } from "../../../../lib/security/rate-limit";
 
 const draftSchema = z.object({
   serviceSlug: z.string().min(1).max(120),
@@ -14,6 +15,18 @@ const draftSchema = z.object({
   bookingIntent: z.nativeEnum(BookingIntent),
   consentTermsAccepted: z.literal(true),
   consentPrivacyAccepted: z.literal(true),
+});
+
+const bookingDraftUserRateLimiter = createRateLimiter({
+  maxAttempts: 8,
+  windowMs: 60 * 1000,
+  blockDurationMs: 5 * 60 * 1000,
+});
+
+const bookingDraftIpRateLimiter = createRateLimiter({
+  maxAttempts: 20,
+  windowMs: 60 * 1000,
+  blockDurationMs: 5 * 60 * 1000,
 });
 
 function toStatusCode(code: BookingDraftError["code"]): number {
@@ -73,6 +86,16 @@ function toUnexpectedErrorResponse(error: unknown) {
   );
 }
 
+function captureBookingRateLimitTriggered(input: { userId: string; ip: string }) {
+  Sentry.withScope((scope) => {
+    scope.setTag("event", "rate_limit_triggered");
+    scope.setExtra("route", "/api/bookings/draft");
+    scope.setExtra("userId", input.userId);
+    scope.setExtra("ip", input.ip);
+    Sentry.captureMessage("rate_limit_triggered");
+  });
+}
+
 export async function POST(request: Request) {
   let body: unknown;
   try {
@@ -101,6 +124,33 @@ export async function POST(request: Request) {
   if (!authenticatedUserId) {
     return Response.json({ error: "Authentication required." }, { status: 401 });
   }
+
+  const ipAddress = getClientIpFromHeaders(request.headers);
+  const userKey = `user:${authenticatedUserId}`;
+  const ipKey = `ip:${ipAddress}`;
+
+  const userLimit = bookingDraftUserRateLimiter.checkLimit(userKey);
+  const ipLimit = bookingDraftIpRateLimiter.checkLimit(ipKey);
+
+  if (!userLimit.allowed || !ipLimit.allowed) {
+    captureBookingRateLimitTriggered({
+      userId: authenticatedUserId,
+      ip: ipAddress,
+    });
+
+    const retryAfter = Math.max(userLimit.retryAfter ?? 0, ipLimit.retryAfter ?? 0);
+
+    return Response.json(
+      {
+        error: "Too many booking attempts. Please try again later.",
+        retryAfter,
+      },
+      { status: 429 },
+    );
+  }
+
+  bookingDraftUserRateLimiter.recordFailure(userKey);
+  bookingDraftIpRateLimiter.recordFailure(ipKey);
 
   try {
     const result = await createPendingBookingDraft({

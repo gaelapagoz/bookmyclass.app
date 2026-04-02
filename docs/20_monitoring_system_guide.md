@@ -401,3 +401,34 @@ After deploying with Sentry env vars configured, verify all core paths:
   - `release` (deploy version or commit SHA)
   - actionable route/action naming context
 - For webhook errors, confirm Stripe tags are present and no raw payload dump is captured.
+
+## Release Verification
+
+Run this from the repo root before each production release:
+
+```bash
+npm run ops:verify-production-readiness -- \
+  --confirm-kuma \
+  --confirm-backup-heartbeat \
+  --confirm-local-healthcheck \
+  --confirm-latest-backup \
+  --confirm-restore-proof
+```
+
+### Confirmation flags
+
+- `--confirm-kuma`: you verified `monitor.bookmyclass.app` is up for key endpoints.
+- `--confirm-backup-heartbeat`: you verified `checks.bookmyclass.app` shows the backup heartbeat as green/recent.
+- `--confirm-local-healthcheck`: you ran `sudo /usr/local/bin/bookmyclass-healthcheck.sh` on the server and it passed.
+- `--confirm-latest-backup`: you verified the latest backup artifact exists and is non-empty.
+- `--confirm-restore-proof`: you verified recent restore proof exists (documented restore validation evidence).
+
+### Pass/Fail criteria
+
+- Pass:
+  - all five confirmation flags are explicitly provided
+  - `https://bookmyclass.app/api/health` returns HTTP `200`
+- Fail:
+  - any required confirmation flag is missing
+  - `/api/health` does not return `200`
+  - command exits non-zero in all fail cases

@@ -256,11 +256,7 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
                 if (item.type === "action") {
                   return (
                     <form key={item.id} action={onSignOutAction}>
-                      <button
-                        type="submit"
-                        className={`${linkClass(false)} text-left`}
-                        onClick={() => setIsMobileMenuOpen(false)}
-                      >
+                      <button type="submit" className={`${linkClass(false)} text-left`}>
                         {item.label}
                       </button>
                     </form>

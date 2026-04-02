@@ -910,6 +910,7 @@ async function seedUsers() {
       email: "client@yogapilatesfitness.local",
       role: Role.CLIENT,
       passwordHash: clientPasswordHash,
+      emailVerified: new Date("2026-01-01T00:00:00.000Z"),
       isActive: true,
       isInactive: false,
       lastLoginAt: new Date("2026-03-10T18:45:00.000Z"),
@@ -2105,6 +2106,23 @@ async function seedDashboardInsightsTraffic(seedClient: { id: string }) {
     return date;
   }
 
+  function parseDashboardTrendAsOfDate(value: string | undefined): Date | null {
+    if (!value) {
+      return null;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new Error(`Invalid DASHBOARD_TREND_AS_OF_DATE value "${value}". Expected YYYY-MM-DD.`);
+    }
+
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error(`Invalid DASHBOARD_TREND_AS_OF_DATE value "${value}".`);
+    }
+
+    return parsed;
+  }
+
   for (const definition of classDefinitions) {
     const classType = await upsertClassType({
       slug: definition.classSlug,
@@ -2796,7 +2814,8 @@ async function seedDashboardInsightsTraffic(seedClient: { id: string }) {
     });
     trendClientPool.push(trendUser.id);
   }
-  const trendToday = startOfUtcDay(new Date());
+  const trendAsOfOverride = parseDashboardTrendAsOfDate(process.env.DASHBOARD_TREND_AS_OF_DATE);
+  const trendToday = trendAsOfOverride ?? startOfUtcDay(new Date());
   const trendStart = addDays(trendToday, -99);
 
   for (let dayIndex = 0; dayIndex < 100; dayIndex += 1) {
@@ -3059,6 +3078,4 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
-
-
 
