@@ -12,6 +12,23 @@ vi.mock("next/navigation", () => ({
   redirect: redirectMock,
 }));
 
+const { revalidatePathMock } = vi.hoisted(() => ({
+  revalidatePathMock: vi.fn(),
+}));
+
+vi.mock("next/cache", () => ({
+  revalidatePath: revalidatePathMock,
+}));
+
+const { mkdirMock, writeFileMock } = vi.hoisted(() => ({
+  mkdirMock: vi.fn(),
+  writeFileMock: vi.fn(),
+}));
+
+vi.mock("node:fs/promises", () => ({
+  mkdir: mkdirMock,
+  writeFile: writeFileMock,
+}));
 vi.mock("@/auth", () => ({
   auth: vi.fn(async () => null),
 }));
@@ -27,6 +44,7 @@ vi.mock("@/lib/admin/admin-service", () => ({
   createAdminSubscription: vi.fn(),
   updateAdminLearningVideo: vi.fn(),
   updateAdminPlan: vi.fn(),
+  updateAdminTeacherImage: vi.fn(),
   updateAdminUser: vi.fn(),
 }));
 
@@ -48,6 +66,7 @@ import {
   upsertAdminClassScheduleConfig,
   updateAdminLearningVideo,
   updateAdminPlan,
+  updateAdminTeacherImage,
   updateAdminUser,
 } from "@/lib/admin/admin-service";
 
@@ -59,6 +78,7 @@ import {
   createSubscriptionAction,
   updateLearningVideoAction,
   updatePlanAction,
+  uploadTeacherImageAction,
   updateUserAction,
 } from "../../src/app/admin/(private)/actions";
 
@@ -291,10 +311,13 @@ describe("admin actions", () => {
     formData.set("role", "ADMIN");
     formData.set("isActive", "on");
 
-    await expect(updateUserAction("user-1", formData)).rejects.toThrow("NEXT_REDIRECT:/admin/users");
+    await expect(updateUserAction("user-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/users/user-1/edit?success=User%20updated.",
+    );
     expect(updateAdminUser).toHaveBeenCalledWith(
       "user-1",
       expect.objectContaining({ firstName: "Jane", lastName: "Doe", email: "jane@example.test", role: "ADMIN" }),
+      expect.objectContaining({ id: "user-1", role: "ADMIN" }),
     );
   });
 
@@ -308,7 +331,7 @@ describe("admin actions", () => {
     formData.set("creditDelta", "2");
 
     await expect(adjustClientCreditsAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/users/client-1/edit",
+      "NEXT_REDIRECT:/admin/users/client-1/edit?success=Credits%20updated.",
     );
     expect(adjustAdminClientCredits).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -353,19 +376,68 @@ describe("admin actions", () => {
     formData.set("subscriptionContractId", "sub-1");
 
     await expect(cancelClientMembershipAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/users/client-1/edit",
+      "NEXT_REDIRECT:/admin/users/client-1/edit?success=Membership%20cancelled.",
     );
     expect(cancelAdminClientMembership).toHaveBeenCalledWith({
       clientId: "client-1",
       subscriptionContractId: "sub-1",
     });
   });
+  it("returns explicit master admin restriction error", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(updateAdminUser).mockRejectedValue(new Error("MASTER_ADMIN_MANAGEMENT_FORBIDDEN"));
+
+    const formData = new FormData();
+    formData.set("firstName", "Master");
+    formData.set("lastName", "Admin");
+    formData.set("email", "master@example.test");
+    formData.set("role", "MASTER_ADMIN");
+    formData.set("isActive", "on");
+
+    await expect(updateUserAction("master-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/users/master-1/edit?error=Only%20MASTER_ADMIN%20can%20manage%20another%20MASTER_ADMIN.",
+    );
+  });
+
+  it("rejects teacher image upload when file type is invalid", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+
+    const formData = new FormData();
+    formData.set("userId", "teacher-1");
+    formData.set("teacherImage", new File(["bad"], "teacher.gif", { type: "image/gif" }));
+
+    await expect(uploadTeacherImageAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/users/teacher-1/edit?error=Only%20JPG%2C%20PNG%2C%20or%20WEBP%20images%20are%20accepted.",
+    );
+    expect(updateAdminTeacherImage).not.toHaveBeenCalled();
+  });
+
+  it("uploads teacher image and stores relative image path", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(updateAdminTeacherImage).mockResolvedValue({
+      id: "teacher-1",
+      image: "/images/instructors/teacher-teacher-1-1.png",
+    });
+    vi.spyOn(Date, "now").mockReturnValue(1);
+
+    const formData = new FormData();
+    formData.set("userId", "teacher-1");
+    formData.set("teacherImage", new File(["png"], "teacher.png", { type: "image/png" }));
+
+    await expect(uploadTeacherImageAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/users/teacher-1/edit?success=Teacher%20picture%20updated.",
+    );
+
+    expect(mkdirMock).toHaveBeenCalledTimes(1);
+    expect(writeFileMock).toHaveBeenCalledTimes(1);
+    expect(updateAdminTeacherImage).toHaveBeenCalledWith({
+      userId: "teacher-1",
+      imagePath: "/images/instructors/teacher-teacher-1-1.png",
+      adminUserId: "user-1",
+    });
+    expect(revalidatePathMock).toHaveBeenCalledWith("/admin/users/teacher-1/edit");
+  });
 });
-
-
-
-
-
 
 
 

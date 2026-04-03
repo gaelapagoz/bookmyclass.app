@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { AdminLoginAbuseKeyType } from "@prisma/client";
+import type { AdminLoginAbuseKeyType } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 
@@ -41,10 +41,22 @@ type AdminLoginAbuseBucket = {
   keyHash: string;
 };
 
+const ADMIN_LOGIN_ABUSE_KEY_TYPES = {
+  IP: "IP",
+  EMAIL: "EMAIL",
+  IP_EMAIL: "IP_EMAIL",
+} as const satisfies Record<AdminLoginAbuseKeyType, AdminLoginAbuseKeyType>;
+
 export type AdminLoginAbuseState = {
   isLocked: boolean;
   requiresCaptcha: boolean;
   retryAfterMs: number | null;
+};
+
+const NEUTRAL_ADMIN_LOGIN_ABUSE_STATE: AdminLoginAbuseState = {
+  isLocked: false,
+  requiresCaptcha: false,
+  retryAfterMs: null,
 };
 
 function hashKey(value: string): string {
@@ -54,15 +66,15 @@ function hashKey(value: string): string {
 function buildBuckets(input: { ip: string; normalizedEmail: string }): AdminLoginAbuseBucket[] {
   return [
     {
-      keyType: AdminLoginAbuseKeyType.IP,
+      keyType: ADMIN_LOGIN_ABUSE_KEY_TYPES.IP,
       keyHash: hashKey(input.ip),
     },
     {
-      keyType: AdminLoginAbuseKeyType.EMAIL,
+      keyType: ADMIN_LOGIN_ABUSE_KEY_TYPES.EMAIL,
       keyHash: hashKey(input.normalizedEmail),
     },
     {
-      keyType: AdminLoginAbuseKeyType.IP_EMAIL,
+      keyType: ADMIN_LOGIN_ABUSE_KEY_TYPES.IP_EMAIL,
       keyHash: hashKey(`${input.ip}:${input.normalizedEmail}`),
     },
   ];
@@ -125,8 +137,45 @@ function emitSecurityLog(
   });
 }
 
+type AdminLoginAbuseDelegate = {
+  findMany: typeof prisma.adminLoginAbuseCounter.findMany;
+  updateMany: typeof prisma.adminLoginAbuseCounter.updateMany;
+};
+
+type PrismaWithOptionalAdminLoginAbuseDelegate = {
+  adminLoginAbuseCounter?: AdminLoginAbuseDelegate;
+};
+
+function resolveAdminLoginAbuseDelegate(
+  db: PrismaWithOptionalAdminLoginAbuseDelegate = prisma as PrismaWithOptionalAdminLoginAbuseDelegate,
+): AdminLoginAbuseDelegate | null {
+  // Guard dev/runtime drift where the generated Prisma Client does not expose adminLoginAbuseCounter yet.
+  return db.adminLoginAbuseCounter ?? null;
+}
+
+function warnMissingAdminLoginAbuseDelegate(scope: "read_state" | "record_failure" | "reset_counters") {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  console.warn("[auth-security]", {
+    event: "admin_auth_guard_delegate_missing",
+    scope: "admin_login",
+    operation: scope,
+    message:
+      "adminLoginAbuseCounter delegate unavailable. Using neutral fallback state. Ensure Prisma Client is generated with admin abuse model.",
+    timestamp: new Date().toISOString(),
+  });
+}
+
 async function getCountersForBuckets(buckets: AdminLoginAbuseBucket[]) {
-  return prisma.adminLoginAbuseCounter.findMany({
+  const delegate = resolveAdminLoginAbuseDelegate();
+  if (!delegate) {
+    warnMissingAdminLoginAbuseDelegate("read_state");
+    return [];
+  }
+
+  return delegate.findMany({
     where: {
       OR: buckets.map((bucket) => ({
         keyType: bucket.keyType,
@@ -166,6 +215,12 @@ export async function recordAdminLoginFailure(input: {
     | "captcha_failed"
     | "prelocked";
 }): Promise<AdminLoginAbuseState> {
+  const delegate = resolveAdminLoginAbuseDelegate();
+  if (!delegate) {
+    warnMissingAdminLoginAbuseDelegate("record_failure");
+    return NEUTRAL_ADMIN_LOGIN_ABUSE_STATE;
+  }
+
   const now = new Date();
   const buckets = buildBuckets(input);
 
@@ -284,10 +339,16 @@ export async function recordAdminLoginFailure(input: {
 }
 
 export async function resetAdminLoginFailureCounters(input: { ip: string; normalizedEmail: string }): Promise<void> {
+  const delegate = resolveAdminLoginAbuseDelegate();
+  if (!delegate) {
+    warnMissingAdminLoginAbuseDelegate("reset_counters");
+    return;
+  }
+
   const now = new Date();
   const buckets = buildBuckets(input);
 
-  await prisma.adminLoginAbuseCounter.updateMany({
+  await delegate.updateMany({
     where: {
       OR: buckets.map((bucket) => ({
         keyType: bucket.keyType,

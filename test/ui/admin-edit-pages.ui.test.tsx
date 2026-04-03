@@ -24,6 +24,7 @@ vi.mock("@/app/admin/(private)/actions", () => ({
   updateUserAction: vi.fn(),
   adjustClientCreditsAction: vi.fn(),
   cancelClientMembershipAction: vi.fn(),
+  uploadTeacherImageAction: vi.fn(),
 }));
 
 vi.mock("@/lib/admin/admin-service", () => ({
@@ -31,7 +32,15 @@ vi.mock("@/lib/admin/admin-service", () => ({
   getAdminClientActivityData: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/require-auth", () => ({
+  requireAdminSession: vi.fn(async () => ({
+    user: { id: "admin-1", role: "MASTER_ADMIN" },
+    expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  })),
+}));
+
 import { getAdminClientActivityData, getAdminUserById } from "@/lib/admin/admin-service";
+import { requireAdminSession } from "@/lib/auth/require-auth";
 
 import AdminUserEditPage from "../../src/app/admin/(private)/users/[id]/edit/page";
 
@@ -60,6 +69,7 @@ describe("admin edit pages", () => {
       email: "admin@example.test",
       role: "ADMIN",
       isActive: true,
+      image: "",
       phone: "",
       notes: "",
       bio: "",
@@ -71,7 +81,7 @@ describe("admin edit pages", () => {
     render(
       await AdminUserEditPage({
         params: Promise.resolve({ id: "user-1" }),
-        searchParams: Promise.resolve({}),
+        searchParams: Promise.resolve({ success: "User updated." }),
       }),
     );
 
@@ -79,6 +89,36 @@ describe("admin edit pages", () => {
     expect(screen.getByDisplayValue("Admin")).toBeInTheDocument();
     expect(screen.getByDisplayValue("User")).toBeInTheDocument();
     expect(screen.getByDisplayValue("admin@example.test")).toBeInTheDocument();
+    expect(screen.getByText("User updated.")).toBeInTheDocument();
+  });
+
+  it("renders teacher picture preview when available", async () => {
+    vi.mocked(getAdminUserById).mockResolvedValue({
+      id: "teacher-1",
+      name: "Teacher User",
+      firstName: "Teacher",
+      lastName: "User",
+      email: "teacher@example.test",
+      role: "TEACHER",
+      isActive: true,
+      image: "/images/instructors/teacher-1.jpg",
+      phone: "",
+      notes: "",
+      bio: "",
+      specialties: [],
+      certifications: [],
+      hireDate: null,
+    });
+
+    render(
+      await AdminUserEditPage({
+        params: Promise.resolve({ id: "teacher-1" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+
+    const preview = screen.getByTestId("teacher-image-preview");
+    expect(preview).toHaveAttribute("src", "/images/instructors/teacher-1.jpg");
   });
 
   it("renders distinct client activity credit forms with expected payload fields", async () => {
@@ -90,6 +130,7 @@ describe("admin edit pages", () => {
       email: "client@example.test",
       role: "CLIENT",
       isActive: true,
+      image: "",
       phone: "",
       notes: "",
       bio: "",
@@ -128,10 +169,11 @@ describe("admin edit pages", () => {
     const adjustForm = screen.getByTestId("client-credits-adjust-form");
     expect(within(adjustForm).getByDisplayValue("client-1")).toHaveAttribute("name", "userId");
     expect(within(adjustForm).getByDisplayValue("ent-1")).toHaveAttribute("name", "entitlementId");
-    expect(within(adjustForm).getByRole("spinbutton", { name: "Credits Delta" })).toHaveAttribute(
+    expect(within(adjustForm).getByRole("spinbutton", { name: "Credits Adjustment (+/-)" })).toHaveAttribute(
       "name",
       "creditDelta",
     );
+    expect(within(adjustForm).getByRole("textbox", { name: "Audit reason (optional)" })).toHaveAttribute("name", "reason");
 
     const createForm = screen.getByTestId("client-credits-create-form");
     expect(within(createForm).getByDisplayValue("client-1")).toHaveAttribute("name", "userId");
@@ -139,5 +181,40 @@ describe("admin edit pages", () => {
       "name",
       "creditDelta",
     );
+    expect(within(createForm).getByRole("textbox", { name: "Audit reason (optional)" })).toHaveAttribute("name", "reason");
+  });
+  it("shows restricted master admin management UI to ADMIN users", async () => {
+    vi.mocked(requireAdminSession).mockResolvedValue({
+      user: { id: "admin-1", role: "ADMIN" },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+    vi.mocked(getAdminUserById).mockResolvedValue({
+      id: "master-1",
+      name: "Master User",
+      firstName: "Master",
+      lastName: "User",
+      email: "master@example.test",
+      role: "MASTER_ADMIN",
+      isActive: true,
+      image: "",
+      phone: "",
+      notes: "",
+      bio: "",
+      specialties: [],
+      certifications: [],
+      hireDate: null,
+    });
+
+    render(
+      await AdminUserEditPage({
+        params: Promise.resolve({ id: "master-1" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+
+    expect(screen.getByText("Only MASTER_ADMIN can manage another MASTER_ADMIN.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update user" })).toBeDisabled();
   });
 });
+
+

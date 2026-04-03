@@ -238,6 +238,7 @@ export type AdminUserDetail = {
   email: string;
   role: Role;
   isActive: boolean;
+  image: string;
   phone: string;
   notes: string;
   bio: string;
@@ -2447,6 +2448,7 @@ export async function getAdminUserById(id: string): Promise<AdminUserDetail | nu
       email: true,
       role: true,
       isActive: true,
+      image: true,
       clientProfile: {
         select: {
           phone: true,
@@ -2482,6 +2484,7 @@ export async function getAdminUserById(id: string): Promise<AdminUserDetail | nu
     email: user.email,
     role: user.role,
     isActive: user.isActive,
+    image: user.image ?? "",
     phone: primaryPhone,
     notes: user.clientProfile?.notes ?? "",
     bio: user.teacherProfile?.bio ?? "",
@@ -2663,6 +2666,7 @@ export async function adjustAdminClientCredits(input: {
   entitlementId?: string;
   productId?: string;
   expiresAt?: Date | null;
+  reason?: string;
 }) {
   if (!Number.isInteger(input.amount) || input.amount === 0) {
     throw new Error("INVALID_CREDIT_AMOUNT");
@@ -2722,7 +2726,7 @@ export async function adjustAdminClientCredits(input: {
           amount: input.amount,
           happenedAt: now,
           createdById: adminRecord.id,
-          notes: "Admin credit adjustment from client detail.",
+          notes: input.reason?.trim() || "Admin credit adjustment from client detail.",
         },
       });
     });
@@ -2781,7 +2785,7 @@ export async function adjustAdminClientCredits(input: {
         amount: input.amount,
         happenedAt: now,
         createdById: adminRecord.id,
-        notes: "Admin created entitlement with starting credits.",
+        notes: input.reason?.trim() || "Admin created entitlement with starting credits.",
       },
     });
   });
@@ -2853,6 +2857,10 @@ export async function updateAdminUser(
     hireDate?: Date | null;
     password?: string;
   },
+  actor: {
+    id: string;
+    role: Role;
+  },
 ) {
   const passwordHash = input.password ? await hash(input.password, 12) : undefined;
   const firstName = input.firstName?.trim() ?? "";
@@ -2864,10 +2872,37 @@ export async function updateAdminUser(
   const normalizedBio = toNullable(input.bio);
 
   return prisma.$transaction(async (tx) => {
-    const existing = await tx.user.findUnique({
-      where: { id },
-      select: { email: true },
-    });
+    const [existing, actorRecord] = await Promise.all([
+      tx.user.findUnique({
+        where: { id },
+        select: {
+          email: true,
+          role: true,
+        },
+      }),
+      tx.user.findUnique({
+        where: { id: actor.id },
+        select: {
+          role: true,
+        },
+      }),
+    ]);
+
+    if (!actorRecord || (actorRecord.role !== Role.ADMIN && actorRecord.role !== Role.MASTER_ADMIN)) {
+      throw new Error("ADMIN_USER_NOT_FOUND");
+    }
+
+    if (!existing) {
+      throw new Error("USER_NOT_FOUND");
+    }
+
+    if (existing.role === Role.MASTER_ADMIN && actorRecord.role !== Role.MASTER_ADMIN) {
+      throw new Error("MASTER_ADMIN_MANAGEMENT_FORBIDDEN");
+    }
+
+    if (actorRecord.role === Role.ADMIN && input.role === Role.MASTER_ADMIN) {
+      throw new Error("MASTER_ADMIN_ASSIGNMENT_FORBIDDEN");
+    }
 
     await tx.user.update({
       where: { id },
@@ -2927,6 +2962,42 @@ export async function updateAdminUser(
     return tx.user.findUnique({
       where: { id },
     });
+  });
+}
+
+export async function updateAdminTeacherImage(input: {
+  userId: string;
+  imagePath: string;
+  adminUserId: string;
+}) {
+  const [teacherRecord, adminRecord] = await prisma.$transaction([
+    prisma.user.findUnique({
+      where: { id: input.userId },
+      select: { id: true, role: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: input.adminUserId },
+      select: { id: true, role: true },
+    }),
+  ]);
+
+  if (!teacherRecord || teacherRecord.role !== Role.TEACHER) {
+    throw new Error("TEACHER_NOT_FOUND");
+  }
+
+  if (!adminRecord || (adminRecord.role !== Role.ADMIN && adminRecord.role !== Role.MASTER_ADMIN)) {
+    throw new Error("ADMIN_USER_NOT_FOUND");
+  }
+
+  return prisma.user.update({
+    where: { id: teacherRecord.id },
+    data: {
+      image: input.imagePath.trim(),
+    },
+    select: {
+      id: true,
+      image: true,
+    },
   });
 }
 
@@ -3395,6 +3466,7 @@ export async function updateAdminLearningVideo(
     },
   });
 }
+
 
 
 

@@ -37,12 +37,14 @@ import {
   updateAdminPlan,
   updateAdminSession,
   updateAdminSubscription,
+  updateAdminTeacherImage,
   updateAdminUser,
 } from "@/lib/admin/admin-service";
 import { requireAdminSession } from "@/lib/auth/require-auth";
 import { upsertActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
 import { updateClientMessageStatus } from "@/lib/client-messages/client-message-service";
 import { normalizeMarketingContentJson } from "@/lib/marketing/marketing-renderer";
+import { revalidatePath } from "next/cache";
 
 const classSchema = z.object({
   categoryId: z.string().min(1),
@@ -297,6 +299,7 @@ const adjustClientCreditsSchema = z
     productId: z.string().optional(),
     creditDelta: z.coerce.number().int(),
     expiresAt: z.coerce.date().nullable().optional(),
+    reason: z.string().max(400).optional(),
   })
   .refine((input) => input.creditDelta !== 0, {
     message: "Adjustment amount must be non-zero.",
@@ -311,6 +314,9 @@ const cancelClientMembershipSchema = z.object({
   clientId: z.string().min(1),
   subscriptionContractId: z.string().min(1),
 });
+
+const MAX_TEACHER_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_TEACHER_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const marketingAudienceTypeSchema = z.enum([
   "ALL_USERS",
@@ -419,6 +425,18 @@ function getAdminActionErrorMessage(error: unknown): string {
   if (code === "ADMIN_USER_NOT_FOUND") {
     return "Your admin session is no longer valid. Sign in again and retry.";
   }
+  if (code === "USER_NOT_FOUND") {
+    return "Selected user no longer exists. Refresh the page and retry.";
+  }
+  if (code === "MASTER_ADMIN_MANAGEMENT_FORBIDDEN") {
+    return "Only MASTER_ADMIN can manage another MASTER_ADMIN.";
+  }
+  if (code === "MASTER_ADMIN_ASSIGNMENT_FORBIDDEN") {
+    return "Only MASTER_ADMIN can assign MASTER_ADMIN role.";
+  }
+  if (code === "TEACHER_NOT_FOUND") {
+    return "Teacher account was not found.";
+  }
   if (code === "INVALID_SESSION_TIME_RANGE") {
     return "Session end time must be after start time.";
   }
@@ -463,6 +481,25 @@ function toStringArray(value: FormDataEntryValue | null): string[] {
     .split(/\r?\n|,/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function toOptionalTrimmedString(value: FormDataEntryValue | null): string | undefined {
+  const normalized = String(value ?? "").trim();
+  return normalized ? normalized : undefined;
+}
+
+function mapTeacherImageMimeTypeToExtension(mimeType: string): string | null {
+  if (mimeType === "image/jpeg") {
+    return "jpg";
+  }
+  if (mimeType === "image/png") {
+    return "png";
+  }
+  if (mimeType === "image/webp") {
+    return "webp";
+  }
+
+  return null;
 }
 
 function parseMarketingManualAudienceJson(value: string | undefined): Prisma.JsonValue {
@@ -882,7 +919,8 @@ export async function updateUserAction(id: string, formData: FormData) {
     "admin.updateUserAction",
     { recordResponse: false },
     async () => {
-      await assertAdminAccess();
+      const session = await assertAdminAccess();
+      const returnPath = `/admin/users/${id}/edit`;
 
       const parsed = updateUserSchema.safeParse({
         firstName: formData.get("firstName"),
@@ -900,17 +938,21 @@ export async function updateUserAction(id: string, formData: FormData) {
       });
 
       if (!parsed.success) {
-        redirectWithError(`/admin/users/${id}/edit`, "Please complete required user fields.");
+        redirectWithError(returnPath, "Please complete required user fields.");
       }
 
       try {
-        await updateAdminUser(id, parsed.data);
+        await updateAdminUser(id, parsed.data, {
+          id: session.user.id,
+          role: session.user.role,
+        });
       } catch (error) {
         Sentry.captureException(error);
-        redirectWithError(`/admin/users/${id}/edit`, getPrismaErrorMessage(error));
+        redirectWithError(returnPath, getAdminActionErrorMessage(error));
       }
 
-      redirect("/admin/users");
+      revalidatePath(returnPath);
+      redirect(`${returnPath}?success=${encodeURIComponent("User updated.")}`);
     },
   );
 }
@@ -934,6 +976,7 @@ export async function adjustClientCreditsAction(formData: FormData) {
         productId: rawProductId || undefined,
         creditDelta: formData.get("creditDelta") ?? formData.get("amount"),
         expiresAt: toNullableDate(formData.get("expiresAt")),
+        reason: toOptionalTrimmedString(formData.get("reason")),
       });
 
       if (!parsed.success) {
@@ -958,6 +1001,7 @@ export async function adjustClientCreditsAction(formData: FormData) {
           entitlementId: parsed.data.entitlementId,
           productId: parsed.data.productId,
           expiresAt: parsed.data.expiresAt,
+          reason: parsed.data.reason,
           adminUserId: session.user.id,
         });
       } catch (error) {
@@ -968,6 +1012,7 @@ export async function adjustClientCreditsAction(formData: FormData) {
           productId: parsed.data.productId ?? null,
           creditDelta: parsed.data.creditDelta,
           expiresAt: parsed.data.expiresAt?.toISOString() ?? null,
+          reason: parsed.data.reason ?? null,
           adminUserId: session.user.id,
           error:
             error instanceof Error
@@ -977,7 +1022,8 @@ export async function adjustClientCreditsAction(formData: FormData) {
         redirectWithError(returnPath, getAdminActionErrorMessage(error));
       }
 
-      redirect(returnPath);
+      revalidatePath(returnPath);
+      redirect(`${returnPath}?success=${encodeURIComponent("Credits updated.")}`);
     },
   );
 }
@@ -1006,7 +1052,8 @@ export async function cancelClientMembershipAction(formData: FormData) {
         redirectWithError(returnPath, getAdminActionErrorMessage(error));
       }
 
-      redirect(returnPath);
+      revalidatePath(returnPath);
+      redirect(`${returnPath}?success=${encodeURIComponent("Membership cancelled.")}`);
     },
   );
 }
@@ -1256,6 +1303,57 @@ export async function uploadAgendaPdfAction(formData: FormData) {
   }
 
   redirect(returnTo);
+}
+
+export async function uploadTeacherImageAction(formData: FormData) {
+  const session = await assertAdminAccess();
+  const userId = String(formData.get("userId") ?? "").trim();
+  const returnTo = userId ? `/admin/users/${userId}/edit` : "/admin/users";
+
+  if (!userId) {
+    redirectWithError(returnTo, "Teacher user id is required.");
+  }
+
+  const file = formData.get("teacherImage");
+  if (!(file instanceof File) || file.size < 1) {
+    redirectWithError(returnTo, "Please select a teacher image file.");
+  }
+
+  if (file.size > MAX_TEACHER_IMAGE_FILE_SIZE_BYTES) {
+    redirectWithError(returnTo, "Teacher image must be 5MB or less.");
+  }
+
+  if (!ALLOWED_TEACHER_IMAGE_MIME_TYPES.has(file.type)) {
+    redirectWithError(returnTo, "Only JPG, PNG, or WEBP images are accepted.");
+  }
+
+  const extension = mapTeacherImageMimeTypeToExtension(file.type);
+  if (!extension) {
+    redirectWithError(returnTo, "Unsupported image type.");
+  }
+
+  const bytes = await file.arrayBuffer();
+  const imagesDir = join(process.cwd(), "public", "images", "instructors");
+  const targetFileName = `teacher-${userId}-${Date.now()}.${extension}`;
+  const targetAbsolutePath = join(imagesDir, targetFileName);
+  const relativePath = `/images/instructors/${targetFileName}`;
+
+  try {
+    await mkdir(imagesDir, { recursive: true });
+    await writeFile(targetAbsolutePath, Buffer.from(bytes));
+    await updateAdminTeacherImage({
+      userId,
+      imagePath: relativePath,
+      adminUserId: session.user.id,
+    });
+  } catch (error) {
+    Sentry.captureException(error);
+    console.error("[admin/upload-teacher-image] failed", error);
+    redirectWithError(returnTo, getAdminActionErrorMessage(error));
+  }
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Teacher picture updated.")}`);
 }
 
 export async function createMarketingCampaignDraftAction(formData: FormData) {

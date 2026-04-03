@@ -4,12 +4,14 @@ import { notFound } from "next/navigation";
 import {
   adjustClientCreditsAction,
   cancelClientMembershipAction,
+  uploadTeacherImageAction,
   updateUserAction,
 } from "@/app/admin/(private)/actions";
 import { getAdminClientActivityData, getAdminUserById } from "@/lib/admin/admin-service";
+import { requireAdminSession } from "@/lib/auth/require-auth";
 
 type Params = Promise<{ id: string }>;
-type SearchParams = Promise<{ error?: string }>;
+type SearchParams = Promise<{ error?: string; success?: string }>;
 
 function toDateValue(value: string | null): string {
   if (!value) {
@@ -50,7 +52,9 @@ export default async function AdminUserEditPage({
   const isTeacher = record.role === "TEACHER";
   const isClient = record.role === "CLIENT";
   const clientActivity = isClient ? await getAdminClientActivityData(id) : null;
-  const { error } = await searchParams;
+  const adminSession = await requireAdminSession({ throwOnFailure: true });
+  const { error, success } = await searchParams;
+  const isMasterAdminRestricted = record.role === "MASTER_ADMIN" && adminSession.user.role !== "MASTER_ADMIN";
 
   return (
     <section className="space-y-4">
@@ -62,9 +66,16 @@ export default async function AdminUserEditPage({
       </header>
 
       {error ? <p className="text-sm text-[#7b2d2d]">{error}</p> : null}
+      {success ? <p className="text-sm text-[#0f5132]">{success}</p> : null}
+      {isMasterAdminRestricted ? (
+        <p className="text-sm text-[#7b2d2d]">
+          Only MASTER_ADMIN can manage another MASTER_ADMIN.
+        </p>
+      ) : null}
 
       <section className="rounded-xl border border-[#d3dbe5] bg-white p-5">
       <form action={updateUserAction.bind(null, id)} className="space-y-3">
+        <fieldset disabled={isMasterAdminRestricted} className="space-y-3">
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block text-sm text-[#334155]">
             First Name
@@ -125,6 +136,7 @@ export default async function AdminUserEditPage({
               name="password"
               type="password"
               minLength={8}
+              disabled={isMasterAdminRestricted}
               className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
             />
           </label>
@@ -192,8 +204,44 @@ export default async function AdminUserEditPage({
             Update user
           </button>
         </div>
+        </fieldset>
       </form>
       </section>
+
+      {isTeacher ? (
+        <section className="rounded-xl border border-[#d3dbe5] bg-white p-5">
+          <h2 className="text-lg font-semibold text-[#1f2735]">Teacher Picture</h2>
+          {record.image ? (
+            <img
+              src={record.image}
+              alt={`${record.name} picture`}
+              className="mt-3 h-40 w-40 rounded-md border border-[#d3dbe5] object-cover"
+              data-testid="teacher-image-preview"
+            />
+          ) : (
+            <p className="mt-3 text-sm text-[#4b5a72]">No teacher picture uploaded yet.</p>
+          )}
+
+          <form action={uploadTeacherImageAction} className="mt-4 flex flex-col gap-3 md:max-w-md">
+            <input type="hidden" name="userId" value={id} />
+            <label className="block text-sm text-[#334155]">
+              Upload picture (JPG, PNG, WEBP, max 5MB)
+              <input
+                name="teacherImage"
+                type="file"
+                required
+                accept="image/jpeg,image/png,image/webp"
+                className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+              />
+            </label>
+            <div>
+              <button type="submit" className="rounded-md border border-[#d3dbe5] px-4 py-2 text-sm hover:bg-[#f3f6fb]">
+                Upload teacher picture
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
 
       {isClient && clientActivity ? (
         <section className="space-y-4 rounded-xl border border-[#d3dbe5] bg-white p-5">
@@ -278,12 +326,16 @@ export default async function AdminUserEditPage({
                       <input type="hidden" name="userId" value={id} />
                       <input type="hidden" name="entitlementId" value={entitlement.entitlementId} />
                       <label className="text-xs text-[#334155]">
-                        Credits Delta
+                        Credits Adjustment (+/-)
                         <input name="creditDelta" type="number" required className="mt-1 w-full rounded-md border border-[#d3dbe5] px-2 py-1" />
                       </label>
                       <label className="text-xs text-[#334155] md:col-span-2">
                         New Expiration (optional)
                         <input name="expiresAt" type="date" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-2 py-1" />
+                      </label>
+                      <label className="text-xs text-[#334155] md:col-span-4">
+                        Audit reason (optional)
+                        <input name="reason" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-2 py-1" />
                       </label>
                       <div className="flex items-end">
                         <button type="submit" className="rounded-md border border-[#d3dbe5] px-3 py-1 text-xs hover:bg-[#f3f6fb]">
@@ -316,6 +368,10 @@ export default async function AdminUserEditPage({
             <label className="text-xs text-[#334155]">
               Expiration Date
               <input name="expiresAt" type="date" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-2 py-1" />
+            </label>
+            <label className="text-xs text-[#334155] md:col-span-4">
+              Audit reason (optional)
+              <input name="reason" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-2 py-1" />
             </label>
             <div className="flex items-end">
               <button type="submit" className="rounded-md bg-[#1d3652] px-3 py-1 text-xs text-white">
