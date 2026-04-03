@@ -1,11 +1,11 @@
-import Link from "next/link";
-
+import AdminListControls from "@/components/admin/AdminListControls";
 import AdminPagination from "@/components/admin/AdminPagination";
 import { getAdminOrdersPageData, type AdminOrderDateFilter } from "@/lib/admin/admin-service";
 
 type SearchParams = Promise<{
   page?: string | string[];
   filter?: string | string[];
+  q?: string | string[];
 }>;
 
 const FILTER_OPTIONS: Array<{ value: AdminOrderDateFilter; label: string }> = [
@@ -32,6 +32,11 @@ function parseFilter(value: string | string[] | undefined): AdminOrderDateFilter
   return "all";
 }
 
+function parseQuery(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw?.trim() ?? "";
+}
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-BE", {
     dateStyle: "medium",
@@ -46,17 +51,24 @@ function formatMoney(amountMinor: number, currencyCode: string) {
   }).format(amountMinor / 100);
 }
 
-function buildPageHref(page: number, filter: AdminOrderDateFilter) {
-  return `/admin/orders?page=${page}&filter=${filter}`;
+function buildPageHref(page: number, filter: AdminOrderDateFilter, query: string) {
+  const search = new URLSearchParams();
+  search.set("page", String(page));
+  search.set("filter", filter);
+  if (query) {
+    search.set("q", query);
+  }
+  return `/admin/orders?${search.toString()}`;
 }
 
 export default async function AdminOrdersPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const page = parsePage(params.page);
   const filter = parseFilter(params.filter);
+  const query = parseQuery(params.q);
 
   try {
-    const data = await getAdminOrdersPageData({ page, filter, pageSize: 20 });
+    const data = await getAdminOrdersPageData({ page, filter, query, pageSize: 20 });
 
     return (
       <section className="space-y-4">
@@ -66,29 +78,16 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
             <p className="mt-1 text-sm text-[#4b5a72]">Read-only list of purchased order items.</p>
           </div>
 
-          <form method="get" className="flex items-end gap-2">
-            <div>
-              <label htmlFor="orders-filter" className="text-xs uppercase tracking-wide text-[#5a6d86]">
-                Filter
-              </label>
-              <select
-                id="orders-filter"
-                name="filter"
-                defaultValue={data.filter}
-                className="mt-1 block rounded-md border border-[#d3dbe5] bg-white px-3 py-2 text-sm text-[#1f2735]"
-              >
-                {FILTER_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <input type="hidden" name="page" value="1" />
-            </div>
-            <button type="submit" className="rounded-md bg-[#1d3652] px-3 py-2 text-sm text-white">
-              Apply
-            </button>
-          </form>
+          <AdminListControls
+            basePath="/admin/orders"
+            filterName="filter"
+            filterValue={data.filter}
+            filterOptions={FILTER_OPTIONS}
+            searchName="q"
+            searchValue={query}
+            searchPlaceholder="Search client or product"
+            searchAriaLabel="Search orders"
+          />
         </header>
 
         {data.items.length === 0 ? (
@@ -128,7 +127,7 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
         <AdminPagination
           page={data.page}
           totalPages={data.totalPages}
-          onChange={(nextPage) => buildPageHref(nextPage, data.filter)}
+          onChange={(nextPage) => buildPageHref(nextPage, data.filter, query)}
         />
       </section>
     );

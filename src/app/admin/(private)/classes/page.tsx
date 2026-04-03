@@ -29,8 +29,7 @@ export default async function AdminClassesPage() {
                 <tr>
                   <th className="px-3 py-2">Name</th>
                   <th className="px-3 py-2">Category</th>
-                  <th className="px-3 py-2">Slug</th>
-                  <th className="px-3 py-2">Duration</th>
+                  <th className="px-3 py-2">Teacher Name</th>
                   <th className="px-3 py-2">Capacity</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2">Actions</th>
@@ -41,8 +40,7 @@ export default async function AdminClassesPage() {
                   <tr key={item.id} className="border-t border-[#e2e8f0] text-[#334155]">
                     <td className="px-3 py-2 font-medium">{item.name}</td>
                     <td className="px-3 py-2">{item.categoryName}</td>
-                    <td className="px-3 py-2">{item.slug}</td>
-                    <td className="px-3 py-2">{item.defaultDurationMinutes} min</td>
+                    <td className="px-3 py-2">{item.defaultTeacherName ?? "—"}</td>
                     <td className="px-3 py-2">{item.defaultCapacity}</td>
                     <td className="px-3 py-2">{item.isActive && item.isVisible ? "Active" : "Hidden"}</td>
                     <td className="px-3 py-2">

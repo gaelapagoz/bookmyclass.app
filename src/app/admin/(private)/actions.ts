@@ -25,6 +25,7 @@ import {
   adjustAdminClientCredits,
   cancelAdminClientMembership,
   createAdminClass,
+  updateAdminClassImage,
   createAdminLearningProgram,
   createAdminLearningVideo,
   createAdminPlan,
@@ -52,7 +53,6 @@ import { revalidatePath } from "next/cache";
 const classSchema = z.object({
   categoryId: z.string().min(1),
   name: z.string().min(1),
-  slug: z.string().min(1),
   description: z.string().optional(),
   defaultDurationMinutes: z.coerce.number().int().positive(),
   defaultCapacity: z.coerce.number().int().positive(),
@@ -68,11 +68,8 @@ const classScheduleSchema = z
     endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
     isRecurring: z.boolean(),
     date: z.date().nullable().optional(),
-    repeatEveryWeeks: z.coerce.number().int().min(1).max(12).optional(),
     weekdays: z.array(z.nativeEnum(Weekday)).optional(),
-    endsType: z.enum(["never", "onDate", "afterOccurrences"]).optional(),
     endDate: z.date().nullable().optional(),
-    occurrenceCount: z.number().int().min(1).max(260).nullable().optional(),
   })
   .superRefine((input, ctx) => {
     const [startHour, startMinute] = input.startTime.split(":").map((part) => Number.parseInt(part, 10));
@@ -102,19 +99,25 @@ const classScheduleSchema = z
       });
     }
 
-    const endsType = input.endsType ?? "never";
-    if (input.isRecurring && endsType === "onDate" && !input.endDate) {
+    if (input.isRecurring && !input.date) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Start date is required.",
+        path: ["date"],
+      });
+    }
+    if (input.isRecurring && !input.endDate) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "End date is required.",
         path: ["endDate"],
       });
     }
-    if (input.isRecurring && endsType === "afterOccurrences" && !input.occurrenceCount) {
+    if (input.isRecurring && input.date && input.endDate && input.endDate < input.date) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Occurrence count is required.",
-        path: ["occurrenceCount"],
+        message: "End date cannot be before start date.",
+        path: ["endDate"],
       });
     }
   });
@@ -330,6 +333,8 @@ const cancelClientMembershipSchema = z.object({
 
 const MAX_TEACHER_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_TEACHER_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_CLASS_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_CLASS_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const marketingAudienceTypeSchema = z.enum([
   "ALL_USERS",
@@ -462,6 +467,9 @@ function getAdminActionErrorMessage(error: unknown): string {
   if (code === "RECURRENCE_END_DATE_REQUIRED") {
     return "Recurring end date is required.";
   }
+  if (code === "INVALID_RECURRENCE_DATE_RANGE") {
+    return "Recurring end date cannot be before start date.";
+  }
   if (code === "RECURRENCE_OCCURRENCES_REQUIRED") {
     return "Recurring occurrences count is required.";
   }
@@ -476,6 +484,9 @@ function getAdminActionErrorMessage(error: unknown): string {
   }
   if (code === "SESSION_MANAGER_FORBIDDEN") {
     return "You do not have permission to manage session attendees.";
+  }
+  if (code === "CLASS_NOT_FOUND") {
+    return "Booking service not found.";
   }
   if (code === "SESSION_NOT_FOUND") {
     return "Session not found. Refresh and try again.";
@@ -616,7 +627,6 @@ export async function createClassAction(formData: FormData) {
       const parsed = classSchema.safeParse({
         categoryId: formData.get("categoryId"),
         name: formData.get("name"),
-        slug: formData.get("slug"),
         description: formData.get("description") ?? undefined,
         defaultDurationMinutes: formData.get("defaultDurationMinutes"),
         defaultCapacity: formData.get("defaultCapacity"),
@@ -635,17 +645,11 @@ export async function createClassAction(formData: FormData) {
         endTime: formData.get("scheduleEndTime"),
         isRecurring: isChecked(formData, "isRecurring"),
         date: toNullableDate(formData.get("scheduleDate")),
-        repeatEveryWeeks: formData.get("repeatEveryWeeks") || undefined,
         weekdays: formData
           .getAll("repeatWeekdays")
           .map((value) => String(value).trim())
           .filter(Boolean),
-        endsType: formData.get("endsType") || undefined,
         endDate: toNullableDate(formData.get("endDate")),
-        occurrenceCount: (() => {
-          const raw = String(formData.get("occurrenceCount") ?? "").trim();
-          return raw ? Number.parseInt(raw, 10) : null;
-        })(),
       });
 
       if (!scheduleParsed.success) {
@@ -657,7 +661,6 @@ export async function createClassAction(formData: FormData) {
         await upsertAdminClassScheduleConfig({
           classTypeId: createdClass.id,
           className: createdClass.name,
-          classSlug: createdClass.slug,
           defaultCapacity: createdClass.defaultCapacity,
           defaultDurationMinutes: createdClass.defaultDurationMinutes,
           defaultTeacherId: scheduleParsed.data.defaultTeacherId,
@@ -665,11 +668,8 @@ export async function createClassAction(formData: FormData) {
           endTime: scheduleParsed.data.endTime,
           isRecurring: scheduleParsed.data.isRecurring,
           date: scheduleParsed.data.date ?? null,
-          repeatEveryWeeks: scheduleParsed.data.repeatEveryWeeks ?? 1,
           weekdays: scheduleParsed.data.weekdays ?? [],
-          endsType: scheduleParsed.data.endsType ?? "never",
           endDate: scheduleParsed.data.endDate ?? null,
-          occurrenceCount: scheduleParsed.data.occurrenceCount ?? null,
         });
       } catch (error) {
         Sentry.captureException(error);
@@ -687,7 +687,6 @@ export async function updateClassAction(id: string, formData: FormData) {
   const parsed = classSchema.safeParse({
     categoryId: formData.get("categoryId"),
     name: formData.get("name"),
-    slug: formData.get("slug"),
     description: formData.get("description") ?? undefined,
     defaultDurationMinutes: formData.get("defaultDurationMinutes"),
     defaultCapacity: formData.get("defaultCapacity"),
@@ -706,17 +705,11 @@ export async function updateClassAction(id: string, formData: FormData) {
     endTime: formData.get("scheduleEndTime"),
     isRecurring: isChecked(formData, "isRecurring"),
     date: toNullableDate(formData.get("scheduleDate")),
-    repeatEveryWeeks: formData.get("repeatEveryWeeks") || undefined,
     weekdays: formData
       .getAll("repeatWeekdays")
       .map((value) => String(value).trim())
       .filter(Boolean),
-    endsType: formData.get("endsType") || undefined,
     endDate: toNullableDate(formData.get("endDate")),
-    occurrenceCount: (() => {
-      const raw = String(formData.get("occurrenceCount") ?? "").trim();
-      return raw ? Number.parseInt(raw, 10) : null;
-    })(),
   });
 
   if (!scheduleParsed.success) {
@@ -728,7 +721,6 @@ export async function updateClassAction(id: string, formData: FormData) {
     await upsertAdminClassScheduleConfig({
       classTypeId: updatedClass.id,
       className: updatedClass.name,
-      classSlug: updatedClass.slug,
       defaultCapacity: updatedClass.defaultCapacity,
       defaultDurationMinutes: updatedClass.defaultDurationMinutes,
       defaultTeacherId: scheduleParsed.data.defaultTeacherId,
@@ -736,11 +728,8 @@ export async function updateClassAction(id: string, formData: FormData) {
       endTime: scheduleParsed.data.endTime,
       isRecurring: scheduleParsed.data.isRecurring,
       date: scheduleParsed.data.date ?? null,
-      repeatEveryWeeks: scheduleParsed.data.repeatEveryWeeks ?? 1,
       weekdays: scheduleParsed.data.weekdays ?? [],
-      endsType: scheduleParsed.data.endsType ?? "never",
       endDate: scheduleParsed.data.endDate ?? null,
-      occurrenceCount: scheduleParsed.data.occurrenceCount ?? null,
     });
   } catch (error) {
     Sentry.captureException(error);
@@ -1479,6 +1468,57 @@ export async function uploadTeacherImageAction(formData: FormData) {
 
   revalidatePath(returnTo);
   redirect(`${returnTo}?success=${encodeURIComponent("Teacher picture updated.")}`);
+}
+
+export async function uploadClassImageAction(formData: FormData) {
+  const session = await assertAdminAccess();
+  const classTypeId = String(formData.get("classTypeId") ?? "").trim();
+  const returnTo = classTypeId ? `/admin/classes/${classTypeId}/edit` : "/admin/classes";
+
+  if (!classTypeId) {
+    redirectWithError(returnTo, "Booking service id is required.");
+  }
+
+  const file = formData.get("classImage");
+  if (!(file instanceof File) || file.size < 1) {
+    redirectWithError(returnTo, "Please select a service image file.");
+  }
+
+  if (file.size > MAX_CLASS_IMAGE_FILE_SIZE_BYTES) {
+    redirectWithError(returnTo, "Service image must be 5MB or less.");
+  }
+
+  if (!ALLOWED_CLASS_IMAGE_MIME_TYPES.has(file.type)) {
+    redirectWithError(returnTo, "Only JPG, PNG, or WEBP images are accepted.");
+  }
+
+  const extension = mapTeacherImageMimeTypeToExtension(file.type);
+  if (!extension) {
+    redirectWithError(returnTo, "Unsupported image type.");
+  }
+
+  const bytes = await file.arrayBuffer();
+  const imagesDir = join(process.cwd(), "public", "images", "classes");
+  const targetFileName = `service-${classTypeId}-${Date.now()}.${extension}`;
+  const targetAbsolutePath = join(imagesDir, targetFileName);
+  const relativePath = `/images/classes/${targetFileName}`;
+
+  try {
+    await mkdir(imagesDir, { recursive: true });
+    await writeFile(targetAbsolutePath, Buffer.from(bytes));
+    await updateAdminClassImage({
+      classTypeId,
+      imagePath: relativePath,
+      adminUserId: session.user.id,
+    });
+  } catch (error) {
+    Sentry.captureException(error);
+    console.error("[admin/upload-class-image] failed", error);
+    redirectWithError(returnTo, getAdminActionErrorMessage(error));
+  }
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Service image updated.")}`);
 }
 
 export async function createMarketingCampaignDraftAction(formData: FormData) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import type { Weekday } from "@prisma/client";
 
@@ -22,23 +22,28 @@ type Props = {
     endTime?: string;
     isRecurring?: boolean;
     date?: string | null;
-    repeatEveryWeeks?: number;
     weekdays?: Weekday[];
-    endsType?: "never" | "onDate" | "afterOccurrences";
     endDate?: string | null;
-    occurrenceCount?: number | null;
   };
 };
 
 export default function ClassScheduleFields({ teachers, defaultValues }: Props) {
   const [isRecurring, setIsRecurring] = useState(Boolean(defaultValues?.isRecurring));
-  const [endsType, setEndsType] = useState<"never" | "onDate" | "afterOccurrences">(
-    defaultValues?.endsType ?? "never",
-  );
-  const selectedWeekdays = useMemo(
+  const [selectedWeekdays, setSelectedWeekdays] = useState<Set<Weekday>>(
     () => new Set(defaultValues?.weekdays ?? []),
-    [defaultValues?.weekdays],
   );
+
+  function toggleWeekday(weekday: Weekday, isChecked: boolean) {
+    setSelectedWeekdays((current) => {
+      const next = new Set(current);
+      if (isChecked) {
+        next.add(weekday);
+      } else {
+        next.delete(weekday);
+      }
+      return next;
+    });
+  }
 
   return (
     <section className="rounded-xl border border-[#d3dbe5] bg-white p-5">
@@ -55,7 +60,7 @@ export default function ClassScheduleFields({ teachers, defaultValues }: Props) 
         </label>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
+      <div className="mt-3 grid gap-2 md:grid-cols-3">
         <label className="block text-sm text-[#334155]">
           Default Teacher
           <select
@@ -94,7 +99,7 @@ export default function ClassScheduleFields({ teachers, defaultValues }: Props) 
       </div>
 
       {!isRecurring ? (
-        <div className="mt-3 grid gap-3 md:max-w-xs">
+        <div className="mt-3 grid gap-2 md:max-w-xs">
           <label className="block text-sm text-[#334155]">
             Date
             <input
@@ -107,19 +112,28 @@ export default function ClassScheduleFields({ teachers, defaultValues }: Props) 
           </label>
         </div>
       ) : (
-        <div className="mt-4 space-y-4 rounded-lg border border-[#e2e8f0] p-4">
-          <div className="grid items-end gap-3 md:grid-cols-[auto_110px_auto]">
-            <p className="text-sm text-[#334155]">Repeat every</p>
-            <input
-              name="repeatEveryWeeks"
-              type="number"
-              min={1}
-              max={12}
-              required={isRecurring}
-              defaultValue={defaultValues?.repeatEveryWeeks ?? 1}
-              className="w-full rounded-md border border-[#d3dbe5] px-3 py-2 text-sm"
-            />
-            <span className="text-sm text-[#334155]">week(s)</span>
+        <div className="mt-3 space-y-3 rounded-lg border border-[#e2e8f0] p-3">
+          <div className="grid gap-2 md:grid-cols-2">
+            <label className="block text-sm text-[#334155]">
+              Start Date
+              <input
+                name="scheduleDate"
+                type="date"
+                required={isRecurring}
+                defaultValue={defaultValues?.date ?? ""}
+                className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+              />
+            </label>
+            <label className="block text-sm text-[#334155]">
+              End Date
+              <input
+                name="endDate"
+                type="date"
+                required={isRecurring}
+                defaultValue={defaultValues?.endDate ?? ""}
+                className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+              />
+            </label>
           </div>
 
           <fieldset>
@@ -128,79 +142,23 @@ export default function ClassScheduleFields({ teachers, defaultValues }: Props) 
               {weekdayItems.map((weekday) => (
                 <label
                   key={weekday.value}
-                  className="inline-flex cursor-pointer items-center rounded-full border border-[#d3dbe5] px-3 py-1.5 text-xs text-[#334155]"
+                  className={`inline-flex min-w-11 cursor-pointer items-center justify-center rounded-full border px-3 py-1.5 text-xs ${
+                    selectedWeekdays.has(weekday.value)
+                      ? "border-[#1d3652] bg-[#1d3652] text-white"
+                      : "border-[#d3dbe5] text-[#334155]"
+                  }`}
                 >
                   <input
                     type="checkbox"
                     name="repeatWeekdays"
                     value={weekday.value}
-                    defaultChecked={selectedWeekdays.has(weekday.value)}
+                    checked={selectedWeekdays.has(weekday.value)}
+                    onChange={(event) => toggleWeekday(weekday.value, event.target.checked)}
                     className="sr-only"
                   />
                   {weekday.label}
                 </label>
               ))}
-            </div>
-          </fieldset>
-
-          <fieldset className="space-y-2">
-            <legend className="text-sm text-[#334155]">Ends</legend>
-            <div className="flex flex-wrap gap-4 text-sm text-[#334155]">
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="endsType"
-                  value="never"
-                  checked={endsType === "never"}
-                  onChange={() => setEndsType("never")}
-                />
-                Never
-              </label>
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="endsType"
-                  value="onDate"
-                  checked={endsType === "onDate"}
-                  onChange={() => setEndsType("onDate")}
-                />
-                On
-              </label>
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="endsType"
-                  value="afterOccurrences"
-                  checked={endsType === "afterOccurrences"}
-                  onChange={() => setEndsType("afterOccurrences")}
-                />
-                After
-              </label>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="block text-sm text-[#334155]">
-                End Date
-                <input
-                  name="endDate"
-                  type="date"
-                  required={isRecurring && endsType === "onDate"}
-                  defaultValue={defaultValues?.endDate ?? ""}
-                  className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
-                />
-              </label>
-              <label className="block text-sm text-[#334155]">
-                Occurrences
-                <input
-                  name="occurrenceCount"
-                  type="number"
-                  min={1}
-                  max={260}
-                  required={isRecurring && endsType === "afterOccurrences"}
-                  defaultValue={defaultValues?.occurrenceCount ?? ""}
-                  className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
-                />
-              </label>
             </div>
           </fieldset>
         </div>

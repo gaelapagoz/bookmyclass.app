@@ -1,9 +1,17 @@
-import Link from "next/link";
-
+import AdminListControls from "@/components/admin/AdminListControls";
 import AdminPagination from "@/components/admin/AdminPagination";
-import { getBookings } from "@/lib/admin/admin-service";
+import { getBookings, type AdminBookingStatusFilter } from "@/lib/admin/admin-service";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+const FILTER_OPTIONS: Array<{ value: AdminBookingStatusFilter; label: string }> = [
+  { value: "all", label: "All Items" },
+  { value: "pending", label: "Pending" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "completed", label: "Completed" },
+  { value: "noShow", label: "No-show" },
+];
 
 function parsePage(value: string | string[] | undefined): number {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -12,6 +20,19 @@ function parsePage(value: string | string[] | undefined): number {
     return 1;
   }
   return Math.floor(parsed);
+}
+
+function parseFilter(value: string | string[] | undefined): AdminBookingStatusFilter {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === "pending" || raw === "confirmed" || raw === "cancelled" || raw === "completed" || raw === "noShow") {
+    return raw;
+  }
+  return "all";
+}
+
+function parseQuery(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw?.trim() ?? "";
 }
 
 function buildPageHref(params: Record<string, string | string[] | undefined>, page: number) {
@@ -41,17 +62,30 @@ function formatDateTime(value: string) {
 export default async function AdminBookingsPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const page = parsePage(params.page);
+  const filter = parseFilter(params.filter);
+  const query = parseQuery(params.q);
 
   try {
-    const bookings = await getBookings({ page, pageSize: 20 });
+    const bookings = await getBookings({ page, pageSize: 20, filter, query });
 
     return (
       <section className="space-y-4">
-        <header className="flex items-center justify-between gap-4">
+        <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-[#1f2735]">Booking List</h1>
             <p className="mt-1 text-sm text-[#4b5a72]">Track booking-list status and customer information.</p>
           </div>
+
+          <AdminListControls
+            basePath="/admin/bookings"
+            filterName="filter"
+            filterValue={filter}
+            filterOptions={FILTER_OPTIONS}
+            searchName="q"
+            searchValue={query}
+            searchPlaceholder="Search customer, email, or session"
+            searchAriaLabel="Search bookings"
+          />
         </header>
 
         {bookings.data.length === 0 ? (
@@ -68,7 +102,6 @@ export default async function AdminBookingsPage({ searchParams }: { searchParams
                   <th className="px-3 py-2">Booked At</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2">Payment Mode</th>
-                  <th className="px-3 py-2">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -85,11 +118,6 @@ export default async function AdminBookingsPage({ searchParams }: { searchParams
                     <td className="px-3 py-2">{formatDateTime(item.bookedAt)}</td>
                     <td className="px-3 py-2">{item.status}</td>
                     <td className="px-3 py-2">{item.paymentSelection ?? "-"}</td>
-                    <td className="px-3 py-2">
-                      <Link href={`/admin/bookings/${item.id}/edit`} className="text-[#2a4f78] underline underline-offset-4">
-                        Edit
-                      </Link>
-                    </td>
                   </tr>
                 ))}
               </tbody>

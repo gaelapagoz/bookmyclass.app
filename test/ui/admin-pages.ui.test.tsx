@@ -309,6 +309,51 @@ describe("Admin pages branching", () => {
     expect(screen.getByRole("heading", { name: "Booking Services" })).toBeInTheDocument();
     expect(screen.getByText("No booking services found.")).toBeInTheDocument();
   });
+  it("renders booking services table with required headers and teacher name", async () => {
+    vi.mocked(getAdminClassesData).mockResolvedValue([
+      {
+        id: "class-1",
+        name: "Functional Strength",
+        categoryName: "Fitness & Functional",
+        defaultTeacherName: "Sofia Van den Berg",
+        defaultCapacity: 14,
+        isActive: true,
+        isVisible: true,
+        sortOrder: 1,
+      },
+    ]);
+
+    render(await AdminClassesPage());
+
+    expect(screen.getByRole("columnheader", { name: "Name" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Category" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Teacher Name" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Capacity" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Actions" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Slug" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Duration" })).not.toBeInTheDocument();
+    expect(screen.getByText("Sofia Van den Berg")).toBeInTheDocument();
+  });
+
+  it("renders teacher fallback when no default teacher exists", async () => {
+    vi.mocked(getAdminClassesData).mockResolvedValue([
+      {
+        id: "class-2",
+        name: "Mat Pilates",
+        categoryName: "Pilates",
+        defaultTeacherName: null,
+        defaultCapacity: 10,
+        isActive: true,
+        isVisible: true,
+        sortOrder: 2,
+      },
+    ]);
+
+    render(await AdminClassesPage());
+
+    expect(screen.getByText("\u2014")).toBeInTheDocument();
+  });
 
   it("renders sessions error state", async () => {
     vi.mocked(getAdminSessionsData).mockRejectedValue(new Error("DB error"));
@@ -382,12 +427,18 @@ describe("Admin pages branching", () => {
       totalPages: 2,
     });
 
-    render(await AdminBookingsPage({ searchParams: Promise.resolve({ page: "1" }) }));
+    render(await AdminBookingsPage({ searchParams: Promise.resolve({ page: "1", filter: "confirmed", q: "jane" }) }));
 
+    expect(vi.mocked(getBookings)).toHaveBeenCalledWith({ page: 1, pageSize: 20, filter: "confirmed", query: "jane" });
     expect(screen.getByRole("heading", { name: "Booking List" })).toBeInTheDocument();
     expect(screen.getByText("Jane")).toBeInTheDocument();
     expect(screen.getByText("Morning Flow")).toBeInTheDocument();
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: /actions?/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Filter").compareDocumentPosition(screen.getByLabelText("Search bookings"))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
   it("renders users data with create link", async () => {
     vi.mocked(getAdminUsersGroupedPageData).mockResolvedValue({
@@ -450,13 +501,18 @@ describe("Admin pages branching", () => {
 
     render(await AdminSubscriptionsPage({ searchParams: Promise.resolve({}) }));
 
-    expect(vi.mocked(getAdminSubscriptionsPageData)).toHaveBeenCalledWith({ page: 1, pageSize: 20 });
+    expect(vi.mocked(getAdminSubscriptionsPageData)).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 20,
+      filter: "all",
+      query: "",
+    });
     expect(screen.getByRole("heading", { name: "Subscriptions" })).toBeInTheDocument();
     expect(screen.getByText("Client A")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Create subscription" })).toBeInTheDocument();
   });
 
-  it("renders subscriptions pagination when more than one page exists", async () => {
+  it("renders subscriptions filter, search, and pagination when more than one page exists", async () => {
     vi.mocked(getAdminSubscriptionsPageData).mockResolvedValue({
       page: 2,
       pageSize: 20,
@@ -481,12 +537,20 @@ describe("Admin pages branching", () => {
       ],
     });
 
-    render(await AdminSubscriptionsPage({ searchParams: Promise.resolve({ page: "2", status: "active" }) }));
+    render(await AdminSubscriptionsPage({ searchParams: Promise.resolve({ page: "2", filter: "active", q: "client" }) }));
 
-    expect(vi.mocked(getAdminSubscriptionsPageData)).toHaveBeenCalledWith({ page: 2, pageSize: 20 });
+    expect(vi.mocked(getAdminSubscriptionsPageData)).toHaveBeenCalledWith({
+      page: 2,
+      pageSize: 20,
+      filter: "active",
+      query: "client",
+    });
+    expect(screen.getByLabelText("Filter").compareDocumentPosition(screen.getByLabelText("Search subscriptions"))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute("href", "/admin/subscriptions?status=active&page=1");
-    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/admin/subscriptions?status=active&page=3");
+    expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute("href", "/admin/subscriptions?filter=active&q=client&page=1");
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/admin/subscriptions?filter=active&q=client&page=3");
   });
 
   it("renders subscriptions empty state", async () => {
@@ -511,7 +575,7 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Unable to load subscriptions right now.")).toBeInTheDocument();
   });
 
-  it("renders orders filter and pagination state", async () => {
+  it("renders orders filter then search and pagination state", async () => {
     vi.mocked(getAdminOrdersPageData).mockResolvedValue({
       filter: "last30Days",
       page: 2,
@@ -534,22 +598,32 @@ describe("Admin pages branching", () => {
       ],
     });
 
-    render(await AdminOrdersPage({ searchParams: Promise.resolve({ page: "2", filter: "last30Days" }) }));
+    render(await AdminOrdersPage({ searchParams: Promise.resolve({ page: "2", filter: "last30Days", q: "client" }) }));
 
-    expect(vi.mocked(getAdminOrdersPageData)).toHaveBeenCalledWith({ page: 2, filter: "last30Days", pageSize: 20 });
+    expect(vi.mocked(getAdminOrdersPageData)).toHaveBeenCalledWith({
+      page: 2,
+      filter: "last30Days",
+      query: "client",
+      pageSize: 20,
+    });
     expect(screen.getByRole("heading", { name: "Orders" })).toBeInTheDocument();
     expect(screen.getByLabelText("Filter")).toBeInTheDocument();
-    const resetPageInput = screen.getByDisplayValue("1");
-    expect(resetPageInput).toHaveAttribute("name", "page");
+    expect(screen.getByLabelText("Filter").compareDocumentPosition(screen.getByLabelText("Search orders"))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    const resetPageInputs = screen
+      .getAllByDisplayValue("1")
+      .filter((element) => (element as HTMLInputElement).name === "page");
+    expect(resetPageInputs.length).toBeGreaterThan(0);
     expect(screen.getByDisplayValue("Last 30 days")).toBeInTheDocument();
     expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute(
       "href",
-      "/admin/orders?page=1&filter=last30Days",
+      "/admin/orders?page=1&filter=last30Days&q=client",
     );
     expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute(
       "href",
-      "/admin/orders?page=3&filter=last30Days",
+      "/admin/orders?page=3&filter=last30Days&q=client",
     );
   });
 
@@ -661,4 +735,7 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Unable to load online learning right now.")).toBeInTheDocument();
   });
 });
+
+
+
 

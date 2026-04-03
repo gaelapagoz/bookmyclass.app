@@ -141,9 +141,8 @@ export type AdminMarketingAnalytics = {
 export type AdminClassItem = {
   id: string;
   name: string;
-  slug: string;
   categoryName: string;
-  defaultDurationMinutes: number;
+  defaultTeacherName: string | null;
   defaultCapacity: number;
   isActive: boolean;
   isVisible: boolean;
@@ -156,11 +155,8 @@ export type AdminClassScheduleConfig = {
   endTime: string;
   isRecurring: boolean;
   date: string | null;
-  repeatEveryWeeks: number;
   weekdays: Weekday[];
-  endsType: "never" | "onDate" | "afterOccurrences";
   endDate: string | null;
-  occurrenceCount: number | null;
 };
 
 export type AdminSessionItem = {
@@ -333,6 +329,20 @@ export type AdminSubscriptionItem = {
 };
 
 export type AdminOrderDateFilter = "all" | "last7Days" | "last30Days" | "last90Days";
+export type AdminBookingStatusFilter =
+  | "all"
+  | "pending"
+  | "confirmed"
+  | "cancelled"
+  | "completed"
+  | "noShow";
+export type AdminSubscriptionStatusFilter =
+  | "all"
+  | "pending"
+  | "active"
+  | "cancelled"
+  | "expired"
+  | "pastDue";
 
 export type AdminOrdersPageItem = {
   id: string;
@@ -578,6 +588,44 @@ function getAdminOrderFilterStart(filter: AdminOrderDateFilter, now: Date): Date
   }
   if (filter === "last90Days") {
     return addDays(now, -90);
+  }
+  return null;
+}
+
+function getAdminBookingStatus(filter: AdminBookingStatusFilter): BookingStatus | null {
+  if (filter === "pending") {
+    return BookingStatus.PENDING;
+  }
+  if (filter === "confirmed") {
+    return BookingStatus.CONFIRMED;
+  }
+  if (filter === "cancelled") {
+    return BookingStatus.CANCELLED;
+  }
+  if (filter === "completed") {
+    return BookingStatus.COMPLETED;
+  }
+  if (filter === "noShow") {
+    return BookingStatus.NO_SHOW;
+  }
+  return null;
+}
+
+function getAdminSubscriptionStatus(filter: AdminSubscriptionStatusFilter): SubscriptionStatus | null {
+  if (filter === "pending") {
+    return SubscriptionStatus.PENDING;
+  }
+  if (filter === "active") {
+    return SubscriptionStatus.ACTIVE;
+  }
+  if (filter === "cancelled") {
+    return SubscriptionStatus.CANCELLED;
+  }
+  if (filter === "expired") {
+    return SubscriptionStatus.EXPIRED;
+  }
+  if (filter === "pastDue") {
+    return SubscriptionStatus.PAST_DUE;
   }
   return null;
 }
@@ -1269,12 +1317,21 @@ export async function getAdminClassesData(): Promise<AdminClassItem[]> {
     select: {
       id: true,
       name: true,
-      slug: true,
-      defaultDurationMinutes: true,
       defaultCapacity: true,
       isActive: true,
       isVisible: true,
       sortOrder: true,
+      templates: {
+        orderBy: [{ createdAt: "asc" }],
+        take: 1,
+        select: {
+          defaultTeacher: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
       category: {
         select: {
           name: true,
@@ -1286,9 +1343,8 @@ export async function getAdminClassesData(): Promise<AdminClassItem[]> {
   return classes.map((item) => ({
     id: item.id,
     name: item.name,
-    slug: item.slug,
     categoryName: item.category.name,
-    defaultDurationMinutes: item.defaultDurationMinutes,
+    defaultTeacherName: item.templates[0]?.defaultTeacher?.name ?? null,
     defaultCapacity: item.defaultCapacity,
     isActive: item.isActive,
     isVisible: item.isVisible,
@@ -1304,6 +1360,7 @@ export async function getAdminClassById(id: string) {
       categoryId: true,
       name: true,
       slug: true,
+      imageUrl: true,
       description: true,
       defaultDurationMinutes: true,
       defaultCapacity: true,
@@ -1358,7 +1415,9 @@ export async function getAdminClassById(id: string) {
     template?.defaultDurationMinutes ?? classType.defaultDurationMinutes;
   const endTime = addMinutesToTimeString(startTime, defaultDuration);
   const isRecurring = recurringRules.length > 0;
-  const defaultDate = nextSession?.startsAt.toISOString().slice(0, 10) ?? null;
+  const defaultDate = isRecurring
+    ? recurringRules[0]?.startDate.toISOString().slice(0, 10) ?? null
+    : nextSession?.startsAt.toISOString().slice(0, 10) ?? null;
 
   const schedule: AdminClassScheduleConfig = {
     defaultTeacherId: template?.defaultTeacherId ?? "",
@@ -1366,11 +1425,8 @@ export async function getAdminClassById(id: string) {
     endTime,
     isRecurring,
     date: defaultDate,
-    repeatEveryWeeks: 1,
-    weekdays: recurringRules.map((rule) => rule.weekday),
-    endsType: recurringRules[0]?.endDate ? "onDate" : "never",
+    weekdays: [...new Set(recurringRules.map((rule) => rule.weekday))],
     endDate: recurringRules[0]?.endDate?.toISOString().slice(0, 10) ?? null,
-    occurrenceCount: null,
   };
 
   return {
@@ -1378,6 +1434,7 @@ export async function getAdminClassById(id: string) {
     categoryId: classType.categoryId,
     name: classType.name,
     slug: classType.slug,
+    imageUrl: classType.imageUrl,
     description: classType.description,
     defaultDurationMinutes: classType.defaultDurationMinutes,
     defaultCapacity: classType.defaultCapacity,
@@ -1401,6 +1458,47 @@ function addMinutesToTimeString(time: string, amount: number): string {
   const endHour = Math.floor(normalized / 60);
   const endMinute = normalized % 60;
   return `${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`;
+}
+
+function buildDateRangeOccurrences(input: {
+  startDate: Date;
+  endDate: Date;
+  startTime: string;
+  endTime: string;
+  weekdays: Weekday[];
+}): Array<{ weekday: Weekday; startsAt: Date; endsAt: Date }> {
+  const startDay = new Date(input.startDate);
+  const endDay = new Date(input.endDate);
+  startDay.setHours(0, 0, 0, 0);
+  endDay.setHours(23, 59, 59, 999);
+
+  const durationMinutes = validateTimeRange(input.startTime, input.endTime);
+  const allowedWeekdays = new Set(input.weekdays);
+  const indexToWeekday: Record<number, Weekday> = {
+    0: Weekday.SUNDAY,
+    1: Weekday.MONDAY,
+    2: Weekday.TUESDAY,
+    3: Weekday.WEDNESDAY,
+    4: Weekday.THURSDAY,
+    5: Weekday.FRIDAY,
+    6: Weekday.SATURDAY,
+  };
+
+  const results: Array<{ weekday: Weekday; startsAt: Date; endsAt: Date }> = [];
+  const cursor = new Date(startDay);
+
+  while (cursor <= endDay) {
+    const weekday = indexToWeekday[cursor.getDay()];
+    if (allowedWeekdays.has(weekday)) {
+      const startsAt = withTime(cursor, input.startTime);
+      const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
+      results.push({ weekday, startsAt, endsAt });
+    }
+
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return results;
 }
 
 export async function getAdminClassScheduleOptions() {
@@ -1427,10 +1525,33 @@ export async function getClassCategoryOptions() {
   });
 }
 
+async function buildUniqueClassSlug(name: string, excludeClassTypeId?: string): Promise<string> {
+  const base = generatePlanSlug(name) || "service";
+  let candidate = base;
+  let suffix = 2;
+
+  while (true) {
+    const existing = await prisma.classType.findFirst({
+      where: {
+        slug: candidate,
+        ...(excludeClassTypeId ? { id: { not: excludeClassTypeId } } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      return candidate;
+    }
+
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+}
+
 export async function createAdminClass(input: {
   categoryId: string;
   name: string;
-  slug: string;
+  imageUrl?: string | null;
   description?: string;
   defaultDurationMinutes: number;
   defaultCapacity: number;
@@ -1438,11 +1559,14 @@ export async function createAdminClass(input: {
   isVisible: boolean;
   sortOrder: number;
 }) {
+  const slug = await buildUniqueClassSlug(input.name);
+
   return prisma.classType.create({
     data: {
       categoryId: input.categoryId,
       name: input.name.trim(),
-      slug: input.slug.trim(),
+      slug,
+      imageUrl: toNullable(input.imageUrl),
       description: toNullable(input.description),
       defaultDurationMinutes: input.defaultDurationMinutes,
       defaultCapacity: input.defaultCapacity,
@@ -1458,7 +1582,7 @@ export async function updateAdminClass(
   input: {
     categoryId: string;
     name: string;
-    slug: string;
+    imageUrl?: string | null;
     description?: string;
     defaultDurationMinutes: number;
     defaultCapacity: number;
@@ -1467,12 +1591,15 @@ export async function updateAdminClass(
     sortOrder: number;
   },
 ) {
+  const slug = await buildUniqueClassSlug(input.name, id);
+
   return prisma.classType.update({
     where: { id },
     data: {
       categoryId: input.categoryId,
       name: input.name.trim(),
-      slug: input.slug.trim(),
+      slug,
+      imageUrl: toNullable(input.imageUrl),
       description: toNullable(input.description),
       defaultDurationMinutes: input.defaultDurationMinutes,
       defaultCapacity: input.defaultCapacity,
@@ -1502,7 +1629,6 @@ function validateTimeRange(startTime: string, endTime: string) {
 export async function upsertAdminClassScheduleConfig(input: {
   classTypeId: string;
   className: string;
-  classSlug: string;
   defaultCapacity: number;
   defaultDurationMinutes: number;
   defaultTeacherId: string;
@@ -1510,30 +1636,28 @@ export async function upsertAdminClassScheduleConfig(input: {
   endTime: string;
   isRecurring: boolean;
   date?: Date | null;
-  repeatEveryWeeks?: number;
   weekdays?: Weekday[];
-  endsType?: "never" | "onDate" | "afterOccurrences";
   endDate?: Date | null;
-  occurrenceCount?: number | null;
 }) {
   if (!input.defaultTeacherId) {
     throw new Error("TEACHER_REQUIRED");
   }
 
   const durationMinutes = validateTimeRange(input.startTime, input.endTime);
-  const repeatEveryWeeks = input.repeatEveryWeeks ?? 1;
-  const weekdays = input.weekdays ?? [];
-  const endsType = input.endsType ?? "never";
+  const weekdays = [...new Set(input.weekdays ?? [])];
   const now = new Date();
 
   if (input.isRecurring && weekdays.length < 1) {
     throw new Error("INVALID_RECURRENCE_WEEKDAYS");
   }
-  if (input.isRecurring && endsType === "onDate" && !input.endDate) {
+  if (input.isRecurring && !input.date) {
+    throw new Error("SCHEDULE_DATE_REQUIRED");
+  }
+  if (input.isRecurring && !input.endDate) {
     throw new Error("RECURRENCE_END_DATE_REQUIRED");
   }
-  if (input.isRecurring && endsType === "afterOccurrences" && (!input.occurrenceCount || input.occurrenceCount < 1)) {
-    throw new Error("RECURRENCE_OCCURRENCES_REQUIRED");
+  if (input.isRecurring && input.date && input.endDate && input.endDate < input.date) {
+    throw new Error("INVALID_RECURRENCE_DATE_RANGE");
   }
   if (!input.isRecurring && !input.date) {
     throw new Error("SCHEDULE_DATE_REQUIRED");
@@ -1565,7 +1689,7 @@ export async function upsertAdminClassScheduleConfig(input: {
               classTypeId: input.classTypeId,
               defaultTeacherId: input.defaultTeacherId,
               title: `${input.className} Schedule`,
-              slug: `${input.classSlug}-schedule-${Date.now()}`,
+              slug: `${input.classTypeId}-schedule-${Date.now()}`,
               defaultCapacity: input.defaultCapacity,
               defaultDurationMinutes: input.defaultDurationMinutes,
               isActive: true,
@@ -1588,30 +1712,18 @@ export async function upsertAdminClassScheduleConfig(input: {
     });
 
     if (input.isRecurring) {
-      const startsOn = input.date ?? now;
-      const schedule = {
-        startsOn,
+      const startsOn = input.date!;
+      const occurrences = buildDateRangeOccurrences({
+        startDate: startsOn,
+        endDate: input.endDate!,
         startTime: input.startTime,
         endTime: input.endTime,
-        repeatEveryWeeks,
         weekdays,
-        endMode:
-          endsType === "onDate"
-            ? ("on_date" as const)
-            : endsType === "afterOccurrences"
-              ? ("after_occurrences" as const)
-              : ("never" as const),
-        endDate: input.endDate ?? null,
-        occurrences: input.occurrenceCount ?? undefined,
-      };
-
-      const occurrences = buildRecurringOccurrences(schedule);
-      const endDateForRule =
-        endsType === "onDate"
-          ? input.endDate ?? null
-          : endsType === "afterOccurrences"
-            ? (occurrences[occurrences.length - 1]?.startsAt ?? null)
-            : null;
+      });
+      if (occurrences.length < 1) {
+        throw new Error("NO_RECURRENCE_OCCURRENCES");
+      }
+      const endDateForRule = input.endDate!;
 
       const ruleByWeekday = new Map<Weekday, string>();
       for (const weekday of weekdays) {
@@ -2865,14 +2977,68 @@ export async function updateAdminPlan(
   return prisma.product.findUnique({ where: { id } });
 }
 
-export async function getBookings(input: { page: number; pageSize?: number }): Promise<AdminBookingsPageData> {
+export async function getBookings(input: {
+  page: number;
+  pageSize?: number;
+  filter?: AdminBookingStatusFilter;
+  query?: string;
+}): Promise<AdminBookingsPageData> {
   const pageSize = Math.max(1, Math.min(input.pageSize ?? 20, 100));
   const page = Math.max(1, Math.floor(input.page));
+  const query = input.query?.trim() ?? "";
   const skip = (page - 1) * pageSize;
+  const status = getAdminBookingStatus(input.filter ?? "all");
+
+  const where: Prisma.BookingWhereInput = {
+    ...(status ? { status } : {}),
+    ...(query
+      ? {
+          OR: [
+            {
+              customerName: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+            {
+              customerEmail: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+            {
+              client: {
+                name: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            },
+            {
+              client: {
+                email: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            },
+            {
+              studioSession: {
+                title: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            },
+          ],
+        }
+      : {}),
+  };
 
   const [totalItems, bookings] = await prisma.$transaction([
-    prisma.booking.count(),
+    prisma.booking.count({ where }),
     prisma.booking.findMany({
+      where,
       orderBy: [{ bookedAt: "desc" }],
       skip,
       take: pageSize,
@@ -3626,6 +3792,42 @@ export async function updateAdminTeacherImage(input: {
   });
 }
 
+export async function updateAdminClassImage(input: {
+  classTypeId: string;
+  imagePath: string;
+  adminUserId: string;
+}) {
+  const [classType, adminRecord] = await prisma.$transaction([
+    prisma.classType.findUnique({
+      where: { id: input.classTypeId },
+      select: { id: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: input.adminUserId },
+      select: { id: true, role: true },
+    }),
+  ]);
+
+  if (!classType) {
+    throw new Error("CLASS_NOT_FOUND");
+  }
+
+  if (!adminRecord || (adminRecord.role !== Role.ADMIN && adminRecord.role !== Role.MASTER_ADMIN)) {
+    throw new Error("ADMIN_USER_NOT_FOUND");
+  }
+
+  return prisma.classType.update({
+    where: { id: classType.id },
+    data: {
+      imageUrl: input.imagePath.trim(),
+    },
+    select: {
+      id: true,
+      imageUrl: true,
+    },
+  });
+}
+
 export async function getAdminSubscriptionsData(): Promise<AdminSubscriptionItem[]> {
   const result = await getAdminSubscriptionsPageData({ page: 1, pageSize: 150 });
   return result.items;
@@ -3635,18 +3837,66 @@ export async function getAdminOrdersPageData(input: {
   page: number;
   pageSize?: number;
   filter: AdminOrderDateFilter;
+  query?: string;
 }): Promise<AdminOrdersPageData> {
   const pageSize = Math.max(1, Math.min(input.pageSize ?? 20, 100));
   const page = Math.max(1, Math.floor(input.page));
   const now = new Date();
   const start = getAdminOrderFilterStart(input.filter, now);
+  const query = input.query?.trim() ?? "";
   const skip = (page - 1) * pageSize;
 
-  const where = {
+  const where: Prisma.OrderItemWhereInput = {
     order: {
       status: OrderStatus.PAID,
       ...(start ? { placedAt: { gte: start } } : {}),
     },
+    ...(query
+      ? {
+          OR: [
+            {
+              productNameSnapshot: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+            {
+              priceNameSnapshot: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+            {
+              order: {
+                id: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            },
+            {
+              order: {
+                client: {
+                  name: {
+                    contains: query,
+                    mode: "insensitive",
+                  },
+                },
+              },
+            },
+            {
+              order: {
+                client: {
+                  email: {
+                    contains: query,
+                    mode: "insensitive",
+                  },
+                },
+              },
+            },
+          ],
+        }
+      : {}),
   };
 
   const [totalItems, rows] = await prisma.$transaction([
@@ -3703,14 +3953,61 @@ export async function getAdminOrdersPageData(input: {
 export async function getAdminSubscriptionsPageData(input: {
   page: number;
   pageSize?: number;
+  filter?: AdminSubscriptionStatusFilter;
+  query?: string;
 }): Promise<AdminSubscriptionsPageData> {
   const pageSize = Math.max(1, Math.min(input.pageSize ?? 20, 100));
   const page = Math.max(1, Math.floor(input.page));
+  const query = input.query?.trim() ?? "";
   const skip = (page - 1) * pageSize;
+  const status = getAdminSubscriptionStatus(input.filter ?? "all");
+
+  const where: Prisma.SubscriptionContractWhereInput = {
+    ...(status ? { status } : {}),
+    ...(query
+      ? {
+          OR: [
+            {
+              client: {
+                name: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            },
+            {
+              client: {
+                email: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            },
+            {
+              product: {
+                name: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            },
+            {
+              price: {
+                name: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            },
+          ],
+        }
+      : {}),
+  };
 
   const [totalItems, rows] = await prisma.$transaction([
-    prisma.subscriptionContract.count(),
+    prisma.subscriptionContract.count({ where }),
     prisma.subscriptionContract.findMany({
+      where,
       orderBy: [{ createdAt: "desc" }],
       skip,
       take: pageSize,

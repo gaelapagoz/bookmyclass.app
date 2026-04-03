@@ -1,9 +1,19 @@
 import Link from "next/link";
 
+import AdminListControls from "@/components/admin/AdminListControls";
 import AdminPagination from "@/components/admin/AdminPagination";
-import { getAdminSubscriptionsPageData } from "@/lib/admin/admin-service";
+import { getAdminSubscriptionsPageData, type AdminSubscriptionStatusFilter } from "@/lib/admin/admin-service";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+const FILTER_OPTIONS: Array<{ value: AdminSubscriptionStatusFilter; label: string }> = [
+  { value: "all", label: "All Items" },
+  { value: "pending", label: "Pending" },
+  { value: "active", label: "Active" },
+  { value: "pastDue", label: "Past due" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "expired", label: "Expired" },
+];
 
 function parsePage(value: string | string[] | undefined): number {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -12,6 +22,19 @@ function parsePage(value: string | string[] | undefined): number {
     return 1;
   }
   return Math.floor(parsed);
+}
+
+function parseFilter(value: string | string[] | undefined): AdminSubscriptionStatusFilter {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === "pending" || raw === "active" || raw === "pastDue" || raw === "cancelled" || raw === "expired") {
+    return raw;
+  }
+  return "all";
+}
+
+function parseQuery(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw?.trim() ?? "";
 }
 
 function buildPageHref(params: Record<string, string | string[] | undefined>, page: number) {
@@ -46,20 +69,35 @@ function formatDate(value: string | null) {
 export default async function AdminSubscriptionsPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const page = parsePage(params.page);
+  const filter = parseFilter(params.filter);
+  const query = parseQuery(params.q);
 
   try {
-    const data = await getAdminSubscriptionsPageData({ page, pageSize: 20 });
+    const data = await getAdminSubscriptionsPageData({ page, pageSize: 20, filter, query });
 
     return (
       <section className="space-y-4">
-        <header className="flex items-center justify-between gap-4">
+        <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-[#1f2735]">Subscriptions</h1>
             <p className="mt-1 text-sm text-[#4b5a72]">Manage client contracts and membership lifecycle state.</p>
           </div>
-          <Link href="/admin/subscriptions/new" className="rounded-md bg-[#1d3652] px-3 py-2 text-sm text-white">
-            Create subscription
-          </Link>
+
+          <div className="flex flex-wrap items-end justify-end gap-2">
+            <AdminListControls
+              basePath="/admin/subscriptions"
+              filterName="filter"
+              filterValue={filter}
+              filterOptions={FILTER_OPTIONS}
+              searchName="q"
+              searchValue={query}
+              searchPlaceholder="Search client or product"
+              searchAriaLabel="Search subscriptions"
+            />
+            <Link href="/admin/subscriptions/new" className="rounded-md bg-[#1d3652] px-3 py-2 text-sm text-white">
+              Create subscription
+            </Link>
+          </div>
         </header>
 
         {data.items.length === 0 ? (
