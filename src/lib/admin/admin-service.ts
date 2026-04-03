@@ -1,8 +1,11 @@
 import {
   BillingInterval,
+  BookingIntent,
+  BookingPaymentSelection,
   BookingStatus,
   ClientEntitlementStatus,
   CreditLedgerEntryType,
+  EntitlementScope,
   EntitlementType,
   MarketingCampaignStatus,
   OrderStatus,
@@ -172,6 +175,39 @@ export type AdminSessionItem = {
   status: StudioSessionStatus;
   isPublished: boolean;
   location: string | null;
+};
+
+export type AdminSessionAttendeeItem = {
+  bookingId: string;
+  clientId: string;
+  clientName: string;
+  clientEmail: string;
+  bookedAt: string;
+  status: BookingStatus;
+  selectedEntitlementId: string | null;
+};
+
+export type AdminSessionDetail = {
+  id: string;
+  classTemplateId: string;
+  teacherId: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  startsAt: Date;
+  endsAt: Date;
+  capacity: number;
+  status: StudioSessionStatus;
+  isPublished: boolean;
+  attendees: AdminSessionAttendeeItem[];
+};
+
+export type AdminSessionClientOption = {
+  id: string;
+  name: string;
+  email: string;
+  availableCredits: number;
+  hasAvailableCredits: boolean;
 };
 
 export type AdminPlanItem = {
@@ -411,6 +447,18 @@ function withTime(input: Date, time: string): Date {
   const date = new Date(input);
   date.setHours(hour, minute, 0, 0);
   return date;
+}
+
+function toEntitlementScopeFromCategorySlug(categorySlug: string): EntitlementScope {
+  if (categorySlug.includes("private")) {
+    return EntitlementScope.PRIVATE_CLASSES;
+  }
+
+  if (categorySlug.includes("workshop")) {
+    return EntitlementScope.WORKSHOPS;
+  }
+
+  return EntitlementScope.COLLECTIVE_CLASSES;
 }
 
 function buildRecurringOccurrences(input: AdminRecurringSessionScheduleInput): Array<{
@@ -1712,7 +1760,7 @@ export async function getAdminSessionsData(input?: {
   }));
 }
 
-export async function getAdminSessionById(id: string) {
+export async function getAdminSessionById(id: string): Promise<AdminSessionDetail | null> {
   return prisma.studioSession.findUnique({
     where: { id },
     select: {
@@ -1727,12 +1775,67 @@ export async function getAdminSessionById(id: string) {
       capacity: true,
       status: true,
       isPublished: true,
+      bookings: {
+        where: {
+          status: {
+            in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
+          },
+          clientId: {
+            not: null,
+          },
+        },
+        orderBy: [{ bookedAt: "asc" }],
+        select: {
+          id: true,
+          clientId: true,
+          bookedAt: true,
+          status: true,
+          selectedEntitlementId: true,
+          client: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+      },
     },
+  }).then((session) => {
+    if (!session) {
+      return null;
+    }
+
+    return {
+      id: session.id,
+      classTemplateId: session.classTemplateId,
+      teacherId: session.teacherId,
+      title: session.title,
+      description: session.description,
+      location: session.location,
+      startsAt: session.startsAt,
+      endsAt: session.endsAt,
+      capacity: session.capacity,
+      status: session.status,
+      isPublished: session.isPublished,
+      attendees: session.bookings.map((booking) => ({
+        bookingId: booking.id,
+        clientId: booking.clientId ?? "",
+        clientName: booking.client?.name ?? "Unknown client",
+        clientEmail: booking.client?.email ?? "",
+        bookedAt: booking.bookedAt.toISOString(),
+        status: booking.status,
+        selectedEntitlementId: booking.selectedEntitlementId,
+      })),
+    };
   });
 }
 
-export async function getAdminSessionOptions() {
-  const [templates, teachers] = await prisma.$transaction([
+export async function getAdminSessionOptions(sessionId?: string): Promise<{
+  templates: Array<{ id: string; title: string; classTypeId: string }>;
+  teachers: Array<{ id: string; name: string }>;
+  clients: AdminSessionClientOption[];
+}> {
+  const [templates, teachers, clients] = await prisma.$transaction([
     prisma.classTemplate.findMany({
       where: { isActive: true },
       orderBy: [{ title: "asc" }],
@@ -1754,9 +1857,76 @@ export async function getAdminSessionOptions() {
         name: true,
       },
     }),
+    prisma.user.findMany({
+      where: {
+        role: Role.CLIENT,
+      },
+      orderBy: [{ name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    }),
   ]);
 
-  return { templates, teachers };
+  if (!sessionId) {
+    return {
+      templates,
+      teachers,
+      clients: clients.map((client) => ({
+        ...client,
+        availableCredits: 0,
+        hasAvailableCredits: false,
+      })),
+    };
+  }
+
+  const sessionClassCategory = await prisma.studioSession.findUnique({
+    where: { id: sessionId },
+    select: {
+      classType: {
+        select: {
+          category: {
+            select: {
+              slug: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!sessionClassCategory) {
+    return {
+      templates,
+      teachers,
+      clients: clients.map((client) => ({
+        ...client,
+        availableCredits: 0,
+        hasAvailableCredits: false,
+      })),
+    };
+  }
+
+  const requiredScope = toEntitlementScopeFromCategorySlug(sessionClassCategory.classType.category.slug);
+  const availableCreditsByClientId = await getClientAvailableCreditsByScope({
+    clientIds: clients.map((client) => client.id),
+    requiredScope,
+  });
+
+  return {
+    templates,
+    teachers,
+    clients: clients.map((client) => {
+      const availableCredits = availableCreditsByClientId.get(client.id) ?? 0;
+      return {
+        ...client,
+        availableCredits,
+        hasAvailableCredits: availableCredits > 0,
+      };
+    }),
+  };
 }
 
 export async function createAdminSession(input: {
@@ -1964,6 +2134,461 @@ export async function updateAdminSession(
       status: input.status,
       isPublished: input.isPublished,
     },
+  });
+}
+
+type SessionManagerActor = {
+  userId: string;
+  role: Role;
+};
+
+async function getNextConsumableCreditEntitlementForScope(input: {
+  clientId: string;
+  requiredScope: EntitlementScope;
+}): Promise<{ entitlementId: string } | null> {
+  const now = new Date();
+  const entitlements = await prisma.clientEntitlement.findMany({
+    where: {
+      clientId: input.clientId,
+      status: ClientEntitlementStatus.ACTIVE,
+      entitlementType: {
+        in: [EntitlementType.CREDIT_PACK, EntitlementType.SINGLE_USE],
+      },
+      entitlementScope: {
+        in: [input.requiredScope, EntitlementScope.ALL_CLASSES],
+      },
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    select: {
+      id: true,
+      createdAt: true,
+      expiresAt: true,
+    },
+  });
+
+  if (entitlements.length === 0) {
+    return null;
+  }
+
+  const balances = await prisma.creditLedgerEntry.groupBy({
+    by: ["entitlementId"],
+    where: {
+      clientId: input.clientId,
+      entitlementId: {
+        in: entitlements.map((entitlement) => entitlement.id),
+      },
+    },
+    _sum: {
+      amount: true,
+    },
+  });
+
+  const balanceByEntitlementId = new Map(
+    balances.map((row) => [row.entitlementId, row._sum.amount ?? 0]),
+  );
+
+  const eligible = entitlements
+    .map((entitlement) => ({
+      entitlementId: entitlement.id,
+      createdAt: entitlement.createdAt,
+      expiresAt: entitlement.expiresAt,
+      balance: balanceByEntitlementId.get(entitlement.id) ?? 0,
+    }))
+    .filter((entitlement) => entitlement.balance > 0);
+
+  if (eligible.length === 0) {
+    return null;
+  }
+
+  eligible.sort((a, b) => {
+    const aExpiry = a.expiresAt ? a.expiresAt.getTime() : Number.POSITIVE_INFINITY;
+    const bExpiry = b.expiresAt ? b.expiresAt.getTime() : Number.POSITIVE_INFINITY;
+    if (aExpiry !== bExpiry) {
+      return aExpiry - bExpiry;
+    }
+
+    const createdAtDelta = a.createdAt.getTime() - b.createdAt.getTime();
+    if (createdAtDelta !== 0) {
+      return createdAtDelta;
+    }
+
+    return a.entitlementId.localeCompare(b.entitlementId);
+  });
+
+  return {
+    entitlementId: eligible[0]!.entitlementId,
+  };
+}
+
+async function getClientAvailableCreditsByScope(input: {
+  clientIds: string[];
+  requiredScope: EntitlementScope;
+}): Promise<Map<string, number>> {
+  if (input.clientIds.length === 0) {
+    return new Map();
+  }
+
+  const now = new Date();
+  const entitlements = await prisma.clientEntitlement.findMany({
+    where: {
+      clientId: {
+        in: input.clientIds,
+      },
+      status: ClientEntitlementStatus.ACTIVE,
+      entitlementType: {
+        in: [EntitlementType.CREDIT_PACK, EntitlementType.SINGLE_USE],
+      },
+      entitlementScope: {
+        in: [input.requiredScope, EntitlementScope.ALL_CLASSES],
+      },
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    select: {
+      id: true,
+      clientId: true,
+    },
+  });
+
+  if (entitlements.length === 0) {
+    return new Map();
+  }
+
+  const entitlementIdToClientId = new Map(
+    entitlements.map((entitlement) => [entitlement.id, entitlement.clientId]),
+  );
+
+  const balances = await prisma.creditLedgerEntry.groupBy({
+    by: ["entitlementId"],
+    where: {
+      entitlementId: {
+        in: [...entitlementIdToClientId.keys()],
+      },
+    },
+    _sum: {
+      amount: true,
+    },
+  });
+
+  const creditsByClientId = new Map<string, number>();
+  for (const balance of balances) {
+    if (!balance.entitlementId) {
+      continue;
+    }
+
+    const clientId = entitlementIdToClientId.get(balance.entitlementId);
+    if (!clientId) {
+      continue;
+    }
+
+    const entitlementBalance = balance._sum.amount ?? 0;
+    if (entitlementBalance <= 0) {
+      continue;
+    }
+
+    creditsByClientId.set(clientId, (creditsByClientId.get(clientId) ?? 0) + entitlementBalance);
+  }
+
+  return creditsByClientId;
+}
+
+export async function addSessionAttendeeByManager(input: {
+  studioSessionId: string;
+  clientId: string;
+  note?: string;
+  actor: SessionManagerActor;
+}) {
+  const normalizedNote = input.note?.trim() ?? "";
+  const now = new Date();
+
+  const [actorUser, clientUser, session] = await prisma.$transaction([
+    prisma.user.findUnique({
+      where: { id: input.actor.userId },
+      select: {
+        id: true,
+        role: true,
+      },
+    }),
+    prisma.user.findUnique({
+      where: { id: input.clientId },
+      select: {
+        id: true,
+        role: true,
+        email: true,
+        name: true,
+      },
+    }),
+    prisma.studioSession.findUnique({
+      where: { id: input.studioSessionId },
+      select: {
+        id: true,
+        title: true,
+        startsAt: true,
+        capacity: true,
+        status: true,
+        classType: {
+          select: {
+            category: {
+              select: {
+                slug: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  if (!actorUser || (actorUser.role !== Role.ADMIN && actorUser.role !== Role.MASTER_ADMIN && actorUser.role !== Role.TEACHER)) {
+    throw new Error("SESSION_MANAGER_FORBIDDEN");
+  }
+
+  if (!clientUser || clientUser.role !== Role.CLIENT) {
+    throw new Error("CLIENT_NOT_FOUND");
+  }
+
+  if (!session) {
+    throw new Error("SESSION_NOT_FOUND");
+  }
+
+  if (session.status !== StudioSessionStatus.SCHEDULED || session.startsAt <= now) {
+    throw new Error("SESSION_NOT_BOOKABLE");
+  }
+
+  const existingActiveBooking = await prisma.booking.findFirst({
+    where: {
+      studioSessionId: session.id,
+      clientId: clientUser.id,
+      status: {
+        in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
+      },
+    },
+    select: {
+      id: true,
+      status: true,
+      selectedEntitlementId: true,
+    },
+  });
+
+  if (existingActiveBooking) {
+    return {
+      bookingId: existingActiveBooking.id,
+      status: existingActiveBooking.status,
+      usedCreditEntitlementId: existingActiveBooking.selectedEntitlementId,
+      overrideApplied: false,
+    };
+  }
+
+  const activeBookingCount = await prisma.booking.count({
+    where: {
+      studioSessionId: session.id,
+      status: {
+        in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
+      },
+    },
+  });
+
+  if (activeBookingCount >= session.capacity) {
+    throw new Error("SESSION_FULL");
+  }
+
+  const requiredScope = toEntitlementScopeFromCategorySlug(session.classType.category.slug);
+  const entitlement = await getNextConsumableCreditEntitlementForScope({
+    clientId: clientUser.id,
+    requiredScope,
+  });
+  const overrideWithoutCredits = !entitlement;
+
+  if (overrideWithoutCredits && actorUser.role === Role.TEACHER) {
+    throw new Error("TEACHER_CREDIT_OVERRIDE_FORBIDDEN");
+  }
+
+  if (overrideWithoutCredits && !normalizedNote) {
+    throw new Error("SESSION_OVERRIDE_NOTE_REQUIRED");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const createdBooking = await tx.booking.create({
+      data: {
+        clientId: clientUser.id,
+        studioSessionId: session.id,
+        status: BookingStatus.CONFIRMED,
+        bookingIntent: BookingIntent.USE_PLAN,
+        paymentSelection: entitlement ? BookingPaymentSelection.EXISTING_PLAN : null,
+        selectedEntitlementId: entitlement?.entitlementId ?? null,
+        draftAmountMinor: 0,
+        draftCurrencyCode: "EUR",
+        bookedAt: now,
+        customerName: clientUser.name,
+        customerEmail: clientUser.email,
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (entitlement) {
+      await tx.creditLedgerEntry.create({
+        data: {
+          clientId: clientUser.id,
+          entitlementId: entitlement.entitlementId,
+          bookingId: createdBooking.id,
+          entryType: CreditLedgerEntryType.CONSUME,
+          amount: -1,
+          createdById: actorUser.id,
+          happenedAt: now,
+          notes: `Credit consumed from session manager attendee add${normalizedNote ? `: ${normalizedNote}` : "."}`,
+        },
+      });
+    }
+
+    await tx.auditLog.create({
+      data: {
+        actorId: actorUser.id,
+        actionType: overrideWithoutCredits ? "SESSION_ATTENDEE_ADD_OVERRIDE" : "SESSION_ATTENDEE_ADD",
+        entityType: "Booking",
+        entityId: createdBooking.id,
+        metadata: {
+          sessionId: session.id,
+          clientId: clientUser.id,
+          usedCreditEntitlementId: entitlement?.entitlementId ?? null,
+          note: normalizedNote || null,
+        },
+      },
+    });
+
+    return {
+      bookingId: createdBooking.id,
+      status: createdBooking.status,
+      usedCreditEntitlementId: entitlement?.entitlementId ?? null,
+      overrideApplied: overrideWithoutCredits,
+    };
+  });
+}
+
+export async function removeSessionAttendeeByManager(input: {
+  studioSessionId: string;
+  bookingId: string;
+  note?: string;
+  actor: SessionManagerActor;
+}) {
+  const normalizedNote = input.note?.trim() ?? "";
+  const now = new Date();
+
+  const actorUser = await prisma.user.findUnique({
+    where: { id: input.actor.userId },
+    select: {
+      id: true,
+      role: true,
+    },
+  });
+
+  if (!actorUser || (actorUser.role !== Role.ADMIN && actorUser.role !== Role.MASTER_ADMIN && actorUser.role !== Role.TEACHER)) {
+    throw new Error("SESSION_MANAGER_FORBIDDEN");
+  }
+
+  const booking = await prisma.booking.findFirst({
+    where: {
+      id: input.bookingId,
+      studioSessionId: input.studioSessionId,
+    },
+    select: {
+      id: true,
+      clientId: true,
+      status: true,
+      selectedEntitlementId: true,
+      creditRefundedAt: true,
+    },
+  });
+
+  if (!booking) {
+    throw new Error("SESSION_ATTENDEE_NOT_FOUND");
+  }
+
+  if (booking.status === BookingStatus.CANCELLED) {
+    return {
+      bookingId: booking.id,
+      restoredCredit: false,
+      alreadyCancelled: true,
+    };
+  }
+
+  if (!booking.clientId) {
+    throw new Error("CLIENT_NOT_FOUND");
+  }
+
+  const bookingClientId = booking.clientId;
+
+  return prisma.$transaction(async (tx) => {
+    let restoredCredit = false;
+
+    if (booking.selectedEntitlementId && !booking.creditRefundedAt) {
+      const consumed = await tx.creditLedgerEntry.findFirst({
+        where: {
+          bookingId: booking.id,
+          entitlementId: booking.selectedEntitlementId,
+          entryType: CreditLedgerEntryType.CONSUME,
+        },
+        select: { id: true },
+      });
+
+      const restoreExists = await tx.creditLedgerEntry.findFirst({
+        where: {
+          bookingId: booking.id,
+          entitlementId: booking.selectedEntitlementId,
+          entryType: CreditLedgerEntryType.RESTORE,
+        },
+        select: { id: true },
+      });
+
+      if (consumed && !restoreExists) {
+        await tx.creditLedgerEntry.create({
+          data: {
+            clientId: bookingClientId,
+            entitlementId: booking.selectedEntitlementId,
+            bookingId: booking.id,
+            entryType: CreditLedgerEntryType.RESTORE,
+            amount: 1,
+            createdById: actorUser.id,
+            happenedAt: now,
+            notes: `Credit restored from session attendee removal${normalizedNote ? `: ${normalizedNote}` : "."}`,
+          },
+        });
+        restoredCredit = true;
+      }
+    }
+
+    await tx.booking.update({
+      where: { id: booking.id },
+      data: {
+        status: BookingStatus.CANCELLED,
+        cancelledAt: now,
+        cancelledById: actorUser.id,
+        cancellationReason: normalizedNote || "Cancelled by session manager from session edit page.",
+        creditRefundedAt: restoredCredit ? now : booking.creditRefundedAt,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        actorId: actorUser.id,
+        actionType: "SESSION_ATTENDEE_REMOVE",
+        entityType: "Booking",
+        entityId: booking.id,
+        metadata: {
+          sessionId: input.studioSessionId,
+          clientId: bookingClientId,
+          restoredCredit,
+          note: normalizedNote || null,
+        },
+      },
+    });
+
+    return {
+      bookingId: booking.id,
+      restoredCredit,
+      alreadyCancelled: false,
+    };
   });
 }
 
@@ -3466,6 +4091,10 @@ export async function updateAdminLearningVideo(
     },
   });
 }
+
+
+
+
 
 
 

@@ -34,6 +34,7 @@ vi.mock("@/auth", () => ({
 }));
 
 vi.mock("@/lib/admin/admin-service", () => ({
+  addSessionAttendeeByManager: vi.fn(),
   adjustAdminClientCredits: vi.fn(),
   cancelAdminClientMembership: vi.fn(),
   createAdminClass: vi.fn(),
@@ -42,8 +43,10 @@ vi.mock("@/lib/admin/admin-service", () => ({
   createAdminSession: vi.fn(),
   createAdminPlan: vi.fn(),
   createAdminSubscription: vi.fn(),
+  removeSessionAttendeeByManager: vi.fn(),
   updateAdminLearningVideo: vi.fn(),
   updateAdminPlan: vi.fn(),
+  updateAdminSession: vi.fn(),
   updateAdminTeacherImage: vi.fn(),
   updateAdminUser: vi.fn(),
 }));
@@ -58,24 +61,30 @@ vi.mock("@/lib/client-messages/client-message-service", () => ({
 
 import { auth } from "@/auth";
 import {
+  addSessionAttendeeByManager,
   adjustAdminClientCredits,
   cancelAdminClientMembership,
   createAdminClass,
   createAdminPlan,
   createAdminSubscription,
   upsertAdminClassScheduleConfig,
+  removeSessionAttendeeByManager,
   updateAdminLearningVideo,
   updateAdminPlan,
+  updateAdminSession,
   updateAdminTeacherImage,
   updateAdminUser,
 } from "@/lib/admin/admin-service";
 
 import {
+  addSessionAttendeeAction,
   adjustClientCreditsAction,
   cancelClientMembershipAction,
   createClassAction,
   createPlanAction,
   createSubscriptionAction,
+  removeSessionAttendeeAction,
+  updateSessionAction,
   updateLearningVideoAction,
   updatePlanAction,
   uploadTeacherImageAction,
@@ -399,6 +408,108 @@ describe("admin actions", () => {
     );
   });
 
+  it("updates session and redirects back to edit page with success", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(updateAdminSession).mockResolvedValue({ id: "session-1" });
+
+    const formData = new FormData();
+    formData.set("classTemplateId", "template-1");
+    formData.set("teacherId", "teacher-1");
+    formData.set("title", "Evening Flow");
+    formData.set("startsAt", "2026-06-10T18:00");
+    formData.set("endsAt", "2026-06-10T19:00");
+    formData.set("capacity", "12");
+    formData.set("status", "SCHEDULED");
+    formData.set("isPublished", "on");
+
+    await expect(updateSessionAction("session-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/sessions/session-1/edit?success=Session%20updated.",
+    );
+    expect(updateAdminSession).toHaveBeenCalledTimes(1);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/admin/sessions/session-1/edit");
+  });
+
+  it("adds attendee through service and redirects with success", async () => {
+    vi.mocked(auth).mockResolvedValue({
+      ...createAdminSession("ADMIN"),
+      user: {
+        id: "admin-1",
+        email: "admin@example.test",
+        role: "ADMIN",
+      },
+    });
+    vi.mocked(addSessionAttendeeByManager).mockResolvedValue({
+      bookingId: "booking-1",
+      status: "CONFIRMED",
+      usedCreditEntitlementId: "ent-1",
+      overrideApplied: false,
+    });
+
+    const formData = new FormData();
+    formData.set("clientId", "client-1");
+    formData.set("note", "manual add");
+
+    await expect(addSessionAttendeeAction("session-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/sessions/session-1/edit?success=Attendee%20added.",
+    );
+    expect(addSessionAttendeeByManager).toHaveBeenCalledWith({
+      studioSessionId: "session-1",
+      clientId: "client-1",
+      note: "manual add",
+      actor: {
+        userId: "admin-1",
+        role: "ADMIN",
+      },
+    });
+  });
+
+  it("maps teacher add-without-credit restriction to actionable message", async () => {
+    vi.mocked(auth).mockResolvedValue({
+      ...createAdminSession("ADMIN"),
+      user: {
+        id: "teacher-1",
+        email: "teacher@example.test",
+        role: "TEACHER",
+      },
+    });
+    vi.mocked(addSessionAttendeeByManager).mockRejectedValue(
+      new Error("TEACHER_CREDIT_OVERRIDE_FORBIDDEN"),
+    );
+
+    const formData = new FormData();
+    formData.set("clientId", "client-1");
+    formData.set("note", "override");
+
+    await expect(addSessionAttendeeAction("session-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/sessions/session-1/edit?error=Teachers%20cannot%20add%20attendees%20without%20available%20credits.",
+    );
+  });
+
+  it("removes attendee through service and redirects with success", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("MASTER_ADMIN"));
+    vi.mocked(removeSessionAttendeeByManager).mockResolvedValue({
+      bookingId: "booking-1",
+      restoredCredit: true,
+      alreadyCancelled: false,
+    });
+
+    const formData = new FormData();
+    formData.set("bookingId", "booking-1");
+    formData.set("note", "client requested");
+
+    await expect(removeSessionAttendeeAction("session-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/sessions/session-1/edit?success=Attendee%20removed.",
+    );
+    expect(removeSessionAttendeeByManager).toHaveBeenCalledWith({
+      studioSessionId: "session-1",
+      bookingId: "booking-1",
+      note: "client requested",
+      actor: {
+        userId: "user-1",
+        role: "MASTER_ADMIN",
+      },
+    });
+  });
   it("rejects teacher image upload when file type is invalid", async () => {
     vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
 
@@ -438,6 +549,10 @@ describe("admin actions", () => {
     expect(revalidatePathMock).toHaveBeenCalledWith("/admin/users/teacher-1/edit");
   });
 });
+
+
+
+
 
 
 

@@ -18,8 +18,10 @@ import { join } from "node:path";
 import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
 import type { MarketingAudienceType as MarketingAudienceTypeValue } from "@prisma/client";
+import { auth } from "@/auth";
 
 import {
+  addSessionAttendeeByManager,
   adjustAdminClientCredits,
   cancelAdminClientMembership,
   createAdminClass,
@@ -39,6 +41,7 @@ import {
   updateAdminSubscription,
   updateAdminTeacherImage,
   updateAdminUser,
+  removeSessionAttendeeByManager,
 } from "@/lib/admin/admin-service";
 import { requireAdminSession } from "@/lib/auth/require-auth";
 import { upsertActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
@@ -143,6 +146,16 @@ const sessionBaseSchema = z.object({
   capacity: z.coerce.number().int().positive(),
   status: z.nativeEnum(StudioSessionStatus),
   isPublished: z.boolean(),
+});
+
+const sessionAttendeeAddSchema = z.object({
+  clientId: z.string().min(1),
+  note: z.string().max(400).optional(),
+});
+
+const sessionAttendeeRemoveSchema = z.object({
+  bookingId: z.string().min(1),
+  note: z.string().max(400).optional(),
 });
 
 const recurringSessionSchema = z
@@ -461,14 +474,60 @@ function getAdminActionErrorMessage(error: unknown): string {
   if (code === "SCHEDULE_DATE_REQUIRED") {
     return "Choose a date for one-off class scheduling.";
   }
+  if (code === "SESSION_MANAGER_FORBIDDEN") {
+    return "You do not have permission to manage session attendees.";
+  }
+  if (code === "SESSION_NOT_FOUND") {
+    return "Session not found. Refresh and try again.";
+  }
+  if (code === "SESSION_NOT_BOOKABLE") {
+    return "This session is no longer bookable.";
+  }
+  if (code === "SESSION_FULL") {
+    return "This session is already full.";
+  }
+  if (code === "SESSION_OVERRIDE_NOTE_REQUIRED") {
+    return "A note is required when adding without available credits.";
+  }
+  if (code === "TEACHER_CREDIT_OVERRIDE_FORBIDDEN") {
+    return "Teachers cannot add attendees without available credits.";
+  }
+  if (code === "SESSION_ATTENDEE_NOT_FOUND") {
+    return "Selected attendee booking was not found for this session.";
+  }
 
   return getPrismaErrorMessage(error);
 }
 
 type AdminSession = Awaited<ReturnType<typeof requireAdminSession>>;
+type SessionManagerSession = {
+  user: {
+    id: string;
+    role: Role;
+  };
+};
 
 async function assertAdminAccess(): Promise<AdminSession> {
   return requireAdminSession({ throwOnFailure: true });
+}
+
+async function assertSessionManagerAccess(): Promise<SessionManagerSession> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("UNAUTHENTICATED");
+  }
+
+  const role = session.user.role as Role | undefined;
+  if (!role || (role !== Role.ADMIN && role !== Role.MASTER_ADMIN && role !== Role.TEACHER)) {
+    throw new Error("FORBIDDEN");
+  }
+
+  return {
+    user: {
+      id: session.user.id,
+      role,
+    },
+  };
 }
 
 function redirectWithError(path: string, message: string): never {
@@ -766,6 +825,7 @@ export async function createSessionAction(formData: FormData) {
 
 export async function updateSessionAction(id: string, formData: FormData) {
   await assertAdminAccess();
+  const returnTo = `/admin/sessions/${id}/edit`;
 
   const parsed = sessionSchema.safeParse({
     classTemplateId: formData.get("classTemplateId"),
@@ -781,17 +841,82 @@ export async function updateSessionAction(id: string, formData: FormData) {
   });
 
   if (!parsed.success) {
-    redirectWithError(`/admin/sessions/${id}/edit`, "Please complete all required session fields.");
+    redirectWithError(returnTo, "Please complete all required session fields.");
   }
 
   try {
     await updateAdminSession(id, parsed.data);
   } catch (error) {
     Sentry.captureException(error);
-    redirectWithError(`/admin/sessions/${id}/edit`, getPrismaErrorMessage(error));
+    redirectWithError(returnTo, getAdminActionErrorMessage(error));
   }
 
-  redirect("/admin/sessions");
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Session updated.")}`);
+}
+
+export async function addSessionAttendeeAction(id: string, formData: FormData) {
+  const session = await assertSessionManagerAccess();
+  const returnTo = `/admin/sessions/${id}/edit`;
+
+  const parsed = sessionAttendeeAddSchema.safeParse({
+    clientId: formData.get("clientId"),
+    note: toOptionalTrimmedString(formData.get("note")),
+  });
+
+  if (!parsed.success) {
+    redirectWithError(returnTo, "Please choose a client to add.");
+  }
+
+  try {
+    await addSessionAttendeeByManager({
+      studioSessionId: id,
+      clientId: parsed.data.clientId,
+      note: parsed.data.note,
+      actor: {
+        userId: session.user.id,
+        role: session.user.role,
+      },
+    });
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(returnTo, getAdminActionErrorMessage(error));
+  }
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Attendee added.")}`);
+}
+
+export async function removeSessionAttendeeAction(id: string, formData: FormData) {
+  const session = await assertSessionManagerAccess();
+  const returnTo = `/admin/sessions/${id}/edit`;
+
+  const parsed = sessionAttendeeRemoveSchema.safeParse({
+    bookingId: formData.get("bookingId"),
+    note: toOptionalTrimmedString(formData.get("note")),
+  });
+
+  if (!parsed.success) {
+    redirectWithError(returnTo, "Please select a valid attendee to remove.");
+  }
+
+  try {
+    await removeSessionAttendeeByManager({
+      studioSessionId: id,
+      bookingId: parsed.data.bookingId,
+      note: parsed.data.note,
+      actor: {
+        userId: session.user.id,
+        role: session.user.role,
+      },
+    });
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(returnTo, getAdminActionErrorMessage(error));
+  }
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Attendee removed.")}`);
 }
 
 export async function createPlanAction(formData: FormData) {
@@ -1647,6 +1772,7 @@ export async function updateMarketingCategoryAction(formData: FormData) {
 
   redirect(`${returnTo}?success=${encodeURIComponent("Category updated.")}`);
 }
+
 
 
 
