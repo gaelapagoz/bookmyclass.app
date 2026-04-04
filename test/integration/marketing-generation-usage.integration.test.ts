@@ -133,6 +133,7 @@ describe("marketing OpenAI generation usage tracking", () => {
     const { draft } = await createAdminAndDraft("Quota Boundary Campaign");
 
     const now = new Date();
+    now.setHours(12, 0, 0, 0);
     const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
 
     await prisma.marketingCampaignGenerationUsage.createMany({
@@ -418,6 +419,9 @@ describe("marketing OpenAI generation usage tracking", () => {
     ).rejects.toThrow("MARKETING_DRAFT_PERSIST_FAILED");
   });
 });
+
+
+
 
 
 

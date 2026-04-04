@@ -3,6 +3,7 @@ import Link from "next/link";
 import CampaignFlowLayout from "@/components/admin/marketing/CampaignFlowLayout";
 import CampaignPreview from "@/components/admin/marketing/CampaignPreview";
 import { getMarketingCampaignFlowDraftById, getMarketingCampaignFlowSentSummary } from "@/lib/marketing/marketing-service";
+export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string }>;
 

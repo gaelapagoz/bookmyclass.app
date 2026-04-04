@@ -18,7 +18,6 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
-import type { MarketingAudienceType as MarketingAudienceTypeValue } from "@prisma/client";
 import { auth } from "@/auth";
 
 import {
@@ -34,12 +33,16 @@ import {
   createAdminRecurringSessions,
   createAdminSubscription,
   createAdminUser,
+  createAdminSiteWeeklyScheduleEntry,
+  deleteAdminSiteWeeklyScheduleEntry,
   upsertAdminClassScheduleConfig,
   updateAdminClass,
+  updateAdminCancellationPeriodHours,
   updateAdminLearningProgram,
   updateAdminLearningVideo,
   updateAdminPlan,
   updateAdminSession,
+  updateAdminSiteWeeklyScheduleEntry,
   updateAdminSubscription,
   updateAdminTeacherImage,
   updateAdminUser,
@@ -283,7 +286,6 @@ const updateSubscriptionSchema = z
   });
 
 const learningProgramSchema = z.object({
-  legacyId: z.string().min(1),
   mainTitle: z.string().min(1),
   mainDescription: z.string().optional(),
   courseType: z.string().min(1),
@@ -298,7 +300,6 @@ const learningProgramSchema = z.object({
 });
 
 const learningVideoSchema = z.object({
-  legacyId: z.string().min(1),
   title: z.string().min(1),
   description: z.string().optional(),
   shortDescription: z.string().optional(),
@@ -352,36 +353,9 @@ const marketingAudienceTypeSchema = z.enum([
   "MANUAL",
 ]);
 
-const marketingCampaignDraftSchema = z.object({
-  campaignId: z.string().min(1).optional(),
-  name: z.string().min(1),
-  categoryId: z.string().optional(),
-  audienceType: marketingAudienceTypeSchema,
-  manualAudienceJson: z.string().optional(),
-  subject: z.string().min(1),
-  previewText: z.string().min(1),
-  fromName: z.string().min(1),
-  fromEmail: z.email(),
-  replyTo: z.union([z.email(), z.literal("")]).optional(),
-  contentJson: z.string().min(1),
-});
-
-const marketingAiDraftSchema = z.object({
-  campaignId: z.string().min(1),
-  goal: z.string().min(5).max(400),
-  audience: z.string().min(2).max(200),
-  tone: z.string().min(2).max(100),
-  cta: z.string().min(2).max(200),
-  extraContext: z.string().max(2000).optional(),
-});
-
 const marketingCampaignTestSchema = z.object({
   campaignId: z.string().min(1),
   toEmail: z.email(),
-});
-
-const marketingCampaignNowSchema = z.object({
-  campaignId: z.string().min(1),
 });
 
 const marketingCampaignFlowStep1Schema = z.object({
@@ -430,6 +404,31 @@ const bulkClientMarketingStatusSchema = z.object({
 const bulkClientMarketingSegmentsSchema = z.object({
   userIds: z.array(z.string().min(1)).min(1),
   segmentIds: z.array(z.string().min(1)).min(1),
+});
+
+const siteWeeklyScheduleSchema = z
+  .object({
+    dayOfWeek: z.nativeEnum(Weekday),
+    startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
+    endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
+    serviceId: z.string().min(1),
+    displayOrder: z.coerce.number().int().min(0),
+    isActive: z.boolean(),
+  })
+  .superRefine((input, ctx) => {
+    const [startHour, startMinute] = input.startTime.split(":").map((part) => Number.parseInt(part, 10));
+    const [endHour, endMinute] = input.endTime.split(":").map((part) => Number.parseInt(part, 10));
+    if (endHour * 60 + endMinute <= startHour * 60 + startMinute) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "End time must be after start time.",
+        path: ["endTime"],
+      });
+    }
+  });
+
+const cancellationPeriodSchema = z.object({
+  cancellationPeriodHours: z.coerce.number().int().positive(),
 });
 
 function isChecked(formData: FormData, name: string): boolean {
@@ -564,6 +563,15 @@ function getAdminActionErrorMessage(error: unknown): string {
   if (code === "SESSION_ATTENDEE_NOT_FOUND") {
     return "Selected attendee booking was not found for this session.";
   }
+  if (code === "INVALID_SITE_SCHEDULE_TIME" || code === "INVALID_SITE_SCHEDULE_TIME_RANGE") {
+    return "Schedule start and end time are invalid.";
+  }
+  if (code === "INVALID_SITE_SCHEDULE_SERVICE") {
+    return "Choose a booking service.";
+  }
+  if (code === "INVALID_CANCELLATION_CUTOFF_HOURS") {
+    return "Cancellation period must be a positive whole number of hours.";
+  }
 
   return getPrismaErrorMessage(error);
 }
@@ -616,6 +624,12 @@ function toStringArrayFromEntries(values: FormDataEntryValue[]): string[] {
   return values.map((value) => String(value).trim()).filter(Boolean);
 }
 
+function toWeekdayArray(values: FormDataEntryValue[]): Weekday[] {
+  const allowed = new Set(Object.values(Weekday));
+  const normalized = toStringArrayFromEntries(values).filter((value): value is Weekday => allowed.has(value as Weekday));
+  return [...new Set(normalized)];
+}
+
 function toOptionalTrimmedString(value: FormDataEntryValue | null): string | undefined {
   const normalized = String(value ?? "").trim();
   return normalized ? normalized : undefined;
@@ -657,26 +671,6 @@ async function storeCampaignImageAsset(file: File, campaignId: string): Promise<
   await mkdir(imagesDir, { recursive: true });
   await writeFile(targetAbsolutePath, Buffer.from(bytes));
   return relativePath;
-}
-
-function parseMarketingManualAudienceJson(value: string | undefined): Prisma.JsonValue {
-  if (!value?.trim()) {
-    return { emails: [], userIds: [] };
-  }
-
-  try {
-    const parsed = JSON.parse(value) as { emails?: unknown; userIds?: unknown };
-    const emails = Array.isArray(parsed.emails)
-      ? parsed.emails.map((item) => String(item).trim().toLowerCase()).filter(Boolean)
-      : [];
-    const userIds = Array.isArray(parsed.userIds) ? parsed.userIds.map((item) => String(item).trim()).filter(Boolean) : [];
-    return {
-      emails: [...new Set(emails)],
-      userIds: [...new Set(userIds)],
-    };
-  } catch {
-    return { emails: [], userIds: [] };
-  }
 }
 
 function getMarketingActionErrorMessage(error: unknown): string {
@@ -1452,7 +1446,6 @@ export async function createLearningProgramAction(formData: FormData) {
   await assertAdminAccess();
 
   const parsed = learningProgramSchema.safeParse({
-    legacyId: formData.get("legacyId"),
     mainTitle: formData.get("mainTitle"),
     mainDescription: formData.get("mainDescription") ?? undefined,
     courseType: formData.get("courseType"),
@@ -1484,7 +1477,6 @@ export async function updateLearningProgramAction(id: string, formData: FormData
   await assertAdminAccess();
 
   const parsed = learningProgramSchema.safeParse({
-    legacyId: formData.get("legacyId"),
     mainTitle: formData.get("mainTitle"),
     mainDescription: formData.get("mainDescription") ?? undefined,
     courseType: formData.get("courseType"),
@@ -1516,7 +1508,6 @@ export async function createLearningVideoAction(formData: FormData) {
   await assertAdminAccess();
 
   const parsed = learningVideoSchema.safeParse({
-    legacyId: formData.get("legacyId"),
     title: formData.get("title"),
     description: formData.get("description") ?? undefined,
     shortDescription: formData.get("shortDescription") ?? undefined,
@@ -1546,7 +1537,6 @@ export async function updateLearningVideoAction(id: string, formData: FormData) 
   await assertAdminAccess();
 
   const parsed = learningVideoSchema.safeParse({
-    legacyId: formData.get("legacyId"),
     title: formData.get("title"),
     description: formData.get("description") ?? undefined,
     shortDescription: formData.get("shortDescription") ?? undefined,
@@ -1624,6 +1614,120 @@ export async function uploadAgendaPdfAction(formData: FormData) {
   }
 
   redirect(returnTo);
+}
+
+export async function createSiteWeeklyScheduleEntryAction(formData: FormData) {
+  await assertAdminAccess();
+  const returnTo = "/admin/manage-site";
+
+  const parsed = siteWeeklyScheduleSchema.safeParse({
+    dayOfWeek: formData.get("dayOfWeek"),
+    startTime: formData.get("startTime"),
+    endTime: formData.get("endTime"),
+    serviceId: formData.get("serviceId"),
+    displayOrder: formData.get("displayOrder"),
+    isActive: isChecked(formData, "isActive"),
+  });
+
+  if (!parsed.success) {
+    redirectWithError(returnTo, "Please complete all required static schedule fields.");
+  }
+
+  const repeatOn = toWeekdayArray(formData.getAll("repeatOn"));
+  const targetDays = repeatOn.length > 0 ? repeatOn : [parsed.data.dayOfWeek];
+
+  try {
+    await Promise.all(
+      targetDays.map((dayOfWeek) =>
+        createAdminSiteWeeklyScheduleEntry({
+          ...parsed.data,
+          dayOfWeek,
+        }),
+      ),
+    );
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(returnTo, getAdminActionErrorMessage(error));
+  }
+
+  revalidatePath(returnTo);
+  revalidatePath("/");
+  redirect(`${returnTo}?success=${encodeURIComponent("Weekly schedule row added.")}`);
+}
+
+export async function updateSiteWeeklyScheduleEntryAction(formData: FormData) {
+  await assertAdminAccess();
+  const returnTo = "/admin/manage-site";
+  const id = String(formData.get("id") ?? "").trim();
+
+  const parsed = siteWeeklyScheduleSchema.safeParse({
+    dayOfWeek: formData.get("dayOfWeek"),
+    startTime: formData.get("startTime"),
+    endTime: formData.get("endTime"),
+    serviceId: formData.get("serviceId"),
+    displayOrder: formData.get("displayOrder"),
+    isActive: isChecked(formData, "isActive"),
+  });
+
+  if (!id || !parsed.success) {
+    redirectWithError(returnTo, "Invalid static schedule update payload.");
+  }
+
+  try {
+    await updateAdminSiteWeeklyScheduleEntry(id, parsed.data);
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(returnTo, getAdminActionErrorMessage(error));
+  }
+
+  revalidatePath(returnTo);
+  revalidatePath("/");
+  redirect(`${returnTo}?success=${encodeURIComponent("Weekly schedule row updated.")}`);
+}
+
+export async function deleteSiteWeeklyScheduleEntryAction(formData: FormData) {
+  await assertAdminAccess();
+  const returnTo = "/admin/manage-site";
+  const id = String(formData.get("id") ?? "").trim();
+
+  if (!id) {
+    redirectWithError(returnTo, "Invalid static schedule delete payload.");
+  }
+
+  try {
+    await deleteAdminSiteWeeklyScheduleEntry(id);
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(returnTo, getAdminActionErrorMessage(error));
+  }
+
+  revalidatePath(returnTo);
+  revalidatePath("/");
+  redirect(`${returnTo}?success=${encodeURIComponent("Weekly schedule row removed.")}`);
+}
+
+export async function updateCancellationPeriodAction(formData: FormData) {
+  await assertAdminAccess();
+  const returnTo = "/admin/manage-site";
+
+  const parsed = cancellationPeriodSchema.safeParse({
+    cancellationPeriodHours: formData.get("cancellationPeriodHours"),
+  });
+
+  if (!parsed.success) {
+    redirectWithError(returnTo, "Cancellation period must be a positive whole number of hours.");
+  }
+
+  try {
+    await updateAdminCancellationPeriodHours(parsed.data.cancellationPeriodHours);
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(returnTo, getAdminActionErrorMessage(error));
+  }
+
+  revalidatePath(returnTo);
+  revalidatePath("/");
+  redirect(`${returnTo}?success=${encodeURIComponent("Cancellation period updated.")}`);
 }
 
 export async function uploadTeacherImageAction(formData: FormData) {
@@ -1995,224 +2099,22 @@ export async function markMarketingCampaignFlowSentAction(formData: FormData) {
   redirect(`/admin/marketing/campaigns/${campaignId}/sent${query.toString() ? `?${query.toString()}` : ""}`);
 }
 
-export async function createMarketingCampaignDraftAction(formData: FormData) {
-  const session = await assertAdminAccess();
-  const returnTo = "/admin/marketing/campaigns/new";
-  const { createMarketingCampaignDraft } = await import("@/lib/marketing/marketing-service");
-
-  const parsed = marketingCampaignDraftSchema.safeParse({
-    name: formData.get("name"),
-    categoryId: String(formData.get("categoryId") ?? "").trim() || undefined,
-    audienceType: formData.get("audienceType"),
-    manualAudienceJson: String(formData.get("manualAudienceJson") ?? "").trim() || undefined,
-    subject: formData.get("subject"),
-    previewText: formData.get("previewText"),
-    fromName: formData.get("fromName"),
-    fromEmail: String(formData.get("fromEmail") ?? "").trim().toLowerCase(),
-    replyTo: String(formData.get("replyTo") ?? "").trim().toLowerCase(),
-    contentJson: formData.get("contentJson"),
-  });
-
-  if (!parsed.success) {
-    redirectWithError(returnTo, "Please complete all required campaign fields.");
-  }
-
-  let contentJson: unknown;
-  try {
-    contentJson = JSON.parse(parsed.data.contentJson);
-    normalizeMarketingContentJson(contentJson);
-  } catch {
-    redirectWithError(returnTo, "Campaign content is invalid.");
-  }
-
-  try {
-    const created = await createMarketingCampaignDraft({
-      name: parsed.data.name,
-      categoryId: parsed.data.categoryId ?? null,
-      audienceType: parsed.data.audienceType as MarketingAudienceTypeValue,
-      manualAudienceJson: parseMarketingManualAudienceJson(parsed.data.manualAudienceJson),
-      subject: parsed.data.subject,
-      previewText: parsed.data.previewText,
-      fromName: parsed.data.fromName,
-      fromEmail: parsed.data.fromEmail,
-      replyTo: parsed.data.replyTo || null,
-      contentJson,
-      createdById: session.user.id,
-    });
-    redirect(`/admin/marketing/campaigns/${created.id}/edit?success=${encodeURIComponent("Draft created.")}`);
-  } catch (error) {
-    Sentry.captureException(error);
-    redirectWithError(returnTo, getMarketingActionErrorMessage(error));
-  }
-}
-
-export async function updateMarketingCampaignDraftAction(formData: FormData) {
-  await assertAdminAccess();
-  const campaignId = String(formData.get("campaignId") ?? "").trim();
-  const returnTo = campaignId ? `/admin/marketing/campaigns/${campaignId}/edit` : "/admin/marketing/campaigns";
-  const { updateMarketingCampaignDraft } = await import("@/lib/marketing/marketing-service");
-
-  const parsed = marketingCampaignDraftSchema.safeParse({
-    campaignId,
-    name: formData.get("name"),
-    categoryId: String(formData.get("categoryId") ?? "").trim() || undefined,
-    audienceType: formData.get("audienceType"),
-    manualAudienceJson: String(formData.get("manualAudienceJson") ?? "").trim() || undefined,
-    subject: formData.get("subject"),
-    previewText: formData.get("previewText"),
-    fromName: formData.get("fromName"),
-    fromEmail: String(formData.get("fromEmail") ?? "").trim().toLowerCase(),
-    replyTo: String(formData.get("replyTo") ?? "").trim().toLowerCase(),
-    contentJson: formData.get("contentJson"),
-  });
-
-  if (!parsed.success || !parsed.data.campaignId) {
-    redirectWithError(returnTo, "Invalid campaign payload.");
-  }
-
-  let contentJson: unknown;
-  try {
-    contentJson = JSON.parse(parsed.data.contentJson);
-    normalizeMarketingContentJson(contentJson);
-  } catch {
-    redirectWithError(returnTo, "Campaign content is invalid.");
-  }
-
-  try {
-    await updateMarketingCampaignDraft(parsed.data.campaignId, {
-      name: parsed.data.name,
-      categoryId: parsed.data.categoryId ?? null,
-      audienceType: parsed.data.audienceType as MarketingAudienceTypeValue,
-      manualAudienceJson: parseMarketingManualAudienceJson(parsed.data.manualAudienceJson),
-      subject: parsed.data.subject,
-      previewText: parsed.data.previewText,
-      fromName: parsed.data.fromName,
-      fromEmail: parsed.data.fromEmail,
-      replyTo: parsed.data.replyTo || null,
-      contentJson,
-    });
-  } catch (error) {
-    Sentry.captureException(error);
-    redirectWithError(returnTo, getMarketingActionErrorMessage(error));
-  }
-
-  redirect(`${returnTo}?success=${encodeURIComponent("Draft updated.")}`);
-}
-
-export async function generateMarketingCampaignAiDraftAction(formData: FormData) {
-  await assertAdminAccess();
-  const campaignId = String(formData.get("campaignId") ?? "").trim();
-  const returnTo = campaignId ? `/admin/marketing/campaigns/${campaignId}/edit` : "/admin/marketing/campaigns";
-  const { getMarketingCampaignById, updateMarketingCampaignDraft } = await import("@/lib/marketing/marketing-service");
-  const { generateMarketingAiDraft } = await import("@/lib/marketing/marketing-ai");
-
-  const parsed = marketingAiDraftSchema.safeParse({
-    campaignId,
-    goal: formData.get("goal"),
-    audience: formData.get("audience"),
-    tone: formData.get("tone"),
-    cta: formData.get("cta"),
-    extraContext: formData.get("extraContext") ?? undefined,
-  });
-
-  if (!parsed.success) {
-    redirectWithError(returnTo, "Please complete all AI Assist fields.");
-  }
-
-  try {
-    const campaign = await getMarketingCampaignById(parsed.data.campaignId);
-    if (!campaign) {
-      throw new Error("MARKETING_CAMPAIGN_NOT_FOUND");
-    }
-
-    const draft = await generateMarketingAiDraft({
-      goal: parsed.data.goal,
-      audience: parsed.data.audience,
-      tone: parsed.data.tone,
-      cta: parsed.data.cta,
-      extraContext: parsed.data.extraContext,
-    });
-
-    await updateMarketingCampaignDraft(parsed.data.campaignId, {
-      name: campaign.name,
-      categoryId: campaign.categoryId,
-      audienceType: campaign.audienceType,
-      manualAudienceJson: campaign.manualAudienceJson,
-      fromName: campaign.fromName,
-      fromEmail: campaign.fromEmail,
-      replyTo: campaign.replyTo,
-      subject: draft.subject,
-      previewText: draft.previewText,
-      contentJson: draft.contentJson,
-    });
-  } catch (error) {
-    Sentry.captureException(error);
-    redirectWithError(returnTo, getMarketingActionErrorMessage(error));
-  }
-
-  redirect(`${returnTo}?success=${encodeURIComponent("AI draft generated.")}`);
-}
-
-export async function sendMarketingCampaignTestAction(formData: FormData) {
-  await assertAdminAccess();
-  const campaignId = String(formData.get("campaignId") ?? "").trim();
-  const returnTo = campaignId ? `/admin/marketing/campaigns/${campaignId}/edit` : "/admin/marketing/campaigns";
-  const { sendMarketingCampaignTest } = await import("@/lib/marketing/marketing-delivery");
-
-  const parsed = marketingCampaignTestSchema.safeParse({
-    campaignId,
-    toEmail: String(formData.get("toEmail") ?? "").trim().toLowerCase(),
-  });
-
-  if (!parsed.success) {
-    redirectWithError(returnTo, "Enter a valid test recipient email.");
-  }
-
-  try {
-    await sendMarketingCampaignTest(parsed.data);
-  } catch (error) {
-    Sentry.captureException(error);
-    redirectWithError(returnTo, getMarketingActionErrorMessage(error));
-  }
-
-  redirect(`${returnTo}?success=${encodeURIComponent("Test email sent.")}`);
-}
-
-export async function sendMarketingCampaignNowAction(formData: FormData) {
-  await assertAdminAccess();
-  const campaignId = String(formData.get("campaignId") ?? "").trim();
-  const returnTo = campaignId ? `/admin/marketing/campaigns/${campaignId}/edit` : "/admin/marketing/campaigns";
-  const { sendMarketingCampaignNow } = await import("@/lib/marketing/marketing-delivery");
-
-  const parsed = marketingCampaignNowSchema.safeParse({ campaignId });
-  if (!parsed.success) {
-    redirectWithError(returnTo, "Invalid send payload.");
-  }
-
-  try {
-    await sendMarketingCampaignNow(parsed.data.campaignId);
-  } catch (error) {
-    Sentry.captureException(error);
-    redirectWithError(returnTo, getMarketingActionErrorMessage(error));
-  }
-
-  redirect(`/admin/marketing/campaigns?status=sent&success=${encodeURIComponent("Campaign sent.")}`);
-}
-
 export async function duplicateMarketingCampaignAction(formData: FormData) {
   const session = await assertAdminAccess();
   const campaignId = String(formData.get("campaignId") ?? "").trim();
   const returnTo = "/admin/marketing/campaigns";
   const { duplicateMarketingCampaign } = await import("@/lib/marketing/marketing-service");
 
-  const parsed = marketingCampaignNowSchema.safeParse({ campaignId });
+  const parsed = z.object({ campaignId: z.string().min(1) }).safeParse({ campaignId });
   if (!parsed.success) {
     redirectWithError(returnTo, "Campaign ID is required.");
   }
 
   try {
     const duplicated = await duplicateMarketingCampaign(parsed.data.campaignId, session.user.id);
-    redirect(`/admin/marketing/campaigns/${duplicated.id}/edit?success=${encodeURIComponent("Campaign duplicated.")}`);
+    redirect(
+      `/admin/marketing/campaigns/new?campaignId=${duplicated.id}&success=${encodeURIComponent("Campaign duplicated.")}`,
+    );
   } catch (error) {
     Sentry.captureException(error);
     redirectWithError(returnTo, getMarketingActionErrorMessage(error));
@@ -2225,7 +2127,7 @@ export async function deleteMarketingCampaignDraftAction(formData: FormData) {
   const returnTo = "/admin/marketing/campaigns";
   const { deleteMarketingCampaignDraft } = await import("@/lib/marketing/marketing-service");
 
-  const parsed = marketingCampaignNowSchema.safeParse({ campaignId });
+  const parsed = z.object({ campaignId: z.string().min(1) }).safeParse({ campaignId });
   if (!parsed.success) {
     redirectWithError(returnTo, "Campaign ID is required.");
   }

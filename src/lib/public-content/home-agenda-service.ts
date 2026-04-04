@@ -1,4 +1,4 @@
-import { BookingStatus, StudioSessionStatus } from "@prisma/client";
+import { BookingStatus, StudioSessionStatus, Weekday } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 
@@ -7,63 +7,40 @@ export type HomeAgendaDayRow = {
   classes: string[];
 };
 
-const WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
-
-function startOfWeekMonday(input: Date): Date {
-  const date = new Date(input);
-  date.setHours(0, 0, 0, 0);
-  const day = date.getDay();
-  const offset = day === 0 ? -6 : 1 - day;
-  date.setDate(date.getDate() + offset);
-  return date;
-}
-
-function formatTime(value: Date): string {
-  return new Intl.DateTimeFormat("en-BE", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(value);
-}
+const WEEK_DAYS: Array<{ day: Weekday; label: string }> = [
+  { day: Weekday.MONDAY, label: "Monday" },
+  { day: Weekday.TUESDAY, label: "Tuesday" },
+  { day: Weekday.WEDNESDAY, label: "Wednesday" },
+  { day: Weekday.THURSDAY, label: "Thursday" },
+  { day: Weekday.FRIDAY, label: "Friday" },
+  { day: Weekday.SATURDAY, label: "Saturday" },
+  { day: Weekday.SUNDAY, label: "Sunday" },
+];
 
 export async function getHomeAgendaTableFromSchedule(): Promise<HomeAgendaDayRow[]> {
-  const now = new Date();
-  const weekStart = startOfWeekMonday(now);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 6);
-  weekEnd.setHours(23, 59, 59, 999);
-
-  const sessions = await prisma.studioSession.findMany({
+  const entries = await prisma.siteWeeklyScheduleEntry.findMany({
     where: {
-      status: StudioSessionStatus.SCHEDULED,
-      isPublished: true,
-      startsAt: {
-        gte: weekStart,
-        lte: weekEnd,
-      },
+      isActive: true,
     },
-    orderBy: [{ startsAt: "asc" }, { title: "asc" }],
+    orderBy: [{ dayOfWeek: "asc" }, { displayOrder: "asc" }, { startTime: "asc" }, { createdAt: "asc" }],
     select: {
-      title: true,
-      startsAt: true,
-      endsAt: true,
+      dayOfWeek: true,
+      startTime: true,
+      endTime: true,
+      label: true,
     },
   });
 
-  const byDay = new Map<number, string[]>();
-  for (const session of sessions) {
-    const dayIndex = session.startsAt.getDay();
-    if (dayIndex === 0) {
-      continue;
-    }
-    const existing = byDay.get(dayIndex) ?? [];
-    existing.push(`${formatTime(session.startsAt)}-${formatTime(session.endsAt)} ${session.title}`);
-    byDay.set(dayIndex, existing);
+  const byDay = new Map<Weekday, string[]>();
+  for (const entry of entries) {
+    const existing = byDay.get(entry.dayOfWeek) ?? [];
+    existing.push(`${entry.startTime}-${entry.endTime} ${entry.label}`);
+    byDay.set(entry.dayOfWeek, existing);
   }
 
-  return WEEK_DAYS.map((day, index) => ({
-    day,
-    classes: byDay.get(index + 1) ?? [],
+  return WEEK_DAYS.map((entry) => ({
+    day: entry.label,
+    classes: byDay.get(entry.day) ?? [],
   }));
 }
 

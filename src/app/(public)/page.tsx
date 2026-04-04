@@ -122,7 +122,7 @@ export default async function HomePage({
         <p className="mt-3 text-base text-[#7f6660]">Find the class that fits your rhythm</p>
 
         <div className="mt-8 rounded-3xl border border-[#e4d8cf] bg-[#fffdfa] p-4 shadow-[0_18px_45px_-30px_rgba(39,22,22,0.45)] md:p-6">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-7">
             {weeklyAgenda.map((entry) => (
               <article key={entry.day} className="rounded-2xl border border-[#eee3db] bg-[#fff] p-4">
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-[#6e3232]">{entry.day}</h3>

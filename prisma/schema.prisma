@@ -635,6 +635,23 @@ model BookingPolicy {
   updatedAt               DateTime @updatedAt
 }
 
+model SiteWeeklyScheduleEntry {
+  id           String   @id @default(cuid())
+  dayOfWeek    Weekday
+  startTime    String
+  endTime      String
+  serviceId    String?
+  label        String
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([dayOfWeek, displayOrder, startTime])
+  @@index([isActive, dayOfWeek])
+  @@index([serviceId])
+}
+
 model WaitlistEntry {
   id              String         @id @default(cuid())
   clientId        String

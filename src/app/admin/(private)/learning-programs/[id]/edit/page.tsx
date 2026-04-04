@@ -37,15 +37,6 @@ export default async function AdminLearningProgramEditPage({
       <form action={updateLearningProgramAction.bind(null, id)} className="space-y-3 rounded-xl border border-[#d3dbe5] bg-white p-5">
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block text-sm text-[#334155]">
-            Legacy ID
-            <input
-              name="legacyId"
-              required
-              defaultValue={record.legacyId}
-              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm text-[#334155]">
             Course Type
             <input
               name="courseType"

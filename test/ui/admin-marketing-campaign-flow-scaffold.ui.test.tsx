@@ -180,6 +180,33 @@ describe("admin marketing campaign flow scaffold", () => {
     expect(screen.getByText("Page 1 of 1")).toBeInTheDocument();
   });
 
+
+  it("renders Step 2 with empty category and segment options on unseeded state", async () => {
+    vi.mocked(listMarketingCategories).mockResolvedValue([]);
+    vi.mocked(resolveMarketingCampaignFlowRecipients).mockResolvedValue({
+      selectedSegmentIds: [],
+      segmentOptions: [],
+      totalRecipients: 0,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+      recipients: [],
+    });
+
+    render(
+      await AdminMarketingCampaignTargetPage({
+        params: Promise.resolve({ id: "draft" }),
+        searchParams: Promise.resolve({ page: "1" }),
+      }),
+    );
+
+    expect(screen.getByText("Step 2 of 4: choose campaign parameters.")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "No category" })).toBeInTheDocument();
+    expect(screen.getByText("No segments available. Campaign targeting will use all subscribed clients.")).toBeInTheDocument();
+    expect(screen.getByText("Selected recipients")).toBeInTheDocument();
+    expect(screen.getByText("0")).toBeInTheDocument();
+    expect(screen.queryByText("Unable to load")).not.toBeInTheDocument();
+  });
   it("rehydrates Step 3 summary and real recipient review", async () => {
     render(
       await AdminMarketingCampaignReviewPage({
@@ -264,5 +291,7 @@ describe("admin marketing campaign flow scaffold", () => {
     expect(screen.getByDisplayValue("invalid")).toBeInTheDocument();
   });
 });
+
+
 
 

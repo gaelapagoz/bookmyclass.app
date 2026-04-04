@@ -11,6 +11,7 @@ import {
   listMarketingCategories,
   resolveMarketingCampaignFlowRecipients,
 } from "@/lib/marketing/marketing-service";
+export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ page?: string; segments?: string | string[]; error?: string; success?: string }>;
@@ -118,8 +119,13 @@ export default async function AdminMarketingCampaignTargetPage({
 
             <section>
               <h2 className="text-sm font-semibold text-[#1f2735]">Segments</h2>
-              <ul className="mt-2 space-y-2">
-                {resolution.segmentOptions.map((segment) => {
+              {resolution.segmentOptions.length === 0 ? (
+                <p className="mt-2 rounded-md border border-dashed border-[#d3dbe5] bg-[#f8fbff] px-3 py-2 text-xs text-[#5a6d86]">
+                  No segments available. Campaign targeting will use all subscribed clients.
+                </p>
+              ) : (
+                <ul className="mt-2 space-y-2">
+                  {resolution.segmentOptions.map((segment) => {
                   const isSelected = selectedSegmentIds.includes(segment.id);
                   const updatedIds = isSelected
                     ? selectedSegmentIds.filter((segmentId) => segmentId !== segment.id)
@@ -139,8 +145,9 @@ export default async function AdminMarketingCampaignTargetPage({
                       </Link>
                     </li>
                   );
-                })}
-              </ul>
+                  })}
+                </ul>
+              )}
             </section>
 
             <section className="rounded-md border border-[#d3dbe5] bg-[#f8fbff] p-4">

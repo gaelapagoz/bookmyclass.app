@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { getAdminOnlineLearningData } from "@/lib/admin/admin-service";
+export const dynamic = "force-dynamic";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-BE", {
@@ -35,7 +36,6 @@ export default async function AdminOnlineLearningPage() {
               <table className="min-w-full text-sm">
                 <thead className="bg-[#f3f6fb] text-left text-xs uppercase tracking-wide text-[#5a6d86]">
                   <tr>
-                    <th className="px-3 py-2">Legacy ID</th>
                     <th className="px-3 py-2">Course Type</th>
                     <th className="px-3 py-2">Main Title</th>
                     <th className="px-3 py-2">Title</th>
@@ -46,7 +46,6 @@ export default async function AdminOnlineLearningPage() {
                 <tbody>
                   {programs.map((item) => (
                     <tr key={item.id} className="border-t border-[#e2e8f0] text-[#334155]">
-                      <td className="px-3 py-2 font-medium">{item.legacyId}</td>
                       <td className="px-3 py-2">{item.courseType}</td>
                       <td className="px-3 py-2">{item.mainTitle}</td>
                       <td className="px-3 py-2">{item.title}</td>
@@ -82,7 +81,6 @@ export default async function AdminOnlineLearningPage() {
               <table className="min-w-full text-sm">
                 <thead className="bg-[#f3f6fb] text-left text-xs uppercase tracking-wide text-[#5a6d86]">
                   <tr>
-                    <th className="px-3 py-2">Legacy ID</th>
                     <th className="px-3 py-2">Title</th>
                     <th className="px-3 py-2">Category</th>
                     <th className="px-3 py-2">Type/Level</th>
@@ -94,7 +92,6 @@ export default async function AdminOnlineLearningPage() {
                 <tbody>
                   {videos.map((item) => (
                     <tr key={item.id} className="border-t border-[#e2e8f0] text-[#334155]">
-                      <td className="px-3 py-2 font-medium">{item.legacyId}</td>
                       <td className="px-3 py-2">{item.title}</td>
                       <td className="px-3 py-2">{item.category}</td>
                       <td className="px-3 py-2">

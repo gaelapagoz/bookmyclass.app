@@ -7,7 +7,6 @@ import {
   CreditLedgerEntryType,
   EntitlementScope,
   EntitlementType,
-  MarketingCampaignStatus,
   MarketingSubscriptionStatus,
   OrderStatus,
   PaymentProvider,
@@ -21,6 +20,7 @@ import {
 } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { hash } from "bcryptjs";
+import { randomUUID } from "node:crypto";
 
 import { prisma } from "@/lib/db";
 import { generatePlanSlug } from "@/lib/admin/plan-slug";
@@ -30,6 +30,7 @@ import {
   applyTrustedAdminEmailChange,
   createUserFromTrustedFlow,
 } from "@/lib/auth/user-identity-service";
+import { normalizeBookingCancellationWindowHours } from "@/lib/booking/cancellation-policy";
 
 export type AdminDashboardData = {
   upcomingSessions: Array<{
@@ -114,36 +115,22 @@ export type AdminDashboardInsights = {
   staffPerformance: StaffPerformanceItem[];
 };
 
-export type AdminMarketingCampaignMetric = {
+export type AdminSiteWeeklyScheduleEntry = {
+  id: string;
+  dayOfWeek: Weekday;
+  startTime: string;
+  endTime: string;
+  serviceId: string | null;
+  label: string;
+  displayOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminSiteScheduleServiceOption = {
   id: string;
   name: string;
-  sentAt: string | null;
-  recipients: number;
-  sent: number;
-  opened: number;
-  clicked: number;
-  unsubscribed: number;
-  openRate: number;
-  clickRate: number;
-};
-
-export type AdminMarketingAnalytics = {
-  campaignsSent: number;
-  recipients: number;
-  sent: number;
-  opened: number;
-  clicked: number;
-  unsubscribed: number;
-  openRate: number;
-  clickRate: number;
-  byCampaign: AdminMarketingCampaignMetric[];
-};
-
-export type AdminMarketingOverviewMetrics = {
-  neverSubscribedClients: number;
-  subscribedClients: number;
-  unsubscribedClients: number;
-  campaignsSent: number;
 };
 
 export async function resolveAdminActorUser(input: { actorUserId: string }) {
@@ -280,6 +267,14 @@ export type AdminUsersRolePageData = {
   items: AdminUserItem[];
 };
 
+export type AdminClientStats = {
+  totalClients: number;
+  neverSubscribedClients: number;
+  subscribedClients: number;
+  unsubscribedClients: number;
+  totalSubscriptions: number;
+};
+
 export type AdminUsersGroupedPageData = {
   query: string;
   masterAdmins: AdminUsersRolePageData;
@@ -410,7 +405,6 @@ export type AdminSubscriptionsPageData = {
 
 export type AdminLearningProgramItem = {
   id: string;
-  legacyId: string;
   courseType: string;
   mainTitle: string;
   title: string;
@@ -419,7 +413,6 @@ export type AdminLearningProgramItem = {
 
 export type AdminLearningVideoItem = {
   id: string;
-  legacyId: string;
   title: string;
   category: string;
   categoryType: string | null;
@@ -1272,111 +1265,6 @@ export async function getAdminDashboardInsights(period: AdminPeriod): Promise<Ad
     topClients,
     atRiskClients,
     staffPerformance,
-  };
-}
-
-export async function getMarketingAnalytics(period: AdminPeriod): Promise<AdminMarketingAnalytics> {
-  const periodRange = getRollingPeriodRange(period, new Date());
-  const campaigns = await prisma.marketingCampaign.findMany({
-    where: {
-      status: MarketingCampaignStatus.SENT,
-      sentAt: {
-        gte: periodRange.currentStart,
-        lt: periodRange.currentEnd,
-      },
-    },
-    include: {
-      recipients: {
-        select: {
-          id: true,
-          sentAt: true,
-          openedAt: true,
-          clickedAt: true,
-          unsubscribedAt: true,
-        },
-      },
-    },
-    orderBy: [{ sentAt: "desc" }, { updatedAt: "desc" }],
-  });
-
-  let recipients = 0;
-  let sent = 0;
-  let opened = 0;
-  let clicked = 0;
-  let unsubscribed = 0;
-
-  const byCampaign: AdminMarketingCampaignMetric[] = campaigns.map((campaign) => {
-    const localRecipients = campaign.recipients.length;
-    const localSent = campaign.recipients.filter((row) => Boolean(row.sentAt)).length;
-    const localOpened = campaign.recipients.filter((row) => Boolean(row.openedAt)).length;
-    const localClicked = campaign.recipients.filter((row) => Boolean(row.clickedAt)).length;
-    const localUnsubscribed = campaign.recipients.filter((row) => Boolean(row.unsubscribedAt)).length;
-
-    recipients += localRecipients;
-    sent += localSent;
-    opened += localOpened;
-    clicked += localClicked;
-    unsubscribed += localUnsubscribed;
-
-    return {
-      id: campaign.id,
-      name: campaign.name,
-      sentAt: campaign.sentAt?.toISOString() ?? null,
-      recipients: localRecipients,
-      sent: localSent,
-      opened: localOpened,
-      clicked: localClicked,
-      unsubscribed: localUnsubscribed,
-      openRate: localSent > 0 ? Number(((localOpened / localSent) * 100).toFixed(1)) : 0,
-      clickRate: localSent > 0 ? Number(((localClicked / localSent) * 100).toFixed(1)) : 0,
-    };
-  });
-
-  return {
-    campaignsSent: campaigns.length,
-    recipients,
-    sent,
-    opened,
-    clicked,
-    unsubscribed,
-    openRate: sent > 0 ? Number(((opened / sent) * 100).toFixed(1)) : 0,
-    clickRate: sent > 0 ? Number(((clicked / sent) * 100).toFixed(1)) : 0,
-    byCampaign,
-  };
-}
-
-export async function getAdminMarketingOverviewMetrics(): Promise<AdminMarketingOverviewMetrics> {
-  const [neverSubscribedClients, subscribedClients, unsubscribedClients, campaignsSent] = await Promise.all([
-    prisma.user.count({
-      where: {
-        role: Role.CLIENT,
-        marketingSubscriptionStatus: MarketingSubscriptionStatus.NEVER_SUBSCRIBED,
-      },
-    }),
-    prisma.user.count({
-      where: {
-        role: Role.CLIENT,
-        marketingSubscriptionStatus: MarketingSubscriptionStatus.SUBSCRIBED,
-      },
-    }),
-    prisma.user.count({
-      where: {
-        role: Role.CLIENT,
-        marketingSubscriptionStatus: MarketingSubscriptionStatus.UNSUBSCRIBED,
-      },
-    }),
-    prisma.marketingCampaign.count({
-      where: {
-        status: MarketingCampaignStatus.SENT,
-      },
-    }),
-  ]);
-
-  return {
-    neverSubscribedClients,
-    subscribedClients,
-    unsubscribedClients,
-    campaignsSent,
   };
 }
 
@@ -3179,13 +3067,15 @@ function mapAdminUserItem(user: {
 }
 
 async function getAdminUsersRolePage(input: {
-  role: Role;
+  roles: Role[];
   page: number;
   pageSize: number;
   query: string;
 }): Promise<AdminUsersRolePageData> {
   const where: Prisma.UserWhereInput = {
-    role: input.role,
+    role: {
+      in: input.roles,
+    },
     ...(input.query
       ? {
           OR: [
@@ -3259,25 +3149,25 @@ export async function getAdminUsersGroupedPageData(input: {
 
   const [masterAdmins, admins, teachers, clients] = await Promise.all([
     getAdminUsersRolePage({
-      role: Role.MASTER_ADMIN,
+      roles: [Role.MASTER_ADMIN],
       page: normalizePage(input.masterAdminsPage),
       pageSize,
       query,
     }),
     getAdminUsersRolePage({
-      role: Role.ADMIN,
+      roles: [Role.ADMIN],
       page: normalizePage(input.adminsPage),
       pageSize,
       query,
     }),
     getAdminUsersRolePage({
-      role: Role.TEACHER,
+      roles: [Role.TEACHER],
       page: normalizePage(input.teachersPage),
       pageSize,
       query,
     }),
     getAdminUsersRolePage({
-      role: Role.CLIENT,
+      roles: [Role.CLIENT],
       page: normalizePage(input.clientsPage),
       pageSize,
       query,
@@ -3291,6 +3181,339 @@ export async function getAdminUsersGroupedPageData(input: {
     teachers,
     clients,
   };
+}
+
+export async function getAdminAdminsPageData(input: {
+  query?: string;
+  page: number;
+  pageSize?: number;
+}): Promise<AdminUsersRolePageData> {
+  const query = input.query?.trim() ?? "";
+  const page = Math.max(1, Math.floor(input.page));
+  const pageSize = Math.max(1, Math.min(input.pageSize ?? 20, 100));
+
+  return getAdminUsersRolePage({
+    roles: [Role.MASTER_ADMIN, Role.ADMIN],
+    page,
+    pageSize,
+    query,
+  });
+}
+
+export async function getAdminTeachersPageData(input: {
+  query?: string;
+  page: number;
+  pageSize?: number;
+}): Promise<AdminUsersRolePageData> {
+  const query = input.query?.trim() ?? "";
+  const page = Math.max(1, Math.floor(input.page));
+  const pageSize = Math.max(1, Math.min(input.pageSize ?? 20, 100));
+
+  return getAdminUsersRolePage({
+    roles: [Role.TEACHER],
+    page,
+    pageSize,
+    query,
+  });
+}
+
+export async function getAdminClientsPageData(input: {
+  query?: string;
+  page: number;
+  pageSize?: number;
+}): Promise<AdminUsersRolePageData> {
+  const query = input.query?.trim() ?? "";
+  const page = Math.max(1, Math.floor(input.page));
+  const pageSize = Math.max(1, Math.min(input.pageSize ?? 20, 100));
+
+  return getAdminUsersRolePage({
+    roles: [Role.CLIENT],
+    page,
+    pageSize,
+    query,
+  });
+}
+
+export async function getAdminClientStats(): Promise<AdminClientStats> {
+  const now = new Date();
+  const [clients, historicalRows, activeRows, totalSubscriptions] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: Role.CLIENT },
+      select: { id: true },
+    }),
+    prisma.subscriptionContract.findMany({
+      where: {
+        client: {
+          role: Role.CLIENT,
+        },
+      },
+      distinct: ["clientId"],
+      select: { clientId: true },
+    }),
+    prisma.subscriptionContract.findMany({
+      where: {
+        client: {
+          role: Role.CLIENT,
+        },
+        status: SubscriptionStatus.ACTIVE,
+        currentPeriodEnd: {
+          gt: now,
+        },
+      },
+      distinct: ["clientId"],
+      select: { clientId: true },
+    }),
+    prisma.subscriptionContract.count({
+      where: {
+        client: {
+          role: Role.CLIENT,
+        },
+      },
+    }),
+  ]);
+
+  const totalClients = clients.length;
+  const clientIdsWithHistory = new Set(historicalRows.map((row) => row.clientId));
+  const clientIdsWithActiveSubscription = new Set(activeRows.map((row) => row.clientId));
+
+  const subscribedClients = clientIdsWithActiveSubscription.size;
+  const neverSubscribedClients = Math.max(0, totalClients - clientIdsWithHistory.size);
+  const unsubscribedClients = Math.max(0, clientIdsWithHistory.size - subscribedClients);
+
+  return {
+    totalClients,
+    neverSubscribedClients,
+    subscribedClients,
+    unsubscribedClients,
+    totalSubscriptions,
+  };
+}
+
+function mapAdminSiteWeeklyScheduleEntry(entry: {
+  id: string;
+  dayOfWeek: Weekday;
+  startTime: string;
+  endTime: string;
+  serviceId: string | null;
+  label: string;
+  displayOrder: number;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}): AdminSiteWeeklyScheduleEntry {
+  return {
+    id: entry.id,
+    dayOfWeek: entry.dayOfWeek,
+    startTime: entry.startTime,
+    endTime: entry.endTime,
+    serviceId: entry.serviceId,
+    label: entry.label,
+    displayOrder: entry.displayOrder,
+    isActive: entry.isActive,
+    createdAt: entry.createdAt.toISOString(),
+    updatedAt: entry.updatedAt.toISOString(),
+  };
+}
+
+function normalizeScheduleTime(value: string): string {
+  const normalized = value.trim();
+  if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(normalized)) {
+    throw new Error("INVALID_SITE_SCHEDULE_TIME");
+  }
+  return normalized;
+}
+
+function validateScheduleTimeRange(startTime: string, endTime: string) {
+  const startMinutes = parseTimeToMinutes(startTime);
+  const endMinutes = parseTimeToMinutes(endTime);
+  if (endMinutes <= startMinutes) {
+    throw new Error("INVALID_SITE_SCHEDULE_TIME_RANGE");
+  }
+}
+
+async function resolveSiteScheduleService(serviceId: string): Promise<{ id: string; name: string }> {
+  const normalizedServiceId = serviceId.trim();
+  if (!normalizedServiceId) {
+    throw new Error("INVALID_SITE_SCHEDULE_SERVICE");
+  }
+
+  const classType = await prisma.classType.findUnique({
+    where: { id: normalizedServiceId },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  if (!classType) {
+    throw new Error("CLASS_NOT_FOUND");
+  }
+
+  return classType;
+}
+
+export async function listAdminSiteScheduleServiceOptions(): Promise<AdminSiteScheduleServiceOption[]> {
+  const services = await prisma.classType.findMany({
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  return services.map((service) => ({
+    id: service.id,
+    name: service.name,
+  }));
+}
+
+export async function listAdminSiteWeeklyScheduleEntries(): Promise<AdminSiteWeeklyScheduleEntry[]> {
+  const entries = await prisma.siteWeeklyScheduleEntry.findMany({
+    orderBy: [{ dayOfWeek: "asc" }, { displayOrder: "asc" }, { startTime: "asc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      dayOfWeek: true,
+      startTime: true,
+      endTime: true,
+      serviceId: true,
+      label: true,
+      displayOrder: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  return entries.map(mapAdminSiteWeeklyScheduleEntry);
+}
+
+export async function createAdminSiteWeeklyScheduleEntry(input: {
+  dayOfWeek: Weekday;
+  startTime: string;
+  endTime: string;
+  serviceId: string;
+  displayOrder: number;
+  isActive: boolean;
+}): Promise<AdminSiteWeeklyScheduleEntry> {
+  const startTime = normalizeScheduleTime(input.startTime);
+  const endTime = normalizeScheduleTime(input.endTime);
+  validateScheduleTimeRange(startTime, endTime);
+  const service = await resolveSiteScheduleService(input.serviceId);
+
+  const created = await prisma.siteWeeklyScheduleEntry.create({
+    data: {
+      dayOfWeek: input.dayOfWeek,
+      startTime,
+      endTime,
+      serviceId: service.id,
+      label: service.name,
+      displayOrder: Math.max(0, Math.floor(input.displayOrder)),
+      isActive: input.isActive,
+    },
+    select: {
+      id: true,
+      dayOfWeek: true,
+      startTime: true,
+      endTime: true,
+      serviceId: true,
+      label: true,
+      displayOrder: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  return mapAdminSiteWeeklyScheduleEntry(created);
+}
+
+export async function updateAdminSiteWeeklyScheduleEntry(
+  id: string,
+  input: {
+    dayOfWeek: Weekday;
+    startTime: string;
+    endTime: string;
+    serviceId: string;
+    displayOrder: number;
+    isActive: boolean;
+  },
+): Promise<AdminSiteWeeklyScheduleEntry> {
+  const startTime = normalizeScheduleTime(input.startTime);
+  const endTime = normalizeScheduleTime(input.endTime);
+  validateScheduleTimeRange(startTime, endTime);
+  const service = await resolveSiteScheduleService(input.serviceId);
+
+  const updated = await prisma.siteWeeklyScheduleEntry.update({
+    where: { id },
+    data: {
+      dayOfWeek: input.dayOfWeek,
+      startTime,
+      endTime,
+      serviceId: service.id,
+      label: service.name,
+      displayOrder: Math.max(0, Math.floor(input.displayOrder)),
+      isActive: input.isActive,
+    },
+    select: {
+      id: true,
+      dayOfWeek: true,
+      startTime: true,
+      endTime: true,
+      serviceId: true,
+      label: true,
+      displayOrder: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  return mapAdminSiteWeeklyScheduleEntry(updated);
+}
+
+export async function deleteAdminSiteWeeklyScheduleEntry(id: string): Promise<void> {
+  await prisma.siteWeeklyScheduleEntry.delete({
+    where: { id },
+  });
+}
+
+export async function getAdminCancellationPeriodHours(): Promise<number> {
+  const policy = await prisma.bookingPolicy.findFirst({
+    where: {
+      scope: "GLOBAL",
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+    select: {
+      cancellationCutoffHours: true,
+    },
+  });
+
+  return normalizeBookingCancellationWindowHours(policy?.cancellationCutoffHours ?? 24);
+}
+
+export async function updateAdminCancellationPeriodHours(hours: number): Promise<number> {
+  const normalized = Number(hours);
+  if (!Number.isInteger(normalized) || normalized < 1) {
+    throw new Error("INVALID_CANCELLATION_CUTOFF_HOURS");
+  }
+
+  const policy = await prisma.bookingPolicy.upsert({
+    where: { scope: "GLOBAL" },
+    create: {
+      scope: "GLOBAL",
+      cancellationCutoffHours: normalized,
+    },
+    update: {
+      cancellationCutoffHours: normalized,
+    },
+    select: {
+      cancellationCutoffHours: true,
+    },
+  });
+
+  return normalizeBookingCancellationWindowHours(policy.cancellationCutoffHours);
 }
 
 export async function getAdminUsersData(): Promise<AdminUserItem[]> {
@@ -4468,10 +4691,9 @@ export async function updateAdminSubscription(
 
 export async function getAdminLearningProgramsData(): Promise<AdminLearningProgramItem[]> {
   const programs = await prisma.learningProgram.findMany({
-    orderBy: [{ legacyId: "asc" }],
+    orderBy: [{ title: "asc" }, { createdAt: "asc" }],
     select: {
       id: true,
-      legacyId: true,
       courseType: true,
       mainTitle: true,
       title: true,
@@ -4507,7 +4729,7 @@ export async function getAdminLearningProgramById(id: string) {
 }
 
 export async function createAdminLearningProgram(input: {
-  legacyId: string;
+  legacyId?: string;
   mainTitle: string;
   mainDescription?: string;
   courseType: string;
@@ -4520,9 +4742,10 @@ export async function createAdminLearningProgram(input: {
   picture2?: string;
   picture3?: string;
 }) {
+  const normalizedLegacyId = input.legacyId?.trim() || `program-${randomUUID().replace(/-/g, "")}`;
   return prisma.learningProgram.create({
     data: {
-      legacyId: input.legacyId.trim(),
+      legacyId: normalizedLegacyId,
       mainTitle: input.mainTitle.trim(),
       mainDescription: toNullable(input.mainDescription),
       courseType: input.courseType.trim(),
@@ -4541,7 +4764,7 @@ export async function createAdminLearningProgram(input: {
 export async function updateAdminLearningProgram(
   id: string,
   input: {
-    legacyId: string;
+    legacyId?: string;
     mainTitle: string;
     mainDescription?: string;
     courseType: string;
@@ -4555,10 +4778,11 @@ export async function updateAdminLearningProgram(
     picture3?: string;
   },
 ) {
+  const normalizedLegacyId = input.legacyId?.trim();
   return prisma.learningProgram.update({
     where: { id },
     data: {
-      legacyId: input.legacyId.trim(),
+      ...(normalizedLegacyId ? { legacyId: normalizedLegacyId } : {}),
       mainTitle: input.mainTitle.trim(),
       mainDescription: toNullable(input.mainDescription),
       courseType: input.courseType.trim(),
@@ -4579,7 +4803,6 @@ export async function getAdminLearningVideosData(): Promise<AdminLearningVideoIt
     orderBy: [{ priority: "asc" }, { title: "asc" }],
     select: {
       id: true,
-      legacyId: true,
       title: true,
       category: true,
       categoryType: true,
@@ -4626,7 +4849,7 @@ export async function getAdminLearningVideoById(id: string) {
 }
 
 export async function createAdminLearningVideo(input: {
-  legacyId: string;
+  legacyId?: string;
   title: string;
   description?: string;
   shortDescription?: string;
@@ -4637,9 +4860,10 @@ export async function createAdminLearningVideo(input: {
   videoUrl?: string;
   priority: number;
 }) {
+  const normalizedLegacyId = input.legacyId?.trim() || `course-${randomUUID().replace(/-/g, "")}`;
   return prisma.learningCourse.create({
     data: {
-      legacyId: input.legacyId.trim(),
+      legacyId: normalizedLegacyId,
       title: input.title.trim(),
       description: toNullable(input.description),
       shortDescription: toNullable(input.shortDescription),
@@ -4656,7 +4880,7 @@ export async function createAdminLearningVideo(input: {
 export async function updateAdminLearningVideo(
   id: string,
   input: {
-    legacyId: string;
+    legacyId?: string;
     title: string;
     description?: string;
     shortDescription?: string;
@@ -4668,10 +4892,11 @@ export async function updateAdminLearningVideo(
     priority: number;
   },
 ) {
+  const normalizedLegacyId = input.legacyId?.trim();
   return prisma.learningCourse.update({
     where: { id },
     data: {
-      legacyId: input.legacyId.trim(),
+      ...(normalizedLegacyId ? { legacyId: normalizedLegacyId } : {}),
       title: input.title.trim(),
       description: toNullable(input.description),
       shortDescription: toNullable(input.shortDescription),

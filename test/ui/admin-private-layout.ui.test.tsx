@@ -96,7 +96,7 @@ describe("/admin private layout", () => {
     expect(within(main).queryByRole("button", { name: "Logout" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Dashboard" })).toHaveClass("bg-[#1d3652]");
-    expect(screen.getByRole("link", { name: "Users" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Users+" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Inbox" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Booking+" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sales+" })).toBeInTheDocument();
@@ -106,6 +106,29 @@ describe("/admin private layout", () => {
     expect(screen.getByRole("link", { name: "Manage Site" })).toBeInTheDocument();
     expect(screen.getByText("Admin Content")).toBeInTheDocument();
     expect(screen.queryByText("Book a Class")).not.toBeInTheDocument();
+  });
+
+  it("auto-expands users group for role routes", async () => {
+    vi.mocked(usePathname).mockReturnValue("/admin/users/clients");
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: "admin-1",
+        email: "admin@example.test",
+        role: "ADMIN",
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    render(
+      await AdminPrivateLayout({
+        children: <div>Admin Content</div>,
+      }),
+    );
+
+    expect(screen.getByRole("button", { name: "Users-" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: "Admins" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Teachers" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Clients" })).toBeInTheDocument();
   });
 
   it("auto-expands parent group when current path matches child route", async () => {
@@ -192,3 +215,6 @@ describe("/admin private layout", () => {
     expect(screen.getByLabelText("Inbox unread 3")).toBeInTheDocument();
   });
 });
+
+
+

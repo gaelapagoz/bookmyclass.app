@@ -6,6 +6,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/app/admin/(private)/actions", () => ({
   uploadAgendaPdfAction: vi.fn(),
+  createSiteWeeklyScheduleEntryAction: vi.fn(),
+  updateSiteWeeklyScheduleEntryAction: vi.fn(),
+  deleteSiteWeeklyScheduleEntryAction: vi.fn(),
+  updateCancellationPeriodAction: vi.fn(),
   updateClientMessageStatusAction: vi.fn(),
   createMarketingSegmentAction: vi.fn(),
   updateMarketingSegmentAction: vi.fn(),
@@ -22,11 +26,6 @@ vi.mock("@/lib/public-documents/agenda-document-service", () => ({
   getActiveAgendaPdfDocument: vi.fn(async () => null),
 }));
 
-vi.mock("@/lib/public-content/home-agenda-service", () => ({
-  getHomeAgendaTableFromSchedule: vi.fn(async () => []),
-  getManageSiteAgendaPreview: vi.fn(async () => []),
-}));
-
 vi.mock("@/lib/marketing/marketing-service", () => ({
   listMarketingSegments: vi.fn(),
 }));
@@ -36,18 +35,21 @@ vi.mock("@/auth", () => ({
 }));
 vi.mock("@/lib/admin/admin-service", () => ({
   getAdminDashboardData: vi.fn(),
-  getAdminDashboardInsights: vi.fn(),
-  getAdminMarketingOverviewMetrics: vi.fn(),
-  getDashboardTrendData: vi.fn(),
+  getAdminDashboardInsights: vi.fn(),  getDashboardTrendData: vi.fn(),
   getOperationalMetricCards: vi.fn(),
   getAdminClassesData: vi.fn(),
   getAdminSessionsData: vi.fn(),
   getAdminPlansData: vi.fn(),
   getBookings: vi.fn(),
-  getAdminUsersData: vi.fn(),
+  getAdminAdminsPageData: vi.fn(),
+  getAdminTeachersPageData: vi.fn(),
+  getAdminClientsPageData: vi.fn(),
+  getAdminClientStats: vi.fn(),
   listAdminMarketingSegmentOptions: vi.fn(),
   getAdminSubscriptionsPageData: vi.fn(),
-  getAdminUsersGroupedPageData: vi.fn(),
+  listAdminSiteWeeklyScheduleEntries: vi.fn(),
+  listAdminSiteScheduleServiceOptions: vi.fn(),
+  getAdminCancellationPeriodHours: vi.fn(),
   getAdminOrdersPageData: vi.fn(),
   getAdminOnlineLearningData: vi.fn(),
 }));
@@ -56,50 +58,43 @@ import {
   getBookings,
   getAdminClassesData,
   getAdminDashboardData,
-  getAdminDashboardInsights,
-  getAdminMarketingOverviewMetrics,
-  getDashboardTrendData,
+  getAdminDashboardInsights,  getDashboardTrendData,
   getOperationalMetricCards,
   getAdminOnlineLearningData,
   getAdminPlansData,
   getAdminSessionsData,
   getAdminSubscriptionsPageData,
   getAdminOrdersPageData,
-  getAdminUsersData,
+  getAdminAdminsPageData,
+  getAdminTeachersPageData,
+  getAdminClientsPageData,
+  getAdminClientStats,
   listAdminMarketingSegmentOptions,
-  getAdminUsersGroupedPageData,
+  listAdminSiteWeeklyScheduleEntries,
+  listAdminSiteScheduleServiceOptions,
+  getAdminCancellationPeriodHours,
 } from "@/lib/admin/admin-service";
 import { listMarketingSegments } from "@/lib/marketing/marketing-service";
 import { listClientMessages } from "@/lib/client-messages/client-message-service";
 import { getActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
-import {
-  getHomeAgendaTableFromSchedule,
-  getManageSiteAgendaPreview,
-} from "@/lib/public-content/home-agenda-service";
 
 import AdminDashboardPage from "../../src/app/admin/(private)/dashboard/page";
 import AdminClassesPage from "../../src/app/admin/(private)/classes/page";
 import AdminSessionsPage from "../../src/app/admin/(private)/sessions/page";
 import AdminPlansPage from "../../src/app/admin/(private)/plans/page";
 import AdminBookingsPage from "../../src/app/admin/(private)/bookings/page";
-import AdminUsersPage from "../../src/app/admin/(private)/users/page";
+import AdminUsersAdminsPage from "../../src/app/admin/(private)/users/admins/page";
+import AdminUsersTeachersPage from "../../src/app/admin/(private)/users/teachers/page";
+import AdminUsersClientsPage from "../../src/app/admin/(private)/users/clients/page";
 import AdminSubscriptionsPage from "../../src/app/admin/(private)/subscriptions/page";
 import AdminOrdersPage from "../../src/app/admin/(private)/orders/page";
 import AdminOnlineLearningPage from "../../src/app/admin/(private)/online-learning/page";
 import AdminInboxPage from "../../src/app/admin/(private)/inbox/page";
 import AdminManageSitePage from "../../src/app/admin/(private)/manage-site/page";
 import AdminMarketingSegmentsPage from "../../src/app/admin/(private)/marketing/segments/page";
-
 describe("Admin pages branching", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(getAdminMarketingOverviewMetrics).mockResolvedValue({
-      neverSubscribedClients: 0,
-      subscribedClients: 0,
-      unsubscribedClients: 0,
-      campaignsSent: 0,
-    });
-    vi.mocked(getDashboardTrendData).mockResolvedValue([]);
+    vi.clearAllMocks();    vi.mocked(getDashboardTrendData).mockResolvedValue([]);
     vi.mocked(listAdminMarketingSegmentOptions).mockResolvedValue([]);
     vi.mocked(listMarketingSegments).mockResolvedValue([]);
   });
@@ -217,21 +212,15 @@ describe("Admin pages branching", () => {
 
     expect(vi.mocked(getOperationalMetricCards)).toHaveBeenCalledWith("last30Days");
     expect(vi.mocked(getAdminDashboardInsights)).toHaveBeenCalledWith("last30Days");
-    expect(vi.mocked(getDashboardTrendData)).toHaveBeenCalledWith("last30Days");
-    expect(vi.mocked(getAdminMarketingOverviewMetrics)).toHaveBeenCalledWith();
-    expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
+    expect(vi.mocked(getDashboardTrendData)).toHaveBeenCalledWith("last30Days");    expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
     expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
     expect(screen.getByText("Booking Analytics")).toBeInTheDocument();
+    expect(screen.queryByText("Marketing Analytics")).not.toBeInTheDocument();
     expect(screen.getByText("Top Class Sessions")).toBeInTheDocument();
     expect(screen.getByText("Top Clients")).toBeInTheDocument();
     expect(screen.getByText("At-Risk Clients")).toBeInTheDocument();
-    expect(screen.getByText("Staff Performance")).toBeInTheDocument();
-    expect(screen.getByText("Never Subscribed")).toBeInTheDocument();
-    expect(screen.getByText("Subscribed")).toBeInTheDocument();
-    expect(screen.getByText("Unsubscribed")).toBeInTheDocument();
-    expect(screen.getByText("Campaigns Sent")).toBeInTheDocument();
-    expect(screen.queryByText("Open rate")).not.toBeInTheDocument();
+    expect(screen.getByText("Staff Performance")).toBeInTheDocument();    expect(screen.queryByText("Open rate")).not.toBeInTheDocument();
     expect(screen.queryByText("Click rate")).not.toBeInTheDocument();
     expect(screen.getByText("Total Sales Trend")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Period" })).toBeInTheDocument();
@@ -262,9 +251,7 @@ describe("Admin pages branching", () => {
 
     expect(vi.mocked(getOperationalMetricCards)).toHaveBeenCalledWith("last30Days");
     expect(vi.mocked(getAdminDashboardInsights)).toHaveBeenCalledWith("last30Days");
-    expect(vi.mocked(getDashboardTrendData)).toHaveBeenCalledWith("last30Days");
-    expect(vi.mocked(getAdminMarketingOverviewMetrics)).toHaveBeenCalledWith();
-    expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
+    expect(vi.mocked(getDashboardTrendData)).toHaveBeenCalledWith("last30Days");    expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
   });
 
 
@@ -288,9 +275,7 @@ describe("Admin pages branching", () => {
 
     expect(vi.mocked(getOperationalMetricCards)).toHaveBeenCalledWith("last7Days");
     expect(vi.mocked(getAdminDashboardInsights)).toHaveBeenCalledWith("last7Days");
-    expect(vi.mocked(getDashboardTrendData)).toHaveBeenCalledWith("last7Days");
-    expect(vi.mocked(getAdminMarketingOverviewMetrics)).toHaveBeenCalledWith();
-    expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
+    expect(vi.mocked(getDashboardTrendData)).toHaveBeenCalledWith("last7Days");    expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
   });
 
   it("passes last90Days period to metrics and insights", async () => {
@@ -313,9 +298,7 @@ describe("Admin pages branching", () => {
 
     expect(vi.mocked(getOperationalMetricCards)).toHaveBeenCalledWith("last90Days");
     expect(vi.mocked(getAdminDashboardInsights)).toHaveBeenCalledWith("last90Days");
-    expect(vi.mocked(getDashboardTrendData)).toHaveBeenCalledWith("last90Days");
-    expect(vi.mocked(getAdminMarketingOverviewMetrics)).toHaveBeenCalledWith();
-    expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
+    expect(vi.mocked(getDashboardTrendData)).toHaveBeenCalledWith("last90Days");    expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
   });
   it("renders classes empty state", async () => {
     vi.mocked(getAdminClassesData).mockResolvedValue([]);
@@ -456,63 +439,99 @@ describe("Admin pages branching", () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
   });
-  it("renders users data with create link", async () => {
-    vi.mocked(getAdminUsersGroupedPageData).mockResolvedValue({
-      query: "",
-      masterAdmins: { page: 1, pageSize: 20, totalItems: 0, totalPages: 1, items: [] },
-      admins: {
-        page: 1,
-        pageSize: 20,
-        totalItems: 1,
-        totalPages: 1,
-        items: [
-          {
-            id: "u1",
-            name: "Admin User",
-            email: "admin@example.test",
-            role: "ADMIN",
-            isActive: true,
-            lastLoginAt: new Date().toISOString(),
-            createdAt: new Date().toISOString(),
-            marketingSubscriptionStatus: "NEVER_SUBSCRIBED",
-            marketingSegmentNames: [],
-          },
-        ],
-      },
-      teachers: { page: 1, pageSize: 20, totalItems: 0, totalPages: 1, items: [] },
-      clients: {
-        page: 1,
-        pageSize: 20,
-        totalItems: 1,
-        totalPages: 1,
-        items: [
-          {
-            id: "c1",
-            name: "Client User",
-            email: "client@example.test",
-            role: "CLIENT",
-            isActive: true,
-            lastLoginAt: new Date().toISOString(),
-            createdAt: new Date().toISOString(),
-            marketingSubscriptionStatus: "SUBSCRIBED",
-            marketingSegmentNames: ["VIP"],
-          },
-        ],
-      },
+  it("renders admins page data with create link", async () => {
+    vi.mocked(getAdminAdminsPageData).mockResolvedValue({
+      page: 1,
+      pageSize: 20,
+      totalItems: 1,
+      totalPages: 1,
+      items: [
+        {
+          id: "u1",
+          name: "Admin User",
+          email: "admin@example.test",
+          role: "ADMIN",
+          isActive: true,
+          lastLoginAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          marketingSubscriptionStatus: "NEVER_SUBSCRIBED",
+          marketingSegmentNames: [],
+        },
+      ],
+    });
+
+    render(await AdminUsersAdminsPage());
+
+    expect(screen.getByRole("heading", { level: 1, name: "Admins" })).toBeInTheDocument();
+    expect(screen.getByText("Admin User")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Create user" })).toBeInTheDocument();
+  });
+
+  it("renders teachers page data", async () => {
+    vi.mocked(getAdminTeachersPageData).mockResolvedValue({
+      page: 1,
+      pageSize: 20,
+      totalItems: 1,
+      totalPages: 1,
+      items: [
+        {
+          id: "t1",
+          name: "Teacher User",
+          email: "teacher@example.test",
+          role: "TEACHER",
+          isActive: true,
+          lastLoginAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          marketingSubscriptionStatus: "NEVER_SUBSCRIBED",
+          marketingSegmentNames: [],
+        },
+      ],
+    });
+
+    render(await AdminUsersTeachersPage());
+
+    expect(screen.getByRole("heading", { level: 1, name: "Teachers" })).toBeInTheDocument();
+    expect(screen.getByText("Teacher User")).toBeInTheDocument();
+  });
+
+  it("renders clients page stats and table", async () => {
+    vi.mocked(getAdminClientsPageData).mockResolvedValue({
+      page: 1,
+      pageSize: 20,
+      totalItems: 1,
+      totalPages: 1,
+      items: [
+        {
+          id: "c1",
+          name: "Client User",
+          email: "client@example.test",
+          role: "CLIENT",
+          isActive: true,
+          lastLoginAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          marketingSubscriptionStatus: "SUBSCRIBED",
+          marketingSegmentNames: ["VIP"],
+        },
+      ],
+    });
+    vi.mocked(getAdminClientStats).mockResolvedValue({
+      totalClients: 10,
+      neverSubscribedClients: 4,
+      subscribedClients: 3,
+      unsubscribedClients: 3,
+      totalSubscriptions: 9,
     });
     vi.mocked(listAdminMarketingSegmentOptions).mockResolvedValue([{ id: "seg-1", name: "VIP", isActive: true }]);
 
-    render(await AdminUsersPage());
+    render(await AdminUsersClientsPage());
 
-    expect(screen.getByText("Admins")).toBeInTheDocument();
-    expect(screen.getByText("Admin User")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "View" }).length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: "Create user" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Clients" })).toBeInTheDocument();
+    expect(screen.getByText("Total Number of Client")).toBeInTheDocument();
+    expect(screen.getByText("10")).toBeInTheDocument();
+    expect(screen.getByText("Client User")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Set subscription status" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add segments" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove segments" })).toBeInTheDocument();
-    expect(screen.getAllByText("Subscribed").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("VIP").length).toBeGreaterThan(0);
   });
 
   it("renders marketing segments CRUD page", async () => {
@@ -716,7 +735,25 @@ describe("Admin pages branching", () => {
     expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
   });
 
-  it("renders manage site data with agenda sections", async () => {
+  it("renders manage site empty-state when no schedule or policy rows exist", async () => {
+    vi.mocked(getActiveAgendaPdfDocument).mockResolvedValue(null);
+    vi.mocked(listAdminSiteWeeklyScheduleEntries).mockResolvedValue([]);
+    vi.mocked(listAdminSiteScheduleServiceOptions).mockResolvedValue([]);
+    vi.mocked(getAdminCancellationPeriodHours).mockResolvedValue(24);
+
+    render(await AdminManageSitePage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByRole("heading", { name: "Manage Site" })).toBeInTheDocument();
+    expect(screen.getAllByText("No service").length).toBeGreaterThan(0);
+    expect(screen.getByDisplayValue("24")).toBeInTheDocument();
+    expect(
+      screen.getByText("No booking services exist yet. Create a booking service first, then add agenda schedule rows."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Service" })).toBeDisabled();
+    expect(screen.queryByText("Unable to load site management data right now.")).not.toBeInTheDocument();
+  });
+
+  it("renders manage site data with static schedule and cancellation config", async () => {
     vi.mocked(getActiveAgendaPdfDocument).mockResolvedValue({
       id: "doc-1",
       key: "agenda_pdf",
@@ -725,26 +762,38 @@ describe("Admin pages branching", () => {
       updatedAt: new Date(),
       createdAt: new Date(),
     });
-    vi.mocked(getHomeAgendaTableFromSchedule).mockResolvedValue([
-      { day: "Monday", classes: ["18:00-19:00 Pilates"] },
-    ]);
-    vi.mocked(getManageSiteAgendaPreview).mockResolvedValue([
+    vi.mocked(listAdminSiteWeeklyScheduleEntries).mockResolvedValue([
       {
-        id: "sess-1",
-        title: "Morning Flow",
-        startsAt: new Date().toISOString(),
-        endsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-        bookedSpots: 5,
-        capacity: 10,
+        id: "site-1",
+        dayOfWeek: "MONDAY",
+        startTime: "18:00",
+        endTime: "19:00",
+        serviceId: "service-1",
+        label: "Pilates",
+        displayOrder: 1,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       },
     ]);
+    vi.mocked(listAdminSiteScheduleServiceOptions).mockResolvedValue([
+      { id: "service-1", name: "Pilates" },
+      { id: "service-2", name: "Functional Strength" },
+    ]);
+    vi.mocked(getAdminCancellationPeriodHours).mockResolvedValue(24);
 
     render(await AdminManageSitePage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByRole("heading", { name: "Manage Site" })).toBeInTheDocument();
     expect(screen.getByText("Agenda PDF")).toBeInTheDocument();
-    expect(screen.getByText("Home Agenda Table")).toBeInTheDocument();
-    expect(screen.getByText("Morning Flow")).toBeInTheDocument();
+    expect(screen.getByText("Agenda Schedule")).toBeInTheDocument();
+    expect(screen.getByText("Configure Cancellation Period")).toBeInTheDocument();
+    const serviceSelects = screen.getAllByRole("combobox", { name: "Service" });
+    expect(serviceSelects.length).toBeGreaterThan(0);
+    expect((serviceSelects[0] as HTMLSelectElement).value).toBe("service-1");
+    expect(screen.getAllByRole("option", { name: "Functional Strength" }).length).toBeGreaterThan(0);
+    expect(screen.queryByPlaceholderText("Functional Strength")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("24")).toBeInTheDocument();
   });
 
   it("renders online learning data from shared service", async () => {
@@ -752,7 +801,6 @@ describe("Admin pages branching", () => {
       programs: [
         {
           id: "lp1",
-          legacyId: "1",
           courseType: "Yoga",
           mainTitle: "Yoga Program",
           title: "Yoga Basics",
@@ -762,7 +810,6 @@ describe("Admin pages branching", () => {
       videos: [
         {
           id: "lv1",
-          legacyId: "101",
           title: "Core Burn",
           category: "Yoga",
           categoryType: "Flow",
@@ -776,6 +823,7 @@ describe("Admin pages branching", () => {
     render(await AdminOnlineLearningPage());
 
     expect(screen.getByRole("heading", { name: "Online Learning" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Legacy ID" })).not.toBeInTheDocument();
     expect(screen.getByText("Yoga Program")).toBeInTheDocument();
     expect(screen.getByText("Core Burn")).toBeInTheDocument();
   });
@@ -787,6 +835,7 @@ describe("Admin pages branching", () => {
 
     expect(screen.getByText("No learning programs found.")).toBeInTheDocument();
     expect(screen.getByText("No learning videos found.")).toBeInTheDocument();
+    expect(screen.queryByText("Unable to load online learning right now.")).not.toBeInTheDocument();
   });
 
   it("renders online learning error state", async () => {
@@ -797,6 +846,21 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Unable to load online learning right now.")).toBeInTheDocument();
   });
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

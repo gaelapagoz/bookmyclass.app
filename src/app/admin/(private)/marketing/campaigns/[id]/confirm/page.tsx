@@ -5,6 +5,7 @@ import CampaignFlowStepNavigation from "@/components/admin/marketing/CampaignFlo
 import CampaignPreview from "@/components/admin/marketing/CampaignPreview";
 import { buildCampaignFlowScaffoldHref } from "@/components/admin/marketing/campaign-flow-scaffold-data";
 import { getMarketingCampaignFlowDraftById, resolveMarketingCampaignFlowRecipients } from "@/lib/marketing/marketing-service";
+export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ segments?: string | string[]; page?: string; error?: string; success?: string }>;

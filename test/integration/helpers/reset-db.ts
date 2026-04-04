@@ -13,6 +13,7 @@ export async function resetDb() {
   await prisma.attendanceRecord.deleteMany();
   await prisma.waitlistEntry.deleteMany();
   await prisma.booking.deleteMany();
+  await prisma.siteWeeklyScheduleEntry.deleteMany();
   await prisma.studioSession.deleteMany();
   await prisma.recurringRule.deleteMany();
   await prisma.classTemplate.deleteMany();
@@ -41,9 +42,9 @@ export async function resetDb() {
   await prisma.passwordResetRateLimit.deleteMany();
   await prisma.publicAuthRateLimit.deleteMany();
   await prisma.adminLoginAbuseCounter.deleteMany();
+  await prisma.bookingPolicy.deleteMany();
+  await prisma.publicDocument.deleteMany();
   await prisma.pendingUserRegistration.deleteMany();
   await prisma.verificationToken.deleteMany();
   await prisma.user.deleteMany();
 }
-
-

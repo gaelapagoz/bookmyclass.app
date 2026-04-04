@@ -43,7 +43,12 @@ vi.mock("@/lib/admin/admin-service", () => ({
   createAdminSession: vi.fn(),
   createAdminPlan: vi.fn(),
   createAdminSubscription: vi.fn(),
+  createAdminSiteWeeklyScheduleEntry: vi.fn(),
+  updateAdminSiteWeeklyScheduleEntry: vi.fn(),
+  deleteAdminSiteWeeklyScheduleEntry: vi.fn(),
+  updateAdminCancellationPeriodHours: vi.fn(),
   removeSessionAttendeeByManager: vi.fn(),
+  updateAdminLearningProgram: vi.fn(),
   updateAdminLearningVideo: vi.fn(),
   updateAdminPlan: vi.fn(),
   updateAdminSession: vi.fn(),
@@ -67,8 +72,13 @@ import {
   createAdminClass,
   createAdminPlan,
   createAdminSubscription,
+  createAdminSiteWeeklyScheduleEntry,
+  updateAdminSiteWeeklyScheduleEntry,
+  deleteAdminSiteWeeklyScheduleEntry,
+  updateAdminCancellationPeriodHours,
   upsertAdminClassScheduleConfig,
   removeSessionAttendeeByManager,
+  updateAdminLearningProgram,
   updateAdminLearningVideo,
   updateAdminPlan,
   updateAdminSession,
@@ -82,15 +92,19 @@ import {
   cancelClientMembershipAction,
   createClassAction,
   createPlanAction,
+  createSiteWeeklyScheduleEntryAction,
   createSubscriptionAction,
+  deleteSiteWeeklyScheduleEntryAction,
   removeSessionAttendeeAction,
-  updateSessionAction,
+  updateCancellationPeriodAction,
+  updateLearningProgramAction,
   updateLearningVideoAction,
   updatePlanAction,
+  updateSessionAction,
+  updateSiteWeeklyScheduleEntryAction,
   uploadTeacherImageAction,
   updateUserAction,
 } from "../../src/app/admin/(private)/actions";
-
 function createAdminSession(role: "ADMIN" | "MASTER_ADMIN" | "CLIENT") {
   return {
     user: {
@@ -294,9 +308,7 @@ describe("admin actions", () => {
     vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
     vi.mocked(updateAdminLearningVideo).mockResolvedValue({ id: "video-1" });
 
-    const formData = new FormData();
-    formData.set("legacyId", "100");
-    formData.set("title", "Intro");
+    const formData = new FormData();    formData.set("title", "Intro");
     formData.set("category", "Yoga");
     formData.set("priority", "1");
 
@@ -305,10 +317,27 @@ describe("admin actions", () => {
     );
     expect(updateAdminLearningVideo).toHaveBeenCalledWith(
       "video-1",
-      expect.objectContaining({ legacyId: "100", title: "Intro", category: "Yoga", priority: 1 }),
+      expect.objectContaining({ title: "Intro", category: "Yoga", priority: 1 }),
     );
   });
 
+  it("updates learning program and redirects", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(updateAdminLearningProgram).mockResolvedValue({ id: "program-1" });
+
+    const formData = new FormData();
+    formData.set("mainTitle", "Main Program");
+    formData.set("courseType", "Yoga");
+    formData.set("title", "Program Title");
+
+    await expect(updateLearningProgramAction("program-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/learning-programs",
+    );
+    expect(updateAdminLearningProgram).toHaveBeenCalledWith(
+      "program-1",
+      expect.objectContaining({ mainTitle: "Main Program", courseType: "Yoga", title: "Program Title" }),
+    );
+  });
   it("updates user without password and keeps happy path", async () => {
     vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
     vi.mocked(updateAdminUser).mockResolvedValue({ id: "user-1" });
@@ -548,8 +577,107 @@ describe("admin actions", () => {
     });
     expect(revalidatePathMock).toHaveBeenCalledWith("/admin/users/teacher-1/edit");
   });
-});
+  it("creates static weekly schedule row and revalidates paths", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(createAdminSiteWeeklyScheduleEntry).mockResolvedValue({
+      id: "site-1",
+      dayOfWeek: "MONDAY",
+      startTime: "18:00",
+      endTime: "19:00",
+      serviceId: "service-1",
+      label: "Pilates",
+      displayOrder: 1,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
 
+    const formData = new FormData();
+    formData.set("dayOfWeek", "MONDAY");
+    formData.set("startTime", "18:00");
+    formData.set("endTime", "19:00");
+    formData.set("serviceId", "service-1");
+    formData.set("displayOrder", "1");
+    formData.set("isActive", "on");
+
+    await expect(createSiteWeeklyScheduleEntryAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/manage-site?success=Weekly%20schedule%20row%20added.",
+    );
+
+    expect(createAdminSiteWeeklyScheduleEntry).toHaveBeenCalledWith({
+      dayOfWeek: "MONDAY",
+      startTime: "18:00",
+      endTime: "19:00",
+      serviceId: "service-1",
+      displayOrder: 1,
+      isActive: true,
+    });
+    expect(revalidatePathMock).toHaveBeenCalledWith("/admin/manage-site");
+    expect(revalidatePathMock).toHaveBeenCalledWith("/");
+  });
+
+  it("updates and deletes static weekly schedule row", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(updateAdminSiteWeeklyScheduleEntry).mockResolvedValue({
+      id: "site-1",
+      dayOfWeek: "TUESDAY",
+      startTime: "10:00",
+      endTime: "11:00",
+      serviceId: "service-2",
+      label: "Yoga",
+      displayOrder: 2,
+      isActive: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    vi.mocked(deleteAdminSiteWeeklyScheduleEntry).mockResolvedValue(undefined);
+
+    const updateForm = new FormData();
+    updateForm.set("id", "site-1");
+    updateForm.set("dayOfWeek", "TUESDAY");
+    updateForm.set("startTime", "10:00");
+    updateForm.set("endTime", "11:00");
+    updateForm.set("serviceId", "service-2");
+    updateForm.set("displayOrder", "2");
+
+    await expect(updateSiteWeeklyScheduleEntryAction(updateForm)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/manage-site?success=Weekly%20schedule%20row%20updated.",
+    );
+
+    const deleteForm = new FormData();
+    deleteForm.set("id", "site-1");
+
+    await expect(deleteSiteWeeklyScheduleEntryAction(deleteForm)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/manage-site?success=Weekly%20schedule%20row%20removed.",
+    );
+    expect(deleteAdminSiteWeeklyScheduleEntry).toHaveBeenCalledWith("site-1");
+  });
+
+  it("rejects invalid cancellation period payload", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+
+    const invalidFormData = new FormData();
+    invalidFormData.set("cancellationPeriodHours", "0");
+
+    await expect(updateCancellationPeriodAction(invalidFormData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/manage-site?error=Cancellation%20period%20must%20be%20a%20positive%20whole%20number%20of%20hours.",
+    );
+    expect(updateAdminCancellationPeriodHours).not.toHaveBeenCalled();
+  });
+
+  it("updates cancellation period when payload is valid", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(updateAdminCancellationPeriodHours).mockResolvedValue(36);
+
+    const formData = new FormData();
+    formData.set("cancellationPeriodHours", "36");
+
+    await expect(updateCancellationPeriodAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/manage-site?success=Cancellation%20period%20updated.",
+    );
+    expect(updateAdminCancellationPeriodHours).toHaveBeenCalledWith(36);
+  });
+});
 
 
 

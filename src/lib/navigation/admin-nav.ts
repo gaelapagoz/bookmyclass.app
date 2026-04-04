@@ -19,7 +19,16 @@ export type AdminNavItem = AdminNavLinkItem | AdminNavGroupItem;
 
 export const adminNavConfig: AdminNavItem[] = [
   { type: "link", href: "/admin/dashboard", label: "Dashboard" },
-  { type: "link", href: "/admin/users", label: "Users" },
+  {
+    type: "group",
+    key: "users",
+    label: "Users",
+    children: [
+      { type: "link", href: "/admin/users/admins", label: "Admins" },
+      { type: "link", href: "/admin/users/teachers", label: "Teachers" },
+      { type: "link", href: "/admin/users/clients", label: "Clients" },
+    ],
+  },
   { type: "link", href: "/admin/inbox", label: "Inbox", badgeKey: "inboxUnread" },
   {
     type: "group",

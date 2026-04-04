@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import {
   saveMarketingCampaignFlowDraftAction,
 } from "@/app/admin/(private)/actions";
@@ -9,6 +7,7 @@ import CampaignPreview from "@/components/admin/marketing/CampaignPreview";
 import {
   getMarketingCampaignFlowDraftById,
 } from "@/lib/marketing/marketing-service";
+export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{
   campaignId?: string;
@@ -51,14 +50,6 @@ export default async function AdminMarketingCampaignCreatePage({
               imageAssetUrl: draft?.imageAssetUrl ?? null,
             }}
           />
-          <p className="text-sm text-[#4b5a72]">
-            Need the existing creator?
-            {" "}
-            <Link href="/admin/marketing/campaigns/new/legacy" className="text-[#2a4f78] underline underline-offset-4">
-              Open legacy campaign form
-            </Link>
-            .
-          </p>
         </>
       }
       preview={<CampaignPreview fromName={draft?.fromName} subject={draft?.subject} previewText={draft?.previewText} htmlSnapshot={draft?.htmlSnapshot} />}

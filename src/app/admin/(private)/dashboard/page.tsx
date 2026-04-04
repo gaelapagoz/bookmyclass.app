@@ -10,7 +10,6 @@ import {
   type AdminPeriod,
   getAdminDashboardData,
   getAdminDashboardInsights,
-  getAdminMarketingOverviewMetrics,
   getDashboardTrendData,
   getOperationalMetricCards,
 } from "@/lib/admin/admin-service";
@@ -36,12 +35,11 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   try {
     const { period: rawPeriod } = await searchParams;
     const period = resolvePeriod(rawPeriod);
-    const [data, metricCards, trendData, insights, marketingOverview] = await Promise.all([
+    const [data, metricCards, trendData, insights] = await Promise.all([
       getAdminDashboardData(),
       getOperationalMetricCards(period),
       getDashboardTrendData(period),
       getAdminDashboardInsights(period),
-      getAdminMarketingOverviewMetrics(),
     ]);
 
     return (
@@ -96,28 +94,6 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
           </div>
 
           <AdminStaffPerformanceTable items={insights.staffPerformance} />
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-[#1f2735]">Marketing Analytics</h2>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <article className="rounded-xl border border-[#d3dbe5] bg-white p-4">
-              <p className="text-xs uppercase tracking-wide text-[#5a6d86]">Never Subscribed</p>
-              <p className="mt-1 text-xl font-semibold text-[#1f2735]">{marketingOverview.neverSubscribedClients}</p>
-            </article>
-            <article className="rounded-xl border border-[#d3dbe5] bg-white p-4">
-              <p className="text-xs uppercase tracking-wide text-[#5a6d86]">Subscribed</p>
-              <p className="mt-1 text-xl font-semibold text-[#1f2735]">{marketingOverview.subscribedClients}</p>
-            </article>
-            <article className="rounded-xl border border-[#d3dbe5] bg-white p-4">
-              <p className="text-xs uppercase tracking-wide text-[#5a6d86]">Unsubscribed</p>
-              <p className="mt-1 text-xl font-semibold text-[#1f2735]">{marketingOverview.unsubscribedClients}</p>
-            </article>
-            <article className="rounded-xl border border-[#d3dbe5] bg-white p-4">
-              <p className="text-xs uppercase tracking-wide text-[#5a6d86]">Campaigns Sent</p>
-              <p className="mt-1 text-xl font-semibold text-[#1f2735]">{marketingOverview.campaignsSent}</p>
-            </article>
-          </div>
         </section>
       </section>
     );
