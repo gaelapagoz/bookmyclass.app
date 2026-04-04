@@ -1,0 +1,9 @@
+⚠ Port 3000 is in use by process 29504, using available port 3002 instead.
+⨯ Another next dev server is already running.
+
+- Local:        http://localhost:3001
+- PID:          47232
+- Dir:          C:\Dev\studio.saas.platform
+- Log:          .next\dev\logs\next-development.log
+
+Run taskkill /PID 47232 /F to stop it.

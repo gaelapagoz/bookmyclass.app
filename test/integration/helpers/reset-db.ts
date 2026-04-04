@@ -1,6 +1,15 @@
 import { prisma } from "./db";
 
 export async function resetDb() {
+  await prisma.marketingCampaignGenerationUsage.deleteMany();
+  await prisma.marketingCampaignLinkClick.deleteMany();
+  await prisma.marketingCampaignLink.deleteMany();
+  await prisma.marketingCampaignRecipient.deleteMany();
+  await prisma.marketingCampaign.deleteMany();
+  await prisma.marketingUnsubscribe.deleteMany();
+  await prisma.marketingUserSegment.deleteMany();
+  await prisma.marketingSegment.deleteMany();
+  await prisma.marketingCategory.deleteMany();
   await prisma.attendanceRecord.deleteMany();
   await prisma.waitlistEntry.deleteMany();
   await prisma.booking.deleteMany();
@@ -36,3 +45,5 @@ export async function resetDb() {
   await prisma.verificationToken.deleteMany();
   await prisma.user.deleteMany();
 }
+
+

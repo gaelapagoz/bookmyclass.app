@@ -7,12 +7,14 @@ const headingBlockSchema = z.object({
   type: z.literal("heading"),
   contentHtml: z.string().optional(),
   text: z.string().optional(),
+  textColor: z.string().optional(),
 });
 
 const paragraphBlockSchema = z.object({
   type: z.literal("paragraph"),
   contentHtml: z.string().optional(),
   text: z.string().optional(),
+  textColor: z.string().optional(),
 });
 
 const buttonBlockSchema = z.object({
@@ -20,6 +22,8 @@ const buttonBlockSchema = z.object({
   labelHtml: z.string().optional(),
   text: z.string().optional(),
   url: z.url(),
+  textColor: z.string().optional(),
+  backgroundColor: z.string().optional(),
 });
 
 const imageBlockSchema = z.object({
@@ -59,11 +63,29 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+const HEX_COLOR_REGEX = /^#([0-9a-f]{6})$/i;
+const DEFAULT_HEADING_TEXT_COLOR = "#1f2735";
+const DEFAULT_PARAGRAPH_TEXT_COLOR = "#334155";
+const DEFAULT_BUTTON_TEXT_COLOR = "#ffffff";
+const DEFAULT_BUTTON_BACKGROUND_COLOR = "#1d3652";
+
+function normalizeHexColor(input: string | undefined, fallback: string): string {
+  const value = (input ?? "").trim();
+  if (!value) {
+    return fallback;
+  }
+  if (!HEX_COLOR_REGEX.test(value)) {
+    return fallback;
+  }
+  return value.toLowerCase();
+}
+
 function normalizeHeadingBlock(block: z.infer<typeof headingBlockSchema>) {
   const htmlSource = block.contentHtml ?? textToRichHtml(block.text ?? "", "heading");
   return {
     type: "heading" as const,
     contentHtml: sanitizeRichHtml(htmlSource, "heading"),
+    textColor: normalizeHexColor(block.textColor, DEFAULT_HEADING_TEXT_COLOR),
   };
 }
 
@@ -72,6 +94,7 @@ function normalizeParagraphBlock(block: z.infer<typeof paragraphBlockSchema>) {
   return {
     type: "paragraph" as const,
     contentHtml: sanitizeRichHtml(htmlSource, "paragraph"),
+    textColor: normalizeHexColor(block.textColor, DEFAULT_PARAGRAPH_TEXT_COLOR),
   };
 }
 
@@ -81,6 +104,8 @@ function normalizeButtonBlock(block: z.infer<typeof buttonBlockSchema>) {
     type: "button" as const,
     labelHtml: sanitizeRichHtml(htmlSource, "button"),
     url: block.url,
+    textColor: normalizeHexColor(block.textColor, DEFAULT_BUTTON_TEXT_COLOR),
+    backgroundColor: normalizeHexColor(block.backgroundColor, DEFAULT_BUTTON_BACKGROUND_COLOR),
   };
 }
 
@@ -120,16 +145,16 @@ function renderBlocksAsHtml(content: MarketingContentJson): string {
     .map((block) => {
       if (block.type === "heading") {
         const safe = sanitizeRichHtml(block.contentHtml ?? "<p></p>", "heading");
-        return `<div style=\"font-family:Arial,sans-serif;line-height:1.35;margin:0 0 16px 0;color:#1f2735;\">${safe}</div>`;
+        return `<div style=\"font-family:Arial,sans-serif;line-height:1.35;margin:0 0 16px 0;color:${escapeHtml(block.textColor || DEFAULT_HEADING_TEXT_COLOR)};\">${safe}</div>`;
       }
       if (block.type === "paragraph") {
         const safe = sanitizeRichHtml(block.contentHtml ?? "<p></p>", "paragraph");
-        return `<div style=\"font-family:Arial,sans-serif;font-size:15px;line-height:1.6;margin:0 0 14px 0;color:#334155;\">${safe}</div>`;
+        return `<div style=\"font-family:Arial,sans-serif;font-size:15px;line-height:1.6;margin:0 0 14px 0;color:${escapeHtml(block.textColor || DEFAULT_PARAGRAPH_TEXT_COLOR)};\">${safe}</div>`;
       }
       if (block.type === "button") {
         const safeLabel = sanitizeRichHtml(block.labelHtml ?? "", "button");
         const fallbackLabel = toPlainTextFromRichHtml(safeLabel) || "Button";
-        return `<p style=\"margin:0 0 16px 0;\"><a href=\"${escapeHtml(block.url)}\" style=\"display:inline-block;background:#1d3652;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:6px;font-family:Arial,sans-serif;font-size:14px;\">${safeLabel || escapeHtml(fallbackLabel)}</a></p>`;
+        return `<p style=\"margin:0 0 18px 0;\"><a href=\"${escapeHtml(block.url)}\" style=\"display:inline-block;background:${escapeHtml(block.backgroundColor || DEFAULT_BUTTON_BACKGROUND_COLOR)};color:${escapeHtml(block.textColor || DEFAULT_BUTTON_TEXT_COLOR)};text-decoration:none;padding:12px 22px;border-radius:10px;font-family:Arial,sans-serif;font-size:14px;font-weight:600;line-height:1.2;\">${safeLabel || escapeHtml(fallbackLabel)}</a></p>`;
       }
       if (block.type === "image") {
         return `<p style=\"margin:0 0 16px 0;\"><img src=\"${escapeHtml(block.url)}\" alt=\"${escapeHtml(block.alt ?? "")}\" style=\"max-width:100%;height:auto;border-radius:6px;\" /></p>`;

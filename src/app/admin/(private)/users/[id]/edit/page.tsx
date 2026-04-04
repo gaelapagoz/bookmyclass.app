@@ -7,7 +7,7 @@ import {
   uploadTeacherImageAction,
   updateUserAction,
 } from "@/app/admin/(private)/actions";
-import { getAdminClientActivityData, getAdminUserById } from "@/lib/admin/admin-service";
+import { getAdminClientActivityData, getAdminUserById, listAdminMarketingSegmentOptions } from "@/lib/admin/admin-service";
 import { requireAdminSession } from "@/lib/auth/require-auth";
 
 type Params = Promise<{ id: string }>;
@@ -51,6 +51,7 @@ export default async function AdminUserEditPage({
 
   const isTeacher = record.role === "TEACHER";
   const isClient = record.role === "CLIENT";
+  const marketingSegments = isClient ? await listAdminMarketingSegmentOptions() : [];
   const clientActivity = isClient ? await getAdminClientActivityData(id) : null;
   const adminSession = await requireAdminSession({ throwOnFailure: true });
   const { error, success } = await searchParams;
@@ -182,15 +183,50 @@ export default async function AdminUserEditPage({
             </label>
           </div>
         ) : (
-          <label className="block text-sm text-[#334155]">
-            Notes
-            <textarea
-              name="notes"
-              rows={3}
-              defaultValue={record.notes}
-              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
-            />
-          </label>
+          <div className="space-y-3">
+            <label className="block text-sm text-[#334155]">
+              Notes
+              <textarea
+                name="notes"
+                rows={3}
+                defaultValue={record.notes}
+                className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+              />
+            </label>
+
+            {isClient ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="block text-sm text-[#334155]">
+                  Marketing Subscription Status
+                  <select
+                    name="marketingSubscriptionStatus"
+                    defaultValue={record.marketingSubscriptionStatus}
+                    className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+                  >
+                    <option value="NEVER_SUBSCRIBED">Never subscribed</option>
+                    <option value="SUBSCRIBED">Subscribed</option>
+                    <option value="UNSUBSCRIBED">Unsubscribed</option>
+                  </select>
+                </label>
+
+                <label className="block text-sm text-[#334155]">
+                  Segments
+                  <select
+                    name="marketingSegmentIds"
+                    multiple
+                    defaultValue={record.marketingSegmentIds}
+                    className="mt-1 min-h-32 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+                  >
+                    {marketingSegments.map((segment) => (
+                      <option key={segment.id} value={segment.id}>
+                        {segment.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            ) : null}
+          </div>
         )}
 
         <div className="pt-2">

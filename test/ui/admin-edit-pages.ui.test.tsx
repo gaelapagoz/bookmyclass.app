@@ -30,6 +30,7 @@ vi.mock("@/app/admin/(private)/actions", () => ({
 vi.mock("@/lib/admin/admin-service", () => ({
   getAdminUserById: vi.fn(),
   getAdminClientActivityData: vi.fn(),
+  listAdminMarketingSegmentOptions: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-auth", () => ({
@@ -39,7 +40,7 @@ vi.mock("@/lib/auth/require-auth", () => ({
   })),
 }));
 
-import { getAdminClientActivityData, getAdminUserById } from "@/lib/admin/admin-service";
+import { getAdminClientActivityData, getAdminUserById, listAdminMarketingSegmentOptions } from "@/lib/admin/admin-service";
 import { requireAdminSession } from "@/lib/auth/require-auth";
 
 import AdminUserEditPage from "../../src/app/admin/(private)/users/[id]/edit/page";
@@ -47,6 +48,7 @@ import AdminUserEditPage from "../../src/app/admin/(private)/users/[id]/edit/pag
 describe("admin edit pages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(listAdminMarketingSegmentOptions).mockResolvedValue([]);
   });
 
   it("triggers notFound for missing user record", async () => {
@@ -76,6 +78,8 @@ describe("admin edit pages", () => {
       specialties: [],
       certifications: [],
       hireDate: null,
+      marketingSubscriptionStatus: "NEVER_SUBSCRIBED",
+      marketingSegmentIds: [],
     });
 
     render(
@@ -108,6 +112,8 @@ describe("admin edit pages", () => {
       specialties: [],
       certifications: [],
       hireDate: null,
+      marketingSubscriptionStatus: "NEVER_SUBSCRIBED",
+      marketingSegmentIds: [],
     });
 
     render(
@@ -137,7 +143,10 @@ describe("admin edit pages", () => {
       specialties: [],
       certifications: [],
       hireDate: null,
+      marketingSubscriptionStatus: "NEVER_SUBSCRIBED",
+      marketingSegmentIds: [],
     });
+    vi.mocked(listAdminMarketingSegmentOptions).mockResolvedValue([{ id: "seg-1", name: "VIP", isActive: true }]);
     vi.mocked(getAdminClientActivityData).mockResolvedValue({
       plansBought: [],
       classesBooked: 2,
@@ -203,6 +212,8 @@ describe("admin edit pages", () => {
       specialties: [],
       certifications: [],
       hireDate: null,
+      marketingSubscriptionStatus: "NEVER_SUBSCRIBED",
+      marketingSegmentIds: [],
     });
 
     render(
@@ -216,5 +227,17 @@ describe("admin edit pages", () => {
     expect(screen.getByRole("button", { name: "Update user" })).toBeDisabled();
   });
 });
+
+
+
+
+
+
+
+
+
+
+
+
 
 

@@ -1,0 +1,559 @@
+⚠ Port 3000 is in use by process 29504, using available port 3001 instead.
+⨯ Error [PrismaClientKnownRequestError]: 
+Invalid `{imported module ./src/lib/db.ts}["prisma"].marketingSegment.findMany()` invocation in
+C:\Dev\studio.saas.platform\.next\dev\server\chunks\ssr\[root-of-the-server]__0re45vf._.js:728:149
+
+  725 }
+  726 async function listMarketingSegments() {
+  727     const [segments, usage] = await Promise.all([
+→ 728         {imported module ./src/lib/db.ts}["prisma"].marketingSegment.findMany(
+The table `public.MarketingSegment` does not exist in the current database.
+    at <unknown> (src\lib\marketing\marketing-service.ts:242:29)
+    at async listMarketingSegments (src\lib\marketing\marketing-service.ts:241:29)
+    at async AdminMarketingSegmentsPage (src\app\admin\(private)\marketing\segments\page.tsx:8:20)
+  240 | export async function listMarketingSegments() {
+  241 |   const [segments, usage] = await Promise.all([
+> 242 |     prisma.marketingSegment.findMany({
+      |                             ^
+  243 |       orderBy: [{ isActive: "desc" }, { name: "asc" }],
+  244 |     }),
+  245 |     prisma.marketingUserSegment.groupBy({ {
+  code: 'P2021',
+  meta: {
+    modelName: 'MarketingSegment',
+    driverAdapterError: Error [DriverAdapterError]: TableDoesNotExist
+        at async listMarketingSegments (src\lib\marketing\marketing-service.ts:241:29)
+        at async AdminMarketingSegmentsPage (src\app\admin\(private)\marketing\segments\page.tsx:8:20)
+      239 |
+      240 | export async function listMarketingSegments() {
+    > 241 |   const [segments, usage] = await Promise.all([
+          |                             ^
+      242 |     prisma.marketingSegment.findMany({
+      243 |       orderBy: [{ isActive: "desc" }, { name: "asc" }],
+      244 |     }), {
+      [cause]: [Object]
+    }
+  },
+  clientVersion: '7.5.0',
+  digest: '1698555928'
+}
+⨯ Error [PrismaClientKnownRequestError]: 
+Invalid `{imported module ./src/lib/db.ts}["prisma"].marketingSegment.findMany()` invocation in
+C:\Dev\studio.saas.platform\.next\dev\server\chunks\ssr\[root-of-the-server]__0re45vf._.js:728:149
+
+  725 }
+  726 async function listMarketingSegments() {
+  727     const [segments, usage] = await Promise.all([
+→ 728         {imported module ./src/lib/db.ts}["prisma"].marketingSegment.findMany(
+The table `public.MarketingSegment` does not exist in the current database.
+    at <unknown> (src\lib\marketing\marketing-service.ts:242:29)
+    at async listMarketingSegments (src\lib\marketing\marketing-service.ts:241:29)
+    at async AdminMarketingSegmentsPage (src\app\admin\(private)\marketing\segments\page.tsx:8:20)
+  240 | export async function listMarketingSegments() {
+  241 |   const [segments, usage] = await Promise.all([
+> 242 |     prisma.marketingSegment.findMany({
+      |                             ^
+  243 |       orderBy: [{ isActive: "desc" }, { name: "asc" }],
+  244 |     }),
+  245 |     prisma.marketingUserSegment.groupBy({ {
+  code: 'P2021',
+  meta: {
+    modelName: 'MarketingSegment',
+    driverAdapterError: Error [DriverAdapterError]: TableDoesNotExist
+        at async listMarketingSegments (src\lib\marketing\marketing-service.ts:241:29)
+        at async AdminMarketingSegmentsPage (src\app\admin\(private)\marketing\segments\page.tsx:8:20)
+      239 |
+      240 | export async function listMarketingSegments() {
+    > 241 |   const [segments, usage] = await Promise.all([
+          |                             ^
+      242 |     prisma.marketingSegment.findMany({
+      243 |       orderBy: [{ isActive: "desc" }, { name: "asc" }],
+      244 |     }), {
+      [cause]: [Object]
+    }
+  },
+  clientVersion: '7.5.0',
+  digest: '1698555928'
+}
+Persisting failed: Unable to write SST file 00000175.sst
+
+Caused by:
+    The system cannot find the path specified. (os error 3)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+
+thread 'tokio-runtime-worker' (50808) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167281)
+
+Caused by:
+    0: Looking up task storage for TaskId 167281 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'tokio-runtime-worker' (50808) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167281)
+
+Caused by:
+    0: Looking up task storage for TaskId 167281 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (50808) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167291)
+
+Caused by:
+    0: Looking up task storage for TaskId 167291 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (50808) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167291)
+
+Caused by:
+    0: Looking up task storage for TaskId 167291 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (37776) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167123)
+
+Caused by:
+    0: Looking up task storage for TaskId 167123 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (37776) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167123)
+
+Caused by:
+    0: Looking up task storage for TaskId 167123 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (37776) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167281)
+
+Caused by:
+    0: Looking up task storage for TaskId 167281 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (37776) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167281)
+
+Caused by:
+    0: Looking up task storage for TaskId 167281 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+
+thread 'tokio-runtime-worker' (46664) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167135)
+
+Caused by:
+    0: Looking up task storage for TaskId 167135 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (46664) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167135)
+
+Caused by:
+    0: Looking up task storage for TaskId 167135 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (53416) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167132)
+
+Caused by:
+    0: Looking up task storage for TaskId 167132 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (53416) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167132)
+
+Caused by:
+    0: Looking up task storage for TaskId 167132 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (46664) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167128)
+
+Caused by:
+    0: Looking up task storage for TaskId 167128 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (46664) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167128)
+
+Caused by:
+    0: Looking up task storage for TaskId 167128 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (46664) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167129)
+
+Caused by:
+    0: Looking up task storage for TaskId 167129 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (46664) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167129)
+
+Caused by:
+    0: Looking up task storage for TaskId 167129 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+
+thread 'tokio-runtime-worker' (36856) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 253)
+
+Caused by:
+    0: Looking up task storage for TaskId 253 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (36856) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 253)
+
+Caused by:
+    0: Looking up task storage for TaskId 253 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+
+thread 'tokio-runtime-worker' (50808) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:224:17:
+Failed to restore task data (corrupted database or bug): Data for batch of 2 tasks
+
+Caused by:
+    0: Looking up typed data for 2 tasks from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (50808) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:224:17:
+Failed to restore task data (corrupted database or bug): Data for batch of 2 tasks
+
+Caused by:
+    0: Looking up typed data for 2 tasks from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (50808) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:224:17:
+Failed to restore task data (corrupted database or bug): Data for batch of 2 tasks
+
+Caused by:
+    0: Looking up typed data for 2 tasks from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (50808) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:224:17:
+Failed to restore task data (corrupted database or bug): Data for batch of 2 tasks
+
+Caused by:
+    0: Looking up typed data for 2 tasks from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000140.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000140.sst
+    4: The system cannot find the file specified. (os error 2)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+
+thread 'tokio-runtime-worker' (55604) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167281)
+
+Caused by:
+    0: Looking up task storage for TaskId 167281 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (55604) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167281)
+
+Caused by:
+    0: Looking up task storage for TaskId 167281 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+
+thread 'tokio-runtime-worker' (53116) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167134)
+
+Caused by:
+    0: Looking up task storage for TaskId 167134 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (53116) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167134)
+
+Caused by:
+    0: Looking up task storage for TaskId 167134 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+
+thread 'tokio-runtime-worker' (33828) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167216)
+
+Caused by:
+    0: Looking up task storage for TaskId 167216 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (33828) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167216)
+
+Caused by:
+    0: Looking up task storage for TaskId 167216 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+
+thread 'tokio-runtime-worker' (54996) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:224:17:
+Failed to restore task data (corrupted database or bug): Data for batch of 2 tasks
+
+Caused by:
+    0: Looking up typed data for 2 tasks from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000140.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000140.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (54996) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:224:17:
+Failed to restore task data (corrupted database or bug): Data for batch of 2 tasks
+
+Caused by:
+    0: Looking up typed data for 2 tasks from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000140.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000140.sst
+    4: The system cannot find the file specified. (os error 2)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+
+thread 'tokio-runtime-worker' (54836) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:224:17:
+Failed to restore task data (corrupted database or bug): Data for batch of 4 tasks
+
+Caused by:
+    0: Looking up typed data for 4 tasks from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (50808) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167079)
+
+Caused by:
+    0: Looking up task storage for TaskId 167079 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (50808) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167079)
+
+Caused by:
+    0: Looking up task storage for TaskId 167079 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+
+thread 'tokio-runtime-worker' (55604) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:224:17:
+Failed to restore task data (corrupted database or bug): Data for batch of 2 tasks
+
+Caused by:
+    0: Looking up typed data for 2 tasks from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (55604) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:224:17:
+Failed to restore task data (corrupted database or bug): Data for batch of 2 tasks
+
+Caused by:
+    0: Looking up typed data for 2 tasks from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (54836) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167281)
+
+Caused by:
+    0: Looking up task storage for TaskId 167281 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (54836) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167281)
+
+Caused by:
+    0: Looking up task storage for TaskId 167281 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (55604) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167109)
+
+Caused by:
+    0: Looking up task storage for TaskId 167109 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+
+thread 'tokio-runtime-worker' (55604) panicked at turbopack\crates\turbo-tasks-backend\src\backend\operation\mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 167109)
+
+Caused by:
+    0: Looking up task storage for TaskId 167109 from database failed
+    1: Unable to open static sorted file referenced from 00000141.meta
+    2: Unable to open static sorted file 00000139.sst
+    3: Failed to open SST file C:\Dev\studio.saas.platform\.next\dev\cache/turbopack\0ca967b8\00000139.sst
+    4: The system cannot find the file specified. (os error 2)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+^C

@@ -221,6 +221,12 @@ enum MarketingAudienceType {
   MANUAL
 }
 
+enum MarketingSubscriptionStatus {
+  NEVER_SUBSCRIBED
+  SUBSCRIBED
+  UNSUBSCRIBED
+}
+
 enum MarketingRecipientStatus {
   PENDING
   SENT
@@ -252,6 +258,7 @@ model User {
   createdByUserId            String?
   createdIp                  String?
   activationStatus           UserActivationStatus   @default(ACTIVE)
+  marketingSubscriptionStatus MarketingSubscriptionStatus @default(NEVER_SUBSCRIBED)
   lastEmailChangeAt          DateTime?
   pendingEmail               String?
   pendingEmailTokenHash      String?                @unique
@@ -285,6 +292,7 @@ model User {
   createdMarketingCampaigns  MarketingCampaign[]    @relation("MarketingCampaignCreatedBy")
   marketingRecipients        MarketingCampaignRecipient[] @relation("MarketingRecipientUser")
   marketingUnsubscribes      MarketingUnsubscribe[] @relation("MarketingUnsubscribeUser")
+  marketingSegments          MarketingUserSegment[]
   accounts                   Account[]
   sessions                   Session[]
   passwordResetTokens        PasswordResetToken[]
@@ -979,6 +987,28 @@ model MarketingCategory {
   updatedAt   DateTime            @updatedAt
 }
 
+model MarketingSegment {
+  id          String               @id @default(cuid())
+  name        String
+  slug        String               @unique
+  isActive    Boolean              @default(true)
+  users       MarketingUserSegment[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+}
+
+model MarketingUserSegment {
+  userId      String
+  segmentId   String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  segment     MarketingSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  assignedAt  DateTime         @default(now())
+
+  @@id([userId, segmentId])
+  @@index([segmentId])
+  @@index([userId])
+}
+
 model MarketingCampaign {
   id                String                  @id @default(cuid())
   name              String
@@ -999,12 +1029,32 @@ model MarketingCampaign {
   createdBy         User                    @relation("MarketingCampaignCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   recipients        MarketingCampaignRecipient[]
   links             MarketingCampaignLink[]
+  generationUsages  MarketingCampaignGenerationUsage[]
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
 
   @@index([status, updatedAt])
   @@index([categoryId])
   @@index([sentAt])
+}
+
+model MarketingCampaignGenerationUsage {
+  id                  String   @id @default(cuid())
+  campaignId          String
+  model               String
+  inputTokens         Int
+  outputTokens        Int
+  totalTokens         Int
+  estimatedInputCost  Decimal  @db.Decimal(14, 6)
+  estimatedOutputCost Decimal  @db.Decimal(14, 6)
+  estimatedTotalCost  Decimal  @db.Decimal(14, 6)
+  pricingVersion      String
+  rateBasisJson       Json
+  createdAt           DateTime @default(now())
+  campaign            MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, createdAt])
+  @@index([createdAt])
 }
 
 model MarketingCampaignRecipient {

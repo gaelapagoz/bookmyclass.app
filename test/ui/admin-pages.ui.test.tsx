@@ -7,6 +7,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/app/admin/(private)/actions", () => ({
   uploadAgendaPdfAction: vi.fn(),
   updateClientMessageStatusAction: vi.fn(),
+  createMarketingSegmentAction: vi.fn(),
+  updateMarketingSegmentAction: vi.fn(),
+  bulkSetClientMarketingSubscriptionStatusAction: vi.fn(),
+  bulkAddClientMarketingSegmentsAction: vi.fn(),
+  bulkRemoveClientMarketingSegmentsAction: vi.fn(),
 }));
 
 vi.mock("@/lib/client-messages/client-message-service", () => ({
@@ -20,6 +25,10 @@ vi.mock("@/lib/public-documents/agenda-document-service", () => ({
 vi.mock("@/lib/public-content/home-agenda-service", () => ({
   getHomeAgendaTableFromSchedule: vi.fn(async () => []),
   getManageSiteAgendaPreview: vi.fn(async () => []),
+}));
+
+vi.mock("@/lib/marketing/marketing-service", () => ({
+  listMarketingSegments: vi.fn(),
 }));
 
 vi.mock("@/auth", () => ({
@@ -36,6 +45,7 @@ vi.mock("@/lib/admin/admin-service", () => ({
   getAdminPlansData: vi.fn(),
   getBookings: vi.fn(),
   getAdminUsersData: vi.fn(),
+  listAdminMarketingSegmentOptions: vi.fn(),
   getAdminSubscriptionsPageData: vi.fn(),
   getAdminUsersGroupedPageData: vi.fn(),
   getAdminOrdersPageData: vi.fn(),
@@ -56,8 +66,10 @@ import {
   getAdminSubscriptionsPageData,
   getAdminOrdersPageData,
   getAdminUsersData,
+  listAdminMarketingSegmentOptions,
   getAdminUsersGroupedPageData,
 } from "@/lib/admin/admin-service";
+import { listMarketingSegments } from "@/lib/marketing/marketing-service";
 import { listClientMessages } from "@/lib/client-messages/client-message-service";
 import { getActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
 import {
@@ -76,6 +88,7 @@ import AdminOrdersPage from "../../src/app/admin/(private)/orders/page";
 import AdminOnlineLearningPage from "../../src/app/admin/(private)/online-learning/page";
 import AdminInboxPage from "../../src/app/admin/(private)/inbox/page";
 import AdminManageSitePage from "../../src/app/admin/(private)/manage-site/page";
+import AdminMarketingSegmentsPage from "../../src/app/admin/(private)/marketing/segments/page";
 
 describe("Admin pages branching", () => {
   beforeEach(() => {
@@ -88,10 +101,12 @@ describe("Admin pages branching", () => {
       clicked: 0,
       unsubscribed: 0,
       openRate: 0,
-      clickRate: 0,
+      clickRate: 0,
       byCampaign: [],
     });
     vi.mocked(getDashboardTrendData).mockResolvedValue([]);
+    vi.mocked(listAdminMarketingSegmentOptions).mockResolvedValue([]);
+    vi.mocked(listMarketingSegments).mockResolvedValue([]);
   });
 
   it("renders dashboard data state", async () => {
@@ -458,20 +473,66 @@ describe("Admin pages branching", () => {
             isActive: true,
             lastLoginAt: new Date().toISOString(),
             createdAt: new Date().toISOString(),
+            marketingSubscriptionStatus: "NEVER_SUBSCRIBED",
+            marketingSegmentNames: [],
           },
         ],
       },
       teachers: { page: 1, pageSize: 20, totalItems: 0, totalPages: 1, items: [] },
-      clients: { page: 1, pageSize: 20, totalItems: 0, totalPages: 1, items: [] },
+      clients: {
+        page: 1,
+        pageSize: 20,
+        totalItems: 1,
+        totalPages: 1,
+        items: [
+          {
+            id: "c1",
+            name: "Client User",
+            email: "client@example.test",
+            role: "CLIENT",
+            isActive: true,
+            lastLoginAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            marketingSubscriptionStatus: "SUBSCRIBED",
+            marketingSegmentNames: ["VIP"],
+          },
+        ],
+      },
     });
-
+    vi.mocked(listAdminMarketingSegmentOptions).mockResolvedValue([{ id: "seg-1", name: "VIP", isActive: true }]);
 
     render(await AdminUsersPage());
 
     expect(screen.getByText("Admins")).toBeInTheDocument();
     expect(screen.getByText("Admin User")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View" })).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "View" }).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "Create user" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Set subscription status" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add segments" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove segments" })).toBeInTheDocument();
+    expect(screen.getAllByText("Subscribed").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("VIP").length).toBeGreaterThan(0);
+  });
+
+  it("renders marketing segments CRUD page", async () => {
+    vi.mocked(listMarketingSegments).mockResolvedValue([
+      {
+        id: "seg-1",
+        name: "VIP",
+        slug: "vip",
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        usageCount: 4,
+      },
+    ]);
+
+    render(await AdminMarketingSegmentsPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByRole("heading", { name: "Marketing Segments" })).toBeInTheDocument();
+    expect(screen.getByText("Create segment")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Users" })).toBeInTheDocument();
+    expect(screen.getAllByText("VIP").length).toBeGreaterThan(0);
   });
 
   it("renders subscriptions data state", async () => {
@@ -735,6 +796,24 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Unable to load online learning right now.")).toBeInTheDocument();
   });
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

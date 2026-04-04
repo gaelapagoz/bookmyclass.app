@@ -7,6 +7,7 @@ import {
   PriceType,
   ProductType,
   Role,
+  MarketingSubscriptionStatus,
   StudioSessionStatus,
   SubscriptionStatus,
   Weekday,
@@ -43,6 +44,10 @@ import {
   updateAdminTeacherImage,
   updateAdminUser,
   removeSessionAttendeeByManager,
+  bulkAddClientMarketingSegments,
+  bulkRemoveClientMarketingSegments,
+  bulkSetClientMarketingSubscriptionStatus,
+  resolveAdminActorUser,
 } from "@/lib/admin/admin-service";
 import { requireAdminSession } from "@/lib/auth/require-auth";
 import { upsertActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
@@ -233,6 +238,8 @@ const updateUserSchema = z.object({
   email: z.email(),
   role: z.nativeEnum(Role),
   isActive: z.boolean(),
+  marketingSubscriptionStatus: z.nativeEnum(MarketingSubscriptionStatus).optional(),
+  marketingSegmentIds: z.array(z.string().min(1)).optional(),
   phone: z.string().optional(),
   notes: z.string().optional(),
   bio: z.string().optional(),
@@ -335,6 +342,8 @@ const MAX_TEACHER_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_TEACHER_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_CLASS_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_CLASS_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_CAMPAIGN_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_CAMPAIGN_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const marketingAudienceTypeSchema = z.enum([
   "ALL_USERS",
@@ -375,6 +384,22 @@ const marketingCampaignNowSchema = z.object({
   campaignId: z.string().min(1),
 });
 
+const marketingCampaignFlowStep1Schema = z.object({
+  campaignId: z.string().min(1).optional(),
+  campaignName: z.string().min(1),
+  subject: z.string().min(1),
+  previewText: z.string().min(1),
+  contentJson: z.string().min(1),
+});
+
+const marketingCampaignFlowStep2Schema = z.object({
+  campaignId: z.string().min(1),
+  fromName: z.string().min(1),
+  fromEmail: z.email(),
+  replyTo: z.union([z.email(), z.literal("")]).optional(),
+  categoryId: z.string().optional(),
+});
+
 const marketingCategoryCreateSchema = z.object({
   name: z.string().min(1),
   isActive: z.boolean(),
@@ -384,6 +409,27 @@ const marketingCategoryUpdateSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   isActive: z.boolean(),
+});
+
+const marketingSegmentCreateSchema = z.object({
+  name: z.string().min(1),
+  isActive: z.boolean(),
+});
+
+const marketingSegmentUpdateSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  isActive: z.boolean(),
+});
+
+const bulkClientMarketingStatusSchema = z.object({
+  userIds: z.array(z.string().min(1)).min(1),
+  marketingSubscriptionStatus: z.nativeEnum(MarketingSubscriptionStatus),
+});
+
+const bulkClientMarketingSegmentsSchema = z.object({
+  userIds: z.array(z.string().min(1)).min(1),
+  segmentIds: z.array(z.string().min(1)).min(1),
 });
 
 function isChecked(formData: FormData, name: string): boolean {
@@ -451,6 +497,18 @@ function getAdminActionErrorMessage(error: unknown): string {
   }
   if (code === "MASTER_ADMIN_ASSIGNMENT_FORBIDDEN") {
     return "Only MASTER_ADMIN can assign MASTER_ADMIN role.";
+  }
+  if (code === "MARKETING_CLIENT_ONLY") {
+    return "Marketing settings can only be managed for CLIENT users.";
+  }
+  if (code === "USERS_REQUIRED") {
+    return "Select at least one CLIENT user.";
+  }
+  if (code === "SEGMENTS_REQUIRED") {
+    return "Select at least one segment.";
+  }
+  if (code === "SEGMENTS_NOT_FOUND") {
+    return "One or more selected segments no longer exist.";
   }
   if (code === "TEACHER_NOT_FOUND") {
     return "Teacher account was not found.";
@@ -542,7 +600,8 @@ async function assertSessionManagerAccess(): Promise<SessionManagerSession> {
 }
 
 function redirectWithError(path: string, message: string): never {
-  redirect(`${path}?error=${encodeURIComponent(message)}`);
+  const separator = path.includes("?") ? "&" : "?";
+  redirect(`${path}${separator}error=${encodeURIComponent(message)}`);
 }
 
 function toStringArray(value: FormDataEntryValue | null): string[] {
@@ -551,6 +610,10 @@ function toStringArray(value: FormDataEntryValue | null): string[] {
     .split(/\r?\n|,/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function toStringArrayFromEntries(values: FormDataEntryValue[]): string[] {
+  return values.map((value) => String(value).trim()).filter(Boolean);
 }
 
 function toOptionalTrimmedString(value: FormDataEntryValue | null): string | undefined {
@@ -570,6 +633,30 @@ function mapTeacherImageMimeTypeToExtension(mimeType: string): string | null {
   }
 
   return null;
+}
+
+async function storeCampaignImageAsset(file: File, campaignId: string): Promise<string> {
+  if (file.size > MAX_CAMPAIGN_IMAGE_FILE_SIZE_BYTES) {
+    throw new Error("CAMPAIGN_IMAGE_TOO_LARGE");
+  }
+  if (!ALLOWED_CAMPAIGN_IMAGE_MIME_TYPES.has(file.type)) {
+    throw new Error("CAMPAIGN_IMAGE_TYPE_INVALID");
+  }
+
+  const extension = mapTeacherImageMimeTypeToExtension(file.type);
+  if (!extension) {
+    throw new Error("CAMPAIGN_IMAGE_TYPE_INVALID");
+  }
+
+  const bytes = await file.arrayBuffer();
+  const imagesDir = join(process.cwd(), "public", "images", "marketing");
+  const targetFileName = `campaign-${campaignId}-${Date.now()}.${extension}`;
+  const targetAbsolutePath = join(imagesDir, targetFileName);
+  const relativePath = `/images/marketing/${targetFileName}`;
+
+  await mkdir(imagesDir, { recursive: true });
+  await writeFile(targetAbsolutePath, Buffer.from(bytes));
+  return relativePath;
 }
 
 function parseMarketingManualAudienceJson(value: string | undefined): Prisma.JsonValue {
@@ -601,20 +688,129 @@ function getMarketingActionErrorMessage(error: unknown): string {
   if (code === "MARKETING_CAMPAIGN_NOT_DRAFT") {
     return "Only draft campaigns can be changed or sent.";
   }
-  if (code === "OPENAI_API_KEY_MISSING") {
-    return "AI Assist is not configured. Missing OPENAI_API_KEY.";
+  if (code === "MARKETING_CAMPAIGN_ALREADY_SENT") {
+    return "This campaign was already sent and cannot be sent again.";
+  }
+  if (code === "MARKETING_FLOW_SEND_STEP_INVALID") {
+    return "Final send is only available from Step 4 confirmation.";
+  }
+  if (code === "MARKETING_FLOW_INVALID_SENDER") {
+    return "Sender details are invalid. Use a valid from email and reply-to address.";
+  }
+  if (code === "MARKETING_FLOW_TEST_DRAFT_REQUIRED") {
+    return "Save the campaign draft before sending a test email.";
+  }
+  if (code === "MARKETING_FLOW_TEST_PREVIEW_RENDER_FAILED") {
+    return "The campaign preview could not be rendered for test send.";
+  }
+  if (code === "MARKETING_TEST_EMAIL_INVALID") {
+    return "Enter a valid test email address.";
+  }
+  if (code === "ADMIN_USER_NOT_FOUND") {
+    return "Could not create the campaign draft because the current admin user could not be resolved. Please sign in again.";
+  }
+  if (code === "MARKETING_DRAFT_SHELL_CREATE_FAILED") {
+    return "Could not create the campaign draft shell. Please retry.";
+  }
+  if (code === "MARKETING_DRAFT_SHELL_UPDATE_FAILED") {
+    return "Could not update the campaign draft shell. Please retry.";
+  }
+  if (code === "OPENAI_API_KEY_MISSING" || code === "OPENAI_MARKETING_MODEL_MISSING") {
+    return "OpenAI is not configured. Set OPENAI_API_KEY and OPENAI_MARKETING_MODEL.";
   }
   if (code === "MARKETING_AI_GENERATION_FAILED") {
     return "AI draft generation failed. Try again in a moment.";
   }
+  if (code === "MARKETING_AI_REQUEST_FAILED") {
+    return "Draft generation failed while contacting OpenAI.";
+  }
+  if (code === "MARKETING_DAILY_AI_GENERATION_LIMIT_REACHED") {
+    return "Daily AI draft generation limit reached (20/20). Try again tomorrow.";
+  }
   if (code === "MARKETING_AI_EMPTY_OUTPUT" || code === "MARKETING_AI_INVALID_JSON" || code === "MARKETING_AI_SCHEMA_INVALID") {
-    return "AI returned an invalid draft. Please retry with clearer inputs.";
+    return "OpenAI returned an invalid draft structure. Please try again.";
+  }
+  if (code === "MARKETING_DRAFT_RENDER_INVALID_CONTENT" || code === "MARKETING_DRAFT_PREVIEW_RENDER_FAILED") {
+    return "Draft was generated but preview rendering failed.";
+  }
+  if (code === "MARKETING_DRAFT_PERSIST_FAILED") {
+    return "Draft generation succeeded but saving the draft failed.";
   }
   if (code === "MARKETING_TEST_SEND_FAILED") {
     return "Test email failed to send.";
   }
+  if (code === "CAMPAIGN_IMAGE_TOO_LARGE") {
+    return "Campaign image must be 5MB or less.";
+  }
+  if (code === "CAMPAIGN_IMAGE_TYPE_INVALID") {
+    return "Only JPG, PNG, or WEBP campaign images are accepted.";
+  }
 
   return getPrismaErrorMessage(error);
+}
+
+function getStep1ValidationErrorMessage(error: z.ZodError<z.infer<typeof marketingCampaignFlowStep1Schema>>): string {
+  for (const issue of error.issues) {
+    const path = issue.path[0];
+    if (path === "campaignName") {
+      return "Campaign name is required.";
+    }
+    if (path === "subject") {
+      return "Subject is required.";
+    }
+    if (path === "previewText") {
+      return "Preview text is required.";
+    }
+    if (path === "contentJson") {
+      return "Campaign content blocks are required.";
+    }
+  }
+  return "Please complete all required campaign fields.";
+}
+
+function isRedirectException(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeError = error as { digest?: unknown; message?: unknown };
+  const digest = typeof maybeError.digest === "string" ? maybeError.digest : "";
+  if (digest.startsWith("NEXT_REDIRECT")) {
+    return true;
+  }
+
+  const message = typeof maybeError.message === "string" ? maybeError.message : "";
+  return message.startsWith("NEXT_REDIRECT");
+}
+
+function buildMarketingFlowReviewHref(input: {
+  campaignId: string;
+  segmentIds?: string[];
+  page?: number;
+  testEmail?: string;
+  success?: string;
+  error?: string;
+}): string {
+  const query = new URLSearchParams();
+  for (const segmentId of input.segmentIds ?? []) {
+    if (segmentId) {
+      query.append("segments", segmentId);
+    }
+  }
+  if (input.page && Number.isFinite(input.page) && input.page > 0) {
+    query.set("page", String(input.page));
+  }
+  if (input.testEmail?.trim()) {
+    query.set("testEmail", input.testEmail.trim().toLowerCase());
+  }
+  if (input.success) {
+    query.set("success", input.success);
+  }
+  if (input.error) {
+    query.set("error", input.error);
+  }
+
+  return `/admin/marketing/campaigns/${input.campaignId}/review${query.toString() ? `?${query.toString()}` : ""}`;
 }
 
 export async function createClassAction(formData: FormData) {
@@ -1042,6 +1238,8 @@ export async function updateUserAction(id: string, formData: FormData) {
         email: formData.get("email"),
         role: formData.get("role"),
         isActive: isChecked(formData, "isActive"),
+        marketingSubscriptionStatus: String(formData.get("marketingSubscriptionStatus") ?? "").trim() || undefined,
+        marketingSegmentIds: toStringArrayFromEntries(formData.getAll("marketingSegmentIds")),
         phone: formData.get("phone") ?? undefined,
         notes: formData.get("notes") ?? undefined,
         bio: formData.get("bio") ?? undefined,
@@ -1056,7 +1254,16 @@ export async function updateUserAction(id: string, formData: FormData) {
       }
 
       try {
-        await updateAdminUser(id, parsed.data, {
+        const payload =
+          parsed.data.role === Role.CLIENT
+            ? parsed.data
+            : {
+                ...parsed.data,
+                marketingSubscriptionStatus: undefined,
+                marketingSegmentIds: undefined,
+              };
+
+        await updateAdminUser(id, payload, {
           id: session.user.id,
           role: session.user.role,
         });
@@ -1521,6 +1728,273 @@ export async function uploadClassImageAction(formData: FormData) {
   redirect(`${returnTo}?success=${encodeURIComponent("Service image updated.")}`);
 }
 
+export async function saveMarketingCampaignFlowDraftAction(formData: FormData) {
+  const session = await assertAdminAccess();
+  const rawCampaignName = String(formData.get("campaignName") ?? "").trim();
+  const rawSubject = String(formData.get("subject") ?? "").trim();
+  const rawPreviewText = String(formData.get("previewText") ?? "").trim();
+  const rawContentJson = String(formData.get("contentJson") ?? "").trim();
+  const parsed = marketingCampaignFlowStep1Schema.safeParse({
+    campaignId: String(formData.get("campaignId") ?? "").trim() || undefined,
+    campaignName: rawCampaignName,
+    subject: rawSubject,
+    previewText: rawPreviewText,
+    contentJson: rawContentJson,
+  });
+
+  if (!parsed.success) {
+    const query = new URLSearchParams();
+    if (rawCampaignName) {
+      query.set("campaignName", rawCampaignName);
+    }
+    if (rawSubject) {
+      query.set("subject", rawSubject);
+    }
+    if (rawPreviewText) {
+      query.set("previewText", rawPreviewText);
+    }
+    redirectWithError(`/admin/marketing/campaigns/new${query.toString() ? `?${query.toString()}` : ""}`, getStep1ValidationErrorMessage(parsed.error));
+  }
+
+  let normalizedContentJson: ReturnType<typeof normalizeMarketingContentJson>;
+  try {
+    normalizedContentJson = normalizeMarketingContentJson(JSON.parse(parsed.data.contentJson));
+  } catch {
+    redirectWithError("/admin/marketing/campaigns/new", "Campaign content blocks are invalid.");
+  }
+
+  const {
+    createMarketingCampaignFlowDraft,
+    updateMarketingCampaignFlowDraft,
+    getMarketingCampaignFlowDraftById,
+  } = await import("@/lib/marketing/marketing-service");
+
+  try {
+    const actor = await resolveAdminActorUser({ actorUserId: session.user.id });
+
+    let draft = parsed.data.campaignId
+      ? await updateMarketingCampaignFlowDraft(parsed.data.campaignId, {
+        name: parsed.data.campaignName,
+        subject: parsed.data.subject,
+        previewText: parsed.data.previewText,
+        contentJson: normalizedContentJson,
+        currentStep: "STEP_1",
+      })
+      : await createMarketingCampaignFlowDraft({
+        createdById: actor.id,
+        name: parsed.data.campaignName,
+        goalPrompt: "",
+        generatedDraft: {
+          subject: parsed.data.subject,
+          previewText: parsed.data.previewText,
+          contentJson: normalizedContentJson,
+        },
+      });
+
+    if (!draft) {
+      throw new Error("MARKETING_CAMPAIGN_NOT_FOUND");
+    }
+
+    const file = formData.get("campaignImage");
+    if (file instanceof File && file.size > 0) {
+      const imageAssetUrl = await storeCampaignImageAsset(file, draft.id);
+      draft = await updateMarketingCampaignFlowDraft(draft.id, {
+        imageAssetUrl,
+        currentStep: "STEP_1",
+      });
+    }
+
+    const persistedDraft = draft ?? (await getMarketingCampaignFlowDraftById(parsed.data.campaignId ?? ""));
+    if (!persistedDraft) {
+      throw new Error("MARKETING_CAMPAIGN_NOT_FOUND");
+    }
+
+    redirect(
+      `/admin/marketing/campaigns/new?campaignId=${persistedDraft.id}&success=${encodeURIComponent("Draft saved.")}`,
+    );
+  } catch (error) {
+    if (isRedirectException(error)) {
+      throw error;
+    }
+    Sentry.captureException(error);
+    const fallback = new URLSearchParams();
+    fallback.set("campaignName", parsed.data.campaignName);
+    fallback.set("subject", parsed.data.subject);
+    fallback.set("previewText", parsed.data.previewText);
+    redirectWithError(`/admin/marketing/campaigns/new?${fallback.toString()}`, getMarketingActionErrorMessage(error));
+  }
+}
+
+export async function generateMarketingCampaignFlowDraftAction(formData: FormData) {
+  await assertAdminAccess();
+  const campaignId = String(formData.get("campaignId") ?? "").trim();
+  redirectWithError(
+    campaignId ? `/admin/marketing/campaigns/new?campaignId=${encodeURIComponent(campaignId)}` : "/admin/marketing/campaigns/new",
+    "AI draft generation is disabled. Use Save draft with content blocks.",
+  );
+}
+
+export async function sendMarketingCampaignFlowTestEmailAction(formData: FormData) {
+  await assertAdminAccess();
+  const campaignId = String(formData.get("campaignId") ?? "").trim();
+  const rawToEmail = String(formData.get("toEmail") ?? "").trim().toLowerCase();
+  const segmentIds = toStringArrayFromEntries(formData.getAll("segments"));
+  const pageRaw = Number.parseInt(String(formData.get("page") ?? "1"), 10);
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+
+  if (!campaignId) {
+    redirectWithError("/admin/marketing/campaigns", "Save the campaign draft before sending a test email.");
+  }
+
+  const parsed = marketingCampaignTestSchema.safeParse({
+    campaignId,
+    toEmail: rawToEmail,
+  });
+
+  if (!parsed.success) {
+    redirectWithError(
+      buildMarketingFlowReviewHref({ campaignId, segmentIds, page, testEmail: rawToEmail }),
+      "Enter a valid test email address.",
+    );
+  }
+
+  const { sendMarketingCampaignFlowTestEmail } = await import("@/lib/marketing/marketing-service");
+  try {
+    await sendMarketingCampaignFlowTestEmail({
+      campaignId: parsed.data.campaignId,
+      toEmail: parsed.data.toEmail,
+    });
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(
+      buildMarketingFlowReviewHref({ campaignId: parsed.data.campaignId, segmentIds, page, testEmail: parsed.data.toEmail }),
+      getMarketingActionErrorMessage(error),
+    );
+  }
+
+  redirect(
+    buildMarketingFlowReviewHref({
+      campaignId: parsed.data.campaignId,
+      segmentIds,
+      page,
+      testEmail: parsed.data.toEmail,
+      success: "Test email sent.",
+    }),
+  );
+}
+
+export async function saveMarketingCampaignFlowParametersAction(formData: FormData) {
+  await assertAdminAccess();
+  const parsed = marketingCampaignFlowStep2Schema.safeParse({
+    campaignId: formData.get("campaignId"),
+    fromName: formData.get("fromName"),
+    fromEmail: String(formData.get("fromEmail") ?? "").trim().toLowerCase(),
+    replyTo: String(formData.get("replyTo") ?? "").trim().toLowerCase(),
+    categoryId: String(formData.get("categoryId") ?? "").trim() || undefined,
+  });
+
+  if (!parsed.success) {
+    redirectWithError("/admin/marketing/campaigns", "Please complete campaign parameters.");
+  }
+
+  const segmentIds = toStringArrayFromEntries(formData.getAll("segments"));
+  const page = Number.parseInt(String(formData.get("page") ?? "1"), 10);
+  const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+
+  const { resolveMarketingCampaignFlowRecipients, updateMarketingCampaignFlowDraft } = await import("@/lib/marketing/marketing-service");
+  let resolvedSelectedSegmentIds = segmentIds;
+
+  try {
+    const resolution = await resolveMarketingCampaignFlowRecipients({
+      campaignId: parsed.data.campaignId,
+      selectedSegmentIds: segmentIds,
+      page: safePage,
+    });
+    resolvedSelectedSegmentIds = resolution.selectedSegmentIds;
+
+    await updateMarketingCampaignFlowDraft(parsed.data.campaignId, {
+      fromName: parsed.data.fromName,
+      fromEmail: parsed.data.fromEmail,
+      replyTo: parsed.data.replyTo || null,
+      categoryId: parsed.data.categoryId ?? null,
+      selectedSegmentIds: resolvedSelectedSegmentIds,
+      currentStep: "STEP_3",
+    });
+  } catch (error) {
+    Sentry.captureException(error);
+    const query = new URLSearchParams();
+    segmentIds.forEach((segmentId) => query.append("segments", segmentId));
+    query.set("page", String(safePage));
+    redirectWithError(
+      `/admin/marketing/campaigns/${parsed.data.campaignId}/target${query.toString() ? `?${query.toString()}` : ""}`,
+      getMarketingActionErrorMessage(error),
+    );
+  }
+
+  const query = new URLSearchParams();
+  resolvedSelectedSegmentIds.forEach((segmentId) => query.append("segments", segmentId));
+  query.set("page", String(safePage));
+  redirect(
+    `/admin/marketing/campaigns/${parsed.data.campaignId}/review${query.toString() ? `?${query.toString()}` : ""}`,
+  );
+}
+
+export async function moveMarketingCampaignFlowToConfirmAction(formData: FormData) {
+  await assertAdminAccess();
+  const campaignId = String(formData.get("campaignId") ?? "").trim();
+  if (!campaignId) {
+    redirectWithError("/admin/marketing/campaigns", "Campaign not found.");
+  }
+
+  const segmentIds = toStringArrayFromEntries(formData.getAll("segments"));
+  const page = Number.parseInt(String(formData.get("page") ?? "1"), 10);
+  const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+
+  const { updateMarketingCampaignFlowDraft } = await import("@/lib/marketing/marketing-service");
+  try {
+    await updateMarketingCampaignFlowDraft(campaignId, { currentStep: "STEP_4" });
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(`/admin/marketing/campaigns/${campaignId}/review`, getMarketingActionErrorMessage(error));
+  }
+
+  const query = new URLSearchParams();
+  segmentIds.forEach((segmentId) => query.append("segments", segmentId));
+  query.set("page", String(safePage));
+  redirect(`/admin/marketing/campaigns/${campaignId}/confirm${query.toString() ? `?${query.toString()}` : ""}`);
+}
+
+export async function markMarketingCampaignFlowSentAction(formData: FormData) {
+  await assertAdminAccess();
+  const campaignId = String(formData.get("campaignId") ?? "").trim();
+  if (!campaignId) {
+    redirectWithError("/admin/marketing/campaigns", "Campaign not found.");
+  }
+
+  const segmentIds = toStringArrayFromEntries(formData.getAll("segments"));
+  const page = Number.parseInt(String(formData.get("page") ?? "1"), 10);
+  const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+
+  const { sendMarketingCampaignFlowNow } = await import("@/lib/marketing/marketing-service");
+  try {
+    await sendMarketingCampaignFlowNow({ campaignId });
+  } catch (error) {
+    Sentry.captureException(error);
+    const query = new URLSearchParams();
+    segmentIds.forEach((segmentId) => query.append("segments", segmentId));
+    query.set("page", String(safePage));
+    redirectWithError(
+      `/admin/marketing/campaigns/${campaignId}/confirm${query.toString() ? `?${query.toString()}` : ""}`,
+      getMarketingActionErrorMessage(error),
+    );
+  }
+
+  const query = new URLSearchParams();
+  segmentIds.forEach((segmentId) => query.append("segments", segmentId));
+  query.set("page", String(safePage));
+  redirect(`/admin/marketing/campaigns/${campaignId}/sent${query.toString() ? `?${query.toString()}` : ""}`);
+}
+
 export async function createMarketingCampaignDraftAction(formData: FormData) {
   const session = await assertAdminAccess();
   const returnTo = "/admin/marketing/campaigns/new";
@@ -1813,6 +2287,133 @@ export async function updateMarketingCategoryAction(formData: FormData) {
   redirect(`${returnTo}?success=${encodeURIComponent("Category updated.")}`);
 }
 
+export async function createMarketingSegmentAction(formData: FormData) {
+  await assertAdminAccess();
+  const returnTo = "/admin/marketing/segments";
+  const { createMarketingSegment } = await import("@/lib/marketing/marketing-service");
+
+  const parsed = marketingSegmentCreateSchema.safeParse({
+    name: formData.get("name"),
+    isActive: isChecked(formData, "isActive"),
+  });
+  if (!parsed.success) {
+    redirectWithError(returnTo, "Segment name is required.");
+  }
+
+  try {
+    await createMarketingSegment(parsed.data);
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(returnTo, getMarketingActionErrorMessage(error));
+  }
+
+  redirect(`${returnTo}?success=${encodeURIComponent("Segment created.")}`);
+}
+
+export async function updateMarketingSegmentAction(formData: FormData) {
+  await assertAdminAccess();
+  const returnTo = "/admin/marketing/segments";
+  const { updateMarketingSegment } = await import("@/lib/marketing/marketing-service");
+
+  const parsed = marketingSegmentUpdateSchema.safeParse({
+    id: formData.get("id"),
+    name: formData.get("name"),
+    isActive: isChecked(formData, "isActive"),
+  });
+  if (!parsed.success) {
+    redirectWithError(returnTo, "Invalid segment payload.");
+  }
+
+  try {
+    await updateMarketingSegment(parsed.data);
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(returnTo, getMarketingActionErrorMessage(error));
+  }
+
+  redirect(`${returnTo}?success=${encodeURIComponent("Segment updated.")}`);
+}
+
+export async function bulkSetClientMarketingSubscriptionStatusAction(formData: FormData) {
+  const session = await assertAdminAccess();
+  const returnTo = "/admin/users";
+
+  const parsed = bulkClientMarketingStatusSchema.safeParse({
+    userIds: toStringArrayFromEntries(formData.getAll("userIds")),
+    marketingSubscriptionStatus: String(formData.get("marketingSubscriptionStatus") ?? "").trim(),
+  });
+  if (!parsed.success) {
+    redirectWithError(returnTo, "Select CLIENT users and a subscription status.");
+  }
+
+  try {
+    await bulkSetClientMarketingSubscriptionStatus({
+      actorUserId: session.user.id,
+      userIds: parsed.data.userIds,
+      status: parsed.data.marketingSubscriptionStatus,
+    });
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(returnTo, getAdminActionErrorMessage(error));
+  }
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Marketing subscription status updated.")}`);
+}
+
+export async function bulkAddClientMarketingSegmentsAction(formData: FormData) {
+  const session = await assertAdminAccess();
+  const returnTo = "/admin/users";
+
+  const parsed = bulkClientMarketingSegmentsSchema.safeParse({
+    userIds: toStringArrayFromEntries(formData.getAll("userIds")),
+    segmentIds: toStringArrayFromEntries(formData.getAll("segmentIds")),
+  });
+  if (!parsed.success) {
+    redirectWithError(returnTo, "Select CLIENT users and at least one segment.");
+  }
+
+  try {
+    await bulkAddClientMarketingSegments({
+      actorUserId: session.user.id,
+      userIds: parsed.data.userIds,
+      segmentIds: parsed.data.segmentIds,
+    });
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(returnTo, getAdminActionErrorMessage(error));
+  }
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Segments added to selected clients.")}`);
+}
+
+export async function bulkRemoveClientMarketingSegmentsAction(formData: FormData) {
+  const session = await assertAdminAccess();
+  const returnTo = "/admin/users";
+
+  const parsed = bulkClientMarketingSegmentsSchema.safeParse({
+    userIds: toStringArrayFromEntries(formData.getAll("userIds")),
+    segmentIds: toStringArrayFromEntries(formData.getAll("segmentIds")),
+  });
+  if (!parsed.success) {
+    redirectWithError(returnTo, "Select CLIENT users and at least one segment.");
+  }
+
+  try {
+    await bulkRemoveClientMarketingSegments({
+      actorUserId: session.user.id,
+      userIds: parsed.data.userIds,
+      segmentIds: parsed.data.segmentIds,
+    });
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(returnTo, getAdminActionErrorMessage(error));
+  }
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Segments removed from selected clients.")}`);
+}
 
 
 

@@ -1,6 +1,9 @@
-﻿import { deleteMarketingCampaignDraftAction, duplicateMarketingCampaignAction } from "@/app/admin/(private)/actions";
+import { deleteMarketingCampaignDraftAction, duplicateMarketingCampaignAction } from "@/app/admin/(private)/actions";
 import MarketingCampaignTable from "@/components/admin/marketing/MarketingCampaignTable";
-import { listMarketingCampaignListItems, type MarketingCampaignPageFilter } from "@/lib/marketing/marketing-service";
+import {
+  listMarketingCampaignListItems,
+  type MarketingCampaignPageFilter,
+} from "@/lib/marketing/marketing-service";
 
 type SearchParams = Promise<{ status?: string; error?: string }>;
 
@@ -71,4 +74,3 @@ export default async function AdminMarketingCampaignsPage({ searchParams }: { se
     </section>
   );
 }
-

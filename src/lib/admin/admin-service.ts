@@ -8,6 +8,7 @@ import {
   EntitlementScope,
   EntitlementType,
   MarketingCampaignStatus,
+  MarketingSubscriptionStatus,
   OrderStatus,
   PaymentProvider,
   PaymentStatus,
@@ -138,6 +139,22 @@ export type AdminMarketingAnalytics = {
   byCampaign: AdminMarketingCampaignMetric[];
 };
 
+export async function resolveAdminActorUser(input: { actorUserId: string }) {
+  const actor = await prisma.user.findUnique({
+    where: { id: input.actorUserId },
+    select: {
+      id: true,
+      role: true,
+    },
+  });
+
+  if (!actor || (actor.role !== Role.ADMIN && actor.role !== Role.MASTER_ADMIN)) {
+    throw new Error("ADMIN_USER_NOT_FOUND");
+  }
+
+  return actor;
+}
+
 export type AdminClassItem = {
   id: string;
   name: string;
@@ -244,6 +261,8 @@ export type AdminUserItem = {
   isActive: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  marketingSubscriptionStatus: MarketingSubscriptionStatus;
+  marketingSegmentNames: string[];
 };
 
 export type AdminUsersRolePageData = {
@@ -262,6 +281,12 @@ export type AdminUsersGroupedPageData = {
   clients: AdminUsersRolePageData;
 };
 
+export type AdminMarketingSegmentOption = {
+  id: string;
+  name: string;
+  isActive: boolean;
+};
+
 export type AdminUserDetail = {
   id: string;
   name: string;
@@ -277,6 +302,8 @@ export type AdminUserDetail = {
   specialties: string[];
   certifications: string[];
   hireDate: string | null;
+  marketingSubscriptionStatus: MarketingSubscriptionStatus;
+  marketingSegmentIds: string[];
 };
 
 export type AdminClientActivityData = {
@@ -3093,6 +3120,8 @@ function mapAdminUserItem(user: {
   isActive: boolean;
   lastLoginAt: Date | null;
   createdAt: Date;
+  marketingSubscriptionStatus: MarketingSubscriptionStatus;
+  marketingSegments: Array<{ segment: { name: string } }>;
 }): AdminUserItem {
   return {
     id: user.id,
@@ -3102,6 +3131,8 @@ function mapAdminUserItem(user: {
     isActive: user.isActive,
     lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
     createdAt: user.createdAt.toISOString(),
+    marketingSubscriptionStatus: user.marketingSubscriptionStatus,
+    marketingSegmentNames: user.marketingSegments.map((item) => item.segment.name).sort((a, b) => a.localeCompare(b)),
   };
 }
 
@@ -3149,6 +3180,16 @@ async function getAdminUsersRolePage(input: {
         isActive: true,
         lastLoginAt: true,
         createdAt: true,
+        marketingSubscriptionStatus: true,
+        marketingSegments: {
+          select: {
+            segment: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
       },
     }),
   ]);
@@ -3222,6 +3263,16 @@ export async function getAdminUsersData(): Promise<AdminUserItem[]> {
       isActive: true,
       lastLoginAt: true,
       createdAt: true,
+      marketingSubscriptionStatus: true,
+      marketingSegments: {
+        select: {
+          segment: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -3240,6 +3291,12 @@ export async function getAdminUserById(id: string): Promise<AdminUserDetail | nu
       role: true,
       isActive: true,
       image: true,
+      marketingSubscriptionStatus: true,
+      marketingSegments: {
+        select: {
+          segmentId: true,
+        },
+      },
       clientProfile: {
         select: {
           phone: true,
@@ -3282,6 +3339,8 @@ export async function getAdminUserById(id: string): Promise<AdminUserDetail | nu
     specialties: user.teacherProfile?.specialties ?? [],
     certifications: user.teacherProfile?.certifications ?? [],
     hireDate: user.teacherProfile?.hireDate?.toISOString() ?? null,
+    marketingSubscriptionStatus: user.marketingSubscriptionStatus,
+    marketingSegmentIds: user.marketingSegments.map((item) => item.segmentId),
   };
 }
 
@@ -3647,6 +3706,8 @@ export async function updateAdminUser(
     certifications?: string[];
     hireDate?: Date | null;
     password?: string;
+    marketingSubscriptionStatus?: MarketingSubscriptionStatus;
+    marketingSegmentIds?: string[];
   },
   actor: {
     id: string;
@@ -3679,7 +3740,9 @@ export async function updateAdminUser(
       }),
     ]);
 
-    if (!actorRecord || (actorRecord.role !== Role.ADMIN && actorRecord.role !== Role.MASTER_ADMIN)) {
+    const actorRole = actorRecord?.role ?? actor.role;
+
+    if (actorRole !== Role.ADMIN && actorRole !== Role.MASTER_ADMIN) {
       throw new Error("ADMIN_USER_NOT_FOUND");
     }
 
@@ -3687,12 +3750,16 @@ export async function updateAdminUser(
       throw new Error("USER_NOT_FOUND");
     }
 
-    if (existing.role === Role.MASTER_ADMIN && actorRecord.role !== Role.MASTER_ADMIN) {
+    if (existing.role === Role.MASTER_ADMIN && actorRole !== Role.MASTER_ADMIN) {
       throw new Error("MASTER_ADMIN_MANAGEMENT_FORBIDDEN");
     }
 
-    if (actorRecord.role === Role.ADMIN && input.role === Role.MASTER_ADMIN) {
+    if (actorRole === Role.ADMIN && input.role === Role.MASTER_ADMIN) {
       throw new Error("MASTER_ADMIN_ASSIGNMENT_FORBIDDEN");
+    }
+
+    if (input.role !== Role.CLIENT && (input.marketingSubscriptionStatus || (input.marketingSegmentIds?.length ?? 0) > 0)) {
+      throw new Error("MARKETING_CLIENT_ONLY");
     }
 
     await tx.user.update({
@@ -3705,6 +3772,9 @@ export async function updateAdminUser(
         isActive: input.isActive,
         isInactive: !input.isActive,
         activationStatus: input.isActive ? "ACTIVE" : "DISABLED",
+        ...(input.role === Role.CLIENT && input.marketingSubscriptionStatus
+          ? { marketingSubscriptionStatus: input.marketingSubscriptionStatus }
+          : {}),
         ...(passwordHash ? { passwordHash } : {}),
       },
     });
@@ -3748,11 +3818,195 @@ export async function updateAdminUser(
           notes: normalizedNotes,
         },
       });
+
+      if (input.role === Role.CLIENT && input.marketingSegmentIds) {
+        const segmentIds = [...new Set(input.marketingSegmentIds.filter(Boolean))];
+        const validSegments = await tx.marketingSegment.findMany({
+          where: { id: { in: segmentIds } },
+          select: { id: true },
+        });
+        const validSegmentIds = validSegments.map((segment) => segment.id);
+
+        await tx.marketingUserSegment.deleteMany({
+          where: { userId: id },
+        });
+
+        if (validSegmentIds.length > 0) {
+          await tx.marketingUserSegment.createMany({
+            data: validSegmentIds.map((segmentId) => ({
+              userId: id,
+              segmentId,
+            })),
+            skipDuplicates: true,
+          });
+        }
+      }
     }
 
     return tx.user.findUnique({
       where: { id },
     });
+  });
+}
+
+async function assertAdminActor(tx: Prisma.TransactionClient, actorId: string) {
+  const actor = await tx.user.findUnique({
+    where: { id: actorId },
+    select: { role: true },
+  });
+
+  if (!actor || (actor.role !== Role.ADMIN && actor.role !== Role.MASTER_ADMIN)) {
+    throw new Error("ADMIN_USER_NOT_FOUND");
+  }
+}
+
+export async function listAdminMarketingSegmentOptions(): Promise<AdminMarketingSegmentOption[]> {
+  const segments = await prisma.marketingSegment.findMany({
+    where: { isActive: true },
+    orderBy: [{ name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      isActive: true,
+    },
+  });
+
+  return segments;
+}
+
+export async function bulkSetClientMarketingSubscriptionStatus(input: {
+  actorUserId: string;
+  userIds: string[];
+  status: MarketingSubscriptionStatus;
+}) {
+  const userIds = [...new Set(input.userIds.filter(Boolean))];
+  if (userIds.length < 1) {
+    throw new Error("USERS_REQUIRED");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await assertAdminActor(tx, input.actorUserId);
+
+    const clientCount = await tx.user.count({
+      where: {
+        id: { in: userIds },
+        role: Role.CLIENT,
+      },
+    });
+
+    if (clientCount !== userIds.length) {
+      throw new Error("MARKETING_CLIENT_ONLY");
+    }
+
+    const updated = await tx.user.updateMany({
+      where: { id: { in: userIds } },
+      data: { marketingSubscriptionStatus: input.status },
+    });
+
+    return updated.count;
+  });
+}
+
+export async function bulkAddClientMarketingSegments(input: {
+  actorUserId: string;
+  userIds: string[];
+  segmentIds: string[];
+}) {
+  const userIds = [...new Set(input.userIds.filter(Boolean))];
+  const segmentIds = [...new Set(input.segmentIds.filter(Boolean))];
+
+  if (userIds.length < 1) {
+    throw new Error("USERS_REQUIRED");
+  }
+  if (segmentIds.length < 1) {
+    throw new Error("SEGMENTS_REQUIRED");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await assertAdminActor(tx, input.actorUserId);
+
+    const [clientCount, segments] = await Promise.all([
+      tx.user.count({
+        where: {
+          id: { in: userIds },
+          role: Role.CLIENT,
+        },
+      }),
+      tx.marketingSegment.findMany({
+        where: { id: { in: segmentIds } },
+        select: { id: true },
+      }),
+    ]);
+
+    if (clientCount !== userIds.length) {
+      throw new Error("MARKETING_CLIENT_ONLY");
+    }
+    if (segments.length !== segmentIds.length) {
+      throw new Error("SEGMENTS_NOT_FOUND");
+    }
+
+    const rows = userIds.flatMap((userId) =>
+      segmentIds.map((segmentId) => ({
+        userId,
+        segmentId,
+      })),
+    );
+
+    const created = await tx.marketingUserSegment.createMany({
+      data: rows,
+      skipDuplicates: true,
+    });
+
+    return created.count;
+  });
+}
+
+export async function bulkRemoveClientMarketingSegments(input: {
+  actorUserId: string;
+  userIds: string[];
+  segmentIds: string[];
+}) {
+  const userIds = [...new Set(input.userIds.filter(Boolean))];
+  const segmentIds = [...new Set(input.segmentIds.filter(Boolean))];
+
+  if (userIds.length < 1) {
+    throw new Error("USERS_REQUIRED");
+  }
+  if (segmentIds.length < 1) {
+    throw new Error("SEGMENTS_REQUIRED");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await assertAdminActor(tx, input.actorUserId);
+
+    const [clientCount, segments] = await Promise.all([
+      tx.user.count({
+        where: {
+          id: { in: userIds },
+          role: Role.CLIENT,
+        },
+      }),
+      tx.marketingSegment.findMany({
+        where: { id: { in: segmentIds } },
+        select: { id: true },
+      }),
+    ]);
+
+    if (clientCount !== userIds.length) {
+      throw new Error("MARKETING_CLIENT_ONLY");
+    }
+    if (segments.length !== segmentIds.length) {
+      throw new Error("SEGMENTS_NOT_FOUND");
+    }
+
+    const deleted = await tx.marketingUserSegment.deleteMany({
+      where: {
+        userId: { in: userIds },
+        segmentId: { in: segmentIds },
+      },
+    });
+
+    return deleted.count;
   });
 }
 

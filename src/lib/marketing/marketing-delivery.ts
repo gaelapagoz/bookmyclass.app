@@ -7,7 +7,7 @@ import { buildTrackingToken, createRecipientTrackingToken, parseRecipientTrackin
 
 const SEND_BATCH_SIZE = 50;
 
-async function sendEmailViaResend(input: {
+export async function sendMarketingEmailViaResend(input: {
   to: string;
   subject: string;
   html: string;
@@ -142,7 +142,7 @@ export async function sendMarketingCampaignNow(campaignId: string) {
             appUrl,
             recipientToken,
           });
-          const providerResult = await sendEmailViaResend({
+          const providerResult = await sendMarketingEmailViaResend({
             to: recipient.email,
             subject: campaign.subject,
             html,
@@ -207,7 +207,7 @@ export async function sendMarketingCampaignTest(input: {
     recipientToken: createRecipientTrackingToken("test-email"),
   });
 
-  const result = await sendEmailViaResend({
+  const result = await sendMarketingEmailViaResend({
     to: input.toEmail.trim().toLowerCase(),
     subject: `[TEST] ${campaign.subject}`,
     html,

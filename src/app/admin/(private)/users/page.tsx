@@ -1,8 +1,13 @@
 import Link from "next/link";
 
+import {
+  bulkAddClientMarketingSegmentsAction,
+  bulkRemoveClientMarketingSegmentsAction,
+  bulkSetClientMarketingSubscriptionStatusAction,
+} from "@/app/admin/(private)/actions";
 import AdminPagination from "@/components/admin/AdminPagination";
 import AdminUsersRoleTable from "@/components/admin/AdminUsersRoleTable";
-import { getAdminUsersData, getAdminUsersGroupedPageData } from "@/lib/admin/admin-service";
+import { getAdminUsersData, getAdminUsersGroupedPageData, listAdminMarketingSegmentOptions } from "@/lib/admin/admin-service";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -102,6 +107,7 @@ export default async function AdminUsersPage({
     };
 
     let data: Awaited<ReturnType<typeof fallbackData>>;
+    const marketingSegments = await listAdminMarketingSegmentOptions();
     if (typeof getAdminUsersGroupedPageData === "function") {
       const grouped = await getAdminUsersGroupedPageData({
         query,
@@ -160,7 +166,23 @@ export default async function AdminUsersPage({
         <div className="space-y-4">
           {sections.map((section) => (
             <div key={section.pageParam} className="space-y-2">
-              <AdminUsersRoleTable title={section.title} users={section.pageData.items} />
+              <AdminUsersRoleTable
+                title={section.title}
+                users={section.pageData.items}
+                marketingBulkActions={
+                  section.pageParam === "clientsPage"
+                    ? {
+                        segments: marketingSegments.map((segment) => ({
+                          id: segment.id,
+                          name: segment.name,
+                        })),
+                        setStatusAction: bulkSetClientMarketingSubscriptionStatusAction,
+                        addSegmentsAction: bulkAddClientMarketingSegmentsAction,
+                        removeSegmentsAction: bulkRemoveClientMarketingSegmentsAction,
+                      }
+                    : undefined
+                }
+              />
               <AdminPagination
                 page={section.pageData.page}
                 totalPages={section.pageData.totalPages}
