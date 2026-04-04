@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { MarketingCampaignStatus } from "@prisma/client";
 
 import {
   generateMarketingCampaignAiDraftAction,
@@ -73,6 +74,9 @@ export default async function AdminMarketingCampaignEditPage({
 
   if (!campaign) {
     notFound();
+  }
+  if (campaign.status === MarketingCampaignStatus.SENT) {
+    redirect(`/admin/marketing/campaigns/${campaign.id}/summary`);
   }
 
   return (

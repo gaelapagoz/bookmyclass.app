@@ -37,8 +37,8 @@ vi.mock("@/auth", () => ({
 vi.mock("@/lib/admin/admin-service", () => ({
   getAdminDashboardData: vi.fn(),
   getAdminDashboardInsights: vi.fn(),
+  getAdminMarketingOverviewMetrics: vi.fn(),
   getDashboardTrendData: vi.fn(),
-  getMarketingAnalytics: vi.fn(),
   getOperationalMetricCards: vi.fn(),
   getAdminClassesData: vi.fn(),
   getAdminSessionsData: vi.fn(),
@@ -57,8 +57,8 @@ import {
   getAdminClassesData,
   getAdminDashboardData,
   getAdminDashboardInsights,
+  getAdminMarketingOverviewMetrics,
   getDashboardTrendData,
-  getMarketingAnalytics,
   getOperationalMetricCards,
   getAdminOnlineLearningData,
   getAdminPlansData,
@@ -93,16 +93,11 @@ import AdminMarketingSegmentsPage from "../../src/app/admin/(private)/marketing/
 describe("Admin pages branching", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getMarketingAnalytics).mockResolvedValue({
+    vi.mocked(getAdminMarketingOverviewMetrics).mockResolvedValue({
+      neverSubscribedClients: 0,
+      subscribedClients: 0,
+      unsubscribedClients: 0,
       campaignsSent: 0,
-      recipients: 0,
-      sent: 0,
-      opened: 0,
-      clicked: 0,
-      unsubscribed: 0,
-      openRate: 0,
-      clickRate: 0,
-      byCampaign: [],
     });
     vi.mocked(getDashboardTrendData).mockResolvedValue([]);
     vi.mocked(listAdminMarketingSegmentOptions).mockResolvedValue([]);
@@ -223,7 +218,7 @@ describe("Admin pages branching", () => {
     expect(vi.mocked(getOperationalMetricCards)).toHaveBeenCalledWith("last30Days");
     expect(vi.mocked(getAdminDashboardInsights)).toHaveBeenCalledWith("last30Days");
     expect(vi.mocked(getDashboardTrendData)).toHaveBeenCalledWith("last30Days");
-    expect(vi.mocked(getMarketingAnalytics)).toHaveBeenCalledWith("last30Days");
+    expect(vi.mocked(getAdminMarketingOverviewMetrics)).toHaveBeenCalledWith();
     expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
     expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
@@ -232,6 +227,12 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Top Clients")).toBeInTheDocument();
     expect(screen.getByText("At-Risk Clients")).toBeInTheDocument();
     expect(screen.getByText("Staff Performance")).toBeInTheDocument();
+    expect(screen.getByText("Never Subscribed")).toBeInTheDocument();
+    expect(screen.getByText("Subscribed")).toBeInTheDocument();
+    expect(screen.getByText("Unsubscribed")).toBeInTheDocument();
+    expect(screen.getByText("Campaigns Sent")).toBeInTheDocument();
+    expect(screen.queryByText("Open rate")).not.toBeInTheDocument();
+    expect(screen.queryByText("Click rate")).not.toBeInTheDocument();
     expect(screen.getByText("Total Sales Trend")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Period" })).toBeInTheDocument();
     expect(screen.getByText("Site Sessions")).toBeInTheDocument();
@@ -262,7 +263,7 @@ describe("Admin pages branching", () => {
     expect(vi.mocked(getOperationalMetricCards)).toHaveBeenCalledWith("last30Days");
     expect(vi.mocked(getAdminDashboardInsights)).toHaveBeenCalledWith("last30Days");
     expect(vi.mocked(getDashboardTrendData)).toHaveBeenCalledWith("last30Days");
-    expect(vi.mocked(getMarketingAnalytics)).toHaveBeenCalledWith("last30Days");
+    expect(vi.mocked(getAdminMarketingOverviewMetrics)).toHaveBeenCalledWith();
     expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
   });
 
@@ -288,7 +289,7 @@ describe("Admin pages branching", () => {
     expect(vi.mocked(getOperationalMetricCards)).toHaveBeenCalledWith("last7Days");
     expect(vi.mocked(getAdminDashboardInsights)).toHaveBeenCalledWith("last7Days");
     expect(vi.mocked(getDashboardTrendData)).toHaveBeenCalledWith("last7Days");
-    expect(vi.mocked(getMarketingAnalytics)).toHaveBeenCalledWith("last7Days");
+    expect(vi.mocked(getAdminMarketingOverviewMetrics)).toHaveBeenCalledWith();
     expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
   });
 
@@ -313,7 +314,7 @@ describe("Admin pages branching", () => {
     expect(vi.mocked(getOperationalMetricCards)).toHaveBeenCalledWith("last90Days");
     expect(vi.mocked(getAdminDashboardInsights)).toHaveBeenCalledWith("last90Days");
     expect(vi.mocked(getDashboardTrendData)).toHaveBeenCalledWith("last90Days");
-    expect(vi.mocked(getMarketingAnalytics)).toHaveBeenCalledWith("last90Days");
+    expect(vi.mocked(getAdminMarketingOverviewMetrics)).toHaveBeenCalledWith();
     expect(vi.mocked(getAdminDashboardData)).toHaveBeenCalledWith();
   });
   it("renders classes empty state", async () => {
@@ -796,6 +797,14 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Unable to load online learning right now.")).toBeInTheDocument();
   });
 });
+
+
+
+
+
+
+
+
 
 
 

@@ -25,6 +25,35 @@ export type MarketingCampaignListItem = {
   clickRate: number;
 };
 
+export type MarketingCampaignListPageItem = {
+  id: string;
+  name: string;
+  categoryName: string;
+  status: MarketingCampaignStatus;
+  sentAt: Date | null;
+  updatedAt: Date;
+  recipientCount: number;
+};
+
+export type MarketingCampaignListPageData = {
+  filter: MarketingCampaignPageFilter;
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  query: string;
+  items: MarketingCampaignListPageItem[];
+};
+
+export type MarketingCampaignGlobalMetrics = {
+  totalCampaigns: number;
+  totalSentCampaigns: number;
+  totalDraftCampaigns: number;
+  sentInLast30Days: number;
+  totalRecipientsReached: number;
+  averageRecipientsPerSentCampaign: number;
+};
+
 export type MarketingCampaignEditorInput = {
   name: string;
   categoryId?: string | null;
@@ -99,6 +128,26 @@ export type MarketingCampaignFlowSentSummary = {
   selectedSegmentIds: string[];
   selectedSegmentNames: string[];
   sentAt: Date | null;
+};
+
+export type MarketingSentCampaignSummary = {
+  campaignId: string;
+  campaignName: string;
+  status: MarketingCampaignStatus;
+  sentAt: Date | null;
+  categoryName: string | null;
+  fromName: string;
+  fromEmail: string;
+  replyTo: string | null;
+  subject: string;
+  previewText: string;
+  selectedSegmentIds: string[];
+  selectedSegmentNames: string[];
+  recipientCount: number;
+  recipientSentCount: number;
+  recipientFailedCount: number;
+  recipientPendingCount: number;
+  htmlSnapshot: string;
 };
 
 export const MARKETING_DAILY_AI_DRAFT_LIMIT = 20;
@@ -905,6 +954,202 @@ export async function getMarketingCampaignFlowSentSummary(campaignId: string): P
     selectedSegmentIds,
     selectedSegmentNames: selectedSegments.map((segment) => segment.name),
     sentAt: campaign.sentAt,
+  };
+}
+
+function toCampaignStatusWhere(filter: MarketingCampaignPageFilter): Prisma.MarketingCampaignWhereInput {
+  if (filter === "sent") {
+    return { status: MarketingCampaignStatus.SENT };
+  }
+  if (filter === "draft") {
+    return { status: MarketingCampaignStatus.DRAFT };
+  }
+  return {};
+}
+
+export async function getMarketingCampaignGlobalMetrics(now: Date = new Date()): Promise<MarketingCampaignGlobalMetrics> {
+  const sentInLast30DaysStart = new Date(now);
+  sentInLast30DaysStart.setDate(sentInLast30DaysStart.getDate() - 30);
+
+  const [totalCampaigns, totalSentCampaigns, totalDraftCampaigns, sentInLast30Days, totalRecipientsReached] = await Promise.all([
+    prisma.marketingCampaign.count(),
+    prisma.marketingCampaign.count({
+      where: { status: MarketingCampaignStatus.SENT },
+    }),
+    prisma.marketingCampaign.count({
+      where: { status: MarketingCampaignStatus.DRAFT },
+    }),
+    prisma.marketingCampaign.count({
+      where: {
+        status: MarketingCampaignStatus.SENT,
+        sentAt: { gte: sentInLast30DaysStart },
+      },
+    }),
+    prisma.marketingCampaignRecipient.count({
+      where: { campaign: { status: MarketingCampaignStatus.SENT } },
+    }),
+  ]);
+
+  return {
+    totalCampaigns,
+    totalSentCampaigns,
+    totalDraftCampaigns,
+    sentInLast30Days,
+    totalRecipientsReached,
+    averageRecipientsPerSentCampaign:
+      totalSentCampaigns > 0 ? Number((totalRecipientsReached / totalSentCampaigns).toFixed(1)) : 0,
+  };
+}
+
+export async function getMarketingCampaignListPageData(input: {
+  page: number;
+  pageSize?: number;
+  filter: MarketingCampaignPageFilter;
+  query?: string;
+}): Promise<MarketingCampaignListPageData> {
+  const pageSize = Math.max(1, Math.min(input.pageSize ?? 20, 100));
+  const page = Math.max(1, Math.floor(input.page));
+  const query = input.query?.trim() ?? "";
+
+  const where: Prisma.MarketingCampaignWhereInput = {
+    ...toCampaignStatusWhere(input.filter),
+    ...(query
+      ? {
+        OR: [
+          {
+            name: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+          {
+            subject: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+          {
+            category: {
+              is: {
+                name: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            },
+          },
+        ],
+      }
+      : {}),
+  };
+
+  const totalItems = await prisma.marketingCampaign.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const skip = (safePage - 1) * pageSize;
+
+  const rows = await prisma.marketingCampaign.findMany({
+    where,
+    orderBy: [{ updatedAt: "desc" }],
+    skip,
+    take: pageSize,
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      sentAt: true,
+      updatedAt: true,
+      category: {
+        select: {
+          name: true,
+        },
+      },
+      _count: {
+        select: {
+          recipients: true,
+        },
+      },
+    },
+  });
+
+  return {
+    filter: input.filter,
+    query,
+    page: safePage,
+    pageSize,
+    totalItems,
+    totalPages,
+    items: rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      categoryName: row.category?.name ?? "-",
+      status: row.status,
+      sentAt: row.sentAt,
+      updatedAt: row.updatedAt,
+      recipientCount: row._count.recipients,
+    })),
+  };
+}
+
+export async function getMarketingSentCampaignSummaryById(campaignId: string): Promise<MarketingSentCampaignSummary | null> {
+  const campaign = await prisma.marketingCampaign.findUnique({
+    where: { id: campaignId },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      sentAt: true,
+      manualAudienceJson: true,
+      fromName: true,
+      fromEmail: true,
+      replyTo: true,
+      subject: true,
+      previewText: true,
+      htmlSnapshot: true,
+      contentJson: true,
+      category: { select: { name: true } },
+      recipients: {
+        select: {
+          status: true,
+        },
+      },
+    },
+  });
+  if (!campaign) {
+    return null;
+  }
+
+  const selectedSegmentIds = readFlowMeta(campaign.manualAudienceJson).selectedSegmentIds ?? [];
+  const selectedSegments = selectedSegmentIds.length
+    ? await prisma.marketingSegment.findMany({
+      where: { id: { in: selectedSegmentIds } },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    })
+    : [];
+
+  const recipientSentCount = campaign.recipients.filter((recipient) => recipient.status === MarketingRecipientStatus.SENT).length;
+  const recipientFailedCount = campaign.recipients.filter((recipient) => recipient.status === MarketingRecipientStatus.FAILED).length;
+  const recipientPendingCount = campaign.recipients.filter((recipient) => recipient.status === MarketingRecipientStatus.PENDING).length;
+
+  return {
+    campaignId: campaign.id,
+    campaignName: campaign.name,
+    status: campaign.status,
+    sentAt: campaign.sentAt,
+    categoryName: campaign.category?.name ?? null,
+    fromName: campaign.fromName,
+    fromEmail: campaign.fromEmail,
+    replyTo: campaign.replyTo,
+    subject: campaign.subject,
+    previewText: campaign.previewText,
+    selectedSegmentIds,
+    selectedSegmentNames: selectedSegments.map((segment) => segment.name),
+    recipientCount: campaign.recipients.length,
+    recipientSentCount,
+    recipientFailedCount,
+    recipientPendingCount,
+    htmlSnapshot: campaign.htmlSnapshot?.trim() || renderMarketingPreviewHtml(normalizeMarketingContentJson(campaign.contentJson)),
   };
 }
 

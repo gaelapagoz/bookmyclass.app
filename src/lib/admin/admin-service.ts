@@ -139,6 +139,13 @@ export type AdminMarketingAnalytics = {
   byCampaign: AdminMarketingCampaignMetric[];
 };
 
+export type AdminMarketingOverviewMetrics = {
+  neverSubscribedClients: number;
+  subscribedClients: number;
+  unsubscribedClients: number;
+  campaignsSent: number;
+};
+
 export async function resolveAdminActorUser(input: { actorUserId: string }) {
   const actor = await prisma.user.findUnique({
     where: { id: input.actorUserId },
@@ -1335,6 +1342,41 @@ export async function getMarketingAnalytics(period: AdminPeriod): Promise<AdminM
     openRate: sent > 0 ? Number(((opened / sent) * 100).toFixed(1)) : 0,
     clickRate: sent > 0 ? Number(((clicked / sent) * 100).toFixed(1)) : 0,
     byCampaign,
+  };
+}
+
+export async function getAdminMarketingOverviewMetrics(): Promise<AdminMarketingOverviewMetrics> {
+  const [neverSubscribedClients, subscribedClients, unsubscribedClients, campaignsSent] = await Promise.all([
+    prisma.user.count({
+      where: {
+        role: Role.CLIENT,
+        marketingSubscriptionStatus: MarketingSubscriptionStatus.NEVER_SUBSCRIBED,
+      },
+    }),
+    prisma.user.count({
+      where: {
+        role: Role.CLIENT,
+        marketingSubscriptionStatus: MarketingSubscriptionStatus.SUBSCRIBED,
+      },
+    }),
+    prisma.user.count({
+      where: {
+        role: Role.CLIENT,
+        marketingSubscriptionStatus: MarketingSubscriptionStatus.UNSUBSCRIBED,
+      },
+    }),
+    prisma.marketingCampaign.count({
+      where: {
+        status: MarketingCampaignStatus.SENT,
+      },
+    }),
+  ]);
+
+  return {
+    neverSubscribedClients,
+    subscribedClients,
+    unsubscribedClients,
+    campaignsSent,
   };
 }
 
