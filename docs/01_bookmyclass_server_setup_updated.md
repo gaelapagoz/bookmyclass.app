@@ -1,5 +1,10 @@
 # 🚀 Server Application Setup – BookMyClass (Run App + Bootstrap)
 
+> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+
+Scope: application runtime bootstrap only (Node, PM2, DB container start, env, build, nginx, SSL).
+
+
 This document starts **after** base server setup (SSH, firewall, etc.).
 
 ---
@@ -80,14 +85,14 @@ su - deploy
 ## 7. Start PostgreSQL
 
 ```bash
-docker run -d   --name bookmyclass-app-postgres   --restart unless-stopped   -e POSTGRES_DB=bookmyclass-app-db   -e POSTGRES_USER=bookmyclass-app-user   -e POSTGRES_PASSWORD='bookmyclass-app-password'   -p 5432:5432   -v pgdata:/var/lib/postgresql/data   postgres:16
+docker run -d   --name <db-container-from-deployment-baseline>   --restart unless-stopped   -e POSTGRES_DB=<db-name-from-deployment-baseline>   -e POSTGRES_USER=<db-user-from-deployment-baseline>   -e POSTGRES_PASSWORD='bookmyclass-app-password'   -p 5432:5432   -v pgdata:/var/lib/postgresql/data   postgres:16
 ```
 
 Validate:
 
 ```bash
 docker ps
-docker logs bookmyclass-app-postgres --tail 50
+docker logs <db-container-from-deployment-baseline> --tail 50
 ```
 
 ---
@@ -114,9 +119,9 @@ Example:
 NODE_ENV=production
 PORT=3000
 
-DATABASE_URL=postgresql://bookmyclass-app-user:bookmyclass-app-password@localhost:5432/bookmyclass-app-db?schema=public
+DATABASE_URL=postgresql://<db-user-from-deployment-baseline>:<db-password>@localhost:5432/<db-name-from-deployment-baseline>?schema=public
 
-NEXTAUTH_SECRET=xxx
+AUTH_SECRET=xxx
 NEXTAUTH_URL=https://bookmyclass.app
 
 STRIPE_SECRET_KEY=xxx
@@ -161,7 +166,7 @@ npx prisma db seed
 ## 11.6 Validate DB
 
 ```bash
-docker exec -it bookmyclass-app-postgres psql -U bookmyclass-app-user -d bookmyclass-app-db -c "\dt"
+docker exec -it <db-container-from-deployment-baseline> psql -U <db-user-from-deployment-baseline> -d <db-name-from-deployment-baseline> -c "\\dt"
 ```
 
 ---
@@ -252,3 +257,7 @@ pm2 restart bookmyclass-app --update-env
 - Nginx working
 - HTTPS working
 - Stripe working
+
+
+
+

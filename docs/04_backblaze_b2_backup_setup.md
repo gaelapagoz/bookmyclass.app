@@ -1,5 +1,8 @@
 # ☁️ Offsite Backup – Backblaze B2 (BookMyClass)
 
+> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+
+
 This guide configures automatic upload of your DB backups to Backblaze B2.
 
 ---
@@ -129,3 +132,4 @@ Check bucket → file should appear.
 - Files appear daily in Backblaze
 - Upload script runs without error
 - Restore test possible from B2
+

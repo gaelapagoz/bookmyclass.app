@@ -1,6 +1,21 @@
 
 # System Baseline
 
+## Canonical Source Priority
+- Priority 1: this file (`system-baseline.md`) for architecture/current-state truth and active capability status.
+- Priority 2: [`deployment-baseline.md`](/c:/Dev/studio.saas.platform/docs/deployment-baseline.md) for canonical deployment/runtime facts.
+- Priority 3: `business-rules.md`, `domain-rules.md`, `subscription-domain-rules.md` for business/modeling truth.
+- Priority 4: `codex-rulebook.md` for implementation behavior constraints.
+- Priority 5: `testing-rulebook.md` and `testing-checklist.md` for testing expectations.
+- Priority 6: setup/runbook files (`00`, `01`, `02`, `03`, `04`, `05`, `06`, `07`, `20`, `21`, `22`) as procedural guides only.
+
+If a setup/runbook file conflicts with this baseline or deployment baseline, treat the runbook value as non-canonical and request operator confirmation.
+
+## Canonical Production Facts
+- Canonical runtime/deployment fact sheet: [`deployment-baseline.md`](/c:/Dev/studio.saas.platform/docs/deployment-baseline.md).
+- This file remains the source for architecture and active-flow status, while deployment baseline is the source for live runtime values (host/IP, container naming, ports, cron, secrets naming).
+- Known modeled-but-not-fully-active flows are tracked in [`known-non-goals.md`](/c:/Dev/studio.saas.platform/docs/known-non-goals.md).
+
 Evidence label legend used in this file:
 - `Confirmed from repo`: directly evidenced in code/config/scripts committed in this repository.
 - `Confirmed from deployment/config artifacts`: evidenced in committed operational/deployment documents or scripts.

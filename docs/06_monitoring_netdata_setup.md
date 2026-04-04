@@ -1,5 +1,8 @@
 # Netdata Configuration for BookMyClass
 
+> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+
+
 ## Goal
 Use Netdata as the private host-monitoring dashboard for CPU, RAM, disk, and process visibility.
 
@@ -65,7 +68,7 @@ This should return JSON.
 ## Access the dashboard safely
 Use an SSH tunnel from your local machine:
 ```bash
-ssh -L 19999:127.0.0.1:19999 deploy@bookmyclass-prod
+ssh -L 19999:127.0.0.1:19999 deploy@<canonical-prod-host-from-deployment-baseline>
 ```
 
 Then open:
@@ -165,3 +168,5 @@ Do **not** run aggressive RAM stress tests on production.
 - Keep `/api/health` in Uptime Kuma as the main availability signal
 - Keep `checks.bookmyclass.app` for daily backup heartbeat only
 - Review CPU, RAM, and disk quickly once per day during beta
+
+

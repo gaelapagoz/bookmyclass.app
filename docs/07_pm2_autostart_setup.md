@@ -1,5 +1,10 @@
 # PM2 Auto-Start Setup for BookMyClass
 
+> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+
+Scope: PM2 startup persistence and reboot validation only.
+
+
 ## Goal
 Ensure the Next.js app starts automatically after a server reboot.
 
@@ -129,3 +134,5 @@ journalctl -u pm2-deploy -b --no-pager
 - keep PM2 owned by `deploy`, not `root`
 - keep nginx separate as the public entrypoint
 - treat reboot validation as mandatory whenever startup behavior changes
+
+

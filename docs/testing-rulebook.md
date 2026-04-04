@@ -11,6 +11,15 @@ Applies to all feature, bugfix, and refactor work touching:
 - API routes and domain services
 - page-level branching behavior
 
+## Release-Critical Flows
+These areas are release-critical and require explicit coverage whenever touched:
+- auth (sign-in, verification, protection gates)
+- booking (draft, eligibility, confirm/cancel paths)
+- checkout (session creation and success reconciliation)
+- webhook (Stripe signature, idempotent processing, failure handling)
+- cancellation (before cutoff vs late cancellation behavior)
+- admin mutations (authorization + validation + persistence behavior)
+
 ## When Tests Are Required
 Add or update tests when a change modifies:
 - business/domain logic in services or server actions
@@ -71,4 +80,6 @@ A change is done only when:
 2. New behavior is asserted (not implied).
 3. Existing impacted tests still pass.
 4. Commands to run relevant tests are documented in the PR/task summary.
-5. No critical path (auth, booking, payments, learning routes) is left without coverage for changed behavior.
+5. No critical path (auth, booking, checkout, webhook, cancellation, admin mutations) is left without coverage for changed behavior.
+6. Handoff summary states exactly what tests were run.
+7. If any high-risk area was intentionally skipped, handoff summary states the skipped area and why.

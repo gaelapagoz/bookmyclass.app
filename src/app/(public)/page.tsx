@@ -127,15 +127,23 @@ export default async function HomePage({
               <article key={entry.day} className="rounded-2xl border border-[#eee3db] bg-[#fff] p-4">
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-[#6e3232]">{entry.day}</h3>
                 {entry.classes.length > 0 ? (
-                  <ul className="mt-3 space-y-3 text-sm leading-relaxed text-[#5f504b]">
-                    {entry.classes.map((className) => (
-                      <li key={className} className="rounded-xl bg-[#faf4ef] px-3 py-2">
-                        {className}
-                      </li>
-                    ))}
+                  <ul className="mt-2 space-y-2 text-sm leading-relaxed text-[#5f504b]">
+                    {entry.classes.map((classEntry) => {
+                      const [time, ...classNameParts] = classEntry.split(" ");
+                      const className = classNameParts.join(" ");
+
+                      return (
+                        <li key={classEntry} className="rounded-xl bg-[#faf4ef] px-3 py-2">
+                          <p className="whitespace-nowrap text-[12px] font-medium leading-tight text-[#5f504b]">{time}</p>
+                          <p className="mt-1 text-[12px] leading-tight text-neutral-700">
+                            {className}
+                          </p>
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : (
-                  <p className="mt-3 text-sm text-[#9a8680]">No classes</p>
+                  <p className="mt-2 text-sm text-[#9a8680]">No classes</p>
                 )}
               </article>
             ))}

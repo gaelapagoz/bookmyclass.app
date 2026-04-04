@@ -1,5 +1,10 @@
 # 🚀 Server Setup – BookMyClass (Hetzner CPX23)
 
+> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+
+Scope: initial host bootstrap only (server creation, SSH, firewall hardening). Application runtime setup is covered in docs/01_bookmyclass_server_setup_updated.md.
+
+
 ## 1. Server Creation
 
 * Provider: Hetzner Cloud
@@ -51,8 +56,7 @@ systemctl restart ssh
 ## 3. SSH Connection
 
 ```bash
-ssh -i ~/.ssh/bookmyclass_hetzner root@46.62.208.152
-ssh -i ~/.ssh/bookmyclass_hetzner root@37.27.192.11
+ssh -i ~/.ssh/bookmyclass_hetzner root@<canonical-prod-host-from-deployment-baseline>
 ```
 
 ---
@@ -159,3 +163,6 @@ systemctl restart ssh
 * Secure SSH access (key only)
 * Dual firewall protection
 * Production-ready base server
+
+
+

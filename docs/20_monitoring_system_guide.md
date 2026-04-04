@@ -1,5 +1,16 @@
 # Monitoring System Guide
 
+> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+
+Scope: monitoring operating model and incident triage flow only.
+
+## Day-to-Day Host Quick Reference
+
+- Primary host used in current ops commands: `46.62.208.152`
+- Alternate host seen in existing ops docs: `37.27.192.11`
+- If host assignments changed, update `docs/deployment-baseline.md` and this section together.
+
+
 ## Purpose
 
 This monitoring setup is designed to answer three different questions without overlapping responsibilities:
@@ -149,7 +160,7 @@ This is not your first alerting screen. It is where you go when you need to unde
 Use SSH tunnel:
 
 ```bash
-ssh -L 19999:127.0.0.1:19999 deploy@YOUR_SERVER_IP
+ssh -L 19999:127.0.0.1:19999 deploy@46.62.208.152
 ```
 
 Then open:
@@ -432,3 +443,5 @@ npm run ops:verify-production-readiness -- \
   - any required confirmation flag is missing
   - `/api/health` does not return `200`
   - command exits non-zero in all fail cases
+
+

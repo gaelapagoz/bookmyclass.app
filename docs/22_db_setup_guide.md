@@ -1,12 +1,23 @@
 # Database Setup Guide (Docker-Based Production Server)
 
-This guide explains the correct setup for the **database on the server when PostgreSQL runs in Docker**, and how to access it safely with Prisma and Prisma Studio.
+> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+
+Scope: Docker PostgreSQL setup, Prisma migration flow, and private admin access only.
+
+## Day-to-Day Host Quick Reference
+
+- Primary host used in current DB access commands: `46.62.208.152`
+- Alternate host seen in existing ops docs: `37.27.192.11`
+- If host assignments changed, update `docs/deployment-baseline.md` and this section together.
+
+
+This guide explains a recommended procedure for server database setup when PostgreSQL runs in Docker, and how to access it safely with Prisma and Prisma Studio.
 
 ---
 
 ## Overview
 
-This production setup uses:
+This procedure assumes:
 
 - **PostgreSQL inside a Docker container**
 - **App running on the server**
@@ -50,11 +61,11 @@ Example:
 services:
   postgres:
     image: postgres:16
-    container_name: bookmyclass-postgres
+    container_name: <db-container-from-deployment-baseline>
     restart: unless-stopped
     environment:
-      POSTGRES_DB: bookmyclass
-      POSTGRES_USER: bookmyclass_user
+      POSTGRES_DB: <db-name-from-deployment-baseline>
+      POSTGRES_USER: <db-user-from-deployment-baseline>
       POSTGRES_PASSWORD: CHANGE_THIS_STRONG_PASSWORD
     volumes:
       - ~/bookmyclass/postgres-data:/var/lib/postgresql/data
@@ -62,7 +73,7 @@ services:
       - "127.0.0.1:5432:5432"
 ```
 
-### Why this is the correct setup
+### Why this procedure is practical
 - Data is persistent
 - DB restarts automatically
 - Port is bound to `127.0.0.1`, not public internet
@@ -82,7 +93,7 @@ Check that it is running:
 docker ps
 ```
 
-You should see the `bookmyclass-postgres` container up.
+You should see the `<db-container-from-deployment-baseline>` container up.
 
 ---
 
@@ -91,7 +102,7 @@ You should see the `bookmyclass-postgres` container up.
 In the app `.env` on the server:
 
 ```env
-DATABASE_URL="postgresql://bookmyclass_user:CHANGE_THIS_STRONG_PASSWORD@localhost:5432/bookmyclass"
+DATABASE_URL="postgresql://<db-user-from-deployment-baseline>:<db-password>@localhost:5432/<db-name-from-deployment-baseline>"
 ```
 
 ### Important
@@ -104,7 +115,7 @@ Use `localhost:5432` on the server because Docker exposes the container port to 
 From the server, test access:
 
 ```bash
-docker exec -it bookmyclass-postgres psql -U bookmyclass_user -d bookmyclass
+docker exec -it <db-container-from-deployment-baseline> psql -U <db-user-from-deployment-baseline> -d <db-name-from-deployment-baseline>
 ```
 
 If this opens `psql`, the DB is working.
@@ -146,7 +157,7 @@ This ensures the app uses the current schema.
 From the app project root:
 
 ```bash
-npx prisma studio --port 51212 --hostname 127.0.0.1
+npx prisma studio --port <prisma-studio-port-from-deployment-baseline> --hostname 127.0.0.1
 npx prisma studio --browser none
 ```
 
@@ -162,13 +173,13 @@ npx prisma studio --browser none
 Open the SSH tunnel from your local machine:
 
 ```bash
-ssh -L 51212:localhost:51212 deploy@46.62.208.152
+ssh -L <local-port>:localhost:<prisma-studio-port-from-deployment-baseline> deploy@46.62.208.152
 ```
 
 Then open in your local browser:
 
 ```text
-http://localhost:51212
+http://localhost:<local-port>
 ```
 
 ---
@@ -185,8 +196,8 @@ Then connect from your DB client with:
 
 - Host: `localhost`
 - Port: `5432`
-- Database: `bookmyclass`
-- User: `bookmyclass_user`
+- Database: `<db-name-from-deployment-baseline>`
+- User: `<db-user-from-deployment-baseline>`
 - Password: the PostgreSQL password
 
 ---
@@ -200,17 +211,17 @@ docker ps
 
 ### View DB logs
 ```bash
-docker logs bookmyclass-postgres
+docker logs <db-container-from-deployment-baseline>
 ```
 
 ### Restart DB container
 ```bash
-docker restart bookmyclass-postgres
+docker restart <db-container-from-deployment-baseline>
 ```
 
 ### Open psql inside the container
 ```bash
-docker exec -it bookmyclass-postgres psql -U bookmyclass_user -d bookmyclass
+docker exec -it <db-container-from-deployment-baseline> psql -U <db-user-from-deployment-baseline> -d <db-name-from-deployment-baseline>
 ```
 
 ---
@@ -234,7 +245,7 @@ docker exec -it bookmyclass-postgres psql -U bookmyclass_user -d bookmyclass
 - [ ] DB port is bound only to `127.0.0.1`
 - [ ] `DATABASE_URL` is correct
 - [ ] Prisma migrations applied
-- [ ] Prisma Studio started on `127.0.0.1:51212`
+- [ ] Prisma Studio started on `127.0.0.1:<prisma-studio-port-from-deployment-baseline>`
 - [ ] SSH tunnel works locally
 
 ---
@@ -243,3 +254,8 @@ docker exec -it bookmyclass-postgres psql -U bookmyclass_user -d bookmyclass
 
 > Keep PostgreSQL private, Dockerized, and persistent.  
 > Use Prisma migrations as the only schema change path.
+
+
+
+
+

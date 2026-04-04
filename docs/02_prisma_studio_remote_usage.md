@@ -1,5 +1,8 @@
 # 🔍 Prisma Studio – Remote Access (Safe Usage for Testing)
 
+> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+
+
 This guide explains how to run **Prisma Studio on your production server** and access it safely from your local machine.
 
 ---
@@ -41,13 +44,13 @@ SSH into your server and run:
 
 ```bash
 cd /var/www/bookmyclass
-BROWSER=none npx prisma studio --port 5555
+BROWSER=none npx prisma studio --port <prisma-studio-port-from-deployment-baseline>
 ```
 
 You should see:
 
 ```text
-Prisma Studio is running at http://localhost:5555
+Prisma Studio is running at http://localhost:<prisma-studio-port-from-deployment-baseline>
 ```
 
 Leave this terminal open.
@@ -59,13 +62,13 @@ Leave this terminal open.
 On your LOCAL computer (not the server), run:
 
 ```bash
-ssh -i ~/.ssh/bookmyclass_hetzner -L 5555:localhost:5555 deploy@YOUR_SERVER_IP
+ssh -i ~/.ssh/bookmyclass_hetzner -L <local-port>:localhost:<prisma-studio-port-from-deployment-baseline> deploy@<canonical-prod-host-from-deployment-baseline>
 ```
 
 Example:
 
 ```bash
-ssh -i ~/.ssh/bookmyclass_hetzner -L 5555:localhost:5555 deploy@46.62.208.152
+ssh -i ~/.ssh/bookmyclass_hetzner -L <local-port>:localhost:<prisma-studio-port-from-deployment-baseline> deploy@<canonical-prod-host-from-deployment-baseline>
 ```
 
 Leave this terminal open.
@@ -77,7 +80,7 @@ Leave this terminal open.
 On your local machine, open:
 
 ```text
-http://localhost:5555
+http://localhost:<prisma-studio-port-from-deployment-baseline>
 ```
 
 You should now see your database.
@@ -101,7 +104,7 @@ You should now see your database.
 Check server:
 
 ```bash
-ss -ltnp | grep 5555
+ss -ltnp | grep <prisma-studio-port-from-deployment-baseline>
 ```
 
 If nothing shows → Prisma Studio not running
@@ -114,12 +117,12 @@ Use a different local port:
 
 Server:
 ```bash
-BROWSER=none npx prisma studio --port 5555
+BROWSER=none npx prisma studio --port <prisma-studio-port-from-deployment-baseline>
 ```
 
 Local:
 ```bash
-ssh -L 5556:localhost:5555 deploy@YOUR_SERVER_IP
+ssh -L 5556:localhost:<prisma-studio-port-from-deployment-baseline> deploy@<canonical-prod-host-from-deployment-baseline>
 ```
 
 Browser:
@@ -164,3 +167,6 @@ npx prisma db seed
 - Use only for debugging
 - Do not keep it running permanently
 - Always close tunnel when done
+
+
+

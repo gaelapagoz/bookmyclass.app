@@ -1,6 +1,9 @@
 # 📡 Monitoring + Alerting Setup – BookMyClass
 
-This guide defines the **actual beta-stage monitoring setup** for BookMyClass.
+> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+
+
+This guide defines a practical beta-stage monitoring procedure for BookMyClass.
 
 The goal is not enterprise observability.
 The goal is to detect the failures that actually matter:
@@ -131,13 +134,13 @@ PM2 auto-start should already be configured separately.
 
 ## 4. Server Health Check Script
 
-Actual script path:
+Canonical script path reference:
 
 ```bash
 /usr/local/bin/bookmyclass-healthcheck.sh
 ```
 
-Actual behavior:
+Expected script behavior:
 - checks local app health
 - checks PM2 process as `deploy`
 - checks disk usage
@@ -226,7 +229,7 @@ Use **root crontab**, not deploy crontab:
 sudo crontab -e
 ```
 
-Actual cron entry:
+Canonical cron reference:
 
 ```cron
 */5 * * * * /usr/local/bin/bookmyclass-healthcheck.sh >> /var/log/bookmyclass-healthcheck.log 2>&1
@@ -280,7 +283,7 @@ This script does:
 - Healthchecks heartbeat
 - local retention cleanup
 
-The real root cron entry is:
+Canonical backup cron reference is:
 
 ```cron
 30 2 * * * /usr/local/bin/bookmyclass-db-backup-run.sh >> /var/log/bookmyclass-db-backup.log 2>&1
@@ -450,3 +453,5 @@ After this, the next hardening step should be:
 - rollout checklist
 
 Not a bigger monitoring stack.
+
+

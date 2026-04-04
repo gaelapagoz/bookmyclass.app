@@ -1,5 +1,8 @@
 # 💾 Database Backup Setup (Local) – BookMyClass
 
+> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+
+
 This guide sets up **automated daily PostgreSQL backups** on your server.
 
 ---
@@ -35,11 +38,11 @@ set -Eeuo pipefail
 
 BACKUP_DIR="/var/backups/bookmyclass-postgres"
 TIMESTAMP="$(date -u +%Y-%m-%d_%H-%M-%S)"
-FILENAME="bookmyclass-app-db_${TIMESTAMP}.sql.gz"
+FILENAME="<db-name-from-deployment-baseline>_${TIMESTAMP}.sql.gz"
 
-CONTAINER_NAME="bookmyclass-app-postgres"
-POSTGRES_DB="bookmyclass-app-db"
-POSTGRES_USER="bookmyclass-app-user"
+CONTAINER_NAME="<db-container-from-deployment-baseline>"
+POSTGRES_DB="<db-name-from-deployment-baseline>"
+POSTGRES_USER="<db-user-from-deployment-baseline>"
 
 mkdir -p "$BACKUP_DIR"
 
@@ -85,25 +88,25 @@ gzip -cd /var/backups/bookmyclass-postgres/YOUR_FILE.sql.gz | head -n 20
 Create test DB:
 
 ```bash
-docker exec -it bookmyclass-app-postgres psql -U bookmyclass-app-user -d postgres -c "CREATE DATABASE bookmyclass_restore_test;"
+docker exec -it <db-container-from-deployment-baseline> psql -U <db-user-from-deployment-baseline> -d postgres -c "CREATE DATABASE bookmyclass_restore_test;"
 ```
 
 Restore:
 
 ```bash
-gzip -cd /var/backups/bookmyclass-postgres/YOUR_FILE.sql.gz | docker exec -i bookmyclass-app-postgres psql -U bookmyclass-app-user -d bookmyclass_restore_test
+gzip -cd /var/backups/bookmyclass-postgres/YOUR_FILE.sql.gz | docker exec -i <db-container-from-deployment-baseline> psql -U <db-user-from-deployment-baseline> -d bookmyclass_restore_test
 ```
 
 Verify:
 
 ```bash
-docker exec -it bookmyclass-app-postgres psql -U bookmyclass-app-user -d bookmyclass_restore_test -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';"
+docker exec -it <db-container-from-deployment-baseline> psql -U <db-user-from-deployment-baseline> -d bookmyclass_restore_test -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';"
 ```
 
 Cleanup:
 
 ```bash
-docker exec -it bookmyclass-app-postgres psql -U bookmyclass-app-user -d postgres -c "DROP DATABASE bookmyclass_restore_test;"
+docker exec -it <db-container-from-deployment-baseline> psql -U <db-user-from-deployment-baseline> -d postgres -c "DROP DATABASE bookmyclass_restore_test;"
 ```
 
 ---
@@ -136,3 +139,5 @@ Add:
 - Does NOT protect against server loss
 
 👉 Use Backblaze setup for offsite protection
+
+

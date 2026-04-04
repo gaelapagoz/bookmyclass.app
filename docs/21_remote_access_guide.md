@@ -1,5 +1,10 @@
 # Remote Access Guide (SSH Tunnels)
 
+> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+
+Scope: secure remote access and SSH tunnel procedures only.
+
+
 This document explains how to securely access internal services (database, Prisma Studio, monitoring) on the production server without exposing them publicly.
 
 ---
@@ -19,7 +24,9 @@ This ensures:
 
 - SSH access configured
 - Private key available (`~/.ssh/bookmyclass_hetzner`)
-- Server IP: `46.62.208.152`
+- Server host/IP: `46.62.208.152` (day-to-day)
+- Alternate host/IP seen in existing ops docs: `37.27.192.11`
+- If these differ from current infra, confirm and update `docs/deployment-baseline.md`
 
 ---
 
@@ -163,3 +170,6 @@ ssh -L 51212:localhost:51212 \
 
 > Keep all sensitive services private.  
 > Use SSH tunnels as the only access layer.
+
+
+

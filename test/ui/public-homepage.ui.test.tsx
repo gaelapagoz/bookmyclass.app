@@ -35,7 +35,8 @@ describe("public homepage schedule", () => {
 
     expect(vi.mocked(getHomeAgendaTableFromSchedule)).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("heading", { name: "Weekly Agenda" })).toBeInTheDocument();
-    expect(screen.getByText("18:00-19:00 Pilates")).toBeInTheDocument();
+    expect(screen.getByText("18:00-19:00")).toBeInTheDocument();
+    expect(screen.getByText("Pilates")).toBeInTheDocument();
     expect(screen.getAllByText("No classes").length).toBeGreaterThan(0);
 
     for (const day of ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]) {
