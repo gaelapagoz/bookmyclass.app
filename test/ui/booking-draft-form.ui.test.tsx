@@ -328,6 +328,8 @@ describe("BookingDraftForm", () => {
 
     render(<BookingDraftForm {...baseProps} />);
 
+    await screen.findByText("No payment options are currently available for this booking.");
+
     expect(screen.getByText("Class")).toBeInTheDocument();
     expect(screen.getByText("Vinyasa Yoga")).toBeInTheDocument();
     expect(screen.getByText("Date & Time")).toBeInTheDocument();
@@ -341,5 +343,9 @@ describe("BookingDraftForm", () => {
     expect(screen.queryByText("Booking Type")).not.toBeInTheDocument();
   });
 });
+
+
+
+
 
 

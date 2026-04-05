@@ -1,0 +1,138 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - link "Yoga Pilates Fitness Studio logo Yoga Pilates Fitness Studio Brussels Yoga, Pilates & Fitness" [ref=e6] [cursor=pointer]:
+          - /url: /
+          - img "Yoga Pilates Fitness Studio logo" [ref=e7]
+          - generic [ref=e8]:
+            - generic [ref=e9]: Yoga Pilates Fitness Studio
+            - generic [ref=e10]: Brussels Yoga, Pilates & Fitness
+        - generic [ref=e11]:
+          - navigation [ref=e12]:
+            - generic [ref=e13]:
+              - link "Home" [ref=e14] [cursor=pointer]:
+                - /url: /
+              - generic [ref=e15]: "|"
+            - generic [ref=e16]:
+              - link "Book a Class" [ref=e17] [cursor=pointer]:
+                - /url: /book-a-class
+              - generic [ref=e18]: "|"
+            - generic [ref=e19]:
+              - link "Subscription" [ref=e20] [cursor=pointer]:
+                - /url: /subscription
+              - generic [ref=e21]: "|"
+            - generic [ref=e22]:
+              - link "Online Learning" [ref=e23] [cursor=pointer]:
+                - /url: /learning
+              - generic [ref=e24]: "|"
+            - button "About Us" [ref=e26]:
+              - text: About Us
+              - generic [ref=e27]: v
+          - navigation [ref=e28]:
+            - link "Dashboard" [ref=e29] [cursor=pointer]:
+              - /url: /dashboard
+            - button "Log Out" [ref=e31]
+    - main [ref=e32]:
+      - generic [ref=e33]:
+        - generic [ref=e34]:
+          - heading "Booking Details" [level=1] [ref=e35]
+          - paragraph [ref=e36]: Signed in as E2E Client Credits.
+          - button "Not you? Log out" [ref=e37]
+          - generic [ref=e38]:
+            - generic [ref=e39]:
+              - text: Name
+              - textbox "Name" [ref=e40]: E2E Client Credits
+            - generic [ref=e41]:
+              - text: Email
+              - textbox "Email" [ref=e42]: client.e2e@bookmyclass.local
+            - generic [ref=e43]:
+              - text: Phone
+              - textbox "Phone" [ref=e44]: "+32000012345"
+            - generic [ref=e45]:
+              - text: Message for the studio (optional)
+              - textbox "Message for the studio (optional) This message is saved with your booking and visible to the admin." [ref=e46]
+              - paragraph [ref=e47]: This message is saved with your booking and visible to the admin.
+          - group "Payment Option" [ref=e48]:
+            - generic [ref=e49]: Payment Option
+            - generic [ref=e50]:
+              - text: Select how you want to continue
+              - combobox "Select how you want to continue" [ref=e51]:
+                - option "Choose a payment option" [disabled]
+                - option "Single Session - E2E Drop In (€20.00)"
+                - option "Use Existing Plan - E2E 5-Class Pack" [selected]
+                - option "Buy a Plan - E2E 5-Class Pack (€80.00)"
+                - option "Buy a Plan - E2E Monthly Unlimited (€120.00)"
+            - paragraph [ref=e52]: Secure card details are entered on Stripe on the next step when payment is required.
+          - group [ref=e53]:
+            - generic [ref=e54]:
+              - checkbox "I accept the Terms and Conditions." [checked] [ref=e55]
+              - generic [ref=e56]:
+                - text: I accept the
+                - link "Terms and Conditions" [ref=e57] [cursor=pointer]:
+                  - /url: /about/terms-and-conditions
+                - text: .
+            - generic [ref=e58]:
+              - checkbox "No cancellation or rescheduling is permitted within 24 hour(s) of the appointment time" [checked] [ref=e59]
+              - generic [ref=e60]: No cancellation or rescheduling is permitted within 24 hour(s) of the appointment time
+          - paragraph [ref=e61]: Unexpected error while creating booking draft.
+          - button "Confirm Using Plan" [ref=e62]
+        - complementary [ref=e63]:
+          - heading "Booking Summary" [level=2] [ref=e64]
+          - generic [ref=e65]:
+            - generic [ref=e66]:
+              - term [ref=e67]: Class
+              - definition [ref=e68]: E2E Flow Class
+            - generic [ref=e69]:
+              - term [ref=e70]: Date & Time
+              - definition [ref=e71]: 08 Apr 2026 · 08:00 - 09:00
+            - generic [ref=e72]:
+              - term [ref=e73]: Teacher
+              - definition [ref=e74]: E2E Teacher
+            - generic [ref=e75]:
+              - term [ref=e76]: Place
+              - definition [ref=e77]: E2E Studio
+            - generic [ref=e78]:
+              - term [ref=e79]: Spots left
+              - definition [ref=e80]: 11 / 12
+          - generic [ref=e81]:
+            - paragraph [ref=e82]: Payment Details
+            - paragraph [ref=e83]: Use Existing Plan - E2E 5-Class Pack
+            - paragraph [ref=e84]: Using 1 credit.
+            - paragraph [ref=e85]: "Credits remaining: 5"
+            - paragraph [ref=e86]: No payment due now.
+    - button "Back to top" [ref=e89]:
+      - img [ref=e90]
+      - generic [ref=e92]: Back to Top
+    - contentinfo [ref=e93]:
+      - generic [ref=e94]:
+        - generic [ref=e95]:
+          - paragraph [ref=e96]: Yoga Pilates Fitness Studio
+          - generic [ref=e97]:
+            - link "Our Studio" [ref=e98] [cursor=pointer]:
+              - /url: /about/studio
+            - link "Our Team" [ref=e99] [cursor=pointer]:
+              - /url: /about/team
+            - link "Terms & Conditions" [ref=e100] [cursor=pointer]:
+              - /url: /about/terms-and-conditions
+            - link "Frequent Ask Questions" [ref=e101] [cursor=pointer]:
+              - /url: /about/faq
+        - generic [ref=e102]:
+          - paragraph [ref=e103]: Follow us
+          - generic [ref=e104]:
+            - link "Facebook" [ref=e105] [cursor=pointer]:
+              - /url: https://facebook.com/orsiyogapilates
+              - img [ref=e106]
+            - link "Instagram" [ref=e108] [cursor=pointer]:
+              - /url: https://www.instagram.com/yogapilatesfitnessstudio/
+              - img [ref=e109]
+            - link "YouTube" [ref=e111] [cursor=pointer]:
+              - /url: https://www.youtube.com/c/OrsiYogaPilates?sub_confirmation=1
+              - img [ref=e112]
+        - img "Yoga Alliance Trainer Pro badge" [ref=e114]
+      - paragraph [ref=e115]: © 2026 by Yoga Pilates Fitness Studio
+  - alert [ref=e116]
+```

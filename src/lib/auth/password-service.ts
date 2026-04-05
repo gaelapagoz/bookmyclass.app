@@ -2,6 +2,7 @@ import { UserActivationStatus } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import { compare, hash } from "bcryptjs";
 import { prisma } from "@/lib/db";
+import { isDeterministicEmailDeliveryMode, sendEmailViaResend } from "@/lib/email/resend-delivery";
 
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
@@ -35,13 +36,6 @@ type PasswordResetDebugMeta = Record<string, unknown>;
 
 type ResendSendResult = {
   id: string | null;
-  from: string;
-};
-
-type ResendSendFailure = {
-  status: number;
-  statusText: string;
-  details: unknown;
 };
 
 function shouldLogPasswordResetDebug(): boolean {
@@ -64,25 +58,6 @@ function logPasswordChangeDebug(checkpoint: string, meta: PasswordResetDebugMeta
     return;
   }
   console.info(`[password-change] ${checkpoint}`, meta);
-}
-
-function getResendFallbackFrom(from: string): string {
-  if (from.includes("<") && from.includes(">")) {
-    return from.replace(/<[^>]+>/, "<onboarding@resend.dev>");
-  }
-  return "Book My Class <onboarding@resend.dev>";
-}
-
-function isDomainNotVerifiedFailure(input: unknown): boolean {
-  if (typeof input !== "object" || input === null) {
-    return false;
-  }
-  const message = "message" in input ? String((input as { message?: unknown }).message ?? "") : "";
-  const name = "name" in input ? String((input as { name?: unknown }).name ?? "") : "";
-  return (
-    message.toLowerCase().includes("domain is not verified") ||
-    name.toLowerCase().includes("validation_error")
-  );
 }
 
 function normalizeEmail(email: string): string {
@@ -142,19 +117,19 @@ function getPasswordResetRateLimitDelegateOrThrow() {
 async function sendPasswordResetEmailViaResend(
   payload: PasswordResetEmailPayload,
 ): Promise<ResendSendResult> {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  const from = process.env.EMAIL_FROM?.trim();
+  const from = process.env.EMAIL_FROM?.trim() || (isDeterministicEmailDeliveryMode() ? "Book My Class Test <no-reply@test.local>" : "");
   logPasswordResetDebug("env-check", {
-    hasResendApiKey: Boolean(apiKey),
     hasEmailFrom: Boolean(from),
     hasAppUrl: Boolean(process.env.APP_URL?.trim()),
   });
-  if (!apiKey || !from) {
-    throw new Error("Missing RESEND_API_KEY or EMAIL_FROM.");
+  if (!from) {
+    throw new Error("Missing EMAIL_FROM.");
   }
 
-  const body = {
-    to: [payload.to],
+  const result = await sendEmailViaResend({
+    context: "password-reset",
+    from,
+    to: payload.to,
     subject: "Reset your password",
     html: `
       <p>Hello ${payload.userName},</p>
@@ -162,69 +137,9 @@ async function sendPasswordResetEmailViaResend(
       <p><a href="${payload.resetUrl}">Reset your password</a></p>
       <p>This link expires in ${payload.expiresInMinutes} minutes and can only be used once.</p>
     `,
-  };
+  });
 
-  async function sendWithFrom(fromAddress: string): Promise<ResendSendResult> {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: fromAddress,
-        ...body,
-      }),
-      cache: "no-store",
-    });
-
-    const responseBody = await response.json().catch(async () => ({ raw: await response.text() }));
-    if (!response.ok) {
-      const failure: ResendSendFailure = {
-        status: response.status,
-        statusText: response.statusText,
-        details: responseBody,
-      };
-      throw failure;
-    }
-
-    const id =
-      typeof responseBody === "object" &&
-      responseBody !== null &&
-      "id" in responseBody &&
-      typeof (responseBody as { id?: unknown }).id === "string"
-        ? (responseBody as { id: string }).id
-        : null;
-
-    return {
-      id,
-      from: fromAddress,
-    };
-  }
-
-  try {
-    return await sendWithFrom(from);
-  } catch (primaryFailure) {
-    const canFallback =
-      process.env.NODE_ENV !== "production" &&
-      typeof primaryFailure === "object" &&
-      primaryFailure !== null &&
-      "status" in primaryFailure &&
-      (primaryFailure as { status?: unknown }).status === 403 &&
-      "details" in primaryFailure &&
-      isDomainNotVerifiedFailure((primaryFailure as { details?: unknown }).details);
-
-    if (!canFallback) {
-      throw primaryFailure;
-    }
-
-    const fallbackFrom = getResendFallbackFrom(from);
-    logPasswordResetDebug("resend-fallback-from-onboarding", {
-      originalFrom: from,
-      fallbackFrom,
-    });
-    return sendWithFrom(fallbackFrom);
-  }
+  return { id: result.messageId };
 }
 
 async function shouldRateLimitForgotPasswordRequest(email: string, now: Date): Promise<boolean> {
@@ -509,3 +424,4 @@ export async function resetPasswordWithToken(input: {
     });
   });
 }
+

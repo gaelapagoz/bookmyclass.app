@@ -39,6 +39,7 @@ export async function POST(request: Request) {
 
     return Response.json(
       {
+        checkoutSessionId: checkoutSession.checkoutSessionId,
         checkoutUrl: checkoutSession.checkoutUrl,
       },
       { status: 200 },

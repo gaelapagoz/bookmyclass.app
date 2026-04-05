@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { Role, UserActivationStatus, UserCreatedVia } from "@prisma/client";
 import { verifyPassword } from "@/lib/auth/password-service";
 import { prisma } from "@/lib/db";
+import { isDeterministicEmailDeliveryMode, sendEmailViaResend } from "@/lib/email/resend-delivery";
 
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const SIGNUP_RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -104,37 +105,32 @@ async function sendVerificationEmail(params: {
   name: string;
   subject?: string;
 }) {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  const from = process.env.EMAIL_FROM?.trim();
-  if (!apiKey || !from) {
-    throw new Error("Missing RESEND_API_KEY or EMAIL_FROM.");
+  const from = process.env.EMAIL_FROM?.trim() || (isDeterministicEmailDeliveryMode() ? "Book My Class Test <no-reply@test.local>" : "");
+  if (!from) {
+    throw new Error("Missing EMAIL_FROM.");
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  try {
+    await sendEmailViaResend({
+      context: "user-identity-verification",
       from,
-      to: [params.to],
+      to: params.to,
       subject: params.subject ?? "Verify your email",
       html: `
-        <p>Hello ${params.name},</p>
-        <p>Please verify your email to continue.</p>
-        <p><a href="${params.verificationUrl}">Verify email</a></p>
-        <p>This link expires in 24 hours.</p>
-      `,
-    }),
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    const details = await response.text().catch(() => "");
+      <p>Hello ${params.name},</p>
+      <p>Please verify your email to continue.</p>
+      <p><a href="${params.verificationUrl}">Verify email</a></p>
+      <p>This link expires in 24 hours.</p>
+    `,
+    });
+  } catch (error: unknown) {
+    const details =
+      typeof error === "object" && error !== null && "details" in error
+        ? (error as { details?: unknown }).details
+        : error instanceof Error
+          ? error.message
+          : String(error);
     console.error("[user-identity] resend-send-failed", {
-      status: response.status,
-      statusText: response.statusText,
       details,
     });
     throw new Error("Could not send verification email.");
@@ -539,17 +535,50 @@ export async function verifyPendingRegistrationByToken(input: {
     },
   });
 
-  if (!pending || pending.consumedAt || pending.tokenExpiresAt <= now) {
-    return { verified: false, email: pending?.email ?? null };
+  return verifyPendingRegistrationRecord({
+    pendingRegistrationId: pending?.id ?? null,
+    emailHint: pending?.email ?? null,
+    now,
+  });
+}
+
+async function verifyPendingRegistrationRecord(input: {
+  pendingRegistrationId: string | null;
+  emailHint: string | null;
+  now: Date;
+}): Promise<{ verified: boolean; email: string | null }> {
+  if (!input.pendingRegistrationId) {
+    return { verified: false, email: input.emailHint };
+  }
+
+  const pending = await prisma.pendingUserRegistration.findUnique({
+    where: { id: input.pendingRegistrationId },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      passwordHash: true,
+      role: true,
+      createdVia: true,
+      createdIp: true,
+      tokenExpiresAt: true,
+      consumedAt: true,
+      userId: true,
+    },
+  });
+
+  if (!pending || pending.consumedAt || pending.tokenExpiresAt <= input.now) {
+    return { verified: false, email: pending?.email ?? input.emailHint };
   }
 
   const claim = await prisma.pendingUserRegistration.updateMany({
     where: {
       id: pending.id,
       consumedAt: null,
-      tokenExpiresAt: { gt: now },
+      tokenExpiresAt: { gt: input.now },
     },
-    data: { consumedAt: now },
+    data: { consumedAt: input.now },
   });
 
   if (claim.count !== 1) {
@@ -582,7 +611,7 @@ export async function verifyPendingRegistrationByToken(input: {
     });
     userId = createdUser.id;
   } else {
-    await syncEmailVerificationState({ userId, verifiedAt: now });
+    await syncEmailVerificationState({ userId, verifiedAt: input.now });
     await prisma.user.update({
       where: { id: userId },
       data: {
@@ -600,6 +629,31 @@ export async function verifyPendingRegistrationByToken(input: {
 
   console.info("[user-identity] registration_verified", { email: pending.email, userId });
   return { verified: true, email: pending.email };
+}
+
+export async function verifyPendingRegistrationByEmailForTests(input: {
+  email: string;
+  now?: Date;
+}): Promise<{ verified: boolean; email: string | null }> {
+  const email = normalizeEmail(input.email);
+  if (!email) {
+    return { verified: false, email: null };
+  }
+
+  const now = input.now ?? new Date();
+  const pending = await prisma.pendingUserRegistration.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      email: true,
+    },
+  });
+
+  return verifyPendingRegistrationRecord({
+    pendingRegistrationId: pending?.id ?? null,
+    emailHint: pending?.email ?? email,
+    now,
+  });
 }
 
 export async function requestEmailChange(input: {
@@ -789,3 +843,4 @@ export async function applyTrustedAdminEmailChange(input: {
     },
   });
 }
+

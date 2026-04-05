@@ -5,6 +5,12 @@ import { AuthError } from "next-auth";
 import { Role, UserActivationStatus, UserCreatedVia } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { auth, signIn } from "@/auth";
+import { clearCapturedTestEmails, getCapturedTestEmails } from "@/lib/email/resend-delivery";
+import VerifyEmailPage from "../../src/app/(public)/verify-email/page";
+import { signInAction } from "../../src/app/(public)/sign-in/page";
+import { registerAction } from "../../src/app/(public)/sign-up/page";
+import { requireAuth } from "../../src/lib/auth/require-auth";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
 
@@ -50,12 +56,6 @@ vi.mock("@/auth", () => ({
   signIn: vi.fn(),
 }));
 
-import { auth, signIn } from "@/auth";
-import VerifyEmailPage from "../../src/app/(public)/verify-email/page";
-import { signInAction } from "../../src/app/(public)/sign-in/page";
-import { registerAction } from "../../src/app/(public)/sign-up/page";
-import { requireAuth } from "../../src/lib/auth/require-auth";
-
 function makeSignUpForm(input: {
   firstName?: string;
   lastName?: string;
@@ -82,41 +82,34 @@ function makeSignInForm(input: { email?: string; password?: string; callbackUrl?
   return form;
 }
 
-function extractRegistrationTokenFromResendCall(fetchMock: ReturnType<typeof vi.fn>): string {
-  const firstCall = fetchMock.mock.calls[0];
-  if (!firstCall) {
-    throw new Error("Expected verification email call.");
+function extractRegistrationTokenFromCapturedEmail(email: string): string {
+  const message = [...getCapturedTestEmails()]
+    .reverse()
+    .find((item) => item.context === "user-identity-verification" && item.to.includes(email.toLowerCase()));
+
+  if (!message) {
+    throw new Error("Expected verification email in test outbox.");
   }
 
-  const payload = JSON.parse(String((firstCall[1] as { body?: unknown })?.body ?? "{}")) as {
-    html?: string;
-  };
-  const html = payload.html ?? "";
-  const tokenMatch = html.match(/registrationToken=([^"&]+)/);
+  const tokenMatch = message.html.match(/registrationToken=([^"&]+)/);
   if (!tokenMatch?.[1]) {
-    throw new Error("Registration token not found in email payload.");
+    throw new Error("Registration token not found in captured email payload.");
   }
 
   return decodeURIComponent(tokenMatch[1]);
 }
 
 describe("auth actions integration", () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
-
   beforeEach(async () => {
     await resetDb();
     vi.mocked(signIn).mockReset();
     vi.mocked(auth).mockResolvedValue(null);
     captureExceptionMock.mockReset();
+    clearCapturedTestEmails();
 
     process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || "test-resend-key";
     process.env.EMAIL_FROM = process.env.EMAIL_FROM || "Test <test@example.test>";
     process.env.APP_URL = process.env.APP_URL || "http://localhost:3000";
-
-    fetchMock = vi.fn(async () =>
-      Response.json({ id: "email_1" }, { status: 200 }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
   });
 
   it("sign-up invalid input is rejected", async () => {
@@ -138,7 +131,7 @@ describe("auth actions integration", () => {
     const pending = await prisma.pendingUserRegistration.findUnique({ where: { email } });
     expect(pending).not.toBeNull();
     expect(pending?.consumedAt).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getCapturedTestEmails()).toHaveLength(1);
   });
 
   it("signup never allows public role escalation", async () => {
@@ -148,7 +141,7 @@ describe("auth actions integration", () => {
       `NEXT_REDIRECT:/verify-email?sent=1&email=${encodeURIComponent(email)}`,
     );
 
-    const token = extractRegistrationTokenFromResendCall(fetchMock);
+    const token = extractRegistrationTokenFromCapturedEmail(email);
 
     await expect(
       VerifyEmailPage({
@@ -173,7 +166,7 @@ describe("auth actions integration", () => {
       `NEXT_REDIRECT:/verify-email?sent=1&email=${encodeURIComponent(email)}`,
     );
 
-    const token = extractRegistrationTokenFromResendCall(fetchMock);
+    const token = extractRegistrationTokenFromCapturedEmail(email);
 
     await expect(
       VerifyEmailPage({
@@ -217,7 +210,7 @@ describe("auth actions integration", () => {
       },
     });
 
-    const token = extractRegistrationTokenFromResendCall(fetchMock);
+    const token = extractRegistrationTokenFromCapturedEmail(email);
 
     await expect(
       VerifyEmailPage({
@@ -325,4 +318,3 @@ describe("auth actions integration", () => {
     expect(captureExceptionMock).toHaveBeenCalledTimes(1);
   });
 });
-

@@ -339,6 +339,29 @@ export async function createCheckoutSessionForBooking(input: {
     priceId: selectedPrice.id,
     source: "booking-flow",
   };
+
+  if (process.env.E2E_TEST_MODE === "1") {
+    const syntheticCheckoutSessionId = `cs_e2e_${Date.now()}_${orderAndPayment.paymentId.slice(-8)}`;
+    const checkoutUrl =
+      `${env.appUrl}/book-a-class/${readyCheckout.booking.serviceSlug}/payment/success` +
+      `?bookingId=${encodeURIComponent(readyCheckout.booking.id)}&session_id=${encodeURIComponent(syntheticCheckoutSessionId)}`;
+
+    await prisma.payment.update({
+      where: { id: orderAndPayment.paymentId },
+      data: {
+        providerReference: syntheticCheckoutSessionId,
+        stripeCheckoutSessionId: syntheticCheckoutSessionId,
+        stripeCheckoutMode: isRecurringPlanPurchase ? "SUBSCRIPTION" : "PAYMENT",
+      },
+    });
+
+    return {
+      checkoutSessionId: syntheticCheckoutSessionId,
+      checkoutUrl,
+      paymentId: orderAndPayment.paymentId,
+    };
+  }
+
   const checkoutSession = await createStripeCheckoutSession(
     isRecurringPlanPurchase
       ? {
@@ -507,6 +530,25 @@ export async function createCheckoutSessionForCatalogProduct(input: {
     paymentId: orderAndPayment.paymentId,
     source: "subscription-catalog",
   };
+
+  if (process.env.E2E_TEST_MODE === "1") {
+    const syntheticCheckoutSessionId = `cs_e2e_${Date.now()}_${orderAndPayment.paymentId.slice(-8)}`;
+    await prisma.payment.update({
+      where: { id: orderAndPayment.paymentId },
+      data: {
+        providerReference: syntheticCheckoutSessionId,
+        stripeCheckoutSessionId: syntheticCheckoutSessionId,
+        stripeCheckoutMode: product.priceType === PriceType.RECURRING ? "SUBSCRIPTION" : "PAYMENT",
+      },
+    });
+
+    return {
+      checkoutSessionId: syntheticCheckoutSessionId,
+      checkoutUrl: `${env.appUrl}/subscription/success?session_id=${encodeURIComponent(syntheticCheckoutSessionId)}`,
+      paymentId: orderAndPayment.paymentId,
+      orderId: orderAndPayment.orderId,
+    };
+  }
 
   const checkoutSession = await createStripeCheckoutSession({
     mode: product.priceType === PriceType.RECURRING ? "subscription" : "payment",

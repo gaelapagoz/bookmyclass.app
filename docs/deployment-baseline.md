@@ -24,6 +24,7 @@ If a setup/runbook file conflicts with this file, treat this file as authoritati
 | Backup cron | `30 2 * * * /usr/local/bin/bookmyclass-db-backup-run.sh >> /var/log/bookmyclass-db-backup.log 2>&1` | Needs confirmation | Legacy docs show split backup/upload jobs at `02:30` and `02:45`. |
 | Canonical auth secret env var | `AUTH_SECRET` | Confirmed from code/runtime | `NEXTAUTH_SECRET` appears only as fallback in one marketing helper. |
 | Canonical Stripe env vars | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Confirmed from code/runtime | Seed/test-only Stripe price IDs are separate from core runtime Stripe keys. |
+| Production email sender policy | `EMAIL_FROM` must use verified `@bookmyclass.app` sender domain when provider delivery is enabled | Confirmed from code/runtime | Test/e2e deterministic bypass does not require provider send. |
 
 ## Last Verified
 
@@ -31,3 +32,16 @@ If a setup/runbook file conflicts with this file, treat this file as authoritati
 - Verified at: `TODO_YYYY-MM-DD`
 - Verification method: `TODO (pm2 status, docker ps, crontab -l, nginx config, env audit)`
 - Notes: update this section whenever operator confirms/changes live runtime facts.
+
+## Deployment Flow (Canonical)
+
+1. Merge to main
+2. Create release tag (vX.Y.Z)
+3. Deploy to UAT
+4. Run:
+   - E2E tests
+   - load testing (k6)
+5. If successful → deploy SAME tag to production
+
+Rule:
+- Never deploy directly to production from main

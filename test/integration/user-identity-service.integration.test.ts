@@ -1,7 +1,9 @@
 import "./helpers/setup-env";
 
 import { hash } from "bcryptjs";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { clearCapturedTestEmails, getCapturedTestEmails } from "@/lib/email/resend-delivery";
 import {
   clearPublicAuthRateLimitForTests,
   confirmEmailChangeByToken,
@@ -12,38 +14,34 @@ import {
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
 
-describe("user identity hardening", () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
+function getTokenFromCapturedEmail(paramName: string, recipientEmail?: string): string {
+  const outbox = [...getCapturedTestEmails()].reverse();
+  const message = recipientEmail
+    ? outbox.find((item) => item.to.includes(recipientEmail.toLowerCase()))
+    : outbox[0];
 
+  if (!message) {
+    throw new Error("Expected email in test outbox.");
+  }
+
+  const match = message.html.match(new RegExp(`${paramName}=([^"&]+)`));
+  if (!match?.[1]) {
+    throw new Error(`${paramName} not found in captured payload.`);
+  }
+
+  return decodeURIComponent(match[1]);
+}
+
+describe("user identity hardening", () => {
   beforeEach(async () => {
     await resetDb();
     await clearPublicAuthRateLimitForTests();
+    clearCapturedTestEmails();
 
     process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || "test-resend-key";
     process.env.EMAIL_FROM = process.env.EMAIL_FROM || "Test <test@example.test>";
     process.env.APP_URL = process.env.APP_URL || "http://localhost:3000";
-
-    fetchMock = vi.fn(async () => Response.json({ id: "email_1" }, { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
   });
-
-  function getTokenFromEmailCall(paramName: string): string {
-    const firstCall = fetchMock.mock.calls[0];
-    if (!firstCall) {
-      throw new Error("Expected email call.");
-    }
-
-    const payload = JSON.parse(String((firstCall[1] as { body?: unknown })?.body ?? "{}")) as {
-      html?: string;
-    };
-    const html = payload.html ?? "";
-    const match = html.match(new RegExp(`${paramName}=([^"&]+)`));
-    if (!match?.[1]) {
-      throw new Error(`${paramName} not found in payload.`);
-    }
-
-    return decodeURIComponent(match[1]);
-  }
 
   it("blocks honeypot-filled public signup", async () => {
     const email = `honeypot.${Date.now()}@example.test`;
@@ -60,7 +58,7 @@ describe("user identity hardening", () => {
     expect(result.outcome).toBe("BLOCKED_SPAM");
     const pending = await prisma.pendingUserRegistration.findUnique({ where: { email } });
     expect(pending).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getCapturedTestEmails()).toHaveLength(0);
   });
 
   it("rate limits public signup by email", async () => {
@@ -100,7 +98,7 @@ describe("user identity hardening", () => {
     });
     expect(created.outcome).toBe("PENDING_VERIFICATION");
 
-    const token = getTokenFromEmailCall("registrationToken");
+    const token = getTokenFromCapturedEmail("registrationToken", email);
     const firstVerify = await verifyPendingRegistrationByToken({ token });
     expect(firstVerify.verified).toBe(true);
 
@@ -152,7 +150,7 @@ describe("user identity hardening", () => {
     expect(beforeConfirm.email).toBe(user.email);
     expect(beforeConfirm.pendingEmail).toBe(newEmail);
 
-    const token = getTokenFromEmailCall("emailChangeToken");
+    const token = getTokenFromCapturedEmail("emailChangeToken", newEmail);
     const confirm = await confirmEmailChangeByToken({ token });
     expect(confirm.verified).toBe(true);
 

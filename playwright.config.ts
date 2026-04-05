@@ -3,27 +3,29 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./test/e2e",
   timeout: 60_000,
+  fullyParallel: false,
+  retries: process.env.CI ? 1 : 0,
   expect: {
     timeout: 10_000,
   },
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: process.env.APP_URL ?? "http://127.0.0.1:3000",
+    trace: "retain-on-failure",
   },
   webServer: {
-    command: "npm run build && npm run start",
-    url: "http://localhost:3000",
-    reuseExistingServer: true,
+    command: "dotenv -e .env.e2e -- npm run build && dotenv -e .env.e2e -- npm run start",
+    url: process.env.APP_URL ?? "http://127.0.0.1:3000",
+    reuseExistingServer: false,
     timeout: 240_000,
   },
   projects: [
     {
-      name: "mobile-chromium",
+      name: "chromium",
       use: {
         browserName: "chromium",
-        viewport: { width: 390, height: 844 },
-        isMobile: true,
-        hasTouch: true,
+        viewport: { width: 1366, height: 900 },
       },
     },
   ],
 });
+

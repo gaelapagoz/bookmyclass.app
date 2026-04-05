@@ -389,6 +389,50 @@ async function upsertSubscriptionContract(input: {
   });
 }
 
+async function upsertSyntheticSubscriptionContractForE2ETests(input: {
+  userId: string;
+  priceId: string;
+  productId: string;
+  checkoutSessionId: string;
+}) {
+  const now = new Date();
+  const currentPeriodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const providerSubscriptionReference = `e2e-subscription-${input.checkoutSessionId}`;
+
+  await prisma.subscriptionContract.upsert({
+    where: {
+      provider_providerSubscriptionReference: {
+        provider: PaymentProvider.STRIPE,
+        providerSubscriptionReference,
+      },
+    },
+    update: {
+      status: SubscriptionStatus.ACTIVE,
+      currentPeriodStart: now,
+      currentPeriodEnd,
+      cancelAtPeriodEnd: false,
+      cancelledAt: null,
+      endedAt: null,
+      productId: input.productId,
+      priceId: input.priceId,
+    },
+    create: {
+      clientId: input.userId,
+      productId: input.productId,
+      priceId: input.priceId,
+      status: SubscriptionStatus.ACTIVE,
+      startsAt: now,
+      currentPeriodStart: now,
+      currentPeriodEnd,
+      cancelAtPeriodEnd: false,
+      cancelledAt: null,
+      endedAt: null,
+      provider: PaymentProvider.STRIPE,
+      providerSubscriptionReference,
+    },
+  });
+}
+
 async function ensureCatalogPaymentForCompletedSession(input: {
   session: Stripe.Checkout.Session;
   metadata: CatalogCheckoutMetadata;
@@ -698,6 +742,28 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
         stripeSubscription,
         metadata: catalogMetadata,
       });
+    } else if (process.env.E2E_TEST_MODE === "1") {
+      const resolvedPriceId = selectedPriceIdFromMetadata ?? null;
+      const resolvedUserId = catalogMetadata?.userId ?? booking?.clientId ?? null;
+      if (resolvedPriceId && resolvedUserId) {
+        const resolvedProductId =
+          catalogMetadata?.productId ??
+          (
+            await prisma.price.findUnique({
+              where: { id: resolvedPriceId },
+              select: { productId: true },
+            })
+          )?.productId ??
+          null;
+        if (resolvedProductId) {
+          await upsertSyntheticSubscriptionContractForE2ETests({
+            userId: resolvedUserId,
+            priceId: resolvedPriceId,
+            productId: resolvedProductId,
+            checkoutSessionId: session.id,
+          });
+        }
+      }
     }
   }
 
@@ -851,4 +917,108 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
   }
 
   logInfo("event ignored", { eventType: event.type });
+}
+
+export async function completeStripeCheckoutSessionForE2ETests(input: {
+  checkoutSessionId: string;
+}): Promise<{ completed: boolean }> {
+  if (process.env.E2E_TEST_MODE !== "1") {
+    return { completed: false };
+  }
+
+  const payment = await prisma.payment.findFirst({
+    where: {
+      provider: PaymentProvider.STRIPE,
+      OR: [
+        { stripeCheckoutSessionId: input.checkoutSessionId },
+        { providerReference: input.checkoutSessionId },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      providerReference: true,
+      stripeCustomerId: true,
+      stripeCheckoutMode: true,
+      amountMinor: true,
+      currencyCode: true,
+      booking: {
+        select: {
+          id: true,
+          clientId: true,
+          selectedPriceId: true,
+          selectedPrice: {
+            select: {
+              productId: true,
+            },
+          },
+        },
+      },
+      order: {
+        select: {
+          clientId: true,
+          items: {
+            orderBy: { createdAt: "asc" },
+            select: {
+              productId: true,
+              priceId: true,
+            },
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+
+  if (!payment) {
+    return { completed: false };
+  }
+
+  const metadata: Record<string, string> = {
+    paymentId: payment.id,
+  };
+
+  if (payment.booking?.id) {
+    metadata.bookingId = payment.booking.id;
+  }
+
+  const bookingPriceId = payment.booking?.selectedPriceId ?? null;
+  if (bookingPriceId) {
+    metadata.selectedPriceId = bookingPriceId;
+    metadata.priceId = bookingPriceId;
+  }
+
+  if (payment.booking?.clientId) {
+    metadata.userId = payment.booking.clientId;
+  } else if (payment.order?.clientId) {
+    metadata.userId = payment.order.clientId;
+  }
+
+  const orderItem = payment.order?.items[0] ?? null;
+  const resolvedProductId = payment.booking?.selectedPrice?.productId ?? orderItem?.productId ?? null;
+  const resolvedPriceId = bookingPriceId ?? orderItem?.priceId ?? null;
+  if (resolvedProductId) {
+    metadata.productId = resolvedProductId;
+  }
+  if (resolvedPriceId) {
+    metadata.priceId = resolvedPriceId;
+    if (!metadata.selectedPriceId) {
+      metadata.selectedPriceId = resolvedPriceId;
+    }
+  }
+
+  const syntheticSession = {
+    id: input.checkoutSessionId,
+    mode: payment.stripeCheckoutMode === "SUBSCRIPTION" ? "subscription" : "payment",
+    payment_status: "paid",
+    metadata,
+    payment_intent: payment.providerReference ?? `pi_e2e_${payment.id}`,
+    customer: payment.stripeCustomerId ?? "cus_e2e",
+    subscription: null,
+    amount_total: payment.amountMinor,
+    currency: payment.currencyCode.toLowerCase(),
+  } as unknown as Stripe.Checkout.Session;
+
+  await handleCheckoutCompleted(syntheticSession);
+  return { completed: true };
 }

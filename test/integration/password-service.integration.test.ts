@@ -273,6 +273,7 @@ describe("password-service integration", () => {
     const sendResetEmail = vi.fn(async () => {
       throw new Error("provider unavailable");
     });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     await expect(
       requestPasswordReset({
@@ -285,6 +286,13 @@ describe("password-service integration", () => {
     });
 
     expect(sendResetEmail).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[password-reset] resend-send-failed",
+      expect.objectContaining({
+        userId: user.id,
+      }),
+    );
   });
 
   it("reset with valid token succeeds", async () => {
@@ -414,3 +422,4 @@ describe("password-service integration", () => {
     ).resolves.toBeUndefined();
   });
 });
+

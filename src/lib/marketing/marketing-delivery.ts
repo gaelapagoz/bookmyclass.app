@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { excludeUnsubscribedRecipients, resolveMarketingAudience } from "@/lib/marketing/marketing-audience";
 import { renderMarketingEmailHtml, extractTrackingLinks, normalizeMarketingContentJson } from "@/lib/marketing/marketing-renderer";
 import { buildTrackingToken, createRecipientTrackingToken, parseRecipientTrackingToken } from "@/lib/marketing/marketing-tracking";
+import { sendEmailViaResend } from "@/lib/email/resend-delivery";
 
 const SEND_BATCH_SIZE = 50;
 
@@ -15,41 +16,30 @@ export async function sendMarketingEmailViaResend(input: {
   fromEmail: string;
   replyTo?: string | null;
 }) {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  if (!apiKey) {
-    console.warn("[marketing-delivery] RESEND_API_KEY missing, skipping provider send", { to: input.to });
-    return { sent: true };
-  }
-
   const from = `${input.fromName} <${input.fromEmail}>`;
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  try {
+    const result = await sendEmailViaResend({
+      context: "marketing-delivery",
       from,
-      to: [input.to],
+      to: input.to,
       subject: input.subject,
       html: input.html,
-      ...(input.replyTo ? { reply_to: input.replyTo } : {}),
-    }),
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    const details = await response.text().catch(() => "");
+      replyTo: input.replyTo,
+    });
+    return { sent: result.sent };
+  } catch (error: unknown) {
+    const details =
+      typeof error === "object" && error !== null && "details" in error
+        ? (error as { details?: unknown }).details
+        : error instanceof Error
+          ? error.message
+          : String(error);
     console.error("[marketing-delivery] resend-failed", {
       to: input.to,
-      status: response.status,
-      statusText: response.statusText,
       details,
     });
     return { sent: false };
   }
-
-  return { sent: true };
 }
 
 export async function sendMarketingCampaignNow(campaignId: string) {

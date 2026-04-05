@@ -446,7 +446,8 @@ Evidence label legend used in this file:
   - Required for app boot: `DATABASE_URL`.
   - Practically required for auth sessions: `AUTH_SECRET`.
   - Required for Stripe flows: `APP_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
-  - Required for verification/reset/marketing delivery: `RESEND_API_KEY`, `EMAIL_FROM`.
+  - Required for live provider email delivery (non-test runtimes): `RESEND_API_KEY`, `EMAIL_FROM`.
+  - Test/e2e runtimes can use deterministic provider bypass (`NODE_ENV=test` or `E2E_TEST_MODE=1`) and do not require real Resend delivery configuration.
   - Optional feature envs: Sentry + seed extras.
   - Evidence status: Confirmed from repo + Inferred from code paths.
 
@@ -497,6 +498,36 @@ Evidence label legend used in this file:
   - `/api/health` is healthy.
   - CI build + tests pass.
 
+## 20. Environments (Canonical)
+
+The system operates with 3 environments:
+
+### Production
+- Hetzner VM
+- Public domain (bookmyclass.app)
+- Real Stripe mode
+- Real users
+
+### UAT (Staging)
+- Separate Hetzner VM
+- Same architecture as production
+- Stripe test mode
+- Used for:
+  - pre-release validation
+  - E2E tests
+  - webhook validation
+  - load testing
+
+Rule:
+- No feature is production-ready without UAT validation
+
+### Local
+- Developer machine
+- Used for:
+  - unit/integration tests
+  - E2E dev runs
+  - k6 load testing
+  
 ## Appendix A: Important files and folders
 - `package.json`: scripts and dependency versions.
 - `package-lock.json`: lock state.
