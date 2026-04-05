@@ -12,25 +12,29 @@ export async function submitBookingWithPaymentOption(page: Page, optionLabelCont
   await page.getByLabel("Phone").fill("+32000012345");
 
   const paymentSelect = page.getByLabel("Select how you want to continue");
+  await expect(paymentSelect).toBeVisible();
+
+  let selectedValue: string | null = null;
   if (typeof optionLabelContains === "string") {
-    await paymentSelect.selectOption({ label: optionLabelContains });
+    const matchingOption = paymentSelect.locator("option", { hasText: optionLabelContains }).first();
+    await expect(matchingOption).toHaveCount(1);
+    selectedValue = await matchingOption.getAttribute("value");
+    expect(selectedValue).toBeTruthy();
+    await paymentSelect.selectOption(selectedValue as string);
   } else {
     const matchingOption = paymentSelect.locator("option").filter({ hasText: optionLabelContains }).first();
     await expect(matchingOption).toHaveCount(1);
-    const optionValue = await matchingOption.getAttribute("value");
-    expect(optionValue).toBeTruthy();
-    await paymentSelect.selectOption(optionValue as string);
+    selectedValue = await matchingOption.getAttribute("value");
+    expect(selectedValue).toBeTruthy();
+    await paymentSelect.selectOption(selectedValue as string);
   }
+
+  await expect(paymentSelect).toHaveValue(selectedValue as string);
 
   await page.getByRole("checkbox").nth(0).check();
   await page.getByRole("checkbox").nth(1).check();
-  const cta = page.getByRole("button", { name: /Continue To Secure Checkout|Confirm Using Plan/i });
-  await cta.click();
 
-  if (/\/book-a-class\/[^/]+\/book\?sessionId=/.test(page.url())) {
-    const retryCta = page.getByRole("button", { name: /Continue To Secure Checkout|Confirm Using Plan/i });
-    if ((await retryCta.count()) > 0) {
-      await retryCta.first().click();
-    }
-  }
+  const cta = page.getByRole("button", { name: /Continue To Secure Checkout|Confirm Using Plan/i });
+  await expect(cta).toBeEnabled();
+  await cta.click();
 }

@@ -51,7 +51,18 @@ test.describe("critical client flows", () => {
     await openBookingFormFromFirstAvailableSlot(page, SEEDED_SERVICE_SLUG);
     await submitBookingWithPaymentOption(page, /Use Existing Plan/i);
 
-    await expect(page).toHaveURL(new RegExp(`/book-a-class/${SEEDED_SERVICE_SLUG}/confirmed\\?bookingId=`));
+    const confirmedUrlPattern = new RegExp(`/book-a-class/${SEEDED_SERVICE_SLUG}/confirmed\\?bookingId=`);
+    try {
+      await expect(page).toHaveURL(confirmedUrlPattern);
+    } catch {
+      const inlineError = page.getByText(
+        /Unexpected error while creating booking draft|You already have an active booking draft or booking for this session|This session is full|Only future sessions can be booked|This session is not available for booking|Could not continue booking/i,
+      );
+      await expect(inlineError).toBeVisible();
+      const errorText = (await inlineError.first().textContent())?.trim() ?? "(no inline error text)";
+      throw new Error(`Existing-plan booking did not redirect to confirmation. Inline error: ${errorText}`);
+    }
+
     await expect(page.getByRole("heading", { name: "Booking Confirmed" })).toBeVisible();
   });
 
@@ -102,4 +113,3 @@ test.describe("critical client flows", () => {
     await expect(page.getByText("Booking cancelled.")).toBeVisible();
   });
 });
-
