@@ -1,6 +1,6 @@
 # 💾 Database Backup Setup (Local) – BookMyClass
 
-> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+> Procedural guide only. Canonical deployment/runtime facts live in docs/00_02_deployment_baseline.md. If this file conflicts with baseline docs, follow 00_02_deployment_baseline.md and 00_01_system_baseline.md.
 
 
 This guide sets up **automated daily PostgreSQL backups** on your server.
@@ -139,5 +139,6 @@ Add:
 - Does NOT protect against server loss
 
 👉 Use Backblaze setup for offsite protection
+
 
 

@@ -11,4 +11,5 @@ Purpose: prevent future implementation work from assuming modeled capabilities a
 
 ## Working Rule
 
-If a flow is modeled in schema/docs but not marked active in [system-baseline.md](/c:/Dev/studio.saas.platform/docs/system-baseline.md), treat it as not implemented for delivery planning and test expectations.
+If a flow is modeled in schema/docs but not marked active in [00_01_system_baseline.md](/c:/Dev/studio.saas.platform/docs/00_01_system_baseline.md), treat it as not implemented for delivery planning and test expectations.
+

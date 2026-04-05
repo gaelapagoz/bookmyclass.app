@@ -1,6 +1,6 @@
 # 🚀 Server Application Setup – BookMyClass (Run App + Bootstrap)
 
-> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+> Procedural guide only. Canonical deployment/runtime facts live in docs/00_02_deployment_baseline.md. If this file conflicts with baseline docs, follow 00_02_deployment_baseline.md and 00_01_system_baseline.md.
 
 Scope: application runtime bootstrap only (Node, PM2, DB container start, env, build, nginx, SSL).
 
@@ -257,6 +257,7 @@ pm2 restart bookmyclass-app --update-env
 - Nginx working
 - HTTPS working
 - Stripe working
+
 
 
 

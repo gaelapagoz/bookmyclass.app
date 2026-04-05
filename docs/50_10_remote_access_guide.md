@@ -1,6 +1,6 @@
 # Remote Access Guide (SSH Tunnels)
 
-> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+> Procedural guide only. Canonical deployment/runtime facts live in docs/00_02_deployment_baseline.md. If this file conflicts with baseline docs, follow 00_02_deployment_baseline.md and 00_01_system_baseline.md.
 
 Scope: secure remote access and SSH tunnel procedures only.
 
@@ -26,7 +26,7 @@ This ensures:
 - Private key available (`~/.ssh/bookmyclass_hetzner`)
 - Server host/IP: `46.62.208.152` (day-to-day)
 - Alternate host/IP seen in existing ops docs: `37.27.192.11`
-- If these differ from current infra, confirm and update `docs/deployment-baseline.md`
+- If these differ from current infra, confirm and update `docs/00_02_deployment_baseline.md`
 
 ---
 
@@ -170,6 +170,7 @@ ssh -L 51212:localhost:51212 \
 
 > Keep all sensitive services private.  
 > Use SSH tunnels as the only access layer.
+
 
 
 

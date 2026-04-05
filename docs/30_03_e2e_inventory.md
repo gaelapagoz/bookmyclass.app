@@ -4,7 +4,7 @@ This inventory defines the production-relevant Playwright scope for the current 
 
 ## Scope Rules
 
-- Include only active runtime flows confirmed in `docs/system-baseline.md`.
+- Include only active runtime flows confirmed in `docs/00_01_system_baseline.md`.
 - Exclude modeled-but-inactive flows for this pass.
 - Waitlist and no-show are explicitly out of scope.
 
@@ -44,3 +44,4 @@ This inventory defines the production-relevant Playwright scope for the current 
 1. Waitlist runtime behavior.
 2. No-show runtime behavior.
 3. Any cleanup-only destructive admin feature.
+

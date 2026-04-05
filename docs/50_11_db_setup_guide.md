@@ -1,6 +1,6 @@
 # Database Setup Guide (Docker-Based Production Server)
 
-> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+> Procedural guide only. Canonical deployment/runtime facts live in docs/00_02_deployment_baseline.md. If this file conflicts with baseline docs, follow 00_02_deployment_baseline.md and 00_01_system_baseline.md.
 
 Scope: Docker PostgreSQL setup, Prisma migration flow, and private admin access only.
 
@@ -8,7 +8,7 @@ Scope: Docker PostgreSQL setup, Prisma migration flow, and private admin access 
 
 - Primary host used in current DB access commands: `46.62.208.152`
 - Alternate host seen in existing ops docs: `37.27.192.11`
-- If host assignments changed, update `docs/deployment-baseline.md` and this section together.
+- If host assignments changed, update `docs/00_02_deployment_baseline.md` and this section together.
 
 
 This guide explains a recommended procedure for server database setup when PostgreSQL runs in Docker, and how to access it safely with Prisma and Prisma Studio.
@@ -254,6 +254,7 @@ docker exec -it <db-container-from-deployment-baseline> psql -U <db-user-from-de
 
 > Keep PostgreSQL private, Dockerized, and persistent.  
 > Use Prisma migrations as the only schema change path.
+
 
 
 

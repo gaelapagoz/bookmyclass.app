@@ -222,11 +222,11 @@ npm run db:verify:dashboard-trend-seed
 - App readiness endpoint: `GET /api/health` (returns `200` with DB up, `503` when DB check fails).
 - Sentry is wired for server, edge, and client, enabled in production mode.
 - Production runbooks and monitoring docs are in `docs/`:
-  - `docs/20_monitoring_system_guide.md`
-  - `docs/05_monitoring_alerting_setup.md`
-  - `docs/06_monitoring_netdata_setup.md`
-  - `docs/07_pm2_autostart_setup.md`
-  - `docs/21_remote_access_guide.md`
+  - `docs/50_09_monitoring_system_guide.md`
+  - `docs/50_06_monitoring_alerting_setup.md`
+  - `docs/50_07_monitoring_netdata_setup.md`
+  - `docs/50_08_pm2_autostart_setup.md`
+  - `docs/50_10_remote_access_guide.md`
 - Release-readiness helper script:
 ```bash
 npm run ops:verify-production-readiness -- \
@@ -278,10 +278,76 @@ scripts/          # maintenance and verification scripts
 ## Support / Ownership Notes
 - Formal `CODEOWNERS` is not configured in `.github` at this time.
 - For implementation guardrails, follow:
-  - `docs/business-rules.md`
-  - `docs/codex-rulebook.md`
-  - `docs/domain-rules.md`
-  - `docs/subscription-domain-rules.md`
+  - `docs/10_01_business_rules.md`
+  - `docs/90_01_codex_rulebook.md`
+  - `docs/10_02_domain_rules.md`
+  - `docs/10_03_subscription_domain_rules.md`
 - For test expectations, use:
-  - `docs/testing-rulebook.md`
-  - `docs/testing-checklist.md`
+  - `docs/30_01_testing_rulebook.md`
+  - `docs/30_02_testing_checklist.md`
+
+## Documentation Index
+
+### Group Definitions
+- `00_*`: canonical baselines and current-state truth.
+- `10_*`: business and domain rules.
+- `20_*`: architecture and engineering implementation boundaries.
+- `30_*`: testing standards and e2e scope.
+- `40_*`: CI/CD, environment, release, and operations references.
+- `50_*`: setup and runbook procedures.
+- `60_*`: security and compliance-oriented technical references.
+- `70_*`: third-party/service integrations.
+- `90_*`: AI workflow and execution guardrails.
+
+### Full Document List With Purpose
+- `docs/00_01_system_baseline.md`: canonical architecture, active capability status, and evidence-backed current-state baseline.
+- `docs/00_02_deployment_baseline.md`: canonical deployment/runtime fact sheet and unresolved operator-confirmation items.
+- `docs/00_03_known_non_goals.md`: modeled or discussed capabilities that are not treated as active implementation scope.
+
+- `docs/10_01_business_rules.md`: frozen business rules for booking, subscriptions, cancellations, and operational behavior.
+- `docs/10_02_domain_rules.md`: domain-level implementation rules and invariants.
+- `docs/10_03_subscription_domain_rules.md`: subscription-specific domain constraints and expected behavior rules.
+
+- `docs/20_01_architecture_overview.md`: high-level architecture and active flow map.
+- `docs/20_02_service_boundaries.md`: service-first boundaries and responsibility split across app layers.
+- `docs/20_03_backend_patterns.md`: backend implementation patterns for routes, actions, validation, and persistence.
+- `docs/20_04_frontend_guidelines.md`: frontend engineering constraints aligned to service-first architecture.
+
+- `docs/30_01_testing_rulebook.md`: required testing standards and minimum coverage expectations.
+- `docs/30_02_testing_checklist.md`: implementation checklist for test planning and handoff quality.
+- `docs/30_03_e2e_inventory.md`: prioritized e2e inventory (smoke/critical/extended) for beta-relevant flows.
+- `docs/30_04_e2e_setup.md`: e2e environment setup, execution model, and deterministic test guidance.
+
+- `docs/40_01_ci_cd_overview.md`: current CI pipeline structure, gates, and responsibilities.
+- `docs/40_02_environment_variables.md`: environment variable requirements by runtime context.
+- `docs/40_03_release_process.md`: release sequencing and validation expectations.
+- `docs/40_04_monitoring_alerting.md`: monitoring and alerting baseline (app + documented ops tooling).
+- `docs/40_05_backup_restore.md`: backup/restore posture and verification references.
+- `docs/40_06_incident_response.md`: current incident-response workflow and escalation inputs.
+
+- `docs/50_01_setup_server_hetzner.md`: Hetzner server provisioning runbook.
+- `docs/50_02_bookmyclass_server_setup_updated.md`: updated production/server setup procedure.
+- `docs/50_03_prisma_studio_remote_usage.md`: Prisma Studio remote-access usage guide.
+- `docs/50_04_db_backup_local_setup.md`: local database backup setup procedure.
+- `docs/50_05_backblaze_b2_backup_setup.md`: Backblaze B2 backup integration/setup procedure.
+- `docs/50_06_monitoring_alerting_setup.md`: monitoring and alerting setup runbook.
+- `docs/50_07_monitoring_netdata_setup.md`: Netdata setup and access runbook.
+- `docs/50_08_pm2_autostart_setup.md`: PM2 autostart/service setup runbook.
+- `docs/50_09_monitoring_system_guide.md`: consolidated monitoring operations guide.
+- `docs/50_10_remote_access_guide.md`: remote server/database access guide.
+- `docs/50_11_db_setup_guide.md`: database setup and operational setup guide.
+
+- `docs/60_01_auth_security.md`: authentication security controls and current hardening status.
+- `docs/60_02_secret_management.md`: secret inventory and secret-handling expectations.
+- `docs/60_03_data_protection.md`: current data-protection controls and limits.
+- `docs/60_04_access_control.md`: role model and route/mutation access-control enforcement.
+- `docs/60_05_audit_logging.md`: audit logging model and current implementation coverage.
+
+- `docs/70_01_stripe_integration.md`: Stripe integration boundaries and flow usage.
+- `docs/70_02_email_resend_integration.md`: Resend email integration and deterministic test-mode behavior.
+- `docs/70_03_sentry_integration.md`: Sentry runtime integration and event-safety behavior.
+- `docs/70_04_marketing_integration.md`: marketing delivery/tracking integration boundaries.
+
+- `docs/90_01_codex_rulebook.md`: Codex execution rules, priority order, and implementation guardrails.
+- `docs/90_02_chatgpt_prompt.md`: reusable Tech Lead prompt template aligned to repo rules and output format.
+

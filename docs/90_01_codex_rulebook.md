@@ -6,26 +6,30 @@ Purpose: implementation behavior and guardrails for Codex work in this repositor
 
 Use documentation in this exact order:
 
-1. `docs/system-baseline.md`
-2. `docs/deployment-baseline.md`
-3. `docs/business-rules.md`
-4. `docs/domain-rules.md`
-5. `docs/subscription-domain-rules.md`
-6. `docs/testing-rulebook.md`
-7. `docs/testing-checklist.md`
-8. Setup/runbook docs (`00`, `01`, `02`, `03`, `04`, `05`, `06`, `07`, `20`, `21`, `22`) as procedural references only
+1. `docs/00_01_system_baseline.md`
+2. `docs/00_02_deployment_baseline.md`
+3. `docs/10_01_business_rules.md`
+4. `docs/10_02_domain_rules.md`
+5. `docs/10_03_subscription_domain_rules.md`
+6. `docs/20_01_architecture_overview.md`
+7. `docs/20_02_service_boundaries.md`
+8. `docs/20_03_backend_patterns.md`
+9. `docs/20_04_frontend_guidelines.md`
+10. `docs/30_01_testing_rulebook.md`
+11. `docs/30_02_testing_checklist.md`
+12. `docs/40_*`, `docs/60_*`, `docs/70_*`, and setup/runbook docs (`50_01` through `50_11`) as supporting references only
 
 ## Conflict Resolution Rules
 
-- If two docs conflict on current-state architecture or active capabilities, `system-baseline.md` is authoritative.
-- If two docs conflict on deployment/runtime facts (host/IP, ports, PM2 app, container names, cron, env naming), `deployment-baseline.md` is authoritative.
+- If two docs conflict on current-state architecture or active capabilities, `00_01_system_baseline.md` is authoritative.
+- If two docs conflict on deployment/runtime facts (host/IP, ports, PM2 app, container names, cron, env naming), `00_02_deployment_baseline.md` is authoritative.
 - Setup/runbook docs must never be treated as primary truth when they conflict with baseline files.
 - If baseline files still contain `NEEDS_OPERATOR_CONFIRMATION`, do not guess. Surface the gap explicitly.
 
 ## Capability Assumption Rule
 
 - Do not assume a modeled capability is implemented only because it exists in Prisma schema or domain docs.
-- A capability is treated as active only when `system-baseline.md` says it is active/confirmed.
+- A capability is treated as active only when `00_01_system_baseline.md` says it is active/confirmed.
 - Modeled but not active flows must be treated as unsupported for delivery planning and acceptance checks.
 
 ## Implementation Rules
@@ -58,3 +62,5 @@ If no conflict exists, state: `Documentation conflicts found: none`.
 - Prefer minimal, surgical edits over broad rewrites.
 - Keep naming and architecture consistent with the existing codebase.
 - Do not invent new architecture or domain abstractions unless explicitly requested.
+
+

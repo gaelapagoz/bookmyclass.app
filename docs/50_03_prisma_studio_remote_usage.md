@@ -1,6 +1,6 @@
 # 🔍 Prisma Studio – Remote Access (Safe Usage for Testing)
 
-> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+> Procedural guide only. Canonical deployment/runtime facts live in docs/00_02_deployment_baseline.md. If this file conflicts with baseline docs, follow 00_02_deployment_baseline.md and 00_01_system_baseline.md.
 
 
 This guide explains how to run **Prisma Studio on your production server** and access it safely from your local machine.
@@ -167,6 +167,7 @@ npx prisma db seed
 - Use only for debugging
 - Do not keep it running permanently
 - Always close tunnel when done
+
 
 
 

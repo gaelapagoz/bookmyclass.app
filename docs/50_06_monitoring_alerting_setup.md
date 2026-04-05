@@ -1,6 +1,6 @@
 # 📡 Monitoring + Alerting Setup – BookMyClass
 
-> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+> Procedural guide only. Canonical deployment/runtime facts live in docs/00_02_deployment_baseline.md. If this file conflicts with baseline docs, follow 00_02_deployment_baseline.md and 00_01_system_baseline.md.
 
 
 This guide defines a practical beta-stage monitoring procedure for BookMyClass.
@@ -453,5 +453,6 @@ After this, the next hardening step should be:
 - rollout checklist
 
 Not a bigger monitoring stack.
+
 
 

@@ -1,6 +1,6 @@
 # Netdata Configuration for BookMyClass
 
-> Procedural guide only. Canonical deployment/runtime facts live in docs/deployment-baseline.md. If this file conflicts with baseline docs, follow deployment-baseline.md and system-baseline.md.
+> Procedural guide only. Canonical deployment/runtime facts live in docs/00_02_deployment_baseline.md. If this file conflicts with baseline docs, follow 00_02_deployment_baseline.md and 00_01_system_baseline.md.
 
 
 ## Goal
@@ -168,5 +168,6 @@ Do **not** run aggressive RAM stress tests on production.
 - Keep `/api/health` in Uptime Kuma as the main availability signal
 - Keep `checks.bookmyclass.app` for daily backup heartbeat only
 - Review CPU, RAM, and disk quickly once per day during beta
+
 
 

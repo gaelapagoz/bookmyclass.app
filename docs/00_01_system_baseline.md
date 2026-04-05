@@ -2,19 +2,31 @@
 # System Baseline
 
 ## Canonical Source Priority
-- Priority 1: this file (`system-baseline.md`) for architecture/current-state truth and active capability status.
-- Priority 2: [`deployment-baseline.md`](/c:/Dev/studio.saas.platform/docs/deployment-baseline.md) for canonical deployment/runtime facts.
-- Priority 3: `business-rules.md`, `domain-rules.md`, `subscription-domain-rules.md` for business/modeling truth.
-- Priority 4: `codex-rulebook.md` for implementation behavior constraints.
-- Priority 5: `testing-rulebook.md` and `testing-checklist.md` for testing expectations.
-- Priority 6: setup/runbook files (`00`, `01`, `02`, `03`, `04`, `05`, `06`, `07`, `20`, `21`, `22`) as procedural guides only.
+- Priority 1: this file (`00_01_system_baseline.md`) for architecture/current-state truth and active capability status.
+- Priority 2: [`00_02_deployment_baseline.md`](/c:/Dev/studio.saas.platform/docs/00_02_deployment_baseline.md) for canonical deployment/runtime facts.
+- Priority 3: `10_01_business_rules.md`, `10_02_domain_rules.md`, `10_03_subscription_domain_rules.md` for business/modeling truth.
+- Priority 4: `20_01_architecture_overview.md`, `20_02_service_boundaries.md`, `20_03_backend_patterns.md`, `20_04_frontend_guidelines.md` for engineering architecture guidance.
+- Priority 5: `90_01_codex_rulebook.md` for implementation behavior constraints.
+- Priority 6: `30_01_testing_rulebook.md` and `30_02_testing_checklist.md` for testing expectations.
+- Priority 7: `40_*`, `60_*`, `70_*`, and setup/runbook files (`50_01` through `50_11`) as operational and integration references.
+
+## Documentation Groups
+- `00_*`: Foundations and canonical baselines.
+- `10_*`: Product and domain rules.
+- `20_*`: Engineering standards and implementation guidance.
+- `30_*`: Testing standards and inventory.
+- `40_*`: Deploy, infrastructure, and operations references.
+- `50_*`: Operational setup guides and runbooks.
+- `60_*`: Security and compliance references.
+- `70_*`: External integration references.
+- `90_*`: AI workflow and implementation guardrails.
 
 If a setup/runbook file conflicts with this baseline or deployment baseline, treat the runbook value as non-canonical and request operator confirmation.
 
 ## Canonical Production Facts
-- Canonical runtime/deployment fact sheet: [`deployment-baseline.md`](/c:/Dev/studio.saas.platform/docs/deployment-baseline.md).
+- Canonical runtime/deployment fact sheet: [`00_02_deployment_baseline.md`](/c:/Dev/studio.saas.platform/docs/00_02_deployment_baseline.md).
 - This file remains the source for architecture and active-flow status, while deployment baseline is the source for live runtime values (host/IP, container naming, ports, cron, secrets naming).
-- Known modeled-but-not-fully-active flows are tracked in [`known-non-goals.md`](/c:/Dev/studio.saas.platform/docs/known-non-goals.md).
+- Known modeled-but-not-fully-active flows are tracked in [`00_03_known_non_goals.md`](/c:/Dev/studio.saas.platform/docs/00_03_known_non_goals.md).
 
 Evidence label legend used in this file:
 - `Confirmed from repo`: directly evidenced in code/config/scripts committed in this repository.
@@ -304,22 +316,22 @@ Evidence label legend used in this file:
 ### 11.2 Production setup known from deployment/config artifacts
 - Deployment model (documented):
   - Ubuntu server with Node 20, PM2, Dockerized PostgreSQL, nginx reverse proxy, certbot SSL, manual git-pull deploy flow.
-  - Evidence status: Confirmed from deployment/config artifacts; Operator-stated / external to repo for current live-state (`docs/01_bookmyclass_server_setup_updated.md`, `docs/07_pm2_autostart_setup.md`).
+  - Evidence status: Confirmed from deployment/config artifacts; Operator-stated / external to repo for current live-state (`docs/50_02_bookmyclass_server_setup_updated.md`, `docs/50_08_pm2_autostart_setup.md`).
 - Hosting provider/model (documented):
   - Hetzner Cloud VM docs present (`CX23`, Ubuntu 24.04).
-  - Evidence status: Confirmed from deployment/config artifacts; Operator-stated / external to repo for current live-state (`docs/00_setup_server_hetzner.md`).
+  - Evidence status: Confirmed from deployment/config artifacts; Operator-stated / external to repo for current live-state (`docs/50_01_setup_server_hetzner.md`).
 - DB hosting model (documented):
   - PostgreSQL in Docker container with local binding + SSH tunnel access.
-  - Evidence status: Confirmed from deployment/config artifacts; Operator-stated / external to repo for current live-state (`docs/01_*`, `docs/22_db_setup_guide.md`, `docs/21_remote_access_guide.md`).
+  - Evidence status: Confirmed from deployment/config artifacts; Operator-stated / external to repo for current live-state (`docs/50_02_bookmyclass_server_setup_updated.md`, `docs/50_11_db_setup_guide.md`, `docs/50_10_remote_access_guide.md`).
 - Migration/restart strategy (documented):
   - `prisma migrate deploy`, `prisma generate`, `npm run build`, `pm2 restart ... --update-env`.
-  - Evidence status: Confirmed from deployment/config artifacts (`docs/01_bookmyclass_server_setup_updated.md`).
+  - Evidence status: Confirmed from deployment/config artifacts (`docs/50_02_bookmyclass_server_setup_updated.md`).
 - SSL/domain/routing (documented):
   - nginx proxy to `127.0.0.1:3000`, certbot for `bookmyclass.app` and `www`.
-  - Evidence status: Confirmed from deployment/config artifacts; Operator-stated / external to repo for current live-state (`docs/01_bookmyclass_server_setup_updated.md`).
+  - Evidence status: Confirmed from deployment/config artifacts; Operator-stated / external to repo for current live-state (`docs/50_02_bookmyclass_server_setup_updated.md`).
 - Monitoring/backup ops model (documented):
   - Uptime Kuma + Healthchecks + Netdata + local health scripts + backup scripts/heartbeat.
-  - Evidence status: Confirmed from deployment/config artifacts; Operator-stated / external to repo for current live-state (`docs/05_*`, `docs/06_*`, `docs/20_*`, `docs/03_*`, `docs/04_*`, `scripts/verify-production-readiness.sh`).
+  - Evidence status: Confirmed from deployment/config artifacts; Operator-stated / external to repo for current live-state (`docs/50_06_monitoring_alerting_setup.md`, `docs/50_07_monitoring_netdata_setup.md`, `docs/50_09_monitoring_system_guide.md`, `docs/50_04_db_backup_local_setup.md`, `docs/50_05_backblaze_b2_backup_setup.md`, `scripts/verify-production-readiness.sh`).
 
 ### 11.3 Not verifiable from repo
 - Which documented production setup steps are currently active on live hosts.
@@ -369,19 +381,19 @@ Evidence label legend used in this file:
   - Evidence status: Confirmed from repo (`src/app/api/health/route.ts`).
 - Uptime monitoring:
   - Uptime Kuma usage documented with health/page checks.
-  - Evidence status: Confirmed from deployment/config artifacts (`docs/05_monitoring_alerting_setup.md`, `docs/20_monitoring_system_guide.md`).
+  - Evidence status: Confirmed from deployment/config artifacts (`docs/50_06_monitoring_alerting_setup.md`, `docs/50_09_monitoring_system_guide.md`).
 - Heartbeat/cron monitoring:
   - Healthchecks-based backup heartbeat documented.
-  - Evidence status: Confirmed from deployment/config artifacts (`docs/20_monitoring_system_guide.md`).
+  - Evidence status: Confirmed from deployment/config artifacts (`docs/50_09_monitoring_system_guide.md`).
 - Backup/restore evidence:
   - Backup and restore runbooks/scripts documented (local + offsite B2).
-  - Evidence status: Confirmed from deployment/config artifacts (`docs/03_*`, `docs/04_*`).
+  - Evidence status: Confirmed from deployment/config artifacts (`docs/50_04_db_backup_local_setup.md`, `docs/50_05_backblaze_b2_backup_setup.md`).
 - Operational dashboards/tools:
   - Netdata documented as private host diagnostics.
-  - Evidence status: Confirmed from deployment/config artifacts (`docs/06_monitoring_netdata_setup.md`).
+  - Evidence status: Confirmed from deployment/config artifacts (`docs/50_07_monitoring_netdata_setup.md`).
 - On-host/process monitoring:
   - PM2 status/log checks and local healthcheck workflows documented.
-  - Evidence status: Confirmed from deployment/config artifacts (`docs/07_pm2_autostart_setup.md`, `docs/20_monitoring_system_guide.md`).
+  - Evidence status: Confirmed from deployment/config artifacts (`docs/50_08_pm2_autostart_setup.md`, `docs/50_09_monitoring_system_guide.md`).
 - Gaps visible from repo:
   - No machine-verifiable infra state (no IaC/deploy manifests).
   - Evidence status: Confirmed from repo.
@@ -483,7 +495,7 @@ Evidence label legend used in this file:
   - Conflicting server IPs (`46.62.208.152` vs `37.27.192.11`).
   - Mixed DB naming examples (`bookmyclass-app-db` vs `bookmyclass`).
   - Mixed auth secret naming in docs (`NEXTAUTH_SECRET`) vs runtime code (`AUTH_SECRET`).
-  - Evidence status: Confirmed from deployment/config artifacts (`docs/00_*`, `docs/01_*`, `docs/21_*`, `docs/22_*`).
+  - Evidence status: Confirmed from deployment/config artifacts (`docs/50_01_setup_server_hetzner.md`, `docs/50_02_bookmyclass_server_setup_updated.md`, `docs/50_10_remote_access_guide.md`, `docs/50_11_db_setup_guide.md`).
 - CI lacks lint gate and deployment automation.
   - Evidence status: Confirmed from repo (`.github/workflows/ci.yml`).
 
@@ -571,7 +583,7 @@ Rule:
   - `docker compose up -d postgres`
 - Deploy commands/scripts in repo:
   - No executable in-repo deploy script found.
-  - Manual deploy sequence documented in `docs/01_bookmyclass_server_setup_updated.md`.
+  - Manual deploy sequence documented in `docs/50_02_bookmyclass_server_setup_updated.md`.
 ## Appendix C: Production evidence notes
 - Core runtime/config evidence:
   - `package.json`
@@ -601,17 +613,17 @@ Rule:
   - `src/lib/client-messages/client-message-service.ts`
   - `src/lib/public-documents/agenda-document-service.ts`
 - Deployment/production setup docs evidence:
-  - `docs/00_setup_server_hetzner.md`
-  - `docs/01_bookmyclass_server_setup_updated.md`
-  - `docs/02_prisma_studio_remote_usage.md`
-  - `docs/03_db_backup_local_setup.md`
-  - `docs/04_backblaze_b2_backup_setup.md`
-  - `docs/05_monitoring_alerting_setup.md`
-  - `docs/06_monitoring_netdata_setup.md`
-  - `docs/07_pm2_autostart_setup.md`
-  - `docs/20_monitoring_system_guide.md`
-  - `docs/21_remote_access_guide.md`
-  - `docs/22_db_setup_guide.md`
+  - `docs/50_01_setup_server_hetzner.md`
+  - `docs/50_02_bookmyclass_server_setup_updated.md`
+  - `docs/50_03_prisma_studio_remote_usage.md`
+  - `docs/50_04_db_backup_local_setup.md`
+  - `docs/50_05_backblaze_b2_backup_setup.md`
+  - `docs/50_06_monitoring_alerting_setup.md`
+  - `docs/50_07_monitoring_netdata_setup.md`
+  - `docs/50_08_pm2_autostart_setup.md`
+  - `docs/50_09_monitoring_system_guide.md`
+  - `docs/50_10_remote_access_guide.md`
+  - `docs/50_11_db_setup_guide.md`
   - `scripts/verify-production-readiness.sh`
 
 ## Appendix D: Missing operator-supplied facts
@@ -625,3 +637,9 @@ Rule:
 - Confirm Sentry project/environment values in production.
 - Confirm PM2 process list and systemd auto-start unit currently active.
 - Confirm exact manual deploy runbook currently used (including rollback steps).
+
+
+
+
+
+

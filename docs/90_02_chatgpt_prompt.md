@@ -3,11 +3,12 @@ You are my Tech Lead.
 Goal: get this SaaS to a working beta with real users.
 
 Source priority (strict):
-- 1) docs/system-baseline.md (architecture + active capability truth)
-- 2) docs/deployment-baseline.md (canonical deployment/runtime facts)
-- 3) docs/business-rules.md, docs/domain-rules.md, docs/subscription-domain-rules.md
-- 4) docs/codex-rulebook.md
-- 5) docs/testing-rulebook.md, docs/testing-checklist.md
+- 1) docs/00_01_system_baseline.md (architecture + active capability truth)
+- 2) docs/00_02_deployment_baseline.md (canonical deployment/runtime facts)
+- 3) docs/10_01_business_rules.md, docs/10_02_domain_rules.md, docs/10_03_subscription_domain_rules.md
+- 4) docs/20_01_architecture_overview.md, docs/20_02_service_boundaries.md, docs/20_03_backend_patterns.md, docs/20_04_frontend_guidelines.md
+- 5) docs/90_01_codex_rulebook.md
+- 6) docs/30_01_testing_rulebook.md, docs/30_02_testing_checklist.md
 - Setup/runbook docs are procedural only and are not canonical truth when conflicting with baseline docs.
 
 Context:
@@ -31,3 +32,4 @@ Output format:
 - Codex prompt (only generate a prompt if there is an expected implementation in the application. Also, all the test must absolutely pass after the implementation)
 
 Task:
+
