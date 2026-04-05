@@ -1,8 +1,8 @@
-import { BookingIntent, BookingStatus, StudioSessionStatus } from "@prisma/client";
+import { BookingIntent, BookingStatus, Prisma, StudioSessionStatus } from "@prisma/client";
 import { prisma } from "../db";
-import { formatSessionDateTime } from "./format-session-date-time";
-import { getPublicTeacherName } from "../public-content/teacher-display";
 import { createBookingNoteMessage } from "../client-messages/client-message-service";
+import { getPublicTeacherName } from "../public-content/teacher-display";
+import { formatSessionDateTime } from "./format-session-date-time";
 
 export type BookingDraftPayload = {
   bookingIntent: BookingIntent;
@@ -168,58 +168,138 @@ export async function createPendingBookingDraft(params: {
   payload: BookingDraftPayload;
 }) {
   const { authenticatedUserId, payload } = params;
-  const session = await getSessionForDraft({
-    serviceSlug: payload.serviceSlug,
-    sessionId: payload.sessionId,
-  });
-
-  if (!session) {
-    throw new BookingDraftError("INVALID_SESSION", "Selected session is invalid.");
-  }
-
-  assertSessionAvailable(session);
-
   if (!payload.consentPrivacyAccepted || !payload.consentTermsAccepted) {
     throw new BookingDraftError("CONSENT_REQUIRED", "Required consents must be accepted.");
   }
 
-  const existingBooking = await prisma.booking.findFirst({
-    where: {
-      clientId: authenticatedUserId,
-      studioSessionId: session.id,
-      status: {
-        in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
-      },
-    },
-    select: { id: true },
-  });
+  const MAX_TRANSACTION_RETRIES = 2;
+  let booking:
+    | {
+        id: string;
+        status: BookingStatus;
+      }
+    | null = null;
 
-  if (existingBooking) {
-    throw new BookingDraftError(
-      "DUPLICATE_BOOKING",
-      "You already have an active booking draft or booking for this session.",
-    );
+  for (let attempt = 0; attempt <= MAX_TRANSACTION_RETRIES; attempt += 1) {
+    try {
+      booking = await prisma.$transaction(
+        async (tx) => {
+          const session = await tx.studioSession.findFirst({
+            where: {
+              id: payload.sessionId,
+              classType: {
+                slug: payload.serviceSlug,
+              },
+            },
+            select: {
+              id: true,
+              startsAt: true,
+              endsAt: true,
+              capacity: true,
+              status: true,
+              isPublished: true,
+              classType: {
+                select: {
+                  id: true,
+                  slug: true,
+                  name: true,
+                },
+              },
+              teacher: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  name: true,
+                },
+              },
+              location: true,
+              bookings: {
+                where: {
+                  status: {
+                    in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
+                  },
+                },
+                select: {
+                  id: true,
+                },
+              },
+            },
+          });
+
+          if (!session) {
+            throw new BookingDraftError("INVALID_SESSION", "Selected session is invalid.");
+          }
+
+          assertSessionAvailable(session);
+
+          const existingBooking = await tx.booking.findFirst({
+            where: {
+              clientId: authenticatedUserId,
+              studioSessionId: session.id,
+              status: {
+                in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
+              },
+            },
+            select: { id: true },
+          });
+
+          if (existingBooking) {
+            throw new BookingDraftError(
+              "DUPLICATE_BOOKING",
+              "You already have an active booking draft or booking for this session.",
+            );
+          }
+
+          return tx.booking.create({
+            data: {
+              clientId: authenticatedUserId,
+              studioSessionId: session.id,
+              status: BookingStatus.PENDING,
+              bookingIntent: payload.bookingIntent,
+              customerName: payload.customerName,
+              customerEmail: payload.customerEmail,
+              customerPhone: payload.customerPhone,
+              customerMessage: payload.customerMessage?.trim() || null,
+              consentTermsAccepted: payload.consentTermsAccepted,
+              consentPrivacyAccepted: payload.consentPrivacyAccepted,
+              consentAcceptedAt: new Date(),
+            },
+            select: {
+              id: true,
+              status: true,
+            },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+      break;
+    } catch (error) {
+      if (error instanceof BookingDraftError) {
+        throw error;
+      }
+
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new BookingDraftError(
+          "DUPLICATE_BOOKING",
+          "You already have an active booking draft or booking for this session.",
+        );
+      }
+
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+        if (attempt < MAX_TRANSACTION_RETRIES) {
+          continue;
+        }
+        throw new BookingDraftError("FULL_SESSION", "This session is full.");
+      }
+
+      throw error;
+    }
   }
 
-  const booking = await prisma.booking.create({
-    data: {
-      clientId: authenticatedUserId,
-      studioSessionId: session.id,
-      status: BookingStatus.PENDING,
-      bookingIntent: payload.bookingIntent,
-      customerName: payload.customerName,
-      customerEmail: payload.customerEmail,
-      customerPhone: payload.customerPhone,
-      customerMessage: payload.customerMessage?.trim() || null,
-      consentTermsAccepted: payload.consentTermsAccepted,
-      consentPrivacyAccepted: payload.consentPrivacyAccepted,
-      consentAcceptedAt: new Date(),
-    },
-    select: {
-      id: true,
-      status: true,
-    },
-  });
+  if (!booking) {
+    throw new BookingDraftError("FULL_SESSION", "This session is full.");
+  }
+
   const normalizedMessage = payload.customerMessage?.trim() ?? "";
   if (normalizedMessage) {
     await createBookingNoteMessage({

@@ -4,6 +4,15 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("@/lib/auth/require-auth", () => ({
+  requireUserSession: vi.fn(async () => ({
+    user: {
+      id: "teacher-user",
+      role: "TEACHER",
+    },
+  })),
+}));
+
 vi.mock("@/components/Navbar", () => ({
   default: () => <div data-testid="public-navbar">Public Navbar</div>,
 }));
@@ -54,9 +63,9 @@ describe("route-area not-found handling", () => {
 
   it("teacher not-found renders inside teacher shell and no public shell", async () => {
     render(
-      <TeacherLayout>
-        <TeacherNotFoundPage />
-      </TeacherLayout>,
+      await TeacherLayout({
+        children: <TeacherNotFoundPage />,
+      }),
     );
 
     expect(screen.getByText("Teacher page not found")).toBeInTheDocument();

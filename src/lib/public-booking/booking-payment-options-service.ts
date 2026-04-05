@@ -969,6 +969,15 @@ function computeRecommendedSelection(input: {
   };
 }
 
+function buildBookingCreditLedgerIdempotencyKey(input: {
+  type: "CONSUME";
+  clientId: string;
+  entitlementId: string;
+  bookingId: string;
+}): string {
+  return ["booking-existing-plan", input.type, input.clientId, input.entitlementId, input.bookingId].join(":");
+}
+
 export async function getMyActivePlans(userId: string): Promise<PlanSummary[]> {
   const entitlements = await prisma.clientEntitlement.findMany({
     where: {
@@ -1286,27 +1295,23 @@ async function applyExistingPlanSelection(input: {
       effectiveEntitlement.entitlementType === EntitlementType.CREDIT_PACK ||
       effectiveEntitlement.entitlementType === EntitlementType.SINGLE_USE
     ) {
-      const existingConsume = await tx.creditLedgerEntry.findFirst({
-        where: {
-          bookingId: input.bookingId,
+      await tx.creditLedgerEntry.createMany({
+        data: {
+          clientId: input.userId,
           entitlementId: effectiveEntitlement.id,
+          bookingId: input.bookingId,
           entryType: CreditLedgerEntryType.CONSUME,
-        },
-        select: { id: true },
-      });
-
-      if (!existingConsume) {
-        await tx.creditLedgerEntry.create({
-          data: {
+          amount: -1,
+          idempotencyKey: buildBookingCreditLedgerIdempotencyKey({
+            type: "CONSUME",
             clientId: input.userId,
             entitlementId: effectiveEntitlement.id,
             bookingId: input.bookingId,
-            entryType: CreditLedgerEntryType.CONSUME,
-            amount: -1,
-            notes: "Credit consumed by existing-plan booking confirmation.",
-          },
-        });
-      }
+          }),
+          notes: "Credit consumed by existing-plan booking confirmation.",
+        },
+        skipDuplicates: true,
+      });
     }
 
     return tx.booking.update({

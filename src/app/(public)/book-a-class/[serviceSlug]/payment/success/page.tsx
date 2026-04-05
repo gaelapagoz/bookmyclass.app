@@ -46,6 +46,9 @@ export default async function BookingPaymentSuccessPage({
         where: {
           bookingId,
           provider: PaymentProvider.STRIPE,
+          booking: {
+            clientId: session.user.id,
+          },
         },
         orderBy: { createdAt: "desc" },
         select: { status: true, failureReason: true },

@@ -466,4 +466,43 @@ describe("booking payment options api", () => {
     expect(consumeEntries).toHaveLength(1);
     expect(consumeEntries[0]?.amount).toBe(-1);
   });
+  it("keeps credit consume idempotent when existing-plan apply is submitted concurrently", async () => {
+    const fixture = await createFixture({
+      bookingIntent: BookingIntent.USE_PLAN,
+      createActivePlanCount: 1,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: fixture.bookingUser.id, email: fixture.bookingUser.email, name: fixture.bookingUser.name },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    await Promise.allSettled(
+      Array.from({ length: 4 }).map(() =>
+        applyPlan(
+          new Request("http://localhost/api", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              mode: "EXISTING_PLAN",
+              entitlementId: fixture.entitlementIds[0],
+            }),
+          }),
+          { params: Promise.resolve({ bookingId: fixture.booking.id }) },
+        ),
+      ),
+    );
+
+    const consumeEntries = await prisma.creditLedgerEntry.findMany({
+      where: {
+        bookingId: fixture.booking.id,
+        entitlementId: fixture.entitlementIds[0],
+        entryType: CreditLedgerEntryType.CONSUME,
+      },
+    });
+
+    expect(consumeEntries).toHaveLength(1);
+    expect(consumeEntries[0]?.idempotencyKey).toBeTruthy();
+  });
 });
+

@@ -8,6 +8,11 @@ import {
   recordAdminLoginFailure,
   resetAdminLoginFailureCounters,
 } from "@/lib/auth/admin-login-abuse-service";
+import {
+  getClientLoginAbuseState,
+  recordClientLoginFailure,
+  resetClientLoginFailureCounters,
+} from "@/lib/auth/client-login-abuse-service";
 import { isAdminRole } from "@/lib/auth/admin-access";
 import { verifyAdminLoginCaptcha } from "@/lib/auth/admin-login-captcha";
 import { verifyPassword } from "@/lib/auth/password-service";
@@ -70,6 +75,21 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
   const isAdminSignInFlow = parsed.data.authFlow === "admin";
   const captchaToken = resolveCaptchaToken(parsed.data);
   const captchaEnforced = isAdminLoginCaptchaEnforced();
+
+  if (!isAdminSignInFlow) {
+    const clientState = await getClientLoginAbuseState({
+      ip,
+      normalizedEmail,
+    });
+
+    if (clientState.isLocked) {
+      await recordClientLoginFailure({
+        ip,
+        normalizedEmail,
+      });
+      return null;
+    }
+  }
 
   if (isAdminSignInFlow) {
     const preState = await getAdminLoginAbuseState({
@@ -156,6 +176,12 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
   }
 
   if (!user || user.activationStatus !== UserActivationStatus.ACTIVE) {
+    if (!isAdminSignInFlow) {
+      await recordClientLoginFailure({
+        ip,
+        normalizedEmail,
+      });
+    }
     if (shouldApplyAdminAbuseGuard) {
       await recordAdminLoginFailure({
         ip,
@@ -167,6 +193,12 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
   }
 
   if (!user.passwordHash) {
+    if (!isAdminSignInFlow) {
+      await recordClientLoginFailure({
+        ip,
+        normalizedEmail,
+      });
+    }
     if (shouldApplyAdminAbuseGuard) {
       await recordAdminLoginFailure({
         ip,
@@ -178,6 +210,12 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
   }
 
   if (!user.emailVerified && !isAdminRole(user.role)) {
+    if (!isAdminSignInFlow) {
+      await recordClientLoginFailure({
+        ip,
+        normalizedEmail,
+      });
+    }
     if (shouldApplyAdminAbuseGuard) {
       await recordAdminLoginFailure({
         ip,
@@ -190,6 +228,12 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
 
   const isValidPassword = await verifyPassword(password, user.passwordHash);
   if (!isValidPassword) {
+    if (!isAdminSignInFlow) {
+      await recordClientLoginFailure({
+        ip,
+        normalizedEmail,
+      });
+    }
     if (shouldApplyAdminAbuseGuard) {
       await recordAdminLoginFailure({
         ip,
@@ -202,6 +246,12 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
 
   if (shouldApplyAdminAbuseGuard) {
     await resetAdminLoginFailureCounters({
+      ip,
+      normalizedEmail,
+    });
+  }
+  if (!isAdminSignInFlow) {
+    await resetClientLoginFailureCounters({
       ip,
       normalizedEmail,
     });

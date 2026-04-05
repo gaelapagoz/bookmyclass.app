@@ -108,6 +108,15 @@ export type DashboardMembershipData = {
   creditsLeft: number;
 };
 
+function buildBookingCreditLedgerIdempotencyKey(input: {
+  type: "RESTORE";
+  clientId: string;
+  entitlementId: string;
+  bookingId: string;
+}): string {
+  return ["dashboard-booking", input.type, input.clientId, input.entitlementId, input.bookingId].join(":");
+}
+
 function toBookingItem(input: {
   booking: {
     id: string;
@@ -547,17 +556,24 @@ export async function cancelClientBooking(input: {
         });
 
         if (consumed && !restoreExists) {
-          await tx.creditLedgerEntry.create({
+          const restoreResult = await tx.creditLedgerEntry.createMany({
             data: {
               clientId: input.clientId,
               entitlementId: booking.selectedEntitlementId,
               bookingId: booking.id,
               entryType: CreditLedgerEntryType.RESTORE,
               amount: 1,
+              idempotencyKey: buildBookingCreditLedgerIdempotencyKey({
+                type: "RESTORE",
+                clientId: input.clientId,
+                entitlementId: booking.selectedEntitlementId,
+                bookingId: booking.id,
+              }),
               notes: "Credit restored after client dashboard cancellation.",
             },
+            skipDuplicates: true,
           });
-          refunded = true;
+          refunded = restoreResult.count > 0;
         }
       }
     }

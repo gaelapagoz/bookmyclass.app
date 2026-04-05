@@ -343,4 +343,137 @@ describe("credentials authorize integration", () => {
       expect(counter.lastSuccessAt).not.toBeNull();
     }
   });
+  it("locks repeated failed client sign-in attempts with persisted DB counters", async () => {
+    const email = `client-lock.${Date.now()}@example.test`;
+    const password = "Password123!";
+    const passwordHash = await hash(password, 12);
+    const ip = "203.0.113.51";
+
+    await prisma.user.create({
+      data: {
+        name: "Rate Limited Client",
+        firstName: "Rate",
+        lastName: "Limited",
+        email,
+        role: Role.CLIENT,
+        passwordHash,
+        emailVerified: new Date(),
+      },
+    });
+
+    const request = {
+      headers: new Headers({
+        "x-forwarded-for": ip,
+      }),
+    };
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const result = await authorizeCredentials(
+        {
+          email,
+          password: "WrongPass123!",
+        },
+        request,
+      );
+      expect(result).toBeNull();
+    }
+
+    const blockedResult = await authorizeCredentials(
+      {
+        email,
+        password,
+      },
+      request,
+    );
+
+    expect(blockedResult).toBeNull();
+
+    const secret = process.env.AUTH_SECRET ?? "client-login-abuse-fallback";
+    const normalizedEmail = email.toLowerCase();
+    const hashKey = (value: string) => createHash("sha256").update(`${secret}:client-login:${value}`).digest("hex");
+    const counters = await prisma.adminLoginAbuseCounter.findMany({
+      where: {
+        OR: [
+          { keyType: AdminLoginAbuseKeyType.IP, keyHash: hashKey(ip) },
+          { keyType: AdminLoginAbuseKeyType.EMAIL, keyHash: hashKey(normalizedEmail) },
+          { keyType: AdminLoginAbuseKeyType.IP_EMAIL, keyHash: hashKey(`${ip}:${normalizedEmail}`) },
+        ],
+      },
+    });
+
+    expect(counters).toHaveLength(3);
+    expect(counters.some((counter) => (counter.lockedUntil?.getTime() ?? 0) > Date.now())).toBe(true);
+  });
+
+  it("resets client lockout counters after successful sign-in", async () => {
+    const email = `client-reset.${Date.now()}@example.test`;
+    const password = "Password123!";
+    const passwordHash = await hash(password, 12);
+    const ip = "198.51.100.22";
+
+    await prisma.user.create({
+      data: {
+        name: "Reset Client",
+        firstName: "Reset",
+        lastName: "Client",
+        email,
+        role: Role.CLIENT,
+        passwordHash,
+        emailVerified: new Date(),
+      },
+    });
+
+    const request = {
+      headers: new Headers({
+        "x-forwarded-for": ip,
+      }),
+    };
+
+    await authorizeCredentials(
+      {
+        email,
+        password: "WrongPass123!",
+      },
+      request,
+    );
+
+    await authorizeCredentials(
+      {
+        email,
+        password: "WrongPass123!",
+      },
+      request,
+    );
+
+    const success = await authorizeCredentials(
+      {
+        email,
+        password,
+      },
+      request,
+    );
+
+    expect(success).not.toBeNull();
+
+    const secret = process.env.AUTH_SECRET ?? "client-login-abuse-fallback";
+    const normalizedEmail = email.toLowerCase();
+    const hashKey = (value: string) => createHash("sha256").update(`${secret}:client-login:${value}`).digest("hex");
+    const counters = await prisma.adminLoginAbuseCounter.findMany({
+      where: {
+        OR: [
+          { keyType: AdminLoginAbuseKeyType.IP, keyHash: hashKey(ip) },
+          { keyType: AdminLoginAbuseKeyType.EMAIL, keyHash: hashKey(normalizedEmail) },
+          { keyType: AdminLoginAbuseKeyType.IP_EMAIL, keyHash: hashKey(`${ip}:${normalizedEmail}`) },
+        ],
+      },
+    });
+
+    expect(counters).toHaveLength(3);
+    for (const counter of counters) {
+      expect(counter.failedAttempts).toBe(0);
+      expect(counter.lockedUntil).toBeNull();
+      expect(counter.lastSuccessAt).not.toBeNull();
+    }
+  });
 });
+

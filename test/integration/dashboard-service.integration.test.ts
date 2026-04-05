@@ -596,11 +596,35 @@ describe("dashboard-service integration", () => {
     expect(membership.ownedOneTimeProducts).toHaveLength(1);
     expect(membership.ownedOneTimeProducts[0]?.orderId).toBe(paidOrder.id);
   });
+  it("keeps credit restore idempotent when cancellation is submitted concurrently", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Concurrent Cancel Client",
+        firstName: "Concurrent",
+        lastName: "Client",
+        email: `concurrent.cancel.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    const { booking, entitlement } = await createSessionFixture(client.id);
+
+    await Promise.allSettled([
+      cancelClientBooking({ bookingId: booking.id, clientId: client.id }),
+      cancelClientBooking({ bookingId: booking.id, clientId: client.id }),
+      cancelClientBooking({ bookingId: booking.id, clientId: client.id }),
+    ]);
+
+    const restoreEntries = await prisma.creditLedgerEntry.findMany({
+      where: {
+        bookingId: booking.id,
+        entitlementId: entitlement.id,
+        entryType: CreditLedgerEntryType.RESTORE,
+      },
+    });
+
+    expect(restoreEntries).toHaveLength(1);
+    expect(restoreEntries[0]?.idempotencyKey).toBeTruthy();
+  });
 });
-
-
-
-
-
-
 
