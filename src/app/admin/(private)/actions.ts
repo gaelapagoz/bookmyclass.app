@@ -709,21 +709,6 @@ function getMarketingActionErrorMessage(error: unknown): string {
   if (code === "MARKETING_DRAFT_SHELL_UPDATE_FAILED") {
     return "Could not update the campaign draft shell. Please retry.";
   }
-  if (code === "OPENAI_API_KEY_MISSING" || code === "OPENAI_MARKETING_MODEL_MISSING") {
-    return "OpenAI is not configured. Set OPENAI_API_KEY and OPENAI_MARKETING_MODEL.";
-  }
-  if (code === "MARKETING_AI_GENERATION_FAILED") {
-    return "AI draft generation failed. Try again in a moment.";
-  }
-  if (code === "MARKETING_AI_REQUEST_FAILED") {
-    return "Draft generation failed while contacting OpenAI.";
-  }
-  if (code === "MARKETING_DAILY_AI_GENERATION_LIMIT_REACHED") {
-    return "Daily AI draft generation limit reached (20/20). Try again tomorrow.";
-  }
-  if (code === "MARKETING_AI_EMPTY_OUTPUT" || code === "MARKETING_AI_INVALID_JSON" || code === "MARKETING_AI_SCHEMA_INVALID") {
-    return "OpenAI returned an invalid draft structure. Please try again.";
-  }
   if (code === "MARKETING_DRAFT_RENDER_INVALID_CONTENT" || code === "MARKETING_DRAFT_PREVIEW_RENDER_FAILED") {
     return "Draft was generated but preview rendering failed.";
   }

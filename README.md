@@ -144,8 +144,6 @@ npm run dev
 - `EMAIL_FROM`
 
 ### Optional / feature-specific
-- `OPENAI_API_KEY` (marketing AI assist)
-- `OPENAI_MARKETING_MODEL` (default falls back to `gpt-4.1-mini`)
 - `MARKETING_TRACKING_SECRET` (fallback chain includes `NEXTAUTH_SECRET`)
 - `AUTH_DEBUG_PASSWORD_RESET` (non-production debug behavior)
 

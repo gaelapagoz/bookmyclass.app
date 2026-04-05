@@ -124,7 +124,7 @@ describe("admin marketing campaign flow scaffold", () => {
     expect(screen.getByTestId("button-text-color-controls")).toBeInTheDocument();
     expect(screen.getByTestId("button-background-color-controls")).toBeInTheDocument();    expect(screen.getByDisplayValue(/\"textColor\":\"#1f2735\"/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Generate draft" })).not.toBeInTheDocument();
-    expect(screen.queryByText("OpenAI usage estimate")).not.toBeInTheDocument();
+    expect(screen.queryByText("AI usage estimate")).not.toBeInTheDocument();
     expect(screen.getByText("Persisted preview HTML")).toBeInTheDocument();
   });
   it("opens heading color popover and updates block color state", async () => {

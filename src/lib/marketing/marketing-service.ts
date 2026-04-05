@@ -150,80 +150,6 @@ export type MarketingSentCampaignSummary = {
   htmlSnapshot: string;
 };
 
-export const MARKETING_DAILY_AI_DRAFT_LIMIT = 20;
-
-export type MarketingDailyAiGenerationQuota = {
-  limit: number;
-  used: number;
-  remaining: number;
-  dayStart: Date;
-  dayEndExclusive: Date;
-};
-
-export type MarketingCampaignGenerationUsageSnapshot = {
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  estimatedInputCost: number;
-  estimatedOutputCost: number;
-  estimatedTotalCost: number;
-  pricingVersion: string;
-  createdAt: Date;
-};
-
-export type MarketingCampaignGenerationUsageSummary = {
-  generationCount: number;
-  cumulativeEstimatedCost: number;
-  latest: MarketingCampaignGenerationUsageSnapshot | null;
-};
-
-function decimalToNumber(value: Prisma.Decimal | number | null | undefined): number {
-  if (value === null || value === undefined) {
-    return 0;
-  }
-  if (typeof value === "number") {
-    return value;
-  }
-  return Number(value.toString());
-}
-
-function getServerLocalDayRange(now: Date): { dayStart: Date; dayEndExclusive: Date } {
-  const dayStart = new Date(now);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEndExclusive = new Date(dayStart);
-  dayEndExclusive.setDate(dayEndExclusive.getDate() + 1);
-  return { dayStart, dayEndExclusive };
-}
-
-export async function getMarketingDailyAiGenerationQuota(now: Date = new Date()): Promise<MarketingDailyAiGenerationQuota> {
-  const { dayStart, dayEndExclusive } = getServerLocalDayRange(now);
-  const used = await prisma.marketingCampaignGenerationUsage.count({
-    where: {
-      createdAt: {
-        gte: dayStart,
-        lt: dayEndExclusive,
-      },
-    },
-  });
-
-  return {
-    limit: MARKETING_DAILY_AI_DRAFT_LIMIT,
-    used,
-    remaining: Math.max(0, MARKETING_DAILY_AI_DRAFT_LIMIT - used),
-    dayStart,
-    dayEndExclusive,
-  };
-}
-
-export async function enforceMarketingDailyAiGenerationQuota(now: Date = new Date()): Promise<MarketingDailyAiGenerationQuota> {
-  const quota = await getMarketingDailyAiGenerationQuota(now);
-  if (quota.used >= quota.limit) {
-    throw new Error("MARKETING_DAILY_AI_GENERATION_LIMIT_REACHED");
-  }
-  return quota;
-}
-
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -475,17 +401,6 @@ export async function updateMarketingCampaignFlowDraft(
     selectedSegmentIds?: string[];
     contentJson?: unknown;
     currentStep?: MarketingCampaignFlowStep;
-    generationUsage?: {
-      model: string;
-      inputTokens: number;
-      outputTokens: number;
-      totalTokens: number;
-      estimatedInputCost: number;
-      estimatedOutputCost: number;
-      estimatedTotalCost: number;
-      pricingVersion: string;
-      rateBasisJson: Prisma.InputJsonValue;
-    };
   },
 ) {
   const existing = await prisma.marketingCampaign.findUnique({
@@ -568,60 +483,12 @@ export async function updateMarketingCampaignFlowDraft(
         },
       });
 
-      if (updates.generationUsage) {
-        await tx.marketingCampaignGenerationUsage.create({
-          data: {
-            campaignId: id,
-            model: updates.generationUsage.model,
-            inputTokens: updates.generationUsage.inputTokens,
-            outputTokens: updates.generationUsage.outputTokens,
-            totalTokens: updates.generationUsage.totalTokens,
-            estimatedInputCost: updates.generationUsage.estimatedInputCost,
-            estimatedOutputCost: updates.generationUsage.estimatedOutputCost,
-            estimatedTotalCost: updates.generationUsage.estimatedTotalCost,
-            pricingVersion: updates.generationUsage.pricingVersion,
-            rateBasisJson: updates.generationUsage.rateBasisJson,
-          },
-        });
-      }
     });
   } catch {
     throw new Error("MARKETING_DRAFT_PERSIST_FAILED");
   }
 
   return getMarketingCampaignFlowDraftById(id);
-}
-
-export async function getMarketingCampaignGenerationUsageSummary(campaignId: string): Promise<MarketingCampaignGenerationUsageSummary> {
-  const [latest, aggregate] = await Promise.all([
-    prisma.marketingCampaignGenerationUsage.findFirst({
-      where: { campaignId },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.marketingCampaignGenerationUsage.aggregate({
-      where: { campaignId },
-      _count: { _all: true },
-      _sum: { estimatedTotalCost: true },
-    }),
-  ]);
-
-  return {
-    generationCount: aggregate._count._all,
-    cumulativeEstimatedCost: decimalToNumber(aggregate._sum.estimatedTotalCost),
-    latest: latest
-      ? {
-        model: latest.model,
-        inputTokens: latest.inputTokens,
-        outputTokens: latest.outputTokens,
-        totalTokens: latest.totalTokens,
-        estimatedInputCost: decimalToNumber(latest.estimatedInputCost),
-        estimatedOutputCost: decimalToNumber(latest.estimatedOutputCost),
-        estimatedTotalCost: decimalToNumber(latest.estimatedTotalCost),
-        pricingVersion: latest.pricingVersion,
-        createdAt: latest.createdAt,
-      }
-      : null,
-  };
 }
 
 export async function resolveMarketingCampaignFlowRecipients(input: {

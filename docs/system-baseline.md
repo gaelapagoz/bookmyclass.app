@@ -105,8 +105,8 @@ Evidence label legend used in this file:
 - Data access pattern:
   - Prisma singleton using `@prisma/adapter-pg`.
   - Evidence status: Confirmed from repo (`src/lib/db.ts`).
-- External integrations:
-  - Stripe, Resend, Sentry, OpenAI (marketing AI), PostgreSQL.
+  - External integrations:
+  - Stripe, Resend, Sentry, PostgreSQL.
   - Evidence status: Confirmed from repo (`package.json`, `src/lib/payments/stripe.ts`, `src/lib/auth/*`, `src/lib/marketing/*`, `instrumentation*.ts`, `sentry.*.config.ts`).
 - Source-of-truth decisions:
   - Catalog is Product+Price driven.
@@ -431,10 +431,7 @@ Evidence label legend used in this file:
 - Email:
   - `RESEND_API_KEY`, `EMAIL_FROM`.
   - Evidence status: Confirmed from repo.
-- Marketing AI:
-  - `OPENAI_API_KEY`, `OPENAI_MARKETING_MODEL`.
-  - Evidence status: Confirmed from repo (`src/lib/marketing/marketing-ai.ts`).
-- Marketing tracking:
+  - Marketing tracking:
   - `MARKETING_TRACKING_SECRET` (fallback chain includes `NEXTAUTH_SECRET`, then default constant).
   - Evidence status: Confirmed from repo.
 - Sentry/observability:
@@ -450,7 +447,7 @@ Evidence label legend used in this file:
   - Practically required for auth sessions: `AUTH_SECRET`.
   - Required for Stripe flows: `APP_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
   - Required for verification/reset/marketing delivery: `RESEND_API_KEY`, `EMAIL_FROM`.
-  - Optional feature envs: OpenAI + Sentry + seed extras.
+  - Optional feature envs: Sentry + seed extras.
   - Evidence status: Confirmed from repo + Inferred from code paths.
 
 ## 17. Key architectural decisions currently enforced
