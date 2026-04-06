@@ -172,5 +172,270 @@ ssh -L 51212:localhost:51212 \
 > Use SSH tunnels as the only access layer.
 
 
+---
+
+## 1. Configuring Raspberry Pi
+
+### Purpose
+
+The Raspberry Pi acts as:
+
+* Monitoring node (Uptime Kuma, Netdata)
+* Secure access hub (Tailscale)
+* Lightweight utility node
+
+### Base Setup
+
+* Raspberry Pi OS installed
+* SSH enabled
+* System updated:
+
+  * `sudo apt update && sudo apt upgrade -y`
+
+### Installed Components
+
+* Docker (for Uptime Kuma)
+* PM2 (if used for any node processes)
+* Nginx (optional, not required for monitoring)
+* Git (for repo access)
+
+### Notes
+
+* Keep Pi lightweight (4GB RAM constraint)
+* Do not run heavy workloads
+* This node must remain stable and always-on
+
+---
+
+## 2. Configuring Netdata
+
+### Purpose
+
+* Monitor host-level metrics:
+
+  * CPU
+  * Memory
+  * Disk
+  * Network
+
+### Installation
+
+* Installed via official kickstart script:
+
+  * `curl -fsSL https://my-netdata.io/kickstart.sh | sudo bash -s -- --install-type any --non-interactive`
+
+### Security Configuration (CRITICAL)
+
+Edit:
+
+* `/etc/netdata/netdata.conf`
+
+Set:
+
+* `bind to = 127.0.0.1`
+
+### Reason
+
+* Netdata must NOT be publicly exposed
+* Access is only allowed via SSH tunnel or Tailscale
+
+### Service Management
+
+* Restart:
+
+  * `sudo systemctl restart netdata`
+
+### Validation
+
+* `curl http://localhost:19999` returns HTML
+
+---
+
+## 3. Configuring Uptime Kuma
+
+### Purpose
+
+* External uptime monitoring (application-level)
+
+### Deployment
+
+* Runs via Docker:
+
+```bash
+docker run -d \
+  --name uptime-kuma \
+  -p 3001:3001 \
+  -v uptime-kuma:/app/data \
+  --restart=always \
+  louislam/uptime-kuma
+```
+
+### Access
+
+* Initially via:
+
+  * `http://<pi-ip>:3001`
+
+### Monitors Configured
+
+* PROD API: `/api/health`
+* PROD Homepage
+* UAT API
+
+### Alerts
+
+* Telegram notifications configured
+
+---
+
+## 4. Configuring Tailscale
+
+### Purpose
+
+* Private network between:
+
+  * Raspberry Pi
+  * PROD server
+  * UAT server
+  * Developer machine
+
+### Installation
+
+* `curl -fsSL https://tailscale.com/install.sh | sh`
+
+### Activation
+
+* `sudo tailscale up`
+* Authenticate via browser
+
+### Verification
+
+* `tailscale status`
+
+Expected nodes:
+
+* bookmyclass-monitor (Pi)
+* bookmyclass-prod
+* bookmyclass-uat
+* developer machine
+
+### Result
+
+* Each node gets a private IP (100.x.x.x)
+* All communication is encrypted
+* No public exposure required
+
+---
+
+## 5. SSH Configuration over Tailscale
+
+### SSH Config (local machine)
+
+Example `~/.ssh/config`:
+
+```sshconfig
+Host bookmyclass-prod
+  HostName <tailscale-ip-prod>
+  User root
+  IdentityFile ~/.ssh/bookmyclass_hetzner
+
+Host bookmyclass-uat
+  HostName <tailscale-ip-uat>
+  User root
+  IdentityFile ~/.ssh/bookmyclass_hetzner
+
+Host bookmyclass-monitor
+  HostName <tailscale-ip-pi>
+  User bookmyclass-monitor
+  IdentityFile ~/.ssh/id_ed25519_pi
+```
+
+### Access
+
+* `ssh bookmyclass-prod`
+* `ssh bookmyclass-uat`
+* `ssh bookmyclass-monitor`
+
+---
+
+## 6. SSH Hardening (Applied)
+
+On PROD and UAT:
+
+Edit:
+
+* `/etc/ssh/sshd_config`
+
+Set:
+
+* `PasswordAuthentication no`
+* `PermitRootLogin prohibit-password`
+
+Restart:
+
+* `sudo systemctl restart ssh`
+
+### Result
+
+* No password login
+* Only SSH key authentication
+* Protection against brute-force attacks
+
+---
+
+## 7. Accessing Netdata
+
+### Current Mode (Secure)
+
+Netdata is bound to localhost.
+
+Access via SSH tunnel:
+
+```bash
+ssh -L 19999:localhost:19999 bookmyclass-prod
+```
+
+Then open:
+
+* `http://localhost:19999`
+
+### Notes
+
+* This ensures Netdata is never publicly exposed
+* Alternative (future): expose via Tailscale only
+
+---
+
+## 8. Architecture Summary
+
+* Public layer:
+
+  * Cloudflare -> application only
+
+* Private layer (Tailscale):
+
+  * SSH access
+  * Netdata
+  * internal services
+
+* Monitoring:
+
+  * Netdata -> server metrics
+  * Uptime Kuma -> uptime checks
+
+---
+
+Do NOT:
+
+* Expose Netdata publicly
+* Add unnecessary services on Pi
+* Introduce clustering or complex monitoring stacks
+
+Keep the system:
+
+* simple
+* observable
+* secure
+
 
 
