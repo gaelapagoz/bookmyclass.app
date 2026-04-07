@@ -1,4 +1,4 @@
-﻿import "./helpers/setup-env";
+import "./helpers/setup-env";
 import { BookingStatus, Role, StudioSessionStatus } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "./helpers/db";
@@ -10,7 +10,7 @@ vi.mock("../../src/auth", () => ({
 }));
 
 import { auth } from "../../src/auth";
-import { POST as createDraft } from "../../src/app/api/bookings/draft/route";
+import { POST as createDraft, resolveBookingDraftIpRateLimitConfig } from "../../src/app/api/bookings/draft/route";
 
 function buildRequest(body: object) {
   return new Request("http://localhost:3000/api/bookings/draft", {
@@ -169,7 +169,30 @@ async function createAuthenticatedUser(email: string) {
 describe("POST /api/bookings/draft", () => {
   beforeEach(async () => {
     vi.mocked(auth).mockResolvedValue(null);
+    delete process.env.BOOKING_DRAFT_IP_MAX_ATTEMPTS;
+    delete process.env.BOOKING_DRAFT_IP_WINDOW_MS;
+    delete process.env.BOOKING_DRAFT_IP_BLOCK_DURATION_MS;
     await resetDb();
+  });
+
+  it("uses strict default IP rate-limit config when env overrides are not set", () => {
+    expect(resolveBookingDraftIpRateLimitConfig()).toEqual({
+      maxAttempts: 20,
+      windowMs: 60_000,
+      blockDurationMs: 300_000,
+    });
+  });
+
+  it("accepts UAT IP rate-limit env overrides", () => {
+    process.env.BOOKING_DRAFT_IP_MAX_ATTEMPTS = "400";
+    process.env.BOOKING_DRAFT_IP_WINDOW_MS = "60000";
+    process.env.BOOKING_DRAFT_IP_BLOCK_DURATION_MS = "30000";
+
+    expect(resolveBookingDraftIpRateLimitConfig()).toEqual({
+      maxAttempts: 400,
+      windowMs: 60_000,
+      blockDurationMs: 30_000,
+    });
   });
 
   it("requires authentication", async () => {
@@ -279,3 +302,4 @@ describe("POST /api/bookings/draft", () => {
     expect(response.status).toBe(400);
   });
 });
+

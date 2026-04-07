@@ -13,7 +13,7 @@ This suite fails fast if `BASE_URL` does not look like UAT/staging/local (`uat`,
 
 ## Files
 
-- `config/stages.js`: smoke, t100, t250, t500, t750, t1000, soak1000
+- `config/stages.js`: smoke, smoke_booking_safe, t100, t250, t500, t750, t1000, soak1000
 - `config/thresholds.js`: global and scenario-level thresholds
 - `data/users.csv`: seeded test users
 - `data/services.json`: optional service/session seed values
@@ -25,7 +25,7 @@ This suite fails fast if `BASE_URL` does not look like UAT/staging/local (`uat`,
 ## Required env vars
 
 - `BASE_URL` (required)
-- `STAGE_PROFILE` (required): `smoke`, `t100`, `t250`, `t500`, `t750`, `t1000`, `soak1000`
+- `STAGE_PROFILE` (required): `smoke`, `smoke_booking_safe`, `t100`, `t250`, `t500`, `t750`, `t1000`, `soak1000`
 
 ## Optional env vars
 
@@ -75,6 +75,11 @@ Run note:
 Smoke:
 ```bash
 k6 run -e BASE_URL=https://uat.example.com -e STAGE_PROFILE=smoke k6/main.js
+```
+
+smoke_booking_safe:
+```bash
+k6 run -e BASE_URL=https://uat.example.com -e STAGE_PROFILE=smoke_booking_safe k6/main.js
 ```
 
 t100:

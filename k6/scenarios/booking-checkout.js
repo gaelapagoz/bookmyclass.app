@@ -1,5 +1,5 @@
 import { loginWithCredentials } from "../lib/auth.js";
-import { pickServiceSeed, pickUserByCohort } from "../lib/data.js";
+import { pickServiceSeed, pickUniqueUserByCohortForVu } from "../lib/data.js";
 import { get, postJson } from "../lib/http.js";
 import { assertJsonPath, assertStatus } from "../lib/checks.js";
 import { pace } from "../lib/pacing.js";
@@ -105,7 +105,18 @@ function resolveSelection(paymentOptionsBody) {
 }
 
 export function bookingCheckoutScenario() {
-  const user = pickUserByCohort("no_entitlement");
+  if (__ITER > 0) {
+    pace(0.3, 1.0);
+    return;
+  }
+
+  const user = pickUniqueUserByCohortForVu("no_entitlement");
+  if (!user) {
+    console.warn("booking_checkout: no unused cohort user left for this VU; skipping booking attempt.");
+    pace(0.3, 1.0);
+    return;
+  }
+
   loginWithCredentials(user, { scenario_flow: "booking_checkout" });
 
   const serviceSlug = resolveServiceSlug();

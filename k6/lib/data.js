@@ -118,3 +118,12 @@ export function pickUserByCohort(cohort) {
   const index = (__VU + __ITER) % pool.length;
   return pool[index];
 }
+
+export function pickUniqueUserByCohortForVu(cohort) {
+  const pool = getUsersByCohort(cohort);
+  const index = Math.max(0, Number(__VU) - 1);
+  if (index >= pool.length) {
+    return null;
+  }
+  return pool[index];
+}

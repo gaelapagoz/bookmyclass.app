@@ -23,10 +23,32 @@ const bookingDraftUserRateLimiter = createRateLimiter({
   blockDurationMs: 5 * 60 * 1000,
 });
 
+function parsePositiveIntegerEnv(envName: string, fallback: number): number {
+  const raw = process.env[envName];
+  if (!raw || raw.trim().length === 0) {
+    return fallback;
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(
+      `Invalid ${envName}='${raw}'. Expected a positive integer.`,
+    );
+  }
+
+  return parsed;
+}
+
+export function resolveBookingDraftIpRateLimitConfig() {
+  return {
+    maxAttempts: parsePositiveIntegerEnv("BOOKING_DRAFT_IP_MAX_ATTEMPTS", 20),
+    windowMs: parsePositiveIntegerEnv("BOOKING_DRAFT_IP_WINDOW_MS", 60 * 1000),
+    blockDurationMs: parsePositiveIntegerEnv("BOOKING_DRAFT_IP_BLOCK_DURATION_MS", 5 * 60 * 1000),
+  };
+}
+
 const bookingDraftIpRateLimiter = createRateLimiter({
-  maxAttempts: 20,
-  windowMs: 60 * 1000,
-  blockDurationMs: 5 * 60 * 1000,
+  ...resolveBookingDraftIpRateLimitConfig(),
 });
 
 function toStatusCode(code: BookingDraftError["code"]): number {

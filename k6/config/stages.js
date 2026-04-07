@@ -1,5 +1,6 @@
 const PROFILE_TOTAL_RATES = {
   smoke: 20,
+  smoke_booking_safe: 13,
   t100: 100,
   t250: 250,
   t500: 500,
@@ -10,6 +11,11 @@ const PROFILE_TOTAL_RATES = {
 
 const PROFILE_STAGE_BUILDERS = {
   smoke: (rate) => [
+    { duration: "1m", target: Math.max(1, Math.round(rate * 0.5)) },
+    { duration: "3m", target: Math.max(1, rate) },
+    { duration: "1m", target: 0 },
+  ],
+  smoke_booking_safe: (rate) => [
     { duration: "1m", target: Math.max(1, Math.round(rate * 0.5)) },
     { duration: "3m", target: Math.max(1, rate) },
     { duration: "1m", target: 0 },
@@ -54,6 +60,16 @@ const SCENARIO_WEIGHTS = {
   subscription_checkout: 0.1,
 };
 
+const PROFILE_SCENARIO_RATE_OVERRIDES = {
+  smoke_booking_safe: {
+    browse: 6,
+    login: 3,
+    booking_entitlement: 1,
+    booking_checkout: 1,
+    subscription_checkout: 2,
+  },
+};
+
 export function getSupportedStageProfiles() {
   return Object.keys(PROFILE_TOTAL_RATES);
 }
@@ -69,6 +85,11 @@ export function resolveStageProfile() {
 }
 
 export function buildScenarioRate(profileName, scenarioName) {
+  const profileOverrides = PROFILE_SCENARIO_RATE_OVERRIDES[profileName];
+  if (profileOverrides?.[scenarioName]) {
+    return profileOverrides[scenarioName];
+  }
+
   const totalRate = PROFILE_TOTAL_RATES[profileName];
   const weight = SCENARIO_WEIGHTS[scenarioName];
   if (!totalRate || !weight) {
@@ -97,4 +118,3 @@ export function buildArrivalConfig(profileName, scenarioName) {
     stages: buildScenarioStages(profileName, scenarioName),
   };
 }
-
