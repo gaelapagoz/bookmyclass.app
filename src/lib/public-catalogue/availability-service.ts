@@ -1,5 +1,6 @@
-import { BookingStatus, StudioSessionStatus } from "@prisma/client";
+import { StudioSessionStatus } from "@prisma/client";
 import { prisma } from "../db";
+import { bookingDraftActiveBookingFilter } from "../public-booking/booking-draft-service";
 import { getPublicTeacherName } from "../public-content/teacher-display";
 import {
   STUDIO_TIMEZONE,
@@ -200,11 +201,7 @@ export async function getServiceMonthAvailability(params: { monthKey: string; sl
       endsAt: true,
       capacity: true,
       bookings: {
-        where: {
-          status: {
-            in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
-          },
-        },
+        where: bookingDraftActiveBookingFilter(),
         select: {
           id: true,
         },
@@ -269,11 +266,7 @@ export async function getServiceSlotsByDate(params: { dateKey: string; slug: str
       endsAt: true,
       capacity: true,
       bookings: {
-        where: {
-          status: {
-            in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
-          },
-        },
+        where: bookingDraftActiveBookingFilter(),
         select: {
           id: true,
         },
@@ -319,11 +312,7 @@ export async function getNextAvailability(params: { fromDateKey: string; slug: s
       endsAt: true,
       capacity: true,
       bookings: {
-        where: {
-          status: {
-            in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
-          },
-        },
+        where: bookingDraftActiveBookingFilter(),
         select: {
           id: true,
         },

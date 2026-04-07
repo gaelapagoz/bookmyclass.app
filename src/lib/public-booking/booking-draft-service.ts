@@ -4,6 +4,30 @@ import { createBookingNoteMessage } from "../client-messages/client-message-serv
 import { getPublicTeacherName } from "../public-content/teacher-display";
 import { formatSessionDateTime } from "./format-session-date-time";
 
+const BOOKING_DRAFT_HOLD_WINDOW_MINUTES = (() => {
+  const raw = process.env.BOOKING_DRAFT_HOLD_WINDOW_MINUTES;
+  const parsed = raw ? Number.parseInt(raw, 10) : 15;
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 15;
+})();
+
+function getBookingDraftExpirationCutoff(now = new Date()) {
+  return new Date(now.getTime() - BOOKING_DRAFT_HOLD_WINDOW_MINUTES * 60_000);
+}
+
+export function bookingDraftActiveBookingFilter(now = new Date()): Prisma.BookingWhereInput {
+  return {
+    OR: [
+      { status: BookingStatus.CONFIRMED },
+      {
+        status: BookingStatus.PENDING,
+        createdAt: {
+          gt: getBookingDraftExpirationCutoff(now),
+        },
+      },
+    ],
+  };
+}
+
 export type BookingDraftPayload = {
   bookingIntent: BookingIntent;
   consentPrivacyAccepted: boolean;
@@ -97,11 +121,7 @@ async function getSessionForDraft(params: { serviceSlug: string; sessionId: stri
       },
       location: true,
       bookings: {
-        where: {
-          status: {
-            in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
-          },
-        },
+        where: bookingDraftActiveBookingFilter(),
         select: {
           id: true,
         },
@@ -184,6 +204,7 @@ export async function createPendingBookingDraft(params: {
   }
 
   const MAX_TRANSACTION_RETRIES = 4;
+  const now = new Date();
   let booking:
     | {
         id: string;
@@ -195,6 +216,22 @@ export async function createPendingBookingDraft(params: {
     try {
       booking = await prisma.$transaction(
         async (tx) => {
+          const staleCutoff = getBookingDraftExpirationCutoff(now);
+          await tx.booking.updateMany({
+            where: {
+              studioSessionId: payload.sessionId,
+              status: BookingStatus.PENDING,
+              createdAt: {
+                lt: staleCutoff,
+              },
+            },
+            data: {
+              status: BookingStatus.CANCELLED,
+              cancelledAt: now,
+              cancellationReason: "Expired booking draft",
+            },
+          });
+
           const session = await tx.studioSession.findFirst({
             where: {
               id: payload.sessionId,
@@ -225,11 +262,7 @@ export async function createPendingBookingDraft(params: {
               },
               location: true,
               bookings: {
-                where: {
-                  status: {
-                    in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
-                  },
-                },
+                where: bookingDraftActiveBookingFilter(now),
                 select: {
                   id: true,
                 },

@@ -1,5 +1,6 @@
-import { BookingStatus, StudioSessionStatus, Weekday } from "@prisma/client";
+import { StudioSessionStatus, Weekday } from "@prisma/client";
 
+import { bookingDraftActiveBookingFilter } from "@/lib/public-booking/booking-draft-service";
 import { prisma } from "@/lib/db";
 
 export type HomeAgendaDayRow = {
@@ -62,11 +63,7 @@ export async function getManageSiteAgendaPreview() {
       endsAt: true,
       capacity: true,
       bookings: {
-        where: {
-          status: {
-            in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
-          },
-        },
+        where: bookingDraftActiveBookingFilter(),
         select: { id: true },
       },
     },

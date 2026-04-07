@@ -198,6 +198,17 @@ These rules guide the Prisma schema design and must remain consistent across the
 
 ---
 
+## 12. Booking Drafts
+
+- Booking drafts represent temporary holds on session capacity during the booking process.
+- Drafts have PENDING status and are created before payment confirmation.
+- Drafts expire automatically after 15 minutes if not confirmed.
+- Expired drafts are cancelled and do not count towards session capacity.
+- Lifecycle: Draft → Payment → Confirmed OR Expired → Cancelled.
+- If payment arrives after expiration, the booking is not confirmed, and the payment must be refunded or rejected.
+
+---
+
 ## 12. Pricing
 
 - Prices must not be overwritten destructively.

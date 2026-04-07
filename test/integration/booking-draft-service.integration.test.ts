@@ -130,6 +130,62 @@ describe("booking draft service concurrency", () => {
     expect(activeBookings).toHaveLength(1);
   });
 
+  it("expires stale pending booking drafts before creating a new draft", async () => {
+    const fixture = await createCapacityOneFixture();
+
+    const staleBooking = await prisma.booking.create({
+      data: {
+        clientId: fixture.userOne.id,
+        studioSessionId: fixture.studioSession.id,
+        status: BookingStatus.PENDING,
+        bookingIntent: BookingIntent.SINGLE_BOOKING,
+        customerName: "Client",
+        customerEmail: "client@example.test",
+        customerPhone: "+32000000000",
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+        consentAcceptedAt: new Date(Date.now() - 30 * 60 * 1000),
+        createdAt: new Date(Date.now() - 30 * 60 * 1000),
+      },
+      select: { id: true },
+    });
+
+    const payload = {
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      consentPrivacyAccepted: true,
+      consentTermsAccepted: true,
+      customerEmail: "client2@example.test",
+      customerName: "Client Two",
+      customerPhone: "+32000000001",
+      serviceSlug: fixture.classType.slug,
+      sessionId: fixture.studioSession.id,
+    };
+
+    const result = await createPendingBookingDraft({
+      authenticatedUserId: fixture.userTwo.id,
+      payload,
+    });
+
+    expect(result.status).toBe(BookingStatus.PENDING);
+
+    const activeBookings = await prisma.booking.findMany({
+      where: {
+        studioSessionId: fixture.studioSession.id,
+        status: {
+          in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
+        },
+      },
+    });
+
+    expect(activeBookings).toHaveLength(1);
+
+    const expiredBooking = await prisma.booking.findUnique({
+      where: { id: staleBooking.id },
+    });
+
+    expect(expiredBooking?.status).toBe(BookingStatus.CANCELLED);
+  });
+
   it("retries on serialization failures and succeeds", async () => {
     const fixture = await createCapacityOneFixture();
     const payload = {
@@ -147,7 +203,7 @@ describe("booking draft service concurrency", () => {
     let transactionAttempts = 0;
     const transactionSpy = vi
       .spyOn(prisma, "$transaction")
-      .mockImplementation(async (callback: any, options?: any) => {
+      .mockImplementation(async (callback, options) => {
         if (transactionAttempts === 0) {
           transactionAttempts += 1;
           const error = Object.setPrototypeOf(
