@@ -10,6 +10,7 @@ vi.mock("../../src/auth", () => ({
 }));
 
 import { auth } from "../../src/auth";
+import * as BookingDraftService from "../../src/lib/public-booking/booking-draft-service";
 import { POST as createDraft, resolveBookingDraftIpRateLimitConfig } from "../../src/app/api/bookings/draft/route";
 
 function buildRequest(body: object) {
@@ -175,6 +176,10 @@ describe("POST /api/bookings/draft", () => {
     await resetDb();
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("uses strict default IP rate-limit config when env overrides are not set", () => {
     expect(resolveBookingDraftIpRateLimitConfig()).toEqual({
       maxAttempts: 20,
@@ -300,6 +305,40 @@ describe("POST /api/bookings/draft", () => {
       }),
     );
     expect(response.status).toBe(400);
+  });
+
+  it("maps transient contention errors to 503", async () => {
+    const fixture = await createSessionFixture();
+    await createAuthenticatedUser("auth.client.9@example.test");
+
+    const createDraftMock = vi
+      .spyOn(BookingDraftService, "createPendingBookingDraft")
+      .mockRejectedValue(
+        new BookingDraftService.BookingDraftError(
+          "BOOKING_CONTENTION",
+          "Booking creation temporarily failed due to concurrent activity. Please try again.",
+        ),
+      );
+
+    const response = await createDraft(buildRequest(validDraftPayload(fixture)));
+    const body = (await response.json()) as { error: string; code: string };
+
+    expect(response.status).toBe(503);
+    expect(body.code).toBe("BOOKING_CONTENTION");
+    expect(body.error).toContain("temporarily failed");
+    createDraftMock.mockRestore();
+  });
+
+  it("rejects duplicate booking with 409 and DUPLICATE_BOOKING", async () => {
+    const fixture = await createSessionFixture();
+    await createAuthenticatedUser("auth.client.10@example.test");
+
+    await createDraft(buildRequest(validDraftPayload(fixture)));
+    const response = await createDraft(buildRequest(validDraftPayload(fixture)));
+    const body = (await response.json()) as { error: string; code: string };
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("DUPLICATE_BOOKING");
   });
 });
 

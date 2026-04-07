@@ -1,10 +1,10 @@
 import "./helpers/setup-env";
 
-import { BookingIntent, BookingStatus, Role, StudioSessionStatus } from "@prisma/client";
-import { beforeEach, describe, expect, it } from "vitest";
+import { BookingIntent, BookingStatus, Prisma, Role, StudioSessionStatus } from "@prisma/client";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createPendingBookingDraft } from "../../src/lib/public-booking/booking-draft-service";
-import { prisma } from "./helpers/db";
+import { prisma } from "../../src/lib/db";
 import { createClassCategory, createClassType } from "./helpers/factories";
 import { resetDb } from "./helpers/reset-db";
 
@@ -128,5 +128,119 @@ describe("booking draft service concurrency", () => {
     });
 
     expect(activeBookings).toHaveLength(1);
+  });
+
+  it("retries on serialization failures and succeeds", async () => {
+    const fixture = await createCapacityOneFixture();
+    const payload = {
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      consentPrivacyAccepted: true,
+      consentTermsAccepted: true,
+      customerEmail: "client@example.test",
+      customerName: "Client",
+      customerPhone: "+32000000000",
+      serviceSlug: fixture.classType.slug,
+      sessionId: fixture.studioSession.id,
+    };
+
+    const originalTransaction = prisma.$transaction.bind(prisma);
+    let transactionAttempts = 0;
+    const transactionSpy = vi
+      .spyOn(prisma, "$transaction")
+      .mockImplementation(async (callback: any, options?: any) => {
+        if (transactionAttempts === 0) {
+          transactionAttempts += 1;
+          const error = Object.setPrototypeOf(
+            {
+              name: "PrismaClientKnownRequestError",
+              message: "Serialization failure",
+              code: "P2034",
+              clientVersion: "4.0.0",
+            },
+            Prisma.PrismaClientKnownRequestError.prototype,
+          ) as Prisma.PrismaClientKnownRequestError;
+          throw error;
+        }
+
+        return originalTransaction(callback, options);
+      });
+
+    const result = await createPendingBookingDraft({
+      authenticatedUserId: fixture.userOne.id,
+      payload,
+    });
+
+    expect(result.status).toBe("PENDING");
+    expect(transactionAttempts).toBe(1);
+    transactionSpy.mockRestore();
+  });
+
+  it("throws BOOKING_CONTENTION after exhausting serialization retries", async () => {
+    const fixture = await createCapacityOneFixture();
+    const payload = {
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      consentPrivacyAccepted: true,
+      consentTermsAccepted: true,
+      customerEmail: "client@example.test",
+      customerName: "Client",
+      customerPhone: "+32000000000",
+      serviceSlug: fixture.classType.slug,
+      sessionId: fixture.studioSession.id,
+    };
+
+    const transactionSpy = vi
+      .spyOn(prisma, "$transaction")
+      .mockImplementation(async () => {
+        const error = Object.setPrototypeOf(
+          {
+            name: "PrismaClientKnownRequestError",
+            message: "Serialization failure",
+            code: "P2034",
+            clientVersion: "4.0.0",
+          },
+          Prisma.PrismaClientKnownRequestError.prototype,
+        ) as Prisma.PrismaClientKnownRequestError;
+        throw error;
+      });
+
+    await expect(
+      createPendingBookingDraft({
+        authenticatedUserId: fixture.userOne.id,
+        payload,
+      }),
+    ).rejects.toMatchObject({ code: "BOOKING_CONTENTION" });
+
+    transactionSpy.mockRestore();
+  });
+
+  it("rejects duplicate booking with DUPLICATE_BOOKING", async () => {
+    const fixture = await createCapacityOneFixture();
+    await prisma.studioSession.update({
+      where: { id: fixture.studioSession.id },
+      data: { capacity: 2 },
+    });
+
+    const payload = {
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      consentPrivacyAccepted: true,
+      consentTermsAccepted: true,
+      customerEmail: "client@example.test",
+      customerName: "Client",
+      customerPhone: "+32000000000",
+      serviceSlug: fixture.classType.slug,
+      sessionId: fixture.studioSession.id,
+    };
+
+    await createPendingBookingDraft({
+      authenticatedUserId: fixture.userOne.id,
+      payload,
+    });
+
+    await expect(
+      createPendingBookingDraft({
+        authenticatedUserId: fixture.userOne.id,
+        payload,
+      }),
+    ).rejects.toMatchObject({ code: "DUPLICATE_BOOKING" });
   });
 });

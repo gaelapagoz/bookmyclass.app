@@ -62,6 +62,8 @@ function toStatusCode(code: BookingDraftError["code"]): number {
     case "UNAVAILABLE_SESSION":
     case "CONSENT_REQUIRED":
       return 400;
+    case "BOOKING_CONTENTION":
+      return 503;
     case "DUPLICATE_BOOKING":
       return 409;
     default:

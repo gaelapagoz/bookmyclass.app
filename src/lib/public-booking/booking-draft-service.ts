@@ -33,6 +33,7 @@ type DraftErrorCode =
   | "CONSENT_REQUIRED"
   | "DUPLICATE_BOOKING"
   | "FULL_SESSION"
+  | "BOOKING_CONTENTION"
   | "INVALID_SESSION"
   | "PAST_SESSION"
   | "UNAVAILABLE_SESSION";
@@ -144,6 +145,16 @@ function assertSessionAvailable(session: SessionWithBookings) {
   }
 }
 
+function getP2034RetryDelay(attempt: number): number {
+  const baseDelayMs = 20 * 2 ** attempt;
+  const jitterMs = Math.floor(Math.random() * 20);
+  return Math.min(200, baseDelayMs + jitterMs);
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function getBookingSessionSummary(params: {
   serviceSlug: string;
   sessionId: string;
@@ -172,7 +183,7 @@ export async function createPendingBookingDraft(params: {
     throw new BookingDraftError("CONSENT_REQUIRED", "Required consents must be accepted.");
   }
 
-  const MAX_TRANSACTION_RETRIES = 2;
+  const MAX_TRANSACTION_RETRIES = 4;
   let booking:
     | {
         id: string;
@@ -232,24 +243,6 @@ export async function createPendingBookingDraft(params: {
 
           assertSessionAvailable(session);
 
-          const existingBooking = await tx.booking.findFirst({
-            where: {
-              clientId: authenticatedUserId,
-              studioSessionId: session.id,
-              status: {
-                in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
-              },
-            },
-            select: { id: true },
-          });
-
-          if (existingBooking) {
-            throw new BookingDraftError(
-              "DUPLICATE_BOOKING",
-              "You already have an active booking draft or booking for this session.",
-            );
-          }
-
           return tx.booking.create({
             data: {
               clientId: authenticatedUserId,
@@ -287,9 +280,13 @@ export async function createPendingBookingDraft(params: {
 
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
         if (attempt < MAX_TRANSACTION_RETRIES) {
+          await delay(getP2034RetryDelay(attempt));
           continue;
         }
-        throw new BookingDraftError("FULL_SESSION", "This session is full.");
+        throw new BookingDraftError(
+          "BOOKING_CONTENTION",
+          "Booking creation temporarily failed due to concurrent activity. Please try again.",
+        );
       }
 
       throw error;
@@ -297,7 +294,10 @@ export async function createPendingBookingDraft(params: {
   }
 
   if (!booking) {
-    throw new BookingDraftError("FULL_SESSION", "This session is full.");
+    throw new BookingDraftError(
+      "BOOKING_CONTENTION",
+      "Booking creation temporarily failed due to concurrent activity. Please try again.",
+    );
   }
 
   const normalizedMessage = payload.customerMessage?.trim() ?? "";
