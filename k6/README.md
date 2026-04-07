@@ -40,14 +40,22 @@ This suite fails fast if `BASE_URL` does not look like UAT/staging/local (`uat`,
 2. Optional but recommended: set active IDs in:
    - `k6/data/services.json`
    - `k6/data/products.json`
+3. One-command UAT discovery/update for those seed IDs:
+   ```bash
+   npm run k6:discover:uat
+   ```
+   Optional override:
+   ```bash
+   BASE_URL=https://uat.bookmyclass.app npm run k6:discover:uat
+   ```
 
-If `SESSION_ID` is not set, booking scenarios try to discover one from:
-- `/api/services/{serviceSlug}/next-availability`
-- `/api/services/{serviceSlug}/slots`
+If `SESSION_ID` is not set, booking scenarios use the discovered seed pool from `k6/data/services.json`:
+- `sessionIds` (preferred, deterministic modulo by VU/ITER)
+- `sessionId` (legacy fallback)
 
 Run note:
-- Prefer setting an explicit dedicated `SESSION_ID` for booking scenarios in UAT load runs.
-- Fallback discovery works, but shared/discovered sessions can trigger capacity or uniqueness-related false failures under high concurrency.
+- Prefer `k6:discover:uat` so seed data includes a real multi-session pool.
+- Set explicit `SESSION_ID` only when you intentionally want a single-session run.
 
 ## Traffic split
 
@@ -74,49 +82,49 @@ Run note:
 
 Smoke:
 ```bash
-k6 run -e BASE_URL=https://uat.example.com -e STAGE_PROFILE=smoke k6/main.js
+k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=smoke k6/main.js
 ```
 
 smoke_booking_safe:
 ```bash
-k6 run -e BASE_URL=https://uat.example.com -e STAGE_PROFILE=smoke_booking_safe k6/main.js
+k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=smoke_booking_safe k6/main.js
 ```
 
 t100:
 ```bash
-k6 run -e BASE_URL=https://uat.example.com -e STAGE_PROFILE=t100 k6/main.js
+k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t100 k6/main.js
 ```
 
 t250:
 ```bash
-k6 run -e BASE_URL=https://uat.example.com -e STAGE_PROFILE=t250 k6/main.js
+k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t250 k6/main.js
 ```
 
 t500:
 ```bash
-k6 run -e BASE_URL=https://uat.example.com -e STAGE_PROFILE=t500 k6/main.js
+k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t500 k6/main.js
 ```
 
 t750:
 ```bash
-k6 run -e BASE_URL=https://uat.example.com -e STAGE_PROFILE=t750 k6/main.js
+k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t750 k6/main.js
 ```
 
 t1000:
 ```bash
-k6 run -e BASE_URL=https://uat.example.com -e STAGE_PROFILE=t1000 k6/main.js
+k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t1000 k6/main.js
 ```
 
 soak1000:
 ```bash
-k6 run -e BASE_URL=https://uat.example.com -e STAGE_PROFILE=soak1000 k6/main.js
+k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=soak1000 k6/main.js
 ```
 
 ## Example with explicit flow IDs
 
 ```bash
 k6 run \
-  -e BASE_URL=https://uat.example.com \
+  -e BASE_URL=https://uat.bookmyclass.app \
   -e STAGE_PROFILE=t100 \
   -e SERVICE_SLUG=vinyasa-yoga \
   -e SESSION_ID=cm-session-id \

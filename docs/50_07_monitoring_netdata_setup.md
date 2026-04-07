@@ -69,6 +69,9 @@ This should return JSON.
 Use an SSH tunnel from your local machine:
 ```bash
 ssh -L 19999:127.0.0.1:19999 deploy@<canonical-prod-host-from-deployment-baseline>
+ssh -L 19999:127.0.0.1:19999 root@bookmyclass-prod
+ssh -L 19998:127.0.0.1:19999 root@bookmyclass-uat
+ssh -L 19997:127.0.0.1:19999 root@bookmyclass-monitor
 ```
 
 Then open:

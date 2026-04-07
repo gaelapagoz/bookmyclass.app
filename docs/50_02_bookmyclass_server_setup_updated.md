@@ -240,10 +240,11 @@ certbot --nginx -d bookmyclass.app -d www.bookmyclass.app
 
 ```bash
 cd /var/www/bookmyclass
-git pull origin main
+git fetch --all --tags
+git checkout vX.Y.Z
 npm ci
-npx prisma generate
 npx prisma migrate deploy
+npx prisma generate
 npm run build
 pm2 restart bookmyclass-app --update-env
 ```
@@ -262,3 +263,42 @@ pm2 restart bookmyclass-app --update-env
 
 
 
+
+## Server deploy command order
+
+For UAT and Production, after checking out the release tag, use this command order:
+
+```bash
+git fetch --all --tags
+git checkout vX.Y.Z
+npm ci
+npx prisma migrate deploy
+npx prisma generate
+npm run build
+pm2 restart bookmyclass-app --update-env
+```
+
+### Command meaning
+
+* `git fetch --all --tags` pulls latest remote refs and tags
+* `git checkout vX.Y.Z` switches the server to the exact release version
+* `npm ci` installs dependencies exactly from `package-lock.json`
+* `npx prisma migrate deploy` applies committed migrations to the target database
+* `npx prisma generate` regenerates Prisma client artifacts for the checked out version
+* `npm run build` builds the Next.js application
+* `pm2 restart bookmyclass-app --update-env` restarts the app with the current environment
+
+### Rules
+
+* Always deploy from a tag, never from `main`
+* Always run `npm ci` before build on UAT/Production
+* Always run `npx prisma migrate deploy` before `npx prisma generate`
+* Always run `npx prisma generate` before `npm run build`
+* Always restart PM2 only after a successful build
+
+### Notes
+
+* `prisma migrate deploy` changes the database schema
+* `prisma generate` updates the generated Prisma client
+* These are different steps and both are required in deployment flow
+* This sequence must be used consistently in both UAT and Production

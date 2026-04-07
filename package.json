@@ -24,7 +24,8 @@
     "db:verify:dashboard-seed": "tsx scripts/verify-dashboard-seed-db.ts",
     "db:verify:dashboard-trend-seed": "tsx scripts/verify-dashboard-trend-seed-db.ts",
     "ops:verify-production-readiness": "bash scripts/verify-production-readiness.sh",
-    "db:seed:uat:k6": "UAT_K6_SEED=1 tsx scripts/seed-uat-k6.ts"
+    "db:seed:uat:k6": "UAT_K6_SEED=1 tsx scripts/seed-uat-k6.ts",
+    "k6:discover:uat": "tsx scripts/k6-discover-uat.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",

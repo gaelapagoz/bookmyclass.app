@@ -84,6 +84,63 @@ export function pickServiceSeed() {
   return services[index];
 }
 
+function normalizeSeedSessionIds(seed) {
+  if (!seed) {
+    return [];
+  }
+
+  if (Array.isArray(seed.sessionIds)) {
+    return seed.sessionIds
+      .map((value) => String(value || "").trim())
+      .filter((value) => value.length > 0);
+  }
+
+  if (seed.sessionId) {
+    const single = String(seed.sessionId).trim();
+    return single ? [single] : [];
+  }
+
+  return [];
+}
+
+function normalizeIndex(value, size) {
+  if (size <= 0) {
+    return 0;
+  }
+  return ((value % size) + size) % size;
+}
+
+function normalizeSelectionOptions(optionsOrOffset) {
+  if (typeof optionsOrOffset === "number") {
+    return {
+      offset: Number(optionsOrOffset || 0),
+      iterStride: 1,
+      vuStride: 1,
+    };
+  }
+
+  const options = optionsOrOffset || {};
+  return {
+    offset: Number(options.offset || 0),
+    iterStride: Number(options.iterStride || 1),
+    vuStride: Number(options.vuStride || 1),
+  };
+}
+
+export function pickSeedSessionId(seed, optionsOrOffset = 0) {
+  const sessionIds = normalizeSeedSessionIds(seed);
+  if (!sessionIds.length) {
+    return "";
+  }
+
+  const options = normalizeSelectionOptions(optionsOrOffset);
+  const vuBase = Math.max(0, Number(__VU) - 1);
+  const iterBase = Math.max(0, Number(__ITER));
+  const rawIndex = options.offset + vuBase * options.vuStride + iterBase * options.iterStride;
+  const index = normalizeIndex(rawIndex, sessionIds.length);
+  return sessionIds[index];
+}
+
 export function pickProductSeed() {
   if (!products.length) {
     return null;
@@ -116,6 +173,16 @@ export function getUsersByCohort(cohort) {
 export function pickUserByCohort(cohort) {
   const pool = getUsersByCohort(cohort);
   const index = (__VU + __ITER) % pool.length;
+  return pool[index];
+}
+
+export function pickUserByCohortDeterministic(cohort, optionsOrOffset = 0) {
+  const pool = getUsersByCohort(cohort);
+  const options = normalizeSelectionOptions(optionsOrOffset);
+  const vuBase = Math.max(0, Number(__VU) - 1);
+  const iterBase = Math.max(0, Number(__ITER));
+  const rawIndex = options.offset + vuBase * options.vuStride + iterBase * options.iterStride;
+  const index = normalizeIndex(rawIndex, pool.length);
   return pool[index];
 }
 

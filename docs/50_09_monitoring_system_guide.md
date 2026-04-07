@@ -444,5 +444,101 @@ npm run ops:verify-production-readiness -- \
   - `/api/health` does not return `200`
   - command exits non-zero in all fail cases
 
+---
+
+## Git Workflow
+
+### Branch strategy
+
+- `main` is the active development branch
+- No direct deployment from `main` is allowed
+
+### Release strategy
+
+- All deployments (UAT and Production) must come from Git tags
+- Tags represent immutable release versions
+
+---
+
+## 1. Normal development
+
+```bash
+git checkout main
+git pull origin main
+
+git add .
+git commit -m "<message>"
+git push origin main
+```
+
+Rules:
+
+- `main` is unstable and not deployable
+- Do not deploy from `main`
+
+---
+
+## 2. Creating a release
+
+```bash
+git checkout main
+git pull origin main
+
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin main
+git push origin vX.Y.Z
+```
+
+Rules:
+
+- Tags must follow semantic versioning
+- Tags are immutable
+- Each tag represents a deployable version
+
+---
+
+## 3. Deploying to UAT or Production
+
+```bash
+git fetch --all --tags
+git checkout vX.Y.Z
+```
+
+Then:
+
+```bash
+npx prisma migrate deploy
+npm run build
+pm2 restart bookmyclass-app --update-env
+```
+
+Rules:
+
+- Never run `git pull origin main` on servers
+- Servers must only run tagged versions
+
+---
+
+## 4. Rollback
+
+```bash
+git checkout vPREVIOUS
+pm2 restart bookmyclass-app
+```
+
+Rules:
+
+- Rollback must always use a previous tag
+- Never attempt manual fixes on the server
+
+---
+
+## Critical rules
+
+- Do not deploy from `main`
+- Do not modify code directly on the server
+- Always deploy using tags
+- Always keep UAT and Production aligned with tag versions
+
 
 

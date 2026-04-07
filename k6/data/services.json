@@ -1,7 +1,20 @@
 [
   {
-    "serviceSlug": "replace-with-active-service-slug",
-    "sessionId": "replace-with-active-session-id"
+    "serviceSlug": "vinyasa-yoga",
+    "sessionId": "cmnn8jys2001rtv8xr1w3ikue",
+    "sessionIds": [
+      "cmnn8jys2001rtv8xr1w3ikue",
+      "cmnn8jyqz001itv8xpgenjngh",
+      "cmnn8jys5001stv8xbiw5988e",
+      "cmnn8jyqm001ftv8xudxv0r12",
+      "cmnn8jyrf001ltv8xcjbvvdza",
+      "cmnn8jyq1001ctv8x8m3pozqt",
+      "cmnn8jyrm001ntv8xshcy41kz",
+      "cmnn8jyqa001dtv8x3x4dz0tl",
+      "cmnn8jyry001qtv8xw48tvjo4",
+      "cmnn8jyqr001gtv8xkjrzb0ls",
+      "cmnn8jyrq001otv8xq26oaetf",
+      "cmnn8jyqv001htv8xqn3wqmnh"
+    ]
   }
 ]
-
