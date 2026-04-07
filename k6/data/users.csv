@@ -1,0 +1,5 @@
+email,password,name,phone
+uat.client1@example.test,replace-me-1,UAT Client One,+32000000001
+uat.client2@example.test,replace-me-2,UAT Client Two,+32000000002
+uat.client3@example.test,replace-me-3,UAT Client Three,+32000000003
+
