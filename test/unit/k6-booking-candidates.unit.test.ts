@@ -19,6 +19,12 @@ vi.mock("k6/metrics", () => ({
   },
 }));
 
+vi.mock("k6/http", () => ({
+  default: {
+    expectedStatuses: (..._args: unknown[]) => "expected-statuses-mock",
+  },
+}));
+
 function mockResponse(status: number, body: unknown) {
   return {
     status,
@@ -190,4 +196,5 @@ describe("k6 booking candidates helpers", () => {
     expect(result.attemptedSessionCount).toBe(3);
   });
 });
+
 

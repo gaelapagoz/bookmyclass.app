@@ -1,14 +1,13 @@
 import { get, postJson } from "./http.js";
 import { Counter, Rate } from "k6/metrics";
+import http from "k6/http";
 
 const bookingDraftExpectedConflictRate = new Rate("booking_draft_expected_conflict_rate");
 const bookingDraftTechnicalFailureRate = new Rate("booking_draft_technical_failure_rate");
 const bookingDraftUnexpectedClientErrorRate = new Rate("booking_draft_unexpected_client_error_rate");
 const bookingDraftExpectedConflictTotal = new Counter("booking_draft_expected_conflict_total");
 
-function bookingDraftResponseIsExpected(response) {
-  return Boolean(response && (response.status === 201 || response.status === 409));
-}
+const bookingDraftExpectedStatuses = http.expectedStatuses(201, 409);
 
 function dateKeyFrom(date) {
   const year = date.getUTCFullYear();
@@ -168,7 +167,7 @@ export function createDraftWithSessionFallback(input) {
         },
         {
           tags: { flow: input.flowTag, endpoint: "booking_draft" },
-          responseCallback: bookingDraftResponseIsExpected,
+          responseCallback: bookingDraftExpectedStatuses,
         },
       );
 
