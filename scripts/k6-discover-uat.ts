@@ -5,9 +5,9 @@ const DEFAULT_BASE_URL = "https://uat.bookmyclass.app";
 const SERVICES_SEED_PATH = "k6/data/services.json";
 const PRODUCTS_SEED_PATH = "k6/data/products.json";
 const MIN_SPARE_SPOTS = 3;
-const MAX_SESSION_POOL_SIZE = 12;
+const MAX_SESSION_POOL_SIZE = 48;
 const MIN_SESSION_POOL_SIZE = 3;
-const MONTHS_TO_SCAN = 2;
+const MONTHS_TO_SCAN = 12;
 
 type PublicCategory = {
   slug: string;

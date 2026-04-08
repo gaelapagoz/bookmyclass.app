@@ -110,7 +110,8 @@ export async function recordClientLoginFailure(input: {
   const buckets = buildBuckets(input);
 
   const counters = await prisma.$transaction(async (tx) => {
-    const updates = buckets.map(async (bucket) => {
+    const updates: Array<{ lockedUntil: Date | null }> = [];
+    for (const bucket of buckets) {
       const existing = await tx.adminLoginAbuseCounter.findUnique({
         where: {
           keyType_keyHash: {
@@ -133,7 +134,7 @@ export async function recordClientLoginFailure(input: {
       const nextLockedUntil =
         nextAttempts >= CLIENT_LOGIN_LOCKOUT_THRESHOLD ? new Date(now.getTime() + CLIENT_LOGIN_LOCKOUT_MS) : null;
 
-      return tx.adminLoginAbuseCounter.upsert({
+      const updatedCounter = await tx.adminLoginAbuseCounter.upsert({
         where: {
           keyType_keyHash: {
             keyType: bucket.keyType,
@@ -160,9 +161,10 @@ export async function recordClientLoginFailure(input: {
           lockedUntil: true,
         },
       });
-    });
+      updates.push(updatedCounter);
+    }
 
-    return Promise.all(updates);
+    return updates;
   });
 
   return normalizeStateFromCounters(counters, now);

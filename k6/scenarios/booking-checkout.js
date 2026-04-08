@@ -1,15 +1,9 @@
 import { loginWithCredentials } from "../lib/auth.js";
-import { pickSeedSessionId, pickServiceSeed, pickUserByCohortDeterministic } from "../lib/data.js";
+import { pickServiceSeed, pickUserByCohortDeterministic } from "../lib/data.js";
+import { createDraftWithSessionFallback, resolveBookingSessionCandidates } from "../lib/booking-candidates.js";
 import { get, postJson } from "../lib/http.js";
 import { assertJsonPath, assertStatus } from "../lib/checks.js";
 import { pace } from "../lib/pacing.js";
-
-function dateKeyFrom(date) {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 
 function resolveServiceSlug() {
   const envSlug = (__ENV.SERVICE_SLUG || "").trim();
@@ -21,47 +15,6 @@ function resolveServiceSlug() {
     return String(seeded.serviceSlug);
   }
   throw new Error("Missing SERVICE_SLUG (env or k6/data/services.json) for booking_checkout scenario.");
-}
-
-function resolveSessionId(serviceSlug) {
-  const envSessionId = (__ENV.SESSION_ID || "").trim();
-  if (envSessionId) {
-    return envSessionId;
-  }
-
-  const seeded = pickServiceSeed();
-  const pooled = pickSeedSessionId(seeded, {
-    offset: 11,
-    vuStride: 7,
-    iterStride: 5,
-  });
-  if (pooled) {
-    return pooled;
-  }
-
-  const fromDate = dateKeyFrom(new Date());
-  const nextRes = get(
-    `/api/services/${encodeURIComponent(serviceSlug)}/next-availability?from=${encodeURIComponent(fromDate)}`,
-    { tags: { flow: "booking_checkout", endpoint: "service_next_availability" } },
-  );
-  assertStatus(nextRes, 200, "booking_checkout next availability status");
-  const nextBody = nextRes.json();
-  const nextDate = nextBody && nextBody.next && nextBody.next.date ? String(nextBody.next.date) : "";
-  if (!nextDate) {
-    throw new Error("No upcoming availability found to resolve SESSION_ID for booking_checkout.");
-  }
-
-  const slotsRes = get(`/api/services/${encodeURIComponent(serviceSlug)}/slots?date=${encodeURIComponent(nextDate)}`, {
-    tags: { flow: "booking_checkout", endpoint: "service_slots" },
-  });
-  assertStatus(slotsRes, 200, "booking_checkout slots status");
-  const slotsBody = slotsRes.json();
-  const firstAvailableSlot =
-    slotsBody && Array.isArray(slotsBody.slots) ? slotsBody.slots.find((slot) => Boolean(slot.isAvailable)) : null;
-  if (!firstAvailableSlot || !firstAvailableSlot.id) {
-    throw new Error("No available session slot found to resolve SESSION_ID for booking_checkout.");
-  }
-  return String(firstAvailableSlot.id);
 }
 
 function resolveSelection(paymentOptionsBody) {
@@ -119,13 +72,25 @@ export function bookingCheckoutScenario() {
   loginWithCredentials(user, { scenario_flow: "booking_checkout" });
 
   const serviceSlug = resolveServiceSlug();
-  const sessionId = resolveSessionId(serviceSlug);
+  const seeded = pickServiceSeed();
+  const envSessionId = (__ENV.SESSION_ID || "").trim();
+  const maxCandidates = Number(__ENV.BOOKING_SESSION_CANDIDATE_LIMIT || 10);
+  const sessionCandidates = envSessionId
+    ? [envSessionId]
+    : resolveBookingSessionCandidates({
+        serviceSlug,
+        seed: seeded,
+        maxCandidates,
+      });
+  if (!sessionCandidates.length) {
+    throw new Error("No candidate booking sessions available for booking_checkout.");
+  }
 
-  const draftRes = postJson(
-    "/api/bookings/draft",
-    {
-      serviceSlug,
-      sessionId,
+  const draftResult = createDraftWithSessionFallback({
+    flowTag: "booking_checkout",
+    serviceSlug,
+    sessionCandidates,
+    draftPayload: {
       customerName: user.name || "UAT Client",
       customerEmail: user.email,
       customerPhone: user.phone || "+32000000000",
@@ -134,13 +99,8 @@ export function bookingCheckoutScenario() {
       consentTermsAccepted: true,
       consentPrivacyAccepted: true,
     },
-    {
-      tags: { flow: "booking_checkout", endpoint: "booking_draft" },
-    },
-  );
-  assertStatus(draftRes, 201, "booking_checkout draft created");
-  assertJsonPath(draftRes, "booking_checkout draft id present", (body) => Boolean(body.draft?.bookingId));
-  const bookingId = String(draftRes.json().draft.bookingId);
+  });
+  const bookingId = draftResult.bookingId;
   pace();
 
   const optionsRes = get(`/api/bookings/${encodeURIComponent(bookingId)}/payment-options`, {
