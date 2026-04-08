@@ -108,7 +108,29 @@ export function buildScenarioStages(profileName, scenarioName) {
   return builder(rate);
 }
 
-export function buildArrivalConfig(profileName, scenarioName) {
+function shouldUseBookingOnlySmokeSafeArrival(profileName, scenarioName, scenarioSet) {
+  return (
+    profileName === "smoke_booking_safe" &&
+    scenarioSet === "booking_only_smoke" &&
+    (scenarioName === "booking_entitlement" || scenarioName === "booking_checkout")
+  );
+}
+
+export function buildArrivalConfig(profileName, scenarioName, options = {}) {
+  if (shouldUseBookingOnlySmokeSafeArrival(profileName, scenarioName, options.scenarioSet)) {
+    return {
+      startRate: 1,
+      timeUnit: "1m",
+      preAllocatedVUs: 10,
+      maxVUs: 20,
+      stages: [
+        { duration: "1m", target: 2 },
+        { duration: "3m", target: 4 },
+        { duration: "1m", target: 0 },
+      ],
+    };
+  }
+
   const scenarioRate = buildScenarioRate(profileName, scenarioName);
   return {
     startRate: Math.max(1, Math.round(scenarioRate * 0.5)),

@@ -36,37 +36,38 @@ function resolveScenarioSet() {
 }
 
 const scenarioSet = resolveScenarioSet();
+const arrivalConfigOptions = { scenarioSet };
 
 const allScenarios = {
   browse: {
     executor: "ramping-arrival-rate",
     exec: "browse",
     tags: { scenario_type: "browse" },
-    ...buildArrivalConfig(stageProfile, "browse"),
+    ...buildArrivalConfig(stageProfile, "browse", arrivalConfigOptions),
   },
   login: {
     executor: "ramping-arrival-rate",
     exec: "login",
     tags: { scenario_type: "login" },
-    ...buildArrivalConfig(stageProfile, "login"),
+    ...buildArrivalConfig(stageProfile, "login", arrivalConfigOptions),
   },
   booking_entitlement: {
     executor: "ramping-arrival-rate",
     exec: "booking_entitlement",
     tags: { scenario_type: "booking_entitlement" },
-    ...buildArrivalConfig(stageProfile, "booking_entitlement"),
+    ...buildArrivalConfig(stageProfile, "booking_entitlement", arrivalConfigOptions),
   },
   booking_checkout: {
     executor: "ramping-arrival-rate",
     exec: "booking_checkout",
     tags: { scenario_type: "booking_checkout" },
-    ...buildArrivalConfig(stageProfile, "booking_checkout"),
+    ...buildArrivalConfig(stageProfile, "booking_checkout", arrivalConfigOptions),
   },
   subscription_checkout: {
     executor: "ramping-arrival-rate",
     exec: "subscription_checkout",
     tags: { scenario_type: "subscription_checkout" },
-    ...buildArrivalConfig(stageProfile, "subscription_checkout"),
+    ...buildArrivalConfig(stageProfile, "subscription_checkout", arrivalConfigOptions),
   },
 };
 
