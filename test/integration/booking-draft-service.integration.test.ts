@@ -309,6 +309,51 @@ describe("booking draft service concurrency", () => {
     transactionSpy.mockRestore();
   });
 
+  it("retries and succeeds when serialization SQLSTATE 40001 is nested in prisma meta", async () => {
+    const fixture = await createCapacityOneFixture();
+    const payload = {
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      consentPrivacyAccepted: true,
+      consentTermsAccepted: true,
+      customerEmail: "client@example.test",
+      customerName: "Client",
+      customerPhone: "+32000000000",
+      serviceSlug: fixture.classType.slug,
+      sessionId: fixture.studioSession.id,
+    };
+
+    const originalTransaction = prisma.$transaction.bind(prisma);
+    let transactionAttempts = 0;
+    const transactionSpy = vi
+      .spyOn(prisma, "$transaction")
+      .mockImplementation(async (callback, options) => {
+        if (transactionAttempts === 0) {
+          transactionAttempts += 1;
+          const nestedSqlStateConflict = Object.assign(new Error("Transaction API error"), {
+            code: "P2028",
+            meta: {
+              driverAdapterError: {
+                code: "40001",
+                detail: "could not serialize access due to read/write dependencies among transactions",
+              },
+            },
+          });
+          throw nestedSqlStateConflict;
+        }
+
+        return originalTransaction(callback, options);
+      });
+
+    const result = await createPendingBookingDraft({
+      authenticatedUserId: fixture.userOne.id,
+      payload,
+    });
+
+    expect(result.status).toBe("PENDING");
+    expect(transactionAttempts).toBe(1);
+    transactionSpy.mockRestore();
+  });
+
   it("maps repeated SQLSTATE 40001 conflicts to BOOKING_CONTENTION", async () => {
     const fixture = await createCapacityOneFixture();
     const payload = {
@@ -372,4 +417,5 @@ describe("booking draft service concurrency", () => {
     ).rejects.toMatchObject({ code: "DUPLICATE_BOOKING" });
   });
 });
+
 

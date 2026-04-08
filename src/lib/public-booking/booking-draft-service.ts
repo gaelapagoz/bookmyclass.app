@@ -193,12 +193,47 @@ function getErrorMessage(error: unknown): string {
   return typeof message === "string" ? message : "";
 }
 
+function getErrorMeta(error: unknown): unknown {
+  if (!error || typeof error !== "object" || !("meta" in error)) {
+    return null;
+  }
+
+  return (error as { meta?: unknown }).meta ?? null;
+}
+
 function getErrorCause(error: unknown): unknown {
   if (!error || typeof error !== "object" || !("cause" in error)) {
     return null;
   }
 
   return (error as { cause?: unknown }).cause ?? null;
+}
+
+function collectPotentialSqlStateValues(value: unknown, depth = 0): string[] {
+  if (depth > 3 || value == null) {
+    return [];
+  }
+
+  if (typeof value === "string") {
+    return [value];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => collectPotentialSqlStateValues(entry, depth + 1));
+  }
+
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).flatMap(([key, entry]) => {
+      const normalizedKey = key.toLowerCase();
+      if (normalizedKey.includes("code") || normalizedKey.includes("sqlstate") || normalizedKey.includes("state")) {
+        return [String(entry)];
+      }
+
+      return collectPotentialSqlStateValues(entry, depth + 1);
+    });
+  }
+
+  return [];
 }
 
 function isRetryableSerializationError(error: unknown, depth = 0): boolean {
@@ -215,10 +250,16 @@ function isRetryableSerializationError(error: unknown, depth = 0): boolean {
     return true;
   }
 
+  const metaValues = collectPotentialSqlStateValues(getErrorMeta(error));
+  if (metaValues.includes("40001")) {
+    return true;
+  }
+
   const message = getErrorMessage(error).toLowerCase();
   if (
     message.includes("could not serialize access") ||
     message.includes("write conflict") ||
+    message.includes("deadlock") ||
     message.includes("transaction might succeed if retried")
   ) {
     return true;
