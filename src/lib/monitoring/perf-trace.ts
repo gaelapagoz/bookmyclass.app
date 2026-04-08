@@ -7,15 +7,15 @@ type SlowestDbQuery = {
   label: string;
 };
 
-function resolveSlowThresholdMs(): number {
+function resolveSlowThresholdMs(): number | null {
   const raw = process.env.PERF_TRACE_SLOW_MS;
   if (!raw) {
-    return 300;
+    return null;
   }
 
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed < 0) {
-    return 300;
+    return null;
   }
 
   return parsed;
@@ -26,7 +26,8 @@ function shouldLogTrace(totalDurationMs: number): boolean {
     return true;
   }
 
-  return totalDurationMs >= resolveSlowThresholdMs();
+  const thresholdMs = resolveSlowThresholdMs();
+  return thresholdMs !== null && totalDurationMs >= thresholdMs;
 }
 
 export type PerfTrace = {

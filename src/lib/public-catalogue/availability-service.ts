@@ -74,7 +74,26 @@ function toSlot(session: SessionWithBookings): SessionSlot {
   };
 }
 
-async function getServiceRecordBySlug(slug: string, trace?: PerfTrace) {
+async function getServiceIdBySlug(slug: string, trace?: PerfTrace) {
+  const query = () =>
+    prisma.classType.findFirst({
+      where: {
+        slug,
+        isActive: true,
+        isVisible: true,
+        category: {
+          isActive: true,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+  return trace ? trace.db("classType.findFirst.serviceIdBySlug", query) : query();
+}
+
+async function getServiceDetailRecordBySlug(slug: string, trace?: PerfTrace) {
   const query = () =>
     prisma.classType.findFirst({
       where: {
@@ -138,10 +157,10 @@ async function getServiceRecordBySlug(slug: string, trace?: PerfTrace) {
       },
     });
 
-  return trace ? trace.db("classType.findFirst.serviceBySlug", query) : query();
+  return trace ? trace.db("classType.findFirst.serviceDetailBySlug", query) : query();
 }
 
-function resolveClassSummary(classType: NonNullable<Awaited<ReturnType<typeof getServiceRecordBySlug>>>) {
+function resolveClassSummary(classType: NonNullable<Awaited<ReturnType<typeof getServiceDetailRecordBySlug>>>) {
   const upcomingSession = classType.studioSessions[0] ?? null;
   const activeTemplate = classType.templates[0] ?? null;
 
@@ -164,7 +183,7 @@ export async function getPublicServiceDetailBySlug(slug: string): Promise<Public
   const trace = createPerfTrace("public-catalogue.getPublicServiceDetailBySlug", { slug });
   let foundService = false;
   try {
-    const classType = await getServiceRecordBySlug(slug, trace);
+    const classType = await getServiceDetailRecordBySlug(slug, trace);
 
     if (!classType) {
       return null;
@@ -194,7 +213,7 @@ export async function getServiceMonthAvailability(params: { monthKey: string; sl
   let sessionCount = 0;
   let foundService = false;
   try {
-    const classType = await getServiceRecordBySlug(slug, trace);
+    const classType = await getServiceIdBySlug(slug, trace);
 
     if (!classType) {
       return null;
@@ -270,7 +289,7 @@ export async function getServiceSlotsByDate(params: { dateKey: string; slug: str
   let sessionCount = 0;
   let foundService = false;
   try {
-    const classType = await getServiceRecordBySlug(slug, trace);
+    const classType = await getServiceIdBySlug(slug, trace);
 
     if (!classType) {
       return null;
@@ -329,7 +348,7 @@ export async function getNextAvailability(params: { fromDateKey: string; slug: s
   let foundService = false;
   let nextFound = false;
   try {
-    const classType = await getServiceRecordBySlug(slug, trace);
+    const classType = await getServiceIdBySlug(slug, trace);
 
     if (!classType) {
       return null;
