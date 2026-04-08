@@ -1,4 +1,14 @@
 import { get, postJson } from "./http.js";
+import { Counter, Rate } from "k6/metrics";
+
+const bookingDraftExpectedConflictRate = new Rate("booking_draft_expected_conflict_rate");
+const bookingDraftTechnicalFailureRate = new Rate("booking_draft_technical_failure_rate");
+const bookingDraftUnexpectedClientErrorRate = new Rate("booking_draft_unexpected_client_error_rate");
+const bookingDraftExpectedConflictTotal = new Counter("booking_draft_expected_conflict_total");
+
+function bookingDraftResponseIsExpected(response) {
+  return Boolean(response && (response.status === 201 || response.status === 409));
+}
 
 function dateKeyFrom(date) {
   const year = date.getUTCFullYear();
@@ -129,9 +139,7 @@ export function resolveBookingSessionCandidates(input) {
   return uniquePreservingOrder([...nearest, ...seeded]).slice(0, maxCandidates);
 }
 
-function parseDraftSkippableCode(response) {
-  const body = response.json();
-  const code = body && body.code ? String(body.code) : "";
+function parseDraftSkippableCode(code) {
   if (code === "FULL_SESSION" || code === "DUPLICATE_BOOKING" || code === "PAST_SESSION") {
     return code;
   }
@@ -160,11 +168,24 @@ export function createDraftWithSessionFallback(input) {
         },
         {
           tags: { flow: input.flowTag, endpoint: "booking_draft" },
+          responseCallback: bookingDraftResponseIsExpected,
         },
       );
 
+      const body = response.json();
+      const code = body && body.code ? String(body.code) : "";
+      const isExpectedConflict = response.status === 409 && code === "DUPLICATE_BOOKING";
+      const isTechnicalFailure = response.status === 0 || response.status >= 500;
+      const isUnexpectedClientError = response.status >= 400 && response.status < 500 && !isExpectedConflict;
+
+      bookingDraftExpectedConflictRate.add(isExpectedConflict, { flow: input.flowTag });
+      bookingDraftTechnicalFailureRate.add(isTechnicalFailure, { flow: input.flowTag });
+      bookingDraftUnexpectedClientErrorRate.add(isUnexpectedClientError, { flow: input.flowTag });
+      if (isExpectedConflict) {
+        bookingDraftExpectedConflictTotal.add(1, { flow: input.flowTag });
+      }
+
       if (response.status === 201) {
-        const body = response.json();
         const bookingId = body && body.draft && body.draft.bookingId ? String(body.draft.bookingId) : "";
         if (!bookingId) {
           throw new Error(`Draft succeeded without bookingId for flow='${input.flowTag}' sessionId='${sessionId}'.`);
@@ -176,17 +197,16 @@ export function createDraftWithSessionFallback(input) {
         };
       }
 
-      const skippableCode = parseDraftSkippableCode(response);
+      const skippableCode = parseDraftSkippableCode(code);
       if (skippableCode) {
         lastSkippedCode = skippableCode;
         continue;
       }
 
-      const body = response.json();
-      const code = body && body.code ? String(body.code) : "UNKNOWN";
+      const errorCode = code || "UNKNOWN";
       const error = body && body.error ? String(body.error) : "Unexpected booking draft failure";
       throw new Error(
-        `Draft failed for flow='${input.flowTag}' sessionId='${sessionId}' status=${response.status} code=${code} error='${error}'.`,
+        `Draft failed for flow='${input.flowTag}' sessionId='${sessionId}' status=${response.status} code=${errorCode} error='${error}'.`,
       );
     }
 

@@ -2,10 +2,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getMock = vi.fn();
 const postJsonMock = vi.fn();
+const rateAddMock = vi.fn();
+const counterAddMock = vi.fn();
 
 vi.mock("../../k6/lib/http.js", () => ({
   get: (...args: unknown[]) => getMock(...args),
   postJson: (...args: unknown[]) => postJsonMock(...args),
+}));
+
+vi.mock("k6/metrics", () => ({
+  Rate: function Rate() {
+    this.add = (...args: unknown[]) => rateAddMock(...args);
+  },
+  Counter: function Counter() {
+    this.add = (...args: unknown[]) => counterAddMock(...args);
+  },
 }));
 
 function mockResponse(status: number, body: unknown) {
@@ -20,6 +31,8 @@ describe("k6 booking candidates helpers", () => {
     vi.resetModules();
     getMock.mockReset();
     postJsonMock.mockReset();
+    rateAddMock.mockReset();
+    counterAddMock.mockReset();
     (globalThis as unknown as { __VU: number }).__VU = 1;
     (globalThis as unknown as { __ITER: number }).__ITER = 0;
   });
@@ -177,3 +190,4 @@ describe("k6 booking candidates helpers", () => {
     expect(result.attemptedSessionCount).toBe(3);
   });
 });
+

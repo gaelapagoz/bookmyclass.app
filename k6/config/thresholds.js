@@ -3,6 +3,8 @@ export function createThresholds() {
     http_req_failed: ["rate<0.01"],
     http_req_duration: ["p(95)<1200", "p(99)<2500"],
     checks: ["rate>0.99"],
+    booking_draft_technical_failure_rate: ["rate==0"],
+    booking_draft_unexpected_client_error_rate: ["rate==0"],
     "http_req_duration{scenario:browse}": ["p(95)<800"],
     "http_req_duration{scenario:login}": ["p(95)<1200"],
     "http_req_duration{scenario:booking_entitlement}": ["p(95)<1500"],
