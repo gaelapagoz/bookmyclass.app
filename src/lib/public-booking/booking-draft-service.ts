@@ -175,6 +175,58 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return null;
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (!error || typeof error !== "object" || !("message" in error)) {
+    return "";
+  }
+
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" ? message : "";
+}
+
+function getErrorCause(error: unknown): unknown {
+  if (!error || typeof error !== "object" || !("cause" in error)) {
+    return null;
+  }
+
+  return (error as { cause?: unknown }).cause ?? null;
+}
+
+function isRetryableSerializationError(error: unknown, depth = 0): boolean {
+  if (depth > 2 || !error) {
+    return false;
+  }
+
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+    return true;
+  }
+
+  const code = getErrorCode(error);
+  if (code === "40001") {
+    return true;
+  }
+
+  const message = getErrorMessage(error).toLowerCase();
+  if (
+    message.includes("could not serialize access") ||
+    message.includes("write conflict") ||
+    message.includes("transaction might succeed if retried")
+  ) {
+    return true;
+  }
+
+  return isRetryableSerializationError(getErrorCause(error), depth + 1);
+}
+
 export async function getBookingSessionSummary(params: {
   serviceSlug: string;
   sessionId: string;
@@ -311,7 +363,7 @@ export async function createPendingBookingDraft(params: {
         );
       }
 
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+      if (isRetryableSerializationError(error)) {
         if (attempt < MAX_TRANSACTION_RETRIES) {
           await delay(getP2034RetryDelay(attempt));
           continue;

@@ -269,6 +269,78 @@ describe("booking draft service concurrency", () => {
     transactionSpy.mockRestore();
   });
 
+  it("retries and succeeds for postgres serialization conflicts surfaced as SQLSTATE 40001", async () => {
+    const fixture = await createCapacityOneFixture();
+    const payload = {
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      consentPrivacyAccepted: true,
+      consentTermsAccepted: true,
+      customerEmail: "client@example.test",
+      customerName: "Client",
+      customerPhone: "+32000000000",
+      serviceSlug: fixture.classType.slug,
+      sessionId: fixture.studioSession.id,
+    };
+
+    const originalTransaction = prisma.$transaction.bind(prisma);
+    let transactionAttempts = 0;
+    const transactionSpy = vi
+      .spyOn(prisma, "$transaction")
+      .mockImplementation(async (callback, options) => {
+        if (transactionAttempts === 0) {
+          transactionAttempts += 1;
+          const commitConflict = Object.assign(
+            new Error("could not serialize access due to read/write dependencies among transactions"),
+            { code: "40001" },
+          );
+          throw commitConflict;
+        }
+
+        return originalTransaction(callback, options);
+      });
+
+    const result = await createPendingBookingDraft({
+      authenticatedUserId: fixture.userOne.id,
+      payload,
+    });
+
+    expect(result.status).toBe("PENDING");
+    expect(transactionAttempts).toBe(1);
+    transactionSpy.mockRestore();
+  });
+
+  it("maps repeated SQLSTATE 40001 conflicts to BOOKING_CONTENTION", async () => {
+    const fixture = await createCapacityOneFixture();
+    const payload = {
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      consentPrivacyAccepted: true,
+      consentTermsAccepted: true,
+      customerEmail: "client@example.test",
+      customerName: "Client",
+      customerPhone: "+32000000000",
+      serviceSlug: fixture.classType.slug,
+      sessionId: fixture.studioSession.id,
+    };
+
+    const transactionSpy = vi
+      .spyOn(prisma, "$transaction")
+      .mockImplementation(async () => {
+        const commitConflict = Object.assign(
+          new Error("could not serialize access due to read/write dependencies among transactions"),
+          { code: "40001" },
+        );
+        throw commitConflict;
+      });
+
+    await expect(
+      createPendingBookingDraft({
+        authenticatedUserId: fixture.userOne.id,
+        payload,
+      }),
+    ).rejects.toMatchObject({ code: "BOOKING_CONTENTION" });
+
+    transactionSpy.mockRestore();
+  });
   it("rejects duplicate booking with DUPLICATE_BOOKING", async () => {
     const fixture = await createCapacityOneFixture();
     await prisma.studioSession.update({
@@ -300,3 +372,4 @@ describe("booking draft service concurrency", () => {
     ).rejects.toMatchObject({ code: "DUPLICATE_BOOKING" });
   });
 });
+
