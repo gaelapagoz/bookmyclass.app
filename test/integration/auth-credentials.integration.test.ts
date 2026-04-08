@@ -65,6 +65,31 @@ describe("credentials authorize integration", () => {
     expect(result?.email).toBe(user.email);
   });
 
+  it("accepts credentials when stored email casing differs", async () => {
+    const password = "Password123!";
+    const passwordHash = await hash(password, 12);
+
+    const user = await prisma.user.create({
+      data: {
+        name: "Auth Client Case",
+        firstName: "Auth",
+        lastName: "Case",
+        email: "Auth.Case@example.test",
+        role: Role.CLIENT,
+        passwordHash,
+        emailVerified: new Date(),
+      },
+    });
+
+    const result = await authorizeCredentials({
+      email: "auth.case@example.test",
+      password,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.id).toBe(user.id);
+    expect(result?.email).toBe(user.email);
+  });
   it("rejects invalid credentials", async () => {
     const passwordHash = await hash("Password123!", 12);
 
@@ -476,4 +501,5 @@ describe("credentials authorize integration", () => {
     }
   });
 });
+
 

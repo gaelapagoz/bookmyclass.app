@@ -17,6 +17,7 @@ import { isAdminRole } from "@/lib/auth/admin-access";
 import { verifyAdminLoginCaptcha } from "@/lib/auth/admin-login-captcha";
 import { verifyPassword } from "@/lib/auth/password-service";
 import { prisma } from "@/lib/db";
+import { createPerfTrace } from "@/lib/monitoring/perf-trace";
 import { getClientIpFromHeaders } from "@/lib/security/rate-limit";
 
 const credentialsSchema = z.object({
@@ -34,6 +35,26 @@ export type AuthUser = {
   name: string;
   role: Role;
 };
+
+type AuthCandidateUser = {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+  emailVerified: Date | null;
+  activationStatus: UserActivationStatus;
+  passwordHash: string | null;
+};
+
+const AUTH_USER_SELECT = {
+  id: true,
+  email: true,
+  name: true,
+  role: true,
+  emailVerified: true,
+  activationStatus: true,
+  passwordHash: true,
+} as const;
 
 function getHeadersFromAuthorizeRequest(rawRequest: unknown): Headers | undefined {
   if (!rawRequest || typeof rawRequest !== "object") {
@@ -75,192 +96,275 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
   const isAdminSignInFlow = parsed.data.authFlow === "admin";
   const captchaToken = resolveCaptchaToken(parsed.data);
   const captchaEnforced = isAdminLoginCaptchaEnforced();
-
-  if (!isAdminSignInFlow) {
-    const clientState = await getClientLoginAbuseState({
-      ip,
-      normalizedEmail,
-    });
-
-    if (clientState.isLocked) {
-      await recordClientLoginFailure({
-        ip,
-        normalizedEmail,
-      });
-      return null;
-    }
-  }
-
-  if (isAdminSignInFlow) {
-    const preState = await getAdminLoginAbuseState({
-      ip,
-      normalizedEmail,
-    });
-
-    if (preState.isLocked) {
-      await recordAdminLoginFailure({
-        ip,
-        normalizedEmail,
-        reason: "prelocked",
-      });
-      return null;
-    }
-
-    if (preState.requiresCaptcha && captchaEnforced) {
-      const captchaIsValid = await verifyAdminLoginCaptcha({
-        token: captchaToken,
-        ip,
-      });
-
-      if (!captchaIsValid) {
-        await recordAdminLoginFailure({
-          ip,
-          normalizedEmail,
-          reason: "captcha_failed",
-        });
-        return null;
-      }
-    }
-  }
-
-  const user = await prisma.user.findFirst({
-    where: {
-      email: {
-        equals: normalizedEmail,
-        mode: "insensitive",
-      },
-    },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      role: true,
-      emailVerified: true,
-      activationStatus: true,
-      passwordHash: true,
-    },
+  const trace = createPerfTrace("auth.authorizeCredentials", {
+    ip,
+    isAdminSignInFlow,
+    normalizedEmail,
   });
+  let lookupMode: "exact" | "fallback-insensitive" | "not-found" = "not-found";
+  let authResult:
+    | "invalid_payload"
+    | "locked_client"
+    | "locked_admin"
+    | "captcha_failed"
+    | "invalid_user"
+    | "missing_password_hash"
+    | "email_not_verified"
+    | "invalid_password"
+    | "success" = "invalid_payload";
 
-  const shouldApplyAdminAbuseGuard = isAdminSignInFlow || (user ? isAdminRole(user.role) : false);
-
-  if (shouldApplyAdminAbuseGuard && !isAdminSignInFlow) {
-    const state = await getAdminLoginAbuseState({
-      ip,
-      normalizedEmail,
-    });
-
-    if (state.isLocked) {
-      await recordAdminLoginFailure({
-        ip,
-        normalizedEmail,
-        reason: "prelocked",
-      });
-      return null;
-    }
-
-    if (state.requiresCaptcha && captchaEnforced) {
-      const captchaIsValid = await verifyAdminLoginCaptcha({
-        token: captchaToken,
-        ip,
-      });
-
-      if (!captchaIsValid) {
-        await recordAdminLoginFailure({
+  try {
+    if (!isAdminSignInFlow) {
+      const clientState = await trace.db("auth.getClientLoginAbuseState", () =>
+        getClientLoginAbuseState({
           ip,
           normalizedEmail,
-          reason: "captcha_failed",
-        });
+        }),
+      );
+
+      if (clientState.isLocked) {
+        await trace.db("auth.recordClientLoginFailure.locked", () =>
+          recordClientLoginFailure({
+            ip,
+            normalizedEmail,
+          }),
+        );
+        authResult = "locked_client";
         return null;
       }
     }
-  }
 
-  if (!user || user.activationStatus !== UserActivationStatus.ACTIVE) {
-    if (!isAdminSignInFlow) {
-      await recordClientLoginFailure({
-        ip,
-        normalizedEmail,
-      });
+    if (isAdminSignInFlow) {
+      const preState = await trace.db("auth.getAdminLoginAbuseState.pre", () =>
+        getAdminLoginAbuseState({
+          ip,
+          normalizedEmail,
+        }),
+      );
+
+      if (preState.isLocked) {
+        await trace.db("auth.recordAdminLoginFailure.prelocked", () =>
+          recordAdminLoginFailure({
+            ip,
+            normalizedEmail,
+            reason: "prelocked",
+          }),
+        );
+        authResult = "locked_admin";
+        return null;
+      }
+
+      if (preState.requiresCaptcha && captchaEnforced) {
+        const captchaIsValid = await trace.db("auth.verifyAdminLoginCaptcha.pre", () =>
+          verifyAdminLoginCaptcha({
+            token: captchaToken,
+            ip,
+          }),
+        );
+
+        if (!captchaIsValid) {
+          await trace.db("auth.recordAdminLoginFailure.captchaFailed.pre", () =>
+            recordAdminLoginFailure({
+              ip,
+              normalizedEmail,
+              reason: "captcha_failed",
+            }),
+          );
+          authResult = "captcha_failed";
+          return null;
+        }
+      }
     }
+
+    const exactUser = await trace.db("auth.user.findUnique.email", () =>
+      prisma.user.findUnique({
+        where: {
+          email: normalizedEmail,
+        },
+        select: AUTH_USER_SELECT,
+      }),
+    );
+
+    const user: AuthCandidateUser | null =
+      exactUser ??
+      (await trace.db("auth.user.findFirst.emailInsensitiveFallback", () =>
+        prisma.user.findFirst({
+          where: {
+            email: {
+              equals: normalizedEmail,
+              mode: "insensitive",
+            },
+          },
+          select: AUTH_USER_SELECT,
+        }),
+      ));
+    if (exactUser) {
+      lookupMode = "exact";
+    } else if (user) {
+      lookupMode = "fallback-insensitive";
+    } else {
+      lookupMode = "not-found";
+    }
+
+    const shouldApplyAdminAbuseGuard = isAdminSignInFlow || (user ? isAdminRole(user.role) : false);
+
+    if (shouldApplyAdminAbuseGuard && !isAdminSignInFlow) {
+      const state = await trace.db("auth.getAdminLoginAbuseState.postUser", () =>
+        getAdminLoginAbuseState({
+          ip,
+          normalizedEmail,
+        }),
+      );
+
+      if (state.isLocked) {
+        await trace.db("auth.recordAdminLoginFailure.prelocked.postUser", () =>
+          recordAdminLoginFailure({
+            ip,
+            normalizedEmail,
+            reason: "prelocked",
+          }),
+        );
+        authResult = "locked_admin";
+        return null;
+      }
+
+      if (state.requiresCaptcha && captchaEnforced) {
+        const captchaIsValid = await trace.db("auth.verifyAdminLoginCaptcha.postUser", () =>
+          verifyAdminLoginCaptcha({
+            token: captchaToken,
+            ip,
+          }),
+        );
+
+        if (!captchaIsValid) {
+          await trace.db("auth.recordAdminLoginFailure.captchaFailed.postUser", () =>
+            recordAdminLoginFailure({
+              ip,
+              normalizedEmail,
+              reason: "captcha_failed",
+            }),
+          );
+          authResult = "captcha_failed";
+          return null;
+        }
+      }
+    }
+
+    if (!user || user.activationStatus !== UserActivationStatus.ACTIVE) {
+      if (!isAdminSignInFlow) {
+        await trace.db("auth.recordClientLoginFailure.invalidUser", () =>
+          recordClientLoginFailure({
+            ip,
+            normalizedEmail,
+          }),
+        );
+      }
+      if (shouldApplyAdminAbuseGuard) {
+        await trace.db("auth.recordAdminLoginFailure.invalidUser", () =>
+          recordAdminLoginFailure({
+            ip,
+            normalizedEmail,
+            reason: "invalid_user",
+          }),
+        );
+      }
+      authResult = "invalid_user";
+      return null;
+    }
+
+    if (!user.passwordHash) {
+      if (!isAdminSignInFlow) {
+        await trace.db("auth.recordClientLoginFailure.missingHash", () =>
+          recordClientLoginFailure({
+            ip,
+            normalizedEmail,
+          }),
+        );
+      }
+      if (shouldApplyAdminAbuseGuard) {
+        await trace.db("auth.recordAdminLoginFailure.missingHash", () =>
+          recordAdminLoginFailure({
+            ip,
+            normalizedEmail,
+            reason: "missing_password_hash",
+          }),
+        );
+      }
+      authResult = "missing_password_hash";
+      return null;
+    }
+
+    if (!user.emailVerified && !isAdminRole(user.role)) {
+      if (!isAdminSignInFlow) {
+        await trace.db("auth.recordClientLoginFailure.emailNotVerified", () =>
+          recordClientLoginFailure({
+            ip,
+            normalizedEmail,
+          }),
+        );
+      }
+      if (shouldApplyAdminAbuseGuard) {
+        await trace.db("auth.recordAdminLoginFailure.emailNotVerified", () =>
+          recordAdminLoginFailure({
+            ip,
+            normalizedEmail,
+            reason: "email_not_verified",
+          }),
+        );
+      }
+      authResult = "email_not_verified";
+      return null;
+    }
+
+    const isValidPassword = await verifyPassword(password, user.passwordHash);
+    if (!isValidPassword) {
+      if (!isAdminSignInFlow) {
+        await trace.db("auth.recordClientLoginFailure.invalidPassword", () =>
+          recordClientLoginFailure({
+            ip,
+            normalizedEmail,
+          }),
+        );
+      }
+      if (shouldApplyAdminAbuseGuard) {
+        await trace.db("auth.recordAdminLoginFailure.invalidPassword", () =>
+          recordAdminLoginFailure({
+            ip,
+            normalizedEmail,
+            reason: "invalid_password",
+          }),
+        );
+      }
+      authResult = "invalid_password";
+      return null;
+    }
+
     if (shouldApplyAdminAbuseGuard) {
-      await recordAdminLoginFailure({
-        ip,
-        normalizedEmail,
-        reason: "invalid_user",
-      });
+      await trace.db("auth.resetAdminLoginFailureCounters", () =>
+        resetAdminLoginFailureCounters({
+          ip,
+          normalizedEmail,
+        }),
+      );
     }
-    return null;
-  }
-
-  if (!user.passwordHash) {
     if (!isAdminSignInFlow) {
-      await recordClientLoginFailure({
-        ip,
-        normalizedEmail,
-      });
+      await trace.db("auth.resetClientLoginFailureCounters", () =>
+        resetClientLoginFailureCounters({
+          ip,
+          normalizedEmail,
+        }),
+      );
     }
-    if (shouldApplyAdminAbuseGuard) {
-      await recordAdminLoginFailure({
-        ip,
-        normalizedEmail,
-        reason: "missing_password_hash",
-      });
-    }
-    return null;
-  }
 
-  if (!user.emailVerified && !isAdminRole(user.role)) {
-    if (!isAdminSignInFlow) {
-      await recordClientLoginFailure({
-        ip,
-        normalizedEmail,
-      });
-    }
-    if (shouldApplyAdminAbuseGuard) {
-      await recordAdminLoginFailure({
-        ip,
-        normalizedEmail,
-        reason: "email_not_verified",
-      });
-    }
-    return null;
-  }
+    authResult = "success";
 
-  const isValidPassword = await verifyPassword(password, user.passwordHash);
-  if (!isValidPassword) {
-    if (!isAdminSignInFlow) {
-      await recordClientLoginFailure({
-        ip,
-        normalizedEmail,
-      });
-    }
-    if (shouldApplyAdminAbuseGuard) {
-      await recordAdminLoginFailure({
-        ip,
-        normalizedEmail,
-        reason: "invalid_password",
-      });
-    }
-    return null;
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    };
+  } finally {
+    trace.log({ authResult, lookupMode });
   }
-
-  if (shouldApplyAdminAbuseGuard) {
-    await resetAdminLoginFailureCounters({
-      ip,
-      normalizedEmail,
-    });
-  }
-  if (!isAdminSignInFlow) {
-    await resetClientLoginFailureCounters({
-      ip,
-      normalizedEmail,
-    });
-  }
-
-  return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: user.role,
-  };
 }
