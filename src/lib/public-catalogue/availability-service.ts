@@ -36,11 +36,13 @@ export type SessionSlot = {
 };
 
 type SessionWithBookings = {
-  bookings: Array<{ id: string }>;
   capacity: number;
   endsAt: Date;
   id: string;
   startsAt: Date;
+  _count: {
+    bookings: number;
+  };
 };
 
 function getShortDescription(description: string | null): string {
@@ -57,7 +59,7 @@ function getShortDescription(description: string | null): string {
 }
 
 function toSlot(session: SessionWithBookings): SessionSlot {
-  const usedSpots = session.bookings.length;
+  const usedSpots = session._count.bookings;
   const availableSpots = Math.max(0, session.capacity - usedSpots);
 
   return {
@@ -200,10 +202,11 @@ export async function getServiceMonthAvailability(params: { monthKey: string; sl
       startsAt: true,
       endsAt: true,
       capacity: true,
-      bookings: {
-        where: bookingDraftActiveBookingFilter(),
+      _count: {
         select: {
-          id: true,
+          bookings: {
+            where: bookingDraftActiveBookingFilter(),
+          },
         },
       },
     },
@@ -265,10 +268,11 @@ export async function getServiceSlotsByDate(params: { dateKey: string; slug: str
       startsAt: true,
       endsAt: true,
       capacity: true,
-      bookings: {
-        where: bookingDraftActiveBookingFilter(),
+      _count: {
         select: {
-          id: true,
+          bookings: {
+            where: bookingDraftActiveBookingFilter(),
+          },
         },
       },
     },
@@ -311,10 +315,11 @@ export async function getNextAvailability(params: { fromDateKey: string; slug: s
       startsAt: true,
       endsAt: true,
       capacity: true,
-      bookings: {
-        where: bookingDraftActiveBookingFilter(),
+      _count: {
         select: {
-          id: true,
+          bookings: {
+            where: bookingDraftActiveBookingFilter(),
+          },
         },
       },
     },

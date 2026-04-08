@@ -9,42 +9,78 @@ import { bookingCheckoutScenario } from "./scenarios/booking-checkout.js";
 import { subscriptionCheckoutScenario } from "./scenarios/subscription-checkout.js";
 
 const stageProfile = resolveStageProfile();
+const SCENARIO_SETS = {
+  full_smoke: [
+    "browse",
+    "login",
+    "booking_entitlement",
+    "booking_checkout",
+    "subscription_checkout",
+  ],
+  non_booking_smoke: ["browse", "login", "subscription_checkout"],
+  booking_only_smoke: ["booking_entitlement", "booking_checkout"],
+};
+
+function getSupportedScenarioSets() {
+  return Object.keys(SCENARIO_SETS);
+}
+
+function resolveScenarioSet() {
+  const requested = (__ENV.K6_SCENARIO_SET || "full_smoke").trim().toLowerCase();
+  if (!SCENARIO_SETS[requested]) {
+    throw new Error(
+      `Unsupported K6_SCENARIO_SET='${requested}'. Supported scenario sets: ${getSupportedScenarioSets().join(",")}`,
+    );
+  }
+  return requested;
+}
+
+const scenarioSet = resolveScenarioSet();
+
+const allScenarios = {
+  browse: {
+    executor: "ramping-arrival-rate",
+    exec: "browse",
+    tags: { scenario_type: "browse" },
+    ...buildArrivalConfig(stageProfile, "browse"),
+  },
+  login: {
+    executor: "ramping-arrival-rate",
+    exec: "login",
+    tags: { scenario_type: "login" },
+    ...buildArrivalConfig(stageProfile, "login"),
+  },
+  booking_entitlement: {
+    executor: "ramping-arrival-rate",
+    exec: "booking_entitlement",
+    tags: { scenario_type: "booking_entitlement" },
+    ...buildArrivalConfig(stageProfile, "booking_entitlement"),
+  },
+  booking_checkout: {
+    executor: "ramping-arrival-rate",
+    exec: "booking_checkout",
+    tags: { scenario_type: "booking_checkout" },
+    ...buildArrivalConfig(stageProfile, "booking_checkout"),
+  },
+  subscription_checkout: {
+    executor: "ramping-arrival-rate",
+    exec: "subscription_checkout",
+    tags: { scenario_type: "subscription_checkout" },
+    ...buildArrivalConfig(stageProfile, "subscription_checkout"),
+  },
+};
+
+function filterScenariosForSet(setName) {
+  const enabledScenarios = SCENARIO_SETS[setName];
+  return Object.fromEntries(
+    Object.entries(allScenarios).filter(([scenarioName]) => enabledScenarios.includes(scenarioName)),
+  );
+}
 
 export const options = {
   discardResponseBodies: false,
   thresholds: createThresholds(),
-  scenarios: {
-    browse: {
-      executor: "ramping-arrival-rate",
-      exec: "browse",
-      tags: { scenario_type: "browse" },
-      ...buildArrivalConfig(stageProfile, "browse"),
-    },
-    login: {
-      executor: "ramping-arrival-rate",
-      exec: "login",
-      tags: { scenario_type: "login" },
-      ...buildArrivalConfig(stageProfile, "login"),
-    },
-    booking_entitlement: {
-      executor: "ramping-arrival-rate",
-      exec: "booking_entitlement",
-      tags: { scenario_type: "booking_entitlement" },
-      ...buildArrivalConfig(stageProfile, "booking_entitlement"),
-    },
-    booking_checkout: {
-      executor: "ramping-arrival-rate",
-      exec: "booking_checkout",
-      tags: { scenario_type: "booking_checkout" },
-      ...buildArrivalConfig(stageProfile, "booking_checkout"),
-    },
-    subscription_checkout: {
-      executor: "ramping-arrival-rate",
-      exec: "subscription_checkout",
-      tags: { scenario_type: "subscription_checkout" },
-      ...buildArrivalConfig(stageProfile, "subscription_checkout"),
-    },
-  },
+  scenarios: filterScenariosForSet(scenarioSet),
 };
 
 function ensureSeedUsers() {
@@ -59,7 +95,7 @@ export function setup() {
   const baseUrl = getBaseUrl();
   ensureSeedUsers();
   console.log(
-    `k6 setup complete. BASE_URL=${baseUrl} STAGE_PROFILE=${stageProfile} SupportedProfiles=${getSupportedStageProfiles().join(",")}`,
+    `k6 setup complete. BASE_URL=${baseUrl} STAGE_PROFILE=${stageProfile} K6_SCENARIO_SET=${scenarioSet} SupportedProfiles=${getSupportedStageProfiles().join(",")} SupportedScenarioSets=${getSupportedScenarioSets().join(",")}`,
   );
 }
 
@@ -82,4 +118,3 @@ export function booking_checkout() {
 export function subscription_checkout() {
   subscriptionCheckoutScenario();
 }
-

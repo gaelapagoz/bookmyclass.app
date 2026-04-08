@@ -355,19 +355,36 @@ function isEntitlementActive(expiresAt: Date | null): boolean {
   return !expiresAt || expiresAt > new Date();
 }
 
-async function getEntitlementCreditBalance(entitlementId: string): Promise<number> {
-  const result = await prisma.creditLedgerEntry.aggregate({
-    where: { entitlementId },
-    _sum: { amount: true },
+async function getCreditBalancesByEntitlementIds(entitlementIds: string[]): Promise<Map<string, number>> {
+  const uniqueEntitlementIds = Array.from(new Set(entitlementIds.filter((entitlementId) => entitlementId.length > 0)));
+  if (uniqueEntitlementIds.length === 0) {
+    return new Map();
+  }
+
+  const groupedBalances = await prisma.creditLedgerEntry.groupBy({
+    by: ["entitlementId"],
+    where: {
+      entitlementId: {
+        in: uniqueEntitlementIds,
+      },
+    },
+    _sum: {
+      amount: true,
+    },
   });
 
-  return result._sum.amount ?? 0;
+  return new Map(
+    groupedBalances
+      .filter((entry): entry is typeof entry & { entitlementId: string } => Boolean(entry.entitlementId))
+      .map((entry) => [entry.entitlementId, entry._sum.amount ?? 0]),
+  );
 }
 
 async function getPlanBalance(input: {
   entitlementId: string;
   entitlementType: EntitlementType;
   isActive: boolean;
+  creditBalancesByEntitlementId?: Map<string, number>;
 }): Promise<PlanBalance> {
   if (!input.isActive) {
     return {
@@ -381,7 +398,7 @@ async function getPlanBalance(input: {
     input.entitlementType === EntitlementType.CREDIT_PACK ||
     input.entitlementType === EntitlementType.SINGLE_USE
   ) {
-    const balance = await getEntitlementCreditBalance(input.entitlementId);
+    const balance = input.creditBalancesByEntitlementId?.get(input.entitlementId) ?? 0;
 
     if (balance <= 0) {
       return {
@@ -495,6 +512,16 @@ async function getExistingPlansByUserAndScope(params: {
     orderBy: [{ expiresAt: "asc" }, { updatedAt: "desc" }],
   });
 
+  const creditBalancesByEntitlementId = await getCreditBalancesByEntitlementIds(
+    entitlements
+      .filter(
+        (entitlement) =>
+          entitlement.entitlementType === EntitlementType.CREDIT_PACK ||
+          entitlement.entitlementType === EntitlementType.SINGLE_USE,
+      )
+      .map((entitlement) => entitlement.id),
+  );
+
   const options = await Promise.all(
     entitlements.map(async (entitlement) => {
       const active = isEntitlementActive(entitlement.expiresAt);
@@ -502,6 +529,7 @@ async function getExistingPlansByUserAndScope(params: {
         entitlementId: entitlement.id,
         entitlementType: entitlement.entitlementType,
         isActive: active,
+        creditBalancesByEntitlementId,
       });
 
       return {
@@ -637,12 +665,13 @@ async function getNextConsumableCreditEntitlement(input: {
     },
   });
 
-  const withBalance = await Promise.all(
-    entitlements.map(async (entitlement) => {
-      const balance = await getEntitlementCreditBalance(entitlement.id);
-      return { ...entitlement, balance };
-    }),
+  const creditBalancesByEntitlementId = await getCreditBalancesByEntitlementIds(
+    entitlements.map((entitlement) => entitlement.id),
   );
+  const withBalance = entitlements.map((entitlement) => ({
+    ...entitlement,
+    balance: creditBalancesByEntitlementId.get(entitlement.id) ?? 0,
+  }));
 
   const eligible = withBalance.filter((entitlement) => entitlement.balance > 0);
   if (eligible.length === 0) {
@@ -1006,12 +1035,23 @@ export async function getMyActivePlans(userId: string): Promise<PlanSummary[]> {
     orderBy: [{ expiresAt: "asc" }, { updatedAt: "desc" }],
   });
 
+  const creditBalancesByEntitlementId = await getCreditBalancesByEntitlementIds(
+    entitlements
+      .filter(
+        (entitlement) =>
+          entitlement.entitlementType === EntitlementType.CREDIT_PACK ||
+          entitlement.entitlementType === EntitlementType.SINGLE_USE,
+      )
+      .map((entitlement) => entitlement.id),
+  );
+
   const plans = await Promise.all(
     entitlements.map(async (entitlement) => {
       const balance = await getPlanBalance({
         entitlementId: entitlement.id,
         entitlementType: entitlement.entitlementType,
         isActive: isEntitlementActive(entitlement.expiresAt),
+        creditBalancesByEntitlementId,
       });
 
       return {
