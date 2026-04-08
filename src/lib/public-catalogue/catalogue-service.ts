@@ -1,5 +1,6 @@
 import { ServicePricingMode, StudioSessionStatus, Weekday, type Prisma } from "@prisma/client";
 import { prisma } from "../db";
+import { createPerfTrace } from "../monitoring/perf-trace";
 
 export type PublicCategory = {
   name: string;
@@ -143,67 +144,86 @@ function toService(classType: ClassTypeWithSchedule): PublicService {
 }
 
 export async function getPublicCategories(): Promise<PublicCategory[]> {
-  return prisma.classCategory.findMany({
-    where: {
-      isActive: true,
-      classTypes: {
-        some: {
-          isActive: true,
-          isVisible: true,
-        },
-      },
-    },
-    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    select: {
-      slug: true,
-      name: true,
-    },
-  });
-}
-
-export async function getPublicServicesByCategorySlug(categorySlug: string): Promise<PublicService[]> {
-  const classTypes = await prisma.classType.findMany({
-    where: {
-      category: {
-        isActive: true,
-        slug: categorySlug,
-      },
-      isActive: true,
-      isVisible: true,
-    },
-    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    include: {
-      templates: {
+  const trace = createPerfTrace("public-catalogue.getPublicCategories");
+  let categoryCount = 0;
+  try {
+    const categories = await trace.db("classCategory.findMany.publicCategories", () =>
+      prisma.classCategory.findMany({
         where: {
           isActive: true,
-          isPublished: true,
-        },
-        include: {
-          recurringRules: {
-            where: {
+          classTypes: {
+            some: {
               isActive: true,
-            },
-            select: {
-              weekday: true,
+              isVisible: true,
             },
           },
         },
-      },
-      studioSessions: {
-        where: {
-          isPublished: true,
-          status: StudioSessionStatus.SCHEDULED,
-        },
-        orderBy: {
-          startsAt: "asc",
-        },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         select: {
-          startsAt: true,
+          slug: true,
+          name: true,
         },
-        take: 8,
-      },
-    },
-  });
+      }),
+    );
+    categoryCount = categories.length;
+    return categories;
+  } finally {
+    trace.log({ categoryCount });
+  }
+}
 
-  return classTypes.map(toService);
+export async function getPublicServicesByCategorySlug(categorySlug: string): Promise<PublicService[]> {
+  const trace = createPerfTrace("public-catalogue.getPublicServicesByCategorySlug", { categorySlug });
+  let serviceCount = 0;
+  try {
+    const classTypes = await trace.db("classType.findMany.servicesByCategory", () =>
+      prisma.classType.findMany({
+        where: {
+          category: {
+            isActive: true,
+            slug: categorySlug,
+          },
+          isActive: true,
+          isVisible: true,
+        },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        include: {
+          templates: {
+            where: {
+              isActive: true,
+              isPublished: true,
+            },
+            include: {
+              recurringRules: {
+                where: {
+                  isActive: true,
+                },
+                select: {
+                  weekday: true,
+                },
+              },
+            },
+          },
+          studioSessions: {
+            where: {
+              isPublished: true,
+              status: StudioSessionStatus.SCHEDULED,
+            },
+            orderBy: {
+              startsAt: "asc",
+            },
+            select: {
+              startsAt: true,
+            },
+            take: 8,
+          },
+        },
+      }),
+    );
+
+    serviceCount = classTypes.length;
+    return classTypes.map(toService);
+  } finally {
+    trace.log({ categorySlug, serviceCount });
+  }
 }

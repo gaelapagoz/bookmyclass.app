@@ -1,5 +1,6 @@
 import { StudioSessionStatus } from "@prisma/client";
 import { prisma } from "../db";
+import { createPerfTrace, type PerfTrace } from "../monitoring/perf-trace";
 import { bookingDraftActiveBookingFilter } from "../public-booking/booking-draft-service";
 import { getPublicTeacherName } from "../public-content/teacher-display";
 import {
@@ -73,68 +74,71 @@ function toSlot(session: SessionWithBookings): SessionSlot {
   };
 }
 
-async function getServiceRecordBySlug(slug: string) {
-  return prisma.classType.findFirst({
-    where: {
-      slug,
-      isActive: true,
-      isVisible: true,
-      category: {
+async function getServiceRecordBySlug(slug: string, trace?: PerfTrace) {
+  const query = () =>
+    prisma.classType.findFirst({
+      where: {
+        slug,
         isActive: true,
-      },
-    },
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      description: true,
-      imageUrl: true,
-      defaultDurationMinutes: true,
-      templates: {
-        where: {
+        isVisible: true,
+        category: {
           isActive: true,
-          isPublished: true,
         },
-        orderBy: {
-          updatedAt: "desc",
+      },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        imageUrl: true,
+        defaultDurationMinutes: true,
+        templates: {
+          where: {
+            isActive: true,
+            isPublished: true,
+          },
+          orderBy: {
+            updatedAt: "desc",
+          },
+          take: 1,
+          select: {
+            location: true,
+            defaultTeacher: {
+              select: {
+                firstName: true,
+                lastName: true,
+                name: true,
+              },
+            },
+          },
         },
-        take: 1,
-        select: {
-          location: true,
-          defaultTeacher: {
-            select: {
-              firstName: true,
-              lastName: true,
-              name: true,
+        studioSessions: {
+          where: {
+            isPublished: true,
+            status: StudioSessionStatus.SCHEDULED,
+            startsAt: {
+              gte: new Date(),
+            },
+          },
+          orderBy: {
+            startsAt: "asc",
+          },
+          take: 1,
+          select: {
+            location: true,
+            teacher: {
+              select: {
+                firstName: true,
+                lastName: true,
+                name: true,
+              },
             },
           },
         },
       },
-      studioSessions: {
-        where: {
-          isPublished: true,
-          status: StudioSessionStatus.SCHEDULED,
-          startsAt: {
-            gte: new Date(),
-          },
-        },
-        orderBy: {
-          startsAt: "asc",
-        },
-        take: 1,
-        select: {
-          location: true,
-          teacher: {
-            select: {
-              firstName: true,
-              lastName: true,
-              name: true,
-            },
-          },
-        },
-      },
-    },
-  });
+    });
+
+  return trace ? trace.db("classType.findFirst.serviceBySlug", query) : query();
 }
 
 function resolveClassSummary(classType: NonNullable<Awaited<ReturnType<typeof getServiceRecordBySlug>>>) {
@@ -157,188 +161,233 @@ function resolveClassSummary(classType: NonNullable<Awaited<ReturnType<typeof ge
 }
 
 export async function getPublicServiceDetailBySlug(slug: string): Promise<PublicServiceDetail | null> {
-  const classType = await getServiceRecordBySlug(slug);
+  const trace = createPerfTrace("public-catalogue.getPublicServiceDetailBySlug", { slug });
+  let foundService = false;
+  try {
+    const classType = await getServiceRecordBySlug(slug, trace);
 
-  if (!classType) {
-    return null;
+    if (!classType) {
+      return null;
+    }
+    foundService = true;
+
+    return {
+      id: classType.id,
+      slug: classType.slug,
+      title: classType.name,
+      description: classType.description ?? "Description coming soon.",
+      shortDescription: getShortDescription(classType.description),
+      imageUrl: classType.imageUrl,
+      classSummary: resolveClassSummary(classType),
+    };
+  } finally {
+    trace.log({ foundService });
   }
-
-  return {
-    id: classType.id,
-    slug: classType.slug,
-    title: classType.name,
-    description: classType.description ?? "Description coming soon.",
-    shortDescription: getShortDescription(classType.description),
-    imageUrl: classType.imageUrl,
-    classSummary: resolveClassSummary(classType),
-  };
 }
 
 export async function getServiceMonthAvailability(params: { monthKey: string; slug: string }) {
   const { monthKey, slug } = params;
-  const classType = await getServiceRecordBySlug(slug);
+  const trace = createPerfTrace("public-catalogue.getServiceMonthAvailability", {
+    monthKey,
+    slug,
+  });
+  let sessionCount = 0;
+  let foundService = false;
+  try {
+    const classType = await getServiceRecordBySlug(slug, trace);
 
-  if (!classType) {
-    return null;
-  }
+    if (!classType) {
+      return null;
+    }
+    foundService = true;
 
-  const { fromUtc, toUtc } = getMonthRangeUtc(monthKey);
+    const { fromUtc, toUtc } = getMonthRangeUtc(monthKey);
 
-  const sessions = await prisma.studioSession.findMany({
-    where: {
-      classTypeId: classType.id,
-      isPublished: true,
-      status: StudioSessionStatus.SCHEDULED,
-      startsAt: {
-        gte: fromUtc,
-        lt: toUtc,
-      },
-    },
-    orderBy: {
-      startsAt: "asc",
-    },
-    select: {
-      id: true,
-      startsAt: true,
-      endsAt: true,
-      capacity: true,
-      _count: {
-        select: {
-          bookings: {
-            where: bookingDraftActiveBookingFilter(),
+    const sessions = await trace.db("studioSession.findMany.monthAvailability", () =>
+      prisma.studioSession.findMany({
+        where: {
+          classTypeId: classType.id,
+          isPublished: true,
+          status: StudioSessionStatus.SCHEDULED,
+          startsAt: {
+            gte: fromUtc,
+            lt: toUtc,
           },
         },
-      },
-    },
-  });
+        orderBy: {
+          startsAt: "asc",
+        },
+        select: {
+          id: true,
+          startsAt: true,
+          endsAt: true,
+          capacity: true,
+          _count: {
+            select: {
+              bookings: {
+                where: bookingDraftActiveBookingFilter(),
+              },
+            },
+          },
+        },
+      }),
+    );
+    sessionCount = sessions.length;
 
-  const byDate = new Map<string, { availableSlots: number; totalSlots: number }>();
-  for (const session of sessions) {
-    const slot = toSlot(session);
-    const current = byDate.get(slot.date) ?? { availableSlots: 0, totalSlots: 0 };
-    current.totalSlots += 1;
-    if (slot.isAvailable) {
-      current.availableSlots += 1;
+    const byDate = new Map<string, { availableSlots: number; totalSlots: number }>();
+    for (const session of sessions) {
+      const slot = toSlot(session);
+      const current = byDate.get(slot.date) ?? { availableSlots: 0, totalSlots: 0 };
+      current.totalSlots += 1;
+      if (slot.isAvailable) {
+        current.availableSlots += 1;
+      }
+      byDate.set(slot.date, current);
     }
-    byDate.set(slot.date, current);
+
+    const days = Array.from(byDate.entries()).map(([date, value]) => ({
+      date,
+      totalSlots: value.totalSlots,
+      availableSlots: value.availableSlots,
+      hasAvailability: value.availableSlots > 0,
+    }));
+
+    days.sort((left, right) => left.date.localeCompare(right.date));
+
+    return {
+      month: monthKey,
+      timezone: STUDIO_TIMEZONE,
+      days,
+    };
+  } finally {
+    trace.log({ foundService, sessionCount });
   }
-
-  const days = Array.from(byDate.entries()).map(([date, value]) => ({
-    date,
-    totalSlots: value.totalSlots,
-    availableSlots: value.availableSlots,
-    hasAvailability: value.availableSlots > 0,
-  }));
-
-  days.sort((left, right) => left.date.localeCompare(right.date));
-
-  return {
-    month: monthKey,
-    timezone: STUDIO_TIMEZONE,
-    days,
-  };
 }
 
 export async function getServiceSlotsByDate(params: { dateKey: string; slug: string }) {
   const { dateKey, slug } = params;
-  const classType = await getServiceRecordBySlug(slug);
+  const trace = createPerfTrace("public-catalogue.getServiceSlotsByDate", { dateKey, slug });
+  let sessionCount = 0;
+  let foundService = false;
+  try {
+    const classType = await getServiceRecordBySlug(slug, trace);
 
-  if (!classType) {
-    return null;
-  }
+    if (!classType) {
+      return null;
+    }
+    foundService = true;
 
-  const { fromUtc, toUtc } = getDateRangeUtc(dateKey);
-  const now = new Date();
+    const { fromUtc, toUtc } = getDateRangeUtc(dateKey);
+    const now = new Date();
 
-  const sessions = await prisma.studioSession.findMany({
-    where: {
-      classTypeId: classType.id,
-      isPublished: true,
-      status: StudioSessionStatus.SCHEDULED,
-      startsAt: {
-        gte: fromUtc > now ? fromUtc : now,
-        lt: toUtc,
-      },
-    },
-    orderBy: {
-      startsAt: "asc",
-    },
-    select: {
-      id: true,
-      startsAt: true,
-      endsAt: true,
-      capacity: true,
-      _count: {
-        select: {
-          bookings: {
-            where: bookingDraftActiveBookingFilter(),
+    const sessions = await trace.db("studioSession.findMany.slotsByDate", () =>
+      prisma.studioSession.findMany({
+        where: {
+          classTypeId: classType.id,
+          isPublished: true,
+          status: StudioSessionStatus.SCHEDULED,
+          startsAt: {
+            gte: fromUtc > now ? fromUtc : now,
+            lt: toUtc,
           },
         },
-      },
-    },
-  });
+        orderBy: {
+          startsAt: "asc",
+        },
+        select: {
+          id: true,
+          startsAt: true,
+          endsAt: true,
+          capacity: true,
+          _count: {
+            select: {
+              bookings: {
+                where: bookingDraftActiveBookingFilter(),
+              },
+            },
+          },
+        },
+      }),
+    );
+    sessionCount = sessions.length;
 
-  const slots = sessions.map(toSlot);
-  return {
-    date: dateKey,
-    timezone: STUDIO_TIMEZONE,
-    slots,
-  };
+    const slots = sessions.map(toSlot);
+    return {
+      date: dateKey,
+      timezone: STUDIO_TIMEZONE,
+      slots,
+    };
+  } finally {
+    trace.log({ foundService, sessionCount });
+  }
 }
 
 export async function getNextAvailability(params: { fromDateKey: string; slug: string }) {
   const { fromDateKey, slug } = params;
-  const classType = await getServiceRecordBySlug(slug);
+  const trace = createPerfTrace("public-catalogue.getNextAvailability", { fromDateKey, slug });
+  let sessionCount = 0;
+  let foundService = false;
+  let nextFound = false;
+  try {
+    const classType = await getServiceRecordBySlug(slug, trace);
 
-  if (!classType) {
-    return null;
-  }
+    if (!classType) {
+      return null;
+    }
+    foundService = true;
 
-  const { fromUtc } = getDateRangeUtc(fromDateKey);
-  const now = new Date();
-  const queryFrom = fromUtc > now ? fromUtc : now;
+    const { fromUtc } = getDateRangeUtc(fromDateKey);
+    const now = new Date();
+    const queryFrom = fromUtc > now ? fromUtc : now;
 
-  const sessions = await prisma.studioSession.findMany({
-    where: {
-      classTypeId: classType.id,
-      isPublished: true,
-      status: StudioSessionStatus.SCHEDULED,
-      startsAt: {
-        gte: queryFrom,
-      },
-    },
-    orderBy: {
-      startsAt: "asc",
-    },
-    select: {
-      id: true,
-      startsAt: true,
-      endsAt: true,
-      capacity: true,
-      _count: {
-        select: {
-          bookings: {
-            where: bookingDraftActiveBookingFilter(),
+    const sessions = await trace.db("studioSession.findMany.nextAvailability", () =>
+      prisma.studioSession.findMany({
+        where: {
+          classTypeId: classType.id,
+          isPublished: true,
+          status: StudioSessionStatus.SCHEDULED,
+          startsAt: {
+            gte: queryFrom,
           },
         },
-      },
-    },
-    take: 180,
-  });
+        orderBy: {
+          startsAt: "asc",
+        },
+        select: {
+          id: true,
+          startsAt: true,
+          endsAt: true,
+          capacity: true,
+          _count: {
+            select: {
+              bookings: {
+                where: bookingDraftActiveBookingFilter(),
+              },
+            },
+          },
+        },
+        take: 180,
+      }),
+    );
+    sessionCount = sessions.length;
 
-  const firstAvailable = sessions.map(toSlot).find((slot) => slot.isAvailable);
-  if (!firstAvailable) {
+    const firstAvailable = sessions.map(toSlot).find((slot) => slot.isAvailable);
+    if (!firstAvailable) {
+      return {
+        next: null,
+        timezone: STUDIO_TIMEZONE,
+      };
+    }
+    nextFound = true;
+
     return {
-      next: null,
       timezone: STUDIO_TIMEZONE,
+      next: {
+        ...firstAvailable,
+        month: firstAvailable.date.slice(0, 7),
+      },
     };
+  } finally {
+    trace.log({ foundService, nextFound, sessionCount });
   }
-
-  return {
-    timezone: STUDIO_TIMEZONE,
-    next: {
-      ...firstAvailable,
-      month: firstAvailable.date.slice(0, 7),
-    },
-  };
 }

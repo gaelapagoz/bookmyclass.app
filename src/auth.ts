@@ -5,6 +5,7 @@ import Credentials from "next-auth/providers/credentials";
 
 import { authorizeCredentials, type AuthUser } from "@/lib/auth/credentials-authorize";
 import { prisma } from "@/lib/db";
+import { createPerfTrace } from "@/lib/monitoring/perf-trace";
 
 const ROLES: Role[] = ["MASTER_ADMIN", "ADMIN", "TEACHER", "CLIENT"];
 
@@ -38,14 +39,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       if ((!token.id || !token.role) && token.sub) {
-        const dbUser = await prisma.user.findUnique({
-          where: { id: token.sub },
-          select: { id: true, role: true },
+        const trace = createPerfTrace("auth.jwt.resolveTokenUser", {
+          hasTokenId: Boolean(token.id),
+          hasTokenRole: Boolean(token.role),
+          tokenSub: token.sub,
         });
+        let foundUser = false;
+        try {
+          const dbUser = await trace.db("user.findUnique.jwtTokenResolve", () =>
+            prisma.user.findUnique({
+              where: { id: token.sub },
+              select: { id: true, role: true },
+            }),
+          );
 
-        if (dbUser) {
-          token.id = dbUser.id;
-          token.role = dbUser.role;
+          if (dbUser) {
+            token.id = dbUser.id;
+            token.role = dbUser.role;
+            foundUser = true;
+          }
+        } finally {
+          trace.log({ foundUser });
         }
       }
 
