@@ -1,5 +1,4 @@
 import NextAuth from "next-auth";
-import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { Role } from "@prisma/client";
 import Credentials from "next-auth/providers/credentials";
 
@@ -14,7 +13,6 @@ function isRole(value: unknown): value is Role {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
   trustHost: true,
   secret: process.env.AUTH_SECRET,
   session: { strategy: "jwt" },
