@@ -1,4 +1,4 @@
-﻿import {
+import {
   BillingInterval,
   ClientEntitlementStatus,
   CreditLedgerEntryType,
@@ -6,6 +6,8 @@
   EntitlementType,
   PaymentProvider,
   Role,
+  ServicePricingMode,
+  StudioSessionStatus,
   SubscriptionStatus,
   UserActivationStatus,
 } from "@prisma/client";
@@ -19,6 +21,17 @@ const COHORT_SIZE = 400;
 const PASSWORD = "UAT.K6.Phase4!2026";
 const EMAIL_DOMAIN = "k6-uat.bookmyclass.local";
 const PHONE_PREFIX = "+320199";
+
+const K6_SESSION_MONTHS_AHEAD = 12;
+const K6_SESSIONS_PER_DAY_PER_SERVICE = 6;
+const K6_DAILY_TIME_SLOTS = [
+  { hour: 6, minute: 30 },
+  { hour: 8, minute: 30 },
+  { hour: 11, minute: 0 },
+  { hour: 14, minute: 0 },
+  { hour: 17, minute: 30 },
+  { hour: 20, minute: 0 },
+] as const;
 
 const COHORTS = {
   entitlementCollective: "entitlement_collective",
@@ -34,6 +47,15 @@ type SeedUser = {
   index: number;
   name: string;
   phone: string;
+};
+
+type K6SessionTarget = {
+  classTemplateId: string;
+  classTypeId: string;
+  durationMinutes: number;
+  location: string | null;
+  teacherId: string;
+  title: string;
 };
 
 function normalize(value: string): string {
@@ -121,6 +143,36 @@ function buildAllUsers(): SeedUser[] {
   return all;
 }
 
+function startOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
+}
+
+function addDaysUtc(base: Date, days: number): Date {
+  const next = new Date(base);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function addMonthsUtc(base: Date, months: number): Date {
+  const next = new Date(base);
+  next.setUTCMonth(next.getUTCMonth() + months);
+  return next;
+}
+
+function* dateRangeByDay(startInclusive: Date, endExclusive: Date): Generator<Date> {
+  for (let cursor = new Date(startInclusive); cursor < endExclusive; cursor = addDaysUtc(cursor, 1)) {
+    yield cursor;
+  }
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(items.slice(i, i + size));
+  }
+  return out;
+}
+
 async function resolveCatalogReferences() {
   const prices = await prisma.price.findMany({
     where: {
@@ -164,14 +216,8 @@ async function resolveCatalogReferences() {
       rule.entitlementScope === EntitlementScope.COLLECTIVE_CLASSES &&
       (rule.entitlementType === EntitlementType.CREDIT_PACK || rule.entitlementType === EntitlementType.SINGLE_USE),
   );
-  const unlimitedRule = rules.find(
-    (rule) =>
-      rule.productId === collectiveRecurringPrice.productId &&
-      rule.entitlementScope === EntitlementScope.COLLECTIVE_CLASSES &&
-      rule.entitlementType === EntitlementType.UNLIMITED_ACCESS,
-  );
 
-  if (!creditRule || !unlimitedRule) {
+  if (!creditRule) {
     throw new Error("Required entitlement rules for collective access were not found in catalog.");
   }
 
@@ -394,6 +440,131 @@ async function seedEntitlementCollectiveAccess(params: {
   return { creditPackUsers, unlimitedUsers };
 }
 
+async function resolveK6SessionTargets(): Promise<K6SessionTarget[]> {
+  const classTypes = await prisma.classType.findMany({
+    where: {
+      isActive: true,
+      isVisible: true,
+      pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
+      category: {
+        isActive: true,
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      defaultDurationMinutes: true,
+      templates: {
+        where: {
+          isActive: true,
+          isPublished: true,
+        },
+        orderBy: {
+          updatedAt: "desc",
+        },
+        take: 1,
+        select: {
+          id: true,
+          title: true,
+          location: true,
+          defaultDurationMinutes: true,
+          defaultTeacherId: true,
+        },
+      },
+    },
+  });
+
+  return classTypes
+    .filter((entry) => !entry.slug.startsWith("seed-"))
+    .map((entry) => {
+      const template = entry.templates[0];
+      if (!template) {
+        return null;
+      }
+      return {
+        classTemplateId: template.id,
+        classTypeId: entry.id,
+        durationMinutes: template.defaultDurationMinutes ?? entry.defaultDurationMinutes,
+        location: template.location,
+        teacherId: template.defaultTeacherId,
+        title: template.title || entry.name,
+      };
+    })
+    .filter((entry): entry is K6SessionTarget => Boolean(entry));
+}
+
+async function seedFutureSessionsForK6() {
+  const targets = await resolveK6SessionTargets();
+  if (!targets.length) {
+    throw new Error("No active SINGLE_OR_PLAN class templates found for UAT k6 session seeding.");
+  }
+
+  const now = new Date();
+  const startDate = addDaysUtc(startOfUtcDay(now), 1);
+  const endDate = addMonthsUtc(startDate, K6_SESSION_MONTHS_AHEAD);
+
+  const sessionRows: Array<{
+    classTemplateId: string;
+    classTypeId: string;
+    teacherId: string;
+    title: string;
+    description: string;
+    location: string | null;
+    startsAt: Date;
+    endsAt: Date;
+    capacity: number;
+    status: StudioSessionStatus;
+    isPublished: boolean;
+  }> = [];
+
+  for (const [serviceIndex, target] of targets.entries()) {
+    for (const day of dateRangeByDay(startDate, endDate)) {
+      for (let slotIndex = 0; slotIndex < K6_SESSIONS_PER_DAY_PER_SERVICE; slotIndex += 1) {
+        const slot = K6_DAILY_TIME_SLOTS[slotIndex % K6_DAILY_TIME_SLOTS.length]!;
+        const startsAt = new Date(
+          Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), slot.hour, slot.minute, 0, 0),
+        );
+        startsAt.setUTCMinutes(startsAt.getUTCMinutes() + serviceIndex);
+        if (startsAt <= now) {
+          continue;
+        }
+
+        const endsAt = new Date(startsAt);
+        endsAt.setUTCMinutes(endsAt.getUTCMinutes() + target.durationMinutes);
+
+        sessionRows.push({
+          classTemplateId: target.classTemplateId,
+          classTypeId: target.classTypeId,
+          teacherId: target.teacherId,
+          title: target.title,
+          description: "UAT k6 deterministic future session inventory",
+          location: target.location,
+          startsAt,
+          endsAt,
+          capacity: 24,
+          status: StudioSessionStatus.SCHEDULED,
+          isPublished: true,
+        });
+      }
+    }
+  }
+
+  for (const batch of chunk(sessionRows, 1500)) {
+    await prisma.studioSession.createMany({
+      data: batch,
+      skipDuplicates: true,
+    });
+  }
+
+  return {
+    serviceCount: targets.length,
+    sessionRows: sessionRows.length,
+    startDate,
+    endDate,
+  };
+}
+
 async function exportK6Csv(users: SeedUser[]) {
   const csvPath = resolve(
     process.cwd(),
@@ -450,6 +621,7 @@ async function main() {
     },
   });
 
+  const sessionSeedResult = await seedFutureSessionsForK6();
   const csvPath = await exportK6Csv(users);
 
   console.info("[k6-uat-seed] complete");
@@ -459,6 +631,9 @@ async function main() {
   );
   console.info(
     `[k6-uat-seed] entitlement_collective distribution credit_pack=${accessSeedResult.creditPackUsers}, monthly_unlimited=${accessSeedResult.unlimitedUsers}`,
+  );
+  console.info(
+    `[k6-uat-seed] sessions seeded services=${sessionSeedResult.serviceCount}, rows=${sessionSeedResult.sessionRows}, range=${sessionSeedResult.startDate.toISOString()}..${sessionSeedResult.endDate.toISOString()}`,
   );
   console.info(`[k6-uat-seed] csv exported=${csvPath}`);
   console.info(`[k6-uat-seed] credentials password=${PASSWORD}`);
