@@ -167,6 +167,35 @@ describe("k6 booking candidates helpers", () => {
     expect(result.attemptedSessionCount).toBe(2);
   });
 
+  it("treats UNAVAILABLE_SESSION as stale candidate and continues to next candidate", async () => {
+    postJsonMock
+      .mockReturnValueOnce(
+        mockResponse(400, {
+          code: "UNAVAILABLE_SESSION",
+          error: "This session is not available for booking.",
+        }),
+      )
+      .mockReturnValueOnce(mockResponse(201, { draft: { bookingId: "booking-fallback" } }));
+
+    const { createDraftWithSessionFallback } = await import("../../k6/lib/booking-candidates.js");
+    const result = createDraftWithSessionFallback({
+      flowTag: "booking_checkout",
+      serviceSlug: "vinyasa-yoga",
+      sessionCandidates: ["unavailable-session", "fallback-session"],
+      draftPayload: {
+        customerName: "K6 User",
+        customerEmail: "k6@example.test",
+        customerPhone: "+32000000000",
+        bookingIntent: "SINGLE_BOOKING",
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+      },
+    });
+
+    expect(result.bookingId).toBe("booking-fallback");
+    expect(result.sessionId).toBe("fallback-session");
+    expect(result.attemptedSessionCount).toBe(2);
+  });
   it("refreshes candidates once when initial list is exhausted by skippable results", async () => {
     postJsonMock
       .mockReturnValueOnce(mockResponse(400, { code: "PAST_SESSION", error: "Only future sessions can be booked." }))
@@ -196,5 +225,4 @@ describe("k6 booking candidates helpers", () => {
     expect(result.attemptedSessionCount).toBe(3);
   });
 });
-
 

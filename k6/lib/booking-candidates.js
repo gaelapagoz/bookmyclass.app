@@ -139,7 +139,12 @@ export function resolveBookingSessionCandidates(input) {
 }
 
 function parseDraftSkippableCode(code) {
-  if (code === "FULL_SESSION" || code === "DUPLICATE_BOOKING" || code === "PAST_SESSION") {
+  if (
+    code === "FULL_SESSION" ||
+    code === "DUPLICATE_BOOKING" ||
+    code === "PAST_SESSION" ||
+    code === "UNAVAILABLE_SESSION"
+  ) {
     return code;
   }
   return null;
@@ -173,9 +178,12 @@ export function createDraftWithSessionFallback(input) {
 
       const body = response.json();
       const code = body && body.code ? String(body.code) : "";
+      const skippableCode = parseDraftSkippableCode(code);
       const isExpectedConflict = response.status === 409 && code === "DUPLICATE_BOOKING";
       const isTechnicalFailure = response.status === 0 || response.status >= 500;
-      const isUnexpectedClientError = response.status >= 400 && response.status < 500 && !isExpectedConflict;
+      const isExpectedBusinessClientResponse = Boolean(skippableCode);
+      const isUnexpectedClientError =
+        response.status >= 400 && response.status < 500 && !isExpectedBusinessClientResponse;
 
       bookingDraftExpectedConflictRate.add(isExpectedConflict, { flow: input.flowTag });
       bookingDraftTechnicalFailureRate.add(isTechnicalFailure, { flow: input.flowTag });
@@ -196,7 +204,6 @@ export function createDraftWithSessionFallback(input) {
         };
       }
 
-      const skippableCode = parseDraftSkippableCode(code);
       if (skippableCode) {
         lastSkippedCode = skippableCode;
         continue;
