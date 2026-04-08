@@ -177,10 +177,23 @@ export async function resetClientLoginFailureCounters(input: {
 
   await prisma.adminLoginAbuseCounter.updateMany({
     where: {
-      OR: buckets.map((bucket) => ({
-        keyType: bucket.keyType,
-        keyHash: bucket.keyHash,
-      })),
+      AND: [
+        {
+          OR: buckets.map((bucket) => ({
+            keyType: bucket.keyType,
+            keyHash: bucket.keyHash,
+          })),
+        },
+        {
+          OR: [
+            { failedAttempts: { gt: 0 } },
+            { firstFailedAt: { not: null } },
+            { lastFailedAt: { not: null } },
+            { lockedUntil: { not: null } },
+            { captchaRequiredUntil: { not: null } },
+          ],
+        },
+      ],
     },
     data: {
       failedAttempts: 0,

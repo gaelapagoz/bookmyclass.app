@@ -500,6 +500,82 @@ describe("credentials authorize integration", () => {
       expect(counter.lastSuccessAt).not.toBeNull();
     }
   });
-});
+  it("does not rewrite already-clean client abuse counters on successful sign-in", async () => {
+    const email = `client-noop-reset.${Date.now()}@example.test`;
+    const password = "Password123!";
+    const passwordHash = await hash(password, 12);
+    const ip = "198.51.100.77";
+    const fixedLastSuccessAt = new Date("2026-01-01T00:00:00.000Z");
+    const secret = process.env.AUTH_SECRET ?? "client-login-abuse-fallback";
+    const normalizedEmail = email.toLowerCase();
+    const hashKey = (value: string) => createHash("sha256").update(`${secret}:client-login:${value}`).digest("hex");
+    const bucketEntries = [
+      { keyType: AdminLoginAbuseKeyType.IP, keyHash: hashKey(ip) },
+      { keyType: AdminLoginAbuseKeyType.EMAIL, keyHash: hashKey(normalizedEmail) },
+      { keyType: AdminLoginAbuseKeyType.IP_EMAIL, keyHash: hashKey(`${ip}:${normalizedEmail}`) },
+    ];
 
+    await prisma.user.create({
+      data: {
+        name: "Noop Reset Client",
+        firstName: "Noop",
+        lastName: "Reset",
+        email,
+        role: Role.CLIENT,
+        passwordHash,
+        emailVerified: new Date(),
+      },
+    });
+
+    for (const bucket of bucketEntries) {
+      await prisma.adminLoginAbuseCounter.create({
+        data: {
+          keyType: bucket.keyType,
+          keyHash: bucket.keyHash,
+          failedAttempts: 0,
+          firstFailedAt: null,
+          lastFailedAt: null,
+          lockedUntil: null,
+          captchaRequiredUntil: null,
+          lastSuccessAt: fixedLastSuccessAt,
+        },
+      });
+    }
+
+    const request = {
+      headers: new Headers({
+        "x-forwarded-for": ip,
+      }),
+    };
+
+    const success = await authorizeCredentials(
+      {
+        email,
+        password,
+      },
+      request,
+    );
+
+    expect(success).not.toBeNull();
+
+    const counters = await prisma.adminLoginAbuseCounter.findMany({
+      where: {
+        OR: bucketEntries.map((bucket) => ({
+          keyType: bucket.keyType,
+          keyHash: bucket.keyHash,
+        })),
+      },
+    });
+
+    expect(counters).toHaveLength(3);
+    for (const counter of counters) {
+      expect(counter.failedAttempts).toBe(0);
+      expect(counter.firstFailedAt).toBeNull();
+      expect(counter.lastFailedAt).toBeNull();
+      expect(counter.lockedUntil).toBeNull();
+      expect(counter.captchaRequiredUntil).toBeNull();
+      expect(counter.lastSuccessAt?.toISOString()).toBe(fixedLastSuccessAt.toISOString());
+    }
+  });
+});
 
