@@ -53,6 +53,18 @@ export function bookingEntitlementScenario() {
     flowTag: "booking_entitlement",
     serviceSlug,
     sessionCandidates: userSessionCandidates,
+    refreshCandidates: () =>
+      rotateSessionCandidatesForActor(
+        resolveBookingSessionCandidates({
+          serviceSlug,
+          seed: seeded,
+          maxCandidates,
+        }),
+        {
+          actorKey: user.email,
+          flowTag: "booking_entitlement",
+        },
+      ),
     draftPayload: {
       customerName: user.name || "UAT Client",
       customerEmail: user.email,

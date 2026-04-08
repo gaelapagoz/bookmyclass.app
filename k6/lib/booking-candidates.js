@@ -129,10 +129,10 @@ export function resolveBookingSessionCandidates(input) {
   return uniquePreservingOrder([...nearest, ...seeded]).slice(0, maxCandidates);
 }
 
-function parseDraftCollisionCode(response) {
+function parseDraftSkippableCode(response) {
   const body = response.json();
   const code = body && body.code ? String(body.code) : "";
-  if (code === "FULL_SESSION" || code === "DUPLICATE_BOOKING") {
+  if (code === "FULL_SESSION" || code === "DUPLICATE_BOOKING" || code === "PAST_SESSION") {
     return code;
   }
   return null;
@@ -140,51 +140,70 @@ function parseDraftCollisionCode(response) {
 
 export function createDraftWithSessionFallback(input) {
   const attempted = [];
-  let lastCollisionCode = "";
+  let lastSkippedCode = "";
+  let candidates = uniquePreservingOrder(input.sessionCandidates);
+  let didRefreshCandidates = false;
 
-  for (const sessionId of input.sessionCandidates) {
-    attempted.push(sessionId);
-    const response = postJson(
-      "/api/bookings/draft",
-      {
-        ...input.draftPayload,
-        serviceSlug: input.serviceSlug,
-        sessionId,
-      },
-      {
-        tags: { flow: input.flowTag, endpoint: "booking_draft" },
-      },
-    );
-
-    if (response.status === 201) {
-      const body = response.json();
-      const bookingId = body && body.draft && body.draft.bookingId ? String(body.draft.bookingId) : "";
-      if (!bookingId) {
-        throw new Error(`Draft succeeded without bookingId for flow='${input.flowTag}' sessionId='${sessionId}'.`);
+  while (true) {
+    for (const sessionId of candidates) {
+      if (attempted.includes(sessionId)) {
+        continue;
       }
-      return {
-        bookingId,
-        sessionId,
-        attemptedSessionCount: attempted.length,
-      };
+
+      attempted.push(sessionId);
+      const response = postJson(
+        "/api/bookings/draft",
+        {
+          ...input.draftPayload,
+          serviceSlug: input.serviceSlug,
+          sessionId,
+        },
+        {
+          tags: { flow: input.flowTag, endpoint: "booking_draft" },
+        },
+      );
+
+      if (response.status === 201) {
+        const body = response.json();
+        const bookingId = body && body.draft && body.draft.bookingId ? String(body.draft.bookingId) : "";
+        if (!bookingId) {
+          throw new Error(`Draft succeeded without bookingId for flow='${input.flowTag}' sessionId='${sessionId}'.`);
+        }
+        return {
+          bookingId,
+          sessionId,
+          attemptedSessionCount: attempted.length,
+        };
+      }
+
+      const skippableCode = parseDraftSkippableCode(response);
+      if (skippableCode) {
+        lastSkippedCode = skippableCode;
+        continue;
+      }
+
+      const body = response.json();
+      const code = body && body.code ? String(body.code) : "UNKNOWN";
+      const error = body && body.error ? String(body.error) : "Unexpected booking draft failure";
+      throw new Error(
+        `Draft failed for flow='${input.flowTag}' sessionId='${sessionId}' status=${response.status} code=${code} error='${error}'.`,
+      );
     }
 
-    const collisionCode = parseDraftCollisionCode(response);
-    if (collisionCode) {
-      lastCollisionCode = collisionCode;
-      continue;
+    if (!didRefreshCandidates && typeof input.refreshCandidates === "function") {
+      didRefreshCandidates = true;
+      const refreshed = uniquePreservingOrder(input.refreshCandidates());
+      candidates = refreshed.filter((sessionId) => !attempted.includes(sessionId));
+      if (candidates.length > 0) {
+        continue;
+      }
     }
 
-    const body = response.json();
-    const code = body && body.code ? String(body.code) : "UNKNOWN";
-    const error = body && body.error ? String(body.error) : "Unexpected booking draft failure";
-    throw new Error(
-      `Draft failed for flow='${input.flowTag}' sessionId='${sessionId}' status=${response.status} code=${code} error='${error}'.`,
-    );
+    break;
   }
 
   throw new Error(
-    `No valid booking candidate for flow='${input.flowTag}'. Attempted=${attempted.length}, lastCollision='${lastCollisionCode || "none"}'. ` +
+    `No valid booking candidate for flow='${input.flowTag}'. Attempted=${attempted.length}, lastSkipped='${lastSkippedCode || "none"}'. ` +
       "Inventory appears exhausted or user/session collisions are too high for current seed.",
   );
 }

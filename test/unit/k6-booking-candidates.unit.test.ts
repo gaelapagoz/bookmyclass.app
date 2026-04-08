@@ -122,4 +122,58 @@ describe("k6 booking candidates helpers", () => {
     expect(result.attemptedSessionCount).toBe(3);
     expect(postJsonMock).toHaveBeenCalledTimes(3);
   });
+
+  it("treats PAST_SESSION as stale candidate and continues to next candidate", async () => {
+    postJsonMock
+      .mockReturnValueOnce(mockResponse(400, { code: "PAST_SESSION", error: "Only future sessions can be booked." }))
+      .mockReturnValueOnce(mockResponse(201, { draft: { bookingId: "booking-fresh" } }));
+
+    const { createDraftWithSessionFallback } = await import("../../k6/lib/booking-candidates.js");
+    const result = createDraftWithSessionFallback({
+      flowTag: "booking_checkout",
+      serviceSlug: "vinyasa-yoga",
+      sessionCandidates: ["stale-session", "fresh-session"],
+      draftPayload: {
+        customerName: "K6 User",
+        customerEmail: "k6@example.test",
+        customerPhone: "+32000000000",
+        bookingIntent: "SINGLE_BOOKING",
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+      },
+    });
+
+    expect(result.bookingId).toBe("booking-fresh");
+    expect(result.sessionId).toBe("fresh-session");
+    expect(result.attemptedSessionCount).toBe(2);
+  });
+
+  it("refreshes candidates once when initial list is exhausted by skippable results", async () => {
+    postJsonMock
+      .mockReturnValueOnce(mockResponse(400, { code: "PAST_SESSION", error: "Only future sessions can be booked." }))
+      .mockReturnValueOnce(mockResponse(409, { code: "DUPLICATE_BOOKING", error: "Already booked." }))
+      .mockReturnValueOnce(mockResponse(201, { draft: { bookingId: "booking-refreshed" } }));
+
+    const refreshCandidates = vi.fn(() => ["stale-session", "dup-session", "fresh-from-refresh"]);
+    const { createDraftWithSessionFallback } = await import("../../k6/lib/booking-candidates.js");
+    const result = createDraftWithSessionFallback({
+      flowTag: "booking_entitlement",
+      serviceSlug: "vinyasa-yoga",
+      sessionCandidates: ["stale-session", "dup-session"],
+      refreshCandidates,
+      draftPayload: {
+        customerName: "K6 User",
+        customerEmail: "k6@example.test",
+        customerPhone: "+32000000000",
+        bookingIntent: "USE_PLAN",
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+      },
+    });
+
+    expect(refreshCandidates).toHaveBeenCalledTimes(1);
+    expect(result.bookingId).toBe("booking-refreshed");
+    expect(result.sessionId).toBe("fresh-from-refresh");
+    expect(result.attemptedSessionCount).toBe(3);
+  });
 });
