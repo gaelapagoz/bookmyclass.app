@@ -46,6 +46,51 @@ describe("k6 booking candidates helpers", () => {
     expect(candidates).toEqual(["slot-nearest-1", "slot-nearest-2", "seed-1", "seed-2"]);
   });
 
+  it("rotates candidate priority deterministically per flow+actor", async () => {
+    const { rotateSessionCandidatesForActor } = await import("../../k6/lib/booking-candidates.js");
+
+    (globalThis as unknown as { __ITER: number }).__ITER = 0;
+    const rotatedA = rotateSessionCandidatesForActor(["s-1", "s-2", "s-3", "s-4"], {
+      flowTag: "booking_checkout",
+      actorKey: "k6-user-1@example.test",
+    });
+
+    (globalThis as unknown as { __ITER: number }).__ITER = 0;
+    const rotatedARepeat = rotateSessionCandidatesForActor(["s-1", "s-2", "s-3", "s-4"], {
+      flowTag: "booking_checkout",
+      actorKey: "k6-user-1@example.test",
+    });
+
+    const rotatedB = rotateSessionCandidatesForActor(["s-1", "s-2", "s-3", "s-4"], {
+      flowTag: "booking_checkout",
+      actorKey: "k6-user-2@example.test",
+    });
+
+    expect(rotatedARepeat).toEqual(rotatedA);
+    expect(rotatedB).not.toEqual(rotatedA);
+    expect(rotatedA).toHaveLength(4);
+    expect(new Set(rotatedA).size).toBe(4);
+  });
+
+  it("adds iteration component to avoid hammering the same first candidate every loop", async () => {
+    const { rotateSessionCandidatesForActor } = await import("../../k6/lib/booking-candidates.js");
+
+    (globalThis as unknown as { __ITER: number }).__ITER = 0;
+    const iter0 = rotateSessionCandidatesForActor(["s-1", "s-2", "s-3", "s-4"], {
+      flowTag: "booking_entitlement",
+      actorKey: "k6-user@example.test",
+    });
+
+    (globalThis as unknown as { __ITER: number }).__ITER = 1;
+    const iter1 = rotateSessionCandidatesForActor(["s-1", "s-2", "s-3", "s-4"], {
+      flowTag: "booking_entitlement",
+      actorKey: "k6-user@example.test",
+    });
+
+    expect(iter1).not.toEqual(iter0);
+    expect(new Set(iter1).size).toBe(4);
+  });
+
   it("retries draft creation on FULL_SESSION and DUPLICATE_BOOKING collisions", async () => {
     postJsonMock
       .mockReturnValueOnce(mockResponse(400, { code: "FULL_SESSION", error: "This session is full." }))

@@ -1,6 +1,10 @@
 import { loginWithCredentials } from "../lib/auth.js";
 import { pickServiceSeed, pickUserByCohortDeterministic } from "../lib/data.js";
-import { createDraftWithSessionFallback, resolveBookingSessionCandidates } from "../lib/booking-candidates.js";
+import {
+  createDraftWithSessionFallback,
+  resolveBookingSessionCandidates,
+  rotateSessionCandidatesForActor,
+} from "../lib/booking-candidates.js";
 import { get, postJson } from "../lib/http.js";
 import { assertJsonPath, assertStatus } from "../lib/checks.js";
 import { pace } from "../lib/pacing.js";
@@ -85,11 +89,15 @@ export function bookingCheckoutScenario() {
   if (!sessionCandidates.length) {
     throw new Error("No candidate booking sessions available for booking_checkout.");
   }
+  const userSessionCandidates = rotateSessionCandidatesForActor(sessionCandidates, {
+    actorKey: user.email,
+    flowTag: "booking_checkout",
+  });
 
   const draftResult = createDraftWithSessionFallback({
     flowTag: "booking_checkout",
     serviceSlug,
-    sessionCandidates,
+    sessionCandidates: userSessionCandidates,
     draftPayload: {
       customerName: user.name || "UAT Client",
       customerEmail: user.email,

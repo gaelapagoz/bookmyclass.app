@@ -92,6 +92,36 @@ function uniquePreservingOrder(values) {
   return out;
 }
 
+function stableHash(input) {
+  let hash = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = (hash * 31 + input.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+export function rotateSessionCandidatesForActor(sessionCandidates, options = {}) {
+  const candidates = uniquePreservingOrder(sessionCandidates);
+  if (candidates.length <= 1) {
+    return candidates;
+  }
+
+  const actorKey = String(options.actorKey || "").trim().toLowerCase();
+  const flowTag = String(options.flowTag || "").trim().toLowerCase();
+  if (!actorKey && !flowTag) {
+    return candidates;
+  }
+
+  const actorSeed = `${flowTag}:${actorKey}`;
+  const iterComponent = Math.max(0, Number(__ITER) || 0) * 17;
+  const startIndex = normalizeIndex(stableHash(actorSeed) + iterComponent, candidates.length);
+  if (startIndex === 0) {
+    return candidates;
+  }
+
+  return [...candidates.slice(startIndex), ...candidates.slice(0, startIndex)];
+}
+
 export function resolveBookingSessionCandidates(input) {
   const maxCandidates = Math.max(1, Number(input.maxCandidates || 8));
   const nearest = collectNearestAvailabilityCandidates(input.serviceSlug);
