@@ -108,16 +108,20 @@ export function buildScenarioStages(profileName, scenarioName) {
   return builder(rate);
 }
 
-function shouldUseBookingOnlySmokeSafeArrival(profileName, scenarioName, scenarioSet) {
+function isBookingScenario(scenarioName) {
+  return scenarioName === "booking_entitlement" || scenarioName === "booking_checkout";
+}
+
+function shouldUseBookingSafeArrival(profileName, scenarioName, scenarioSet) {
   return (
     profileName === "smoke_booking_safe" &&
-    scenarioSet === "booking_only_smoke" &&
-    (scenarioName === "booking_entitlement" || scenarioName === "booking_checkout")
+    isBookingScenario(scenarioName) &&
+    (scenarioSet === "booking_only_smoke" || scenarioSet === "full_smoke")
   );
 }
 
 export function buildArrivalConfig(profileName, scenarioName, options = {}) {
-  if (shouldUseBookingOnlySmokeSafeArrival(profileName, scenarioName, options.scenarioSet)) {
+  if (shouldUseBookingSafeArrival(profileName, scenarioName, options.scenarioSet)) {
     return {
       startRate: 1,
       timeUnit: "1m",
