@@ -386,7 +386,7 @@ describe("booking draft service concurrency", () => {
 
     transactionSpy.mockRestore();
   });
-  it("rejects duplicate booking with DUPLICATE_BOOKING", async () => {
+  it("returns existing pending draft idempotently on duplicate create requests", async () => {
     const fixture = await createCapacityOneFixture();
     await prisma.studioSession.update({
       where: { id: fixture.studioSession.id },
@@ -404,9 +404,91 @@ describe("booking draft service concurrency", () => {
       sessionId: fixture.studioSession.id,
     };
 
-    await createPendingBookingDraft({
+    const first = await createPendingBookingDraft({
       authenticatedUserId: fixture.userOne.id,
       payload,
+    });
+
+    const second = await createPendingBookingDraft({
+      authenticatedUserId: fixture.userOne.id,
+      payload,
+    });
+
+    expect(first.bookingId).toBe(second.bookingId);
+    expect(second.created).toBe(false);
+    expect(second.status).toBe(BookingStatus.PENDING);
+  });
+
+  it("returns the same booking id for concurrent duplicate create requests from the same user", async () => {
+    const fixture = await createCapacityOneFixture();
+    await prisma.studioSession.update({
+      where: { id: fixture.studioSession.id },
+      data: { capacity: 2 },
+    });
+
+    const payload = {
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      consentPrivacyAccepted: true,
+      consentTermsAccepted: true,
+      customerEmail: "client@example.test",
+      customerName: "Client",
+      customerPhone: "+32000000000",
+      serviceSlug: fixture.classType.slug,
+      sessionId: fixture.studioSession.id,
+    };
+
+    const results = await Promise.all([
+      createPendingBookingDraft({
+        authenticatedUserId: fixture.userOne.id,
+        payload,
+      }),
+      createPendingBookingDraft({
+        authenticatedUserId: fixture.userOne.id,
+        payload,
+      }),
+    ]);
+
+    expect(results[0]?.bookingId).toBeTruthy();
+    expect(results[0]?.bookingId).toBe(results[1]?.bookingId);
+
+    const bookings = await prisma.booking.findMany({
+      where: {
+        clientId: fixture.userOne.id,
+        studioSessionId: fixture.studioSession.id,
+      },
+      select: { id: true, status: true },
+    });
+
+    expect(bookings).toHaveLength(1);
+    expect(bookings[0]?.status).toBe(BookingStatus.PENDING);
+  });
+
+  it("rejects duplicate booking with DUPLICATE_BOOKING when booking is already confirmed", async () => {
+    const fixture = await createCapacityOneFixture();
+    await prisma.studioSession.update({
+      where: { id: fixture.studioSession.id },
+      data: { capacity: 2 },
+    });
+
+    const payload = {
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      consentPrivacyAccepted: true,
+      consentTermsAccepted: true,
+      customerEmail: "client@example.test",
+      customerName: "Client",
+      customerPhone: "+32000000000",
+      serviceSlug: fixture.classType.slug,
+      sessionId: fixture.studioSession.id,
+    };
+
+    const created = await createPendingBookingDraft({
+      authenticatedUserId: fixture.userOne.id,
+      payload,
+    });
+
+    await prisma.booking.update({
+      where: { id: created.bookingId },
+      data: { status: BookingStatus.CONFIRMED },
     });
 
     await expect(

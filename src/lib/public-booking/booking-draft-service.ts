@@ -52,6 +52,13 @@ export type BookingSessionSummary = {
   teacher: string;
 };
 
+type BookingDraftCreationResult = {
+  bookingId: string;
+  created: boolean;
+  redirectTo: string;
+  status: BookingStatus;
+};
+
 type DraftErrorCode =
   | "AUTH_REQUIRED"
   | "CONSENT_REQUIRED"
@@ -86,6 +93,11 @@ type SessionWithBookings = {
     lastName: string | null;
     name: string;
   };
+};
+
+type ExistingActiveBooking = {
+  id: string;
+  status: BookingStatus;
 };
 
 async function getSessionForDraft(params: { serviceSlug: string; sessionId: string }) {
@@ -148,6 +160,20 @@ function toSessionSummary(session: SessionWithBookings): BookingSessionSummary {
     place: session.location?.trim() || "To be confirmed",
     capacity: session.capacity,
     availableSpots: getAvailableSpots(session),
+  };
+}
+
+function toDraftCreationResult(input: {
+  bookingId: string;
+  created: boolean;
+  serviceSlug: string;
+  status: BookingStatus;
+}): BookingDraftCreationResult {
+  return {
+    bookingId: input.bookingId,
+    created: input.created,
+    status: input.status,
+    redirectTo: `/book-a-class/${input.serviceSlug}/payment?bookingId=${input.bookingId}`,
   };
 }
 
@@ -268,6 +294,27 @@ function isRetryableSerializationError(error: unknown, depth = 0): boolean {
   return isRetryableSerializationError(getErrorCause(error), depth + 1);
 }
 
+async function findExistingActiveBooking(params: {
+  clientId: string;
+  now: Date;
+  sessionId: string;
+}): Promise<ExistingActiveBooking | null> {
+  return prisma.booking.findFirst({
+    where: {
+      clientId: params.clientId,
+      studioSessionId: params.sessionId,
+      ...bookingDraftActiveBookingFilter(params.now),
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    select: {
+      id: true,
+      status: true,
+    },
+  });
+}
+
 export async function getBookingSessionSummary(params: {
   serviceSlug: string;
   sessionId: string;
@@ -290,7 +337,7 @@ export async function getBookingSessionSummary(params: {
 export async function createPendingBookingDraft(params: {
   authenticatedUserId: string;
   payload: BookingDraftPayload;
-}) {
+}): Promise<BookingDraftCreationResult> {
   const { authenticatedUserId, payload } = params;
   if (!payload.consentPrivacyAccepted || !payload.consentTermsAccepted) {
     throw new BookingDraftError("CONSENT_REQUIRED", "Required consents must be accepted.");
@@ -298,6 +345,42 @@ export async function createPendingBookingDraft(params: {
 
   const MAX_TRANSACTION_RETRIES = 4;
   const now = new Date();
+  const existingActiveBooking = await findExistingActiveBooking({
+    clientId: authenticatedUserId,
+    sessionId: payload.sessionId,
+    now,
+  });
+  if (existingActiveBooking) {
+    if (existingActiveBooking.status === BookingStatus.PENDING) {
+      return toDraftCreationResult({
+        bookingId: existingActiveBooking.id,
+        created: false,
+        status: existingActiveBooking.status,
+        serviceSlug: payload.serviceSlug,
+      });
+    }
+
+    throw new BookingDraftError(
+      "DUPLICATE_BOOKING",
+      "You already have an active booking draft or booking for this session.",
+    );
+  }
+
+  await prisma.booking.updateMany({
+    where: {
+      studioSessionId: payload.sessionId,
+      status: BookingStatus.PENDING,
+      createdAt: {
+        lt: getBookingDraftExpirationCutoff(now),
+      },
+    },
+    data: {
+      status: BookingStatus.CANCELLED,
+      cancelledAt: now,
+      cancellationReason: "Expired booking draft",
+    },
+  });
+
   let booking:
     | {
         id: string;
@@ -309,22 +392,6 @@ export async function createPendingBookingDraft(params: {
     try {
       booking = await prisma.$transaction(
         async (tx) => {
-          const staleCutoff = getBookingDraftExpirationCutoff(now);
-          await tx.booking.updateMany({
-            where: {
-              studioSessionId: payload.sessionId,
-              status: BookingStatus.PENDING,
-              createdAt: {
-                lt: staleCutoff,
-              },
-            },
-            data: {
-              status: BookingStatus.CANCELLED,
-              cancelledAt: now,
-              cancellationReason: "Expired booking draft",
-            },
-          });
-
           const session = await tx.studioSession.findFirst({
             where: {
               id: payload.sessionId,
@@ -398,6 +465,20 @@ export async function createPendingBookingDraft(params: {
       }
 
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const duplicateActiveBooking = await findExistingActiveBooking({
+          clientId: authenticatedUserId,
+          sessionId: payload.sessionId,
+          now,
+        });
+        if (duplicateActiveBooking?.status === BookingStatus.PENDING) {
+          return toDraftCreationResult({
+            bookingId: duplicateActiveBooking.id,
+            created: false,
+            status: duplicateActiveBooking.status,
+            serviceSlug: payload.serviceSlug,
+          });
+        }
+
         throw new BookingDraftError(
           "DUPLICATE_BOOKING",
           "You already have an active booking draft or booking for this session.",
@@ -438,9 +519,10 @@ export async function createPendingBookingDraft(params: {
     });
   }
 
-  return {
+  return toDraftCreationResult({
     bookingId: booking.id,
+    created: true,
     status: booking.status,
-    redirectTo: `/book-a-class/${payload.serviceSlug}/payment?bookingId=${booking.id}`,
-  };
+    serviceSlug: payload.serviceSlug,
+  });
 }

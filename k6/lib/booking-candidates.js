@@ -7,7 +7,7 @@ const bookingDraftTechnicalFailureRate = new Rate("booking_draft_technical_failu
 const bookingDraftUnexpectedClientErrorRate = new Rate("booking_draft_unexpected_client_error_rate");
 const bookingDraftExpectedConflictTotal = new Counter("booking_draft_expected_conflict_total");
 
-const bookingDraftExpectedStatuses = http.expectedStatuses(201, 409);
+const bookingDraftExpectedStatuses = http.expectedStatuses(200, 201, 409);
 
 function dateKeyFrom(date) {
   const year = date.getUTCFullYear();
@@ -192,7 +192,7 @@ export function createDraftWithSessionFallback(input) {
         bookingDraftExpectedConflictTotal.add(1, { flow: input.flowTag });
       }
 
-      if (response.status === 201) {
+      if (response.status === 200 || response.status === 201) {
         const bookingId = body && body.draft && body.draft.bookingId ? String(body.draft.bookingId) : "";
         if (!bookingId) {
           throw new Error(`Draft succeeded without bookingId for flow='${input.flowTag}' sessionId='${sessionId}'.`);

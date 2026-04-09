@@ -329,16 +329,20 @@ describe("POST /api/bookings/draft", () => {
     createDraftMock.mockRestore();
   });
 
-  it("rejects duplicate booking with 409 and DUPLICATE_BOOKING", async () => {
+  it("returns existing pending draft idempotently for duplicate create attempts", async () => {
     const fixture = await createSessionFixture();
     await createAuthenticatedUser("auth.client.10@example.test");
 
-    await createDraft(buildRequest(validDraftPayload(fixture)));
-    const response = await createDraft(buildRequest(validDraftPayload(fixture)));
-    const body = (await response.json()) as { error: string; code: string };
+    const first = await createDraft(buildRequest(validDraftPayload(fixture)));
+    const firstBody = (await first.json()) as { draft: { bookingId: string } };
 
-    expect(response.status).toBe(409);
-    expect(body.code).toBe("DUPLICATE_BOOKING");
+    const second = await createDraft(buildRequest(validDraftPayload(fixture)));
+    const secondBody = (await second.json()) as { draft: { bookingId: string; created: boolean } };
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(200);
+    expect(secondBody.draft.created).toBe(false);
+    expect(secondBody.draft.bookingId).toBe(firstBody.draft.bookingId);
   });
 });
 

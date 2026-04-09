@@ -182,7 +182,7 @@ export async function POST(request: Request) {
       payload: parsed.data,
     });
 
-    return Response.json({ draft: result }, { status: 201 });
+    return Response.json({ draft: result }, { status: result.created ? 201 : 200 });
   } catch (error) {
     if (error instanceof BookingDraftError) {
       Sentry.captureException(error);

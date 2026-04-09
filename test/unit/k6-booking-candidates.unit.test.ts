@@ -224,5 +224,31 @@ describe("k6 booking candidates helpers", () => {
     expect(result.sessionId).toBe("fresh-from-refresh");
     expect(result.attemptedSessionCount).toBe(3);
   });
-});
 
+  it("treats idempotent 200 draft responses as success", async () => {
+    postJsonMock.mockReturnValueOnce(
+      mockResponse(200, {
+        draft: { bookingId: "booking-existing-123" },
+      }),
+    );
+
+    const { createDraftWithSessionFallback } = await import("../../k6/lib/booking-candidates.js");
+    const result = createDraftWithSessionFallback({
+      flowTag: "booking_checkout",
+      serviceSlug: "vinyasa-yoga",
+      sessionCandidates: ["s-1"],
+      draftPayload: {
+        customerName: "K6 User",
+        customerEmail: "k6@example.test",
+        customerPhone: "+32000000000",
+        bookingIntent: "SINGLE_BOOKING",
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+      },
+    });
+
+    expect(result.bookingId).toBe("booking-existing-123");
+    expect(result.sessionId).toBe("s-1");
+    expect(result.attemptedSessionCount).toBe(1);
+  });
+});
