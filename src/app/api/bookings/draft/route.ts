@@ -17,12 +17,6 @@ const draftSchema = z.object({
   consentPrivacyAccepted: z.literal(true),
 });
 
-const bookingDraftUserRateLimiter = createRateLimiter({
-  maxAttempts: 8,
-  windowMs: 60 * 1000,
-  blockDurationMs: 5 * 60 * 1000,
-});
-
 function parsePositiveIntegerEnv(envName: string, fallback: number): number {
   const raw = process.env[envName];
   if (!raw || raw.trim().length === 0) {
@@ -38,6 +32,18 @@ function parsePositiveIntegerEnv(envName: string, fallback: number): number {
 
   return parsed;
 }
+
+export function resolveBookingDraftUserRateLimitConfig() {
+  return {
+    maxAttempts: parsePositiveIntegerEnv("BOOKING_DRAFT_USER_MAX_ATTEMPTS", 8),
+    windowMs: parsePositiveIntegerEnv("BOOKING_DRAFT_USER_WINDOW_MS", 60 * 1000),
+    blockDurationMs: parsePositiveIntegerEnv("BOOKING_DRAFT_USER_BLOCK_DURATION_MS", 5 * 60 * 1000),
+  };
+}
+
+const bookingDraftUserRateLimiter = createRateLimiter({
+  ...resolveBookingDraftUserRateLimitConfig(),
+});
 
 export function resolveBookingDraftIpRateLimitConfig() {
   return {

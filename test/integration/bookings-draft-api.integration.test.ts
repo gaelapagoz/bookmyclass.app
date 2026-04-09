@@ -11,7 +11,11 @@ vi.mock("../../src/auth", () => ({
 
 import { auth } from "../../src/auth";
 import * as BookingDraftService from "../../src/lib/public-booking/booking-draft-service";
-import { POST as createDraft, resolveBookingDraftIpRateLimitConfig } from "../../src/app/api/bookings/draft/route";
+import {
+  POST as createDraft,
+  resolveBookingDraftIpRateLimitConfig,
+  resolveBookingDraftUserRateLimitConfig,
+} from "../../src/app/api/bookings/draft/route";
 
 function buildRequest(body: object) {
   return new Request("http://localhost:3000/api/bookings/draft", {
@@ -173,6 +177,9 @@ describe("POST /api/bookings/draft", () => {
     delete process.env.BOOKING_DRAFT_IP_MAX_ATTEMPTS;
     delete process.env.BOOKING_DRAFT_IP_WINDOW_MS;
     delete process.env.BOOKING_DRAFT_IP_BLOCK_DURATION_MS;
+    delete process.env.BOOKING_DRAFT_USER_MAX_ATTEMPTS;
+    delete process.env.BOOKING_DRAFT_USER_WINDOW_MS;
+    delete process.env.BOOKING_DRAFT_USER_BLOCK_DURATION_MS;
     await resetDb();
   });
 
@@ -188,6 +195,14 @@ describe("POST /api/bookings/draft", () => {
     });
   });
 
+  it("uses strict default user rate-limit config when env overrides are not set", () => {
+    expect(resolveBookingDraftUserRateLimitConfig()).toEqual({
+      maxAttempts: 8,
+      windowMs: 60_000,
+      blockDurationMs: 300_000,
+    });
+  });
+
   it("accepts UAT IP rate-limit env overrides", () => {
     process.env.BOOKING_DRAFT_IP_MAX_ATTEMPTS = "400";
     process.env.BOOKING_DRAFT_IP_WINDOW_MS = "60000";
@@ -195,6 +210,18 @@ describe("POST /api/bookings/draft", () => {
 
     expect(resolveBookingDraftIpRateLimitConfig()).toEqual({
       maxAttempts: 400,
+      windowMs: 60_000,
+      blockDurationMs: 30_000,
+    });
+  });
+
+  it("accepts UAT user rate-limit env overrides", () => {
+    process.env.BOOKING_DRAFT_USER_MAX_ATTEMPTS = "200";
+    process.env.BOOKING_DRAFT_USER_WINDOW_MS = "60000";
+    process.env.BOOKING_DRAFT_USER_BLOCK_DURATION_MS = "30000";
+
+    expect(resolveBookingDraftUserRateLimitConfig()).toEqual({
+      maxAttempts: 200,
       windowMs: 60_000,
       blockDurationMs: 30_000,
     });
