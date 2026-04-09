@@ -5,8 +5,13 @@ import Credentials from "next-auth/providers/credentials";
 import { authorizeCredentials, type AuthUser } from "@/lib/auth/credentials-authorize";
 import { prisma } from "@/lib/db";
 import { createPerfTrace } from "@/lib/monitoring/perf-trace";
+import { createInMemoryTtlCache } from "@/lib/cache/in-memory-ttl-cache";
 
 const ROLES: Role[] = ["MASTER_ADMIN", "ADMIN", "TEACHER", "CLIENT"];
+const SESSION_USER_CACHE_TTL_MS = 30_000;
+const jwtTokenUserCache = createInMemoryTtlCache<{ id: string; role: Role } | null>({
+  defaultTtlMs: SESSION_USER_CACHE_TTL_MS,
+});
 
 function isRole(value: unknown): value is Role {
   return typeof value === "string" && ROLES.includes(value as Role);
@@ -44,11 +49,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         });
         let foundUser = false;
         try {
-          const dbUser = await trace.db("user.findUnique.jwtTokenResolve", () =>
-            prisma.user.findUnique({
-              where: { id: token.sub },
-              select: { id: true, role: true },
-            }),
+          const dbUser = await jwtTokenUserCache.getOrLoad(
+            token.sub,
+            () =>
+              trace.db("user.findUnique.jwtTokenResolve", () =>
+                prisma.user.findUnique({
+                  where: { id: token.sub },
+                  select: { id: true, role: true },
+                }),
+              ),
+            SESSION_USER_CACHE_TTL_MS,
           );
 
           if (dbUser) {

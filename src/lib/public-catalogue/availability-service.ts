@@ -1,6 +1,7 @@
 import { StudioSessionStatus } from "@prisma/client";
 import { prisma } from "../db";
 import { createPerfTrace, type PerfTrace } from "../monitoring/perf-trace";
+import { createInMemoryTtlCache } from "../cache/in-memory-ttl-cache";
 import { bookingDraftActiveBookingFilter } from "../public-booking/booking-draft-service";
 import { getPublicTeacherName } from "../public-content/teacher-display";
 import {
@@ -46,6 +47,25 @@ type SessionWithBookings = {
   };
 };
 
+const SERVICE_SLUG_CACHE_TTL_MS = 60_000;
+const AVAILABILITY_RESPONSE_CACHE_TTL_MS = 30_000;
+
+const serviceIdBySlugCache = createInMemoryTtlCache<{ id: string } | null>({
+  defaultTtlMs: SERVICE_SLUG_CACHE_TTL_MS,
+});
+const serviceDetailBySlugCache = createInMemoryTtlCache<Awaited<ReturnType<typeof getServiceDetailRecordBySlugRaw>>>({
+  defaultTtlMs: AVAILABILITY_RESPONSE_CACHE_TTL_MS,
+});
+const monthAvailabilityCache = createInMemoryTtlCache<Awaited<ReturnType<typeof getServiceMonthAvailabilityRaw>>>({
+  defaultTtlMs: AVAILABILITY_RESPONSE_CACHE_TTL_MS,
+});
+const slotsByDateCache = createInMemoryTtlCache<Awaited<ReturnType<typeof getServiceSlotsByDateRaw>>>({
+  defaultTtlMs: AVAILABILITY_RESPONSE_CACHE_TTL_MS,
+});
+const nextAvailabilityCache = createInMemoryTtlCache<Awaited<ReturnType<typeof getNextAvailabilityRaw>>>({
+  defaultTtlMs: AVAILABILITY_RESPONSE_CACHE_TTL_MS,
+});
+
 function getShortDescription(description: string | null): string {
   if (!description) {
     return "Details coming soon.";
@@ -74,7 +94,7 @@ function toSlot(session: SessionWithBookings): SessionSlot {
   };
 }
 
-async function getServiceIdBySlug(slug: string, trace?: PerfTrace) {
+async function getServiceIdBySlugRaw(slug: string, trace?: PerfTrace) {
   const query = () =>
     prisma.classType.findFirst({
       where: {
@@ -93,7 +113,15 @@ async function getServiceIdBySlug(slug: string, trace?: PerfTrace) {
   return trace ? trace.db("classType.findFirst.serviceIdBySlug", query) : query();
 }
 
-async function getServiceDetailRecordBySlug(slug: string, trace?: PerfTrace) {
+async function getServiceIdBySlug(slug: string, trace?: PerfTrace) {
+  return serviceIdBySlugCache.getOrLoad(
+    slug.toLowerCase(),
+    () => getServiceIdBySlugRaw(slug, trace),
+    SERVICE_SLUG_CACHE_TTL_MS,
+  );
+}
+
+async function getServiceDetailRecordBySlugRaw(slug: string, trace?: PerfTrace) {
   const query = () =>
     prisma.classType.findFirst({
       where: {
@@ -160,6 +188,14 @@ async function getServiceDetailRecordBySlug(slug: string, trace?: PerfTrace) {
   return trace ? trace.db("classType.findFirst.serviceDetailBySlug", query) : query();
 }
 
+async function getServiceDetailRecordBySlug(slug: string, trace?: PerfTrace) {
+  return serviceDetailBySlugCache.getOrLoad(
+    slug.toLowerCase(),
+    () => getServiceDetailRecordBySlugRaw(slug, trace),
+    AVAILABILITY_RESPONSE_CACHE_TTL_MS,
+  );
+}
+
 function resolveClassSummary(classType: NonNullable<Awaited<ReturnType<typeof getServiceDetailRecordBySlug>>>) {
   const upcomingSession = classType.studioSessions[0] ?? null;
   const activeTemplate = classType.templates[0] ?? null;
@@ -205,6 +241,14 @@ export async function getPublicServiceDetailBySlug(slug: string): Promise<Public
 }
 
 export async function getServiceMonthAvailability(params: { monthKey: string; slug: string }) {
+  return monthAvailabilityCache.getOrLoad(
+    `${params.slug.toLowerCase()}:${params.monthKey}`,
+    () => getServiceMonthAvailabilityRaw(params),
+    AVAILABILITY_RESPONSE_CACHE_TTL_MS,
+  );
+}
+
+async function getServiceMonthAvailabilityRaw(params: { monthKey: string; slug: string }) {
   const { monthKey, slug } = params;
   const trace = createPerfTrace("public-catalogue.getServiceMonthAvailability", {
     monthKey,
@@ -284,6 +328,14 @@ export async function getServiceMonthAvailability(params: { monthKey: string; sl
 }
 
 export async function getServiceSlotsByDate(params: { dateKey: string; slug: string }) {
+  return slotsByDateCache.getOrLoad(
+    `${params.slug.toLowerCase()}:${params.dateKey}`,
+    () => getServiceSlotsByDateRaw(params),
+    AVAILABILITY_RESPONSE_CACHE_TTL_MS,
+  );
+}
+
+async function getServiceSlotsByDateRaw(params: { dateKey: string; slug: string }) {
   const { dateKey, slug } = params;
   const trace = createPerfTrace("public-catalogue.getServiceSlotsByDate", { dateKey, slug });
   let sessionCount = 0;
@@ -342,6 +394,14 @@ export async function getServiceSlotsByDate(params: { dateKey: string; slug: str
 }
 
 export async function getNextAvailability(params: { fromDateKey: string; slug: string }) {
+  return nextAvailabilityCache.getOrLoad(
+    `${params.slug.toLowerCase()}:${params.fromDateKey}`,
+    () => getNextAvailabilityRaw(params),
+    AVAILABILITY_RESPONSE_CACHE_TTL_MS,
+  );
+}
+
+async function getNextAvailabilityRaw(params: { fromDateKey: string; slug: string }) {
   const { fromDateKey, slug } = params;
   const trace = createPerfTrace("public-catalogue.getNextAvailability", { fromDateKey, slug });
   let sessionCount = 0;

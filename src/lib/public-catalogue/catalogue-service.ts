@@ -1,6 +1,7 @@
 import { ServicePricingMode, StudioSessionStatus, Weekday, type Prisma } from "@prisma/client";
 import { prisma } from "../db";
 import { createPerfTrace } from "../monitoring/perf-trace";
+import { createInMemoryTtlCache } from "../cache/in-memory-ttl-cache";
 
 export type PublicCategory = {
   name: string;
@@ -64,6 +65,14 @@ const weekdayLabel: Record<Weekday, string> = {
   SATURDAY: "Sat",
   SUNDAY: "Sun",
 };
+
+const PUBLIC_CATALOGUE_CACHE_TTL_MS = 30_000;
+const categoriesCache = createInMemoryTtlCache<PublicCategory[]>({
+  defaultTtlMs: PUBLIC_CATALOGUE_CACHE_TTL_MS,
+});
+const servicesByCategoryCache = createInMemoryTtlCache<PublicService[]>({
+  defaultTtlMs: PUBLIC_CATALOGUE_CACHE_TTL_MS,
+});
 
 function formatOrderedWeekdays(weekdays: Set<Weekday>): string {
   const ordered = weekdayOrder.filter((weekday) => weekdays.has(weekday));
@@ -147,23 +156,25 @@ export async function getPublicCategories(): Promise<PublicCategory[]> {
   const trace = createPerfTrace("public-catalogue.getPublicCategories");
   let categoryCount = 0;
   try {
-    const categories = await trace.db("classCategory.findMany.publicCategories", () =>
-      prisma.classCategory.findMany({
-        where: {
-          isActive: true,
-          classTypes: {
-            some: {
-              isActive: true,
-              isVisible: true,
+    const categories = await categoriesCache.getOrLoad("public-categories", () =>
+      trace.db("classCategory.findMany.publicCategories", () =>
+        prisma.classCategory.findMany({
+          where: {
+            isActive: true,
+            classTypes: {
+              some: {
+                isActive: true,
+                isVisible: true,
+              },
             },
           },
-        },
-        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-        select: {
-          slug: true,
-          name: true,
-        },
-      }),
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+          select: {
+            slug: true,
+            name: true,
+          },
+        }),
+      ),
     );
     categoryCount = categories.length;
     return categories;
@@ -176,53 +187,59 @@ export async function getPublicServicesByCategorySlug(categorySlug: string): Pro
   const trace = createPerfTrace("public-catalogue.getPublicServicesByCategorySlug", { categorySlug });
   let serviceCount = 0;
   try {
-    const classTypes = await trace.db("classType.findMany.servicesByCategory", () =>
-      prisma.classType.findMany({
-        where: {
-          category: {
-            isActive: true,
-            slug: categorySlug,
-          },
-          isActive: true,
-          isVisible: true,
-        },
-        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-        include: {
-          templates: {
+    const classTypes = await servicesByCategoryCache.getOrLoad(
+      `services:${categorySlug.toLowerCase()}`,
+      () =>
+        trace.db("classType.findMany.servicesByCategory", async () => {
+          const classTypes = await prisma.classType.findMany({
             where: {
+              category: {
+                isActive: true,
+                slug: categorySlug,
+              },
               isActive: true,
-              isPublished: true,
+              isVisible: true,
             },
+            orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
             include: {
-              recurringRules: {
+              templates: {
                 where: {
                   isActive: true,
+                  isPublished: true,
                 },
-                select: {
-                  weekday: true,
+                include: {
+                  recurringRules: {
+                    where: {
+                      isActive: true,
+                    },
+                    select: {
+                      weekday: true,
+                    },
+                  },
                 },
               },
+              studioSessions: {
+                where: {
+                  isPublished: true,
+                  status: StudioSessionStatus.SCHEDULED,
+                },
+                orderBy: {
+                  startsAt: "asc",
+                },
+                select: {
+                  startsAt: true,
+                },
+                take: 8,
+              },
             },
-          },
-          studioSessions: {
-            where: {
-              isPublished: true,
-              status: StudioSessionStatus.SCHEDULED,
-            },
-            orderBy: {
-              startsAt: "asc",
-            },
-            select: {
-              startsAt: true,
-            },
-            take: 8,
-          },
-        },
-      }),
-    );
+          });
 
+          return classTypes.map(toService);
+        }),
+      PUBLIC_CATALOGUE_CACHE_TTL_MS,
+    );
     serviceCount = classTypes.length;
-    return classTypes.map(toService);
+    return classTypes;
   } finally {
     trace.log({ categorySlug, serviceCount });
   }

@@ -1,6 +1,7 @@
 import { BillingInterval, PriceType, ProductType, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { createPerfTrace } from "@/lib/monitoring/perf-trace";
+import { createInMemoryTtlCache } from "@/lib/cache/in-memory-ttl-cache";
 
 export type SubscriptionCatalogItem = {
   productId: string;
@@ -20,6 +21,14 @@ export type SubscriptionCatalogItem = {
 type SubscriptionCheckoutItem = SubscriptionCatalogItem & {
   stripePriceId: string | null;
 };
+
+const SUBSCRIPTION_CATALOG_CACHE_TTL_MS = 30_000;
+const subscriptionCatalogCache = createInMemoryTtlCache<SubscriptionCatalogItem[]>({
+  defaultTtlMs: SUBSCRIPTION_CATALOG_CACHE_TTL_MS,
+});
+const subscriptionCheckoutItemCache = createInMemoryTtlCache<SubscriptionCheckoutItem | null>({
+  defaultTtlMs: SUBSCRIPTION_CATALOG_CACHE_TTL_MS,
+});
 
 function buildActivePriceWindowWhere(now: Date): Prisma.PriceWhereInput {
   return {
@@ -69,6 +78,14 @@ function mapToCheckoutItem(product: {
 }
 
 export async function getActiveSubscriptionCatalogProducts(): Promise<SubscriptionCatalogItem[]> {
+  return subscriptionCatalogCache.getOrLoad(
+    "active-subscription-catalog-products",
+    () => getActiveSubscriptionCatalogProductsRaw(),
+    SUBSCRIPTION_CATALOG_CACHE_TTL_MS,
+  );
+}
+
+async function getActiveSubscriptionCatalogProductsRaw(): Promise<SubscriptionCatalogItem[]> {
   const trace = createPerfTrace("subscription.getActiveSubscriptionCatalogProducts");
   const now = new Date();
   const activePriceWhere = buildActivePriceWindowWhere(now);
@@ -131,6 +148,16 @@ export async function getActiveSubscriptionCatalogProducts(): Promise<Subscripti
 }
 
 export async function getSubscriptionCheckoutItemByProductId(
+  productId: string,
+): Promise<SubscriptionCheckoutItem | null> {
+  return subscriptionCheckoutItemCache.getOrLoad(
+    productId,
+    () => getSubscriptionCheckoutItemByProductIdRaw(productId),
+    SUBSCRIPTION_CATALOG_CACHE_TTL_MS,
+  );
+}
+
+async function getSubscriptionCheckoutItemByProductIdRaw(
   productId: string,
 ): Promise<SubscriptionCheckoutItem | null> {
   const trace = createPerfTrace("subscription.getSubscriptionCheckoutItemByProductId", { productId });
