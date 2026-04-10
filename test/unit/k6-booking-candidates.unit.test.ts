@@ -308,5 +308,44 @@ describe("k6 booking candidates helpers", () => {
     expect(result.sessionId).toBe("s-1");
     expect(result.attemptedSessionCount).toBe(1);
   });
+  it("skips entitlement scenario draft attempt when no existing plan is available", async () => {
+    getMock.mockReturnValueOnce(
+      mockResponse(200, {
+        paymentOptions: {
+          existingPlans: [],
+        },
+      }),
+    );
+
+    const { resolveEntitlementPrefilter } = await import("../../k6/lib/booking-candidates.js");
+    const result = resolveEntitlementPrefilter({
+      flowTag: "booking_entitlement",
+      serviceSlug: "vinyasa-yoga",
+    });
+
+    expect(result).toEqual({
+      eligible: false,
+      reason: "NO_EXISTING_PLAN_FOR_SERVICE_SCOPE",
+      existingPlanCount: 0,
+    });
+    expect(getMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws when entitlement prefilter endpoint fails", async () => {
+    getMock.mockReturnValueOnce(
+      mockResponse(400, {
+        code: "BOOKING_NOT_FOUND",
+        error: "Service was not found.",
+      }),
+    );
+
+    const { resolveEntitlementPrefilter } = await import("../../k6/lib/booking-candidates.js");
+    expect(() =>
+      resolveEntitlementPrefilter({
+        flowTag: "booking_entitlement",
+        serviceSlug: "invalid-service",
+      }),
+    ).toThrow(/Entitlement prefilter failed/);
+  });
 });
 

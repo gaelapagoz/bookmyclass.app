@@ -2,6 +2,7 @@ import { loginWithCredentials } from "../lib/auth.js";
 import { pickServiceSeed, pickUserByCohortDeterministic } from "../lib/data.js";
 import {
   createDraftWithSessionFallback,
+  resolveEntitlementPrefilter,
   resolveBookingSessionCandidates,
   rotateSessionCandidatesForActor,
 } from "../lib/booking-candidates.js";
@@ -31,6 +32,15 @@ export function bookingEntitlementScenario() {
   loginWithCredentials(user, { scenario_flow: "booking_entitlement" });
 
   const serviceSlug = resolveServiceSlug();
+  const entitlementPrefilter = resolveEntitlementPrefilter({
+    flowTag: "booking_entitlement",
+    serviceSlug,
+  });
+  if (!entitlementPrefilter.eligible) {
+    pace(0.05, 0.2);
+    return;
+  }
+
   const seeded = pickServiceSeed();
   const envSessionId = (__ENV.SESSION_ID || "").trim();
   const maxCandidates = Number(__ENV.BOOKING_SESSION_CANDIDATE_LIMIT || 10);

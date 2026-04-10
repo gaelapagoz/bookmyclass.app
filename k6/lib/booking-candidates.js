@@ -10,6 +10,8 @@ const bookingDraftFullSessionSkipTotal = new Counter("booking_draft_full_session
 const bookingDraftPastSessionSkipTotal = new Counter("booking_draft_past_session_skip_total");
 const bookingDraftUnavailableSessionSkipTotal = new Counter("booking_draft_unavailable_session_skip_total");
 const bookingDraftDuplicateSkipTotal = new Counter("booking_draft_duplicate_skip_total");
+const bookingEntitlementPrefilterSkipTotal = new Counter("booking_entitlement_prefilter_skip_total");
+const bookingEntitlementPrefilterFailureTotal = new Counter("booking_entitlement_prefilter_failure_total");
 
 const bookingDraftExpectedStatuses = http.expectedStatuses(200, 201, 409);
 
@@ -216,6 +218,46 @@ export function resolveBookingSessionCandidates(input) {
   const monthAvailability = collectMonthAvailabilityCandidates(input.serviceSlug, maxCandidates);
   const seeded = collectSeedSessionCandidates(input.seed, maxCandidates);
   return uniquePreservingOrder([...nearest, ...monthAvailability, ...seeded]).slice(0, maxCandidates);
+}
+
+export function resolveEntitlementPrefilter(input) {
+  const response = get(
+    `/api/bookings/payment-options-preview?serviceSlug=${encodeURIComponent(input.serviceSlug)}&bookingIntent=USE_PLAN`,
+    {
+      tags: { flow: input.flowTag, endpoint: "booking_payment_options_preview" },
+    },
+  );
+
+  if (!response || response.status !== 200) {
+    bookingEntitlementPrefilterFailureTotal.add(1, {
+      flow: input.flowTag,
+      status: String(response?.status ?? 0),
+    });
+    const body = response && typeof response.json === "function" ? response.json() : null;
+    const code = body && body.code ? String(body.code) : "UNKNOWN";
+    const error = body && body.error ? String(body.error) : "Unexpected payment-options-preview failure";
+    throw new Error(
+      `Entitlement prefilter failed for flow='${input.flowTag}' service='${input.serviceSlug}' status=${response?.status ?? 0} code=${code} error='${error}'.`,
+    );
+  }
+
+  const body = response.json();
+  const existingPlans =
+    body && body.paymentOptions && Array.isArray(body.paymentOptions.existingPlans) ? body.paymentOptions.existingPlans : [];
+  if (existingPlans.length === 0) {
+    bookingEntitlementPrefilterSkipTotal.add(1, { flow: input.flowTag });
+    return {
+      eligible: false,
+      reason: "NO_EXISTING_PLAN_FOR_SERVICE_SCOPE",
+      existingPlanCount: 0,
+    };
+  }
+
+  return {
+    eligible: true,
+    reason: "HAS_EXISTING_PLAN",
+    existingPlanCount: existingPlans.length,
+  };
 }
 
 function parseDraftSkippableCode(code) {
