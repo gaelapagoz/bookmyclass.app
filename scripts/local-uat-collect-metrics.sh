@@ -32,10 +32,17 @@ node -e '
 const fs = require("fs");
 const s = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
 const m = s.metrics || {};
-const get = (name, keyA, keyB) => {
-  const values = (m[name] && m[name].values) || {};
-  if (keyA in values) return values[keyA];
-  if (keyB && keyB in values) return values[keyB];
+const get = (name, ...keys) => {
+  const metric = m[name];
+  if (!metric || typeof metric !== "object") {
+    return "NA";
+  }
+  const values = metric.values && typeof metric.values === "object" ? metric.values : metric;
+  for (const key of keys) {
+    if (key && key in values) {
+      return values[key];
+    }
+  }
   return "NA";
 };
 const lines = [
@@ -45,9 +52,9 @@ const lines = [
   `http_req_duration_p95=${get("http_req_duration","p(95)")}`,
   `http_req_duration_p99=${get("http_req_duration","p(99)")}`,
   `http_reqs_rate=${get("http_reqs","rate")}`,
-  `http_req_failed_rate=${get("http_req_failed","rate")}`,
-  `booking_draft_technical_failure_rate=${get("booking_draft_technical_failure_rate","rate")}`,
-  `booking_draft_expected_conflict_rate=${get("booking_draft_expected_conflict_rate","rate")}`,
+  `http_req_failed_rate=${get("http_req_failed","rate","value")}`,
+  `booking_draft_technical_failure_rate=${get("booking_draft_technical_failure_rate","rate","value")}`,
+  `booking_draft_expected_conflict_rate=${get("booking_draft_expected_conflict_rate","rate","value")}`,
 ];
 console.log(lines.join("\n"));
 ' "$summary_json" > "$out_dir/metrics.env"
@@ -90,3 +97,4 @@ cat "$out_dir/summary.md"
 echo
 echo "Local metrics collection complete"
 echo "summary=$out_dir/summary.md"
+

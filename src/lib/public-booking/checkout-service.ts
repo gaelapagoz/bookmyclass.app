@@ -473,53 +473,55 @@ export async function createCheckoutSessionForCatalogProduct(input: {
     throw new CatalogCheckoutError("CHECKOUT_NOT_CONFIGURED", "Invalid checkout redirect configuration.");
   }
 
-  const orderAndPayment = await prisma.$transaction(async (tx) => {
-    const order = await tx.order.create({
-      data: {
-        clientId: userId,
-        subtotalAmountMinor: product.amountMinor,
-        discountAmountMinor: 0,
-        totalAmountMinor: product.amountMinor,
-        currencyCode: product.currencyCode,
-        status: OrderStatus.PLACED,
-        notes: "Product catalog order created from /subscription checkout.",
+  const createdOrder = await prisma.order.create({
+    data: {
+      clientId: userId,
+      subtotalAmountMinor: product.amountMinor,
+      discountAmountMinor: 0,
+      totalAmountMinor: product.amountMinor,
+      currencyCode: product.currencyCode,
+      status: OrderStatus.PLACED,
+      notes: "Product catalog order created from /subscription checkout.",
+      items: {
+        create: {
+          productId: product.productId,
+          priceId: product.priceId,
+          quantity: 1,
+          productNameSnapshot: product.name,
+          priceNameSnapshot: product.priceName,
+          unitAmountMinor: product.amountMinor,
+          lineSubtotalAmountMinor: product.amountMinor,
+          lineDiscountAmountMinor: 0,
+          lineTotalAmountMinor: product.amountMinor,
+          currencyCode: product.currencyCode,
+        },
       },
-      select: { id: true },
-    });
-
-    await tx.orderItem.create({
-      data: {
-        orderId: order.id,
-        productId: product.productId,
-        priceId: product.priceId,
-        quantity: 1,
-        productNameSnapshot: product.name,
-        priceNameSnapshot: product.priceName,
-        unitAmountMinor: product.amountMinor,
-        lineSubtotalAmountMinor: product.amountMinor,
-        lineDiscountAmountMinor: 0,
-        lineTotalAmountMinor: product.amountMinor,
-        currencyCode: product.currencyCode,
+      payments: {
+        create: {
+          status: PaymentStatus.PENDING,
+          method: PaymentMethod.CARD,
+          provider: PaymentProvider.STRIPE,
+          amountMinor: product.amountMinor,
+          currencyCode: product.currencyCode,
+        },
       },
-    });
-
-    const payment = await tx.payment.create({
-      data: {
-        orderId: order.id,
-        status: PaymentStatus.PENDING,
-        method: PaymentMethod.CARD,
-        provider: PaymentProvider.STRIPE,
-        amountMinor: product.amountMinor,
-        currencyCode: product.currencyCode,
+    },
+    select: {
+      id: true,
+      payments: {
+        select: { id: true },
+        take: 1,
       },
-      select: { id: true, orderId: true },
-    });
-
-    return {
-      orderId: order.id,
-      paymentId: payment.id,
-    };
+    },
   });
+  const paymentId = createdOrder.payments[0]?.id;
+  if (!paymentId) {
+    throw new Error("Could not create pending payment for catalog checkout.");
+  }
+  const orderAndPayment = {
+    orderId: createdOrder.id,
+    paymentId,
+  };
 
   const metadata = {
     userId,

@@ -46,16 +46,21 @@ node -e '
 const fs = require("fs");
 const path = process.argv[1];
 const metrics = JSON.parse(fs.readFileSync(path, "utf8")).metrics || {};
-const get = (n, a, b) => {
-  const v = (metrics[n] && metrics[n].values) || {};
-  if (a in v) return v[a];
-  if (b && b in v) return v[b];
+const get = (n, ...keys) => {
+  const metric = metrics[n];
+  if (!metric || typeof metric !== "object") {
+    return "NA";
+  }
+  const values = metric.values && typeof metric.values === "object" ? metric.values : metric;
+  for (const key of keys) {
+    if (key && key in values) return values[key];
+  }
   return "NA";
 };
 console.log(`avg=${get("http_req_duration","avg")}`);
 console.log(`p95=${get("http_req_duration","p(95)")}`);
 console.log(`req_rate=${get("http_reqs","rate")}`);
-console.log(`failed_rate=${get("http_req_failed","rate")}`);
+console.log(`failed_rate=${get("http_req_failed","rate","value")}`);
 ' "$run_dir/k6-summary.json" | tee "$run_dir/quick-summary.txt"
 
 echo
@@ -64,3 +69,4 @@ echo "run_dir=$run_dir"
 echo "k6_exit_code=$k6_exit"
 
 exit "$k6_exit"
+
