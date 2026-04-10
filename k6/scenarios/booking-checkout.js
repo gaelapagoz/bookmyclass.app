@@ -82,6 +82,7 @@ export function bookingCheckoutScenario() {
   const sessionCandidates = envSessionId
     ? [envSessionId]
     : resolveBookingSessionCandidates({
+        flowTag: "booking_checkout",
         serviceSlug,
         seed: seeded,
         maxCandidates,
@@ -101,6 +102,7 @@ export function bookingCheckoutScenario() {
     refreshCandidates: () =>
       rotateSessionCandidatesForActor(
         resolveBookingSessionCandidates({
+          flowTag: "booking_checkout",
           serviceSlug,
           seed: seeded,
           maxCandidates,

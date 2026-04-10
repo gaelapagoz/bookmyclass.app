@@ -47,6 +47,7 @@ export function bookingEntitlementScenario() {
   const sessionCandidates = envSessionId
     ? [envSessionId]
     : resolveBookingSessionCandidates({
+        flowTag: "booking_entitlement",
         serviceSlug,
         seed: seeded,
         maxCandidates,
@@ -66,6 +67,7 @@ export function bookingEntitlementScenario() {
     refreshCandidates: () =>
       rotateSessionCandidatesForActor(
         resolveBookingSessionCandidates({
+          flowTag: "booking_entitlement",
           serviceSlug,
           seed: seeded,
           maxCandidates,

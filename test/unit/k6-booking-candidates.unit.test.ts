@@ -347,5 +347,104 @@ describe("k6 booking candidates helpers", () => {
       }),
     ).toThrow(/Entitlement prefilter failed/);
   });
+  it("spreads ranked candidates deterministically across iterations", async () => {
+    (globalThis as unknown as { __ENV?: Record<string, string> }).__ENV = {
+      BOOKING_CANDIDATE_MONTH_SPAN: "1",
+      BOOKING_CANDIDATE_MAX_DATES: "1",
+      BOOKING_CANDIDATE_SPREAD_STEP: "2",
+    };
+
+    const queueAvailabilityResponses = () => {
+      getMock
+        .mockReturnValueOnce(mockResponse(200, { next: { date: "2026-05-01" } }))
+        .mockReturnValueOnce(
+          mockResponse(200, {
+            slots: [
+              { id: "slot-1", isAvailable: true, availableSpots: 8, capacity: 10 },
+              { id: "slot-2", isAvailable: true, availableSpots: 7, capacity: 10 },
+              { id: "slot-3", isAvailable: true, availableSpots: 6, capacity: 10 },
+              { id: "slot-4", isAvailable: true, availableSpots: 5, capacity: 10 },
+            ],
+          }),
+        )
+        .mockReturnValueOnce(mockResponse(200, { days: [] }));
+    };
+
+    queueAvailabilityResponses();
+    const { resolveBookingSessionCandidates } = await import("../../k6/lib/booking-candidates.js");
+    const iter0 = resolveBookingSessionCandidates({
+      flowTag: "booking_checkout",
+      serviceSlug: "vinyasa-yoga",
+      seed: null,
+      maxCandidates: 4,
+    });
+
+    (globalThis as unknown as { __ITER: number }).__ITER = 1;
+    queueAvailabilityResponses();
+    const iter1 = resolveBookingSessionCandidates({
+      flowTag: "booking_checkout",
+      serviceSlug: "vinyasa-yoga",
+      seed: null,
+      maxCandidates: 4,
+    });
+
+    expect(iter0).not.toEqual(iter1);
+    expect(new Set(iter0)).toEqual(new Set(iter1));
+  });
+
+  it("down-ranks sessions that recently returned FULL_SESSION", async () => {
+    (globalThis as unknown as { __ENV?: Record<string, string> }).__ENV = {
+      BOOKING_CANDIDATE_MONTH_SPAN: "1",
+      BOOKING_CANDIDATE_MAX_DATES: "1",
+      BOOKING_CANDIDATE_SPREAD_MODE: "ranked",
+      BOOKING_FULL_SESSION_COOLDOWN_MS: "120000",
+    };
+
+    postJsonMock.mockReturnValueOnce(
+      mockResponse(400, {
+        code: "FULL_SESSION",
+        error: "This session is full.",
+      }),
+    );
+
+    const { createDraftWithSessionFallback, resolveBookingSessionCandidates } = await import("../../k6/lib/booking-candidates.js");
+
+    expect(() =>
+      createDraftWithSessionFallback({
+        flowTag: "booking_checkout",
+        serviceSlug: "vinyasa-yoga",
+        sessionCandidates: ["hot-session"],
+        draftPayload: {
+          customerName: "K6 User",
+          customerEmail: "k6@example.test",
+          customerPhone: "+32000000000",
+          bookingIntent: "SINGLE_BOOKING",
+          consentTermsAccepted: true,
+          consentPrivacyAccepted: true,
+        },
+      }),
+    ).toThrow(/No valid booking candidate/);
+
+    getMock
+      .mockReturnValueOnce(mockResponse(200, { next: { date: "2026-05-01" } }))
+      .mockReturnValueOnce(
+        mockResponse(200, {
+          slots: [
+            { id: "hot-session", isAvailable: true, availableSpots: 9, capacity: 10 },
+            { id: "cool-session", isAvailable: true, availableSpots: 4, capacity: 10 },
+          ],
+        }),
+      )
+      .mockReturnValueOnce(mockResponse(200, { days: [] }));
+
+    const candidates = resolveBookingSessionCandidates({
+      flowTag: "booking_checkout",
+      serviceSlug: "vinyasa-yoga",
+      seed: null,
+      maxCandidates: 2,
+    });
+
+    expect(candidates).toEqual(["cool-session", "hot-session"]);
+  });
 });
 

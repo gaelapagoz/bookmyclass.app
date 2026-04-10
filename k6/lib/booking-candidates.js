@@ -10,10 +10,12 @@ const bookingDraftFullSessionSkipTotal = new Counter("booking_draft_full_session
 const bookingDraftPastSessionSkipTotal = new Counter("booking_draft_past_session_skip_total");
 const bookingDraftUnavailableSessionSkipTotal = new Counter("booking_draft_unavailable_session_skip_total");
 const bookingDraftDuplicateSkipTotal = new Counter("booking_draft_duplicate_skip_total");
+const bookingDraftFullSessionCooldownHitTotal = new Counter("booking_draft_full_session_cooldown_hit_total");
 const bookingEntitlementPrefilterSkipTotal = new Counter("booking_entitlement_prefilter_skip_total");
 const bookingEntitlementPrefilterFailureTotal = new Counter("booking_entitlement_prefilter_failure_total");
 
 const bookingDraftExpectedStatuses = http.expectedStatuses(200, 201, 409);
+const fullSessionCooldownBySessionId = new Map();
 
 function dateKeyFrom(date) {
   const year = date.getUTCFullYear();
@@ -74,6 +76,26 @@ function collectSeedSessionCandidates(seed, maxCandidates) {
   return candidates;
 }
 
+function parsePositiveNumber(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function toSlotCandidate(slot, source, fallbackDate = "") {
+  const id = slot?.id ? String(slot.id) : "";
+  if (!id || !slot?.isAvailable) {
+    return null;
+  }
+
+  return {
+    id,
+    source,
+    dateKey: slot?.date ? String(slot.date) : fallbackDate,
+    availableSpots: parsePositiveNumber(slot?.availableSpots, 1),
+    capacity: parsePositiveNumber(slot?.capacity, 1),
+  };
+}
+
 function collectNearestAvailabilityCandidates(serviceSlug) {
   const fromDate = dateKeyFrom(new Date());
   const nextRes = get(
@@ -100,8 +122,8 @@ function collectNearestAvailabilityCandidates(serviceSlug) {
   const slotsBody = slotsRes.json();
   const slots = slotsBody && Array.isArray(slotsBody.slots) ? slotsBody.slots : [];
   return slots
-    .filter((slot) => Boolean(slot?.isAvailable) && Boolean(slot?.id))
-    .map((slot) => String(slot.id));
+    .map((slot) => toSlotCandidate(slot, "nearest", nextDate))
+    .filter((slot) => Boolean(slot));
 }
 
 function collectMonthAvailabilityCandidates(serviceSlug, maxCandidates) {
@@ -143,7 +165,7 @@ function collectMonthAvailabilityCandidates(serviceSlug, maxCandidates) {
     return [];
   }
 
-  const sessionIds = [];
+  const candidates = [];
   for (const dateKey of availabilityDates) {
     const slotsRes = get(`/api/services/${encodeURIComponent(serviceSlug)}/slots?date=${encodeURIComponent(dateKey)}`, {
       tags: { flow: "booking_common", endpoint: "service_slots" },
@@ -155,17 +177,18 @@ function collectMonthAvailabilityCandidates(serviceSlug, maxCandidates) {
     const slotsBody = slotsRes.json();
     const slots = slotsBody && Array.isArray(slotsBody.slots) ? slotsBody.slots : [];
     for (const slot of slots) {
-      if (!slot?.id || !slot?.isAvailable) {
+      const candidate = toSlotCandidate(slot, "month", dateKey);
+      if (!candidate) {
         continue;
       }
-      sessionIds.push(String(slot.id));
-      if (sessionIds.length >= maxCandidates) {
-        return sessionIds;
+      candidates.push(candidate);
+      if (candidates.length >= maxCandidates) {
+        return candidates;
       }
     }
   }
 
-  return sessionIds;
+  return candidates;
 }
 
 function uniquePreservingOrder(values) {
@@ -188,6 +211,136 @@ function stableHash(input) {
     hash = (hash * 31 + input.charCodeAt(index)) >>> 0;
   }
   return hash;
+}
+
+function getFullSessionCooldownMs() {
+  return Math.max(1_000, parsePositiveNumber(__ENV.BOOKING_FULL_SESSION_COOLDOWN_MS, 90_000));
+}
+
+function rememberFullSessionCooldown(sessionId) {
+  fullSessionCooldownBySessionId.set(sessionId, Date.now() + getFullSessionCooldownMs());
+}
+
+function hasActiveFullSessionCooldown(sessionId) {
+  const until = fullSessionCooldownBySessionId.get(sessionId);
+  if (!until) {
+    return false;
+  }
+  if (until <= Date.now()) {
+    fullSessionCooldownBySessionId.delete(sessionId);
+    return false;
+  }
+  return true;
+}
+
+function sourcePriority(source) {
+  if (source === "nearest") {
+    return 3;
+  }
+  if (source === "month") {
+    return 2;
+  }
+  return 1;
+}
+
+function mergeByBestScore(candidates) {
+  const bySessionId = new Map();
+  for (const candidate of candidates) {
+    const current = bySessionId.get(candidate.id);
+    if (!current) {
+      bySessionId.set(candidate.id, candidate);
+      continue;
+    }
+
+    if (candidate.availableSpots > current.availableSpots) {
+      bySessionId.set(candidate.id, candidate);
+      continue;
+    }
+
+    if (
+      candidate.availableSpots === current.availableSpots &&
+      sourcePriority(candidate.source) > sourcePriority(current.source)
+    ) {
+      bySessionId.set(candidate.id, candidate);
+    }
+  }
+  return [...bySessionId.values()];
+}
+
+function rankCandidatesByHeadroom(candidates, flowTag = "booking_common") {
+  const ranked = [...candidates].sort((left, right) => {
+    const leftCooling = hasActiveFullSessionCooldown(left.id);
+    const rightCooling = hasActiveFullSessionCooldown(right.id);
+    if (leftCooling !== rightCooling) {
+      return leftCooling ? 1 : -1;
+    }
+    if (leftCooling) {
+      bookingDraftFullSessionCooldownHitTotal.add(1, { flow: flowTag });
+    }
+    if (rightCooling) {
+      bookingDraftFullSessionCooldownHitTotal.add(1, { flow: flowTag });
+    }
+
+    if (left.availableSpots !== right.availableSpots) {
+      return right.availableSpots - left.availableSpots;
+    }
+
+    if (left.capacity !== right.capacity) {
+      return right.capacity - left.capacity;
+    }
+
+    const sourceDelta = sourcePriority(right.source) - sourcePriority(left.source);
+    if (sourceDelta !== 0) {
+      return sourceDelta;
+    }
+
+    if (left.dateKey !== right.dateKey) {
+      return left.dateKey.localeCompare(right.dateKey);
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+
+  return ranked;
+}
+
+function spreadRankedCandidates(rankedCandidates, spreadSeed, maxCandidates) {
+  if (!rankedCandidates.length || maxCandidates <= 0) {
+    return [];
+  }
+
+  if (spreadSeed.startsWith("booking_common:")) {
+    return rankedCandidates.slice(0, maxCandidates).map((candidate) => candidate.id);
+  }
+
+  if (String(__ENV.BOOKING_CANDIDATE_SPREAD_MODE || "").trim().toLowerCase() === "ranked") {
+    return rankedCandidates.slice(0, maxCandidates).map((candidate) => candidate.id);
+  }
+
+  const spreadStep = Math.max(1, Math.floor(parsePositiveNumber(__ENV.BOOKING_CANDIDATE_SPREAD_STEP, 3)));
+  const startIndex = normalizeIndex(stableHash(spreadSeed), rankedCandidates.length);
+  const ordered = [];
+  const seen = new Set();
+
+  for (let offset = 0; offset < rankedCandidates.length; offset += 1) {
+    const index = normalizeIndex(startIndex + offset * spreadStep, rankedCandidates.length);
+    if (seen.has(index)) {
+      continue;
+    }
+    seen.add(index);
+    ordered.push(rankedCandidates[index]);
+  }
+
+  if (ordered.length < rankedCandidates.length) {
+    for (let index = 0; index < rankedCandidates.length; index += 1) {
+      if (seen.has(index)) {
+        continue;
+      }
+      ordered.push(rankedCandidates[index]);
+    }
+  }
+
+  return ordered.slice(0, maxCandidates).map((candidate) => candidate.id);
 }
 
 export function rotateSessionCandidatesForActor(sessionCandidates, options = {}) {
@@ -215,9 +368,18 @@ export function rotateSessionCandidatesForActor(sessionCandidates, options = {})
 export function resolveBookingSessionCandidates(input) {
   const maxCandidates = Math.max(1, Number(input.maxCandidates || 8));
   const nearest = collectNearestAvailabilityCandidates(input.serviceSlug);
-  const monthAvailability = collectMonthAvailabilityCandidates(input.serviceSlug, maxCandidates);
-  const seeded = collectSeedSessionCandidates(input.seed, maxCandidates);
-  return uniquePreservingOrder([...nearest, ...monthAvailability, ...seeded]).slice(0, maxCandidates);
+  const monthAvailability = collectMonthAvailabilityCandidates(input.serviceSlug, maxCandidates * 2);
+  const seeded = collectSeedSessionCandidates(input.seed, maxCandidates).map((sessionId) => ({
+    id: sessionId,
+    source: "seed",
+    dateKey: "",
+    availableSpots: 1,
+    capacity: 1,
+  }));
+  const merged = mergeByBestScore([...nearest, ...monthAvailability, ...seeded]);
+  const ranked = rankCandidatesByHeadroom(merged, input.flowTag || "booking_common");
+  const spreadSeed = `${input.flowTag || "booking_common"}:${input.serviceSlug}:${Math.max(0, Number(__VU) - 1)}:${Math.max(0, Number(__ITER))}`;
+  return spreadRankedCandidates(ranked, spreadSeed, maxCandidates);
 }
 
 export function resolveEntitlementPrefilter(input) {
@@ -332,6 +494,7 @@ export function createDraftWithSessionFallback(input) {
         lastSkippedCode = skippableCode;
         if (skippableCode === "FULL_SESSION") {
           bookingDraftFullSessionSkipTotal.add(1, { flow: input.flowTag });
+          rememberFullSessionCooldown(sessionId);
         } else if (skippableCode === "PAST_SESSION") {
           bookingDraftPastSessionSkipTotal.add(1, { flow: input.flowTag });
         } else if (skippableCode === "UNAVAILABLE_SESSION") {
