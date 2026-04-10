@@ -78,7 +78,7 @@ export function bookingCheckoutScenario() {
   const serviceSlug = resolveServiceSlug();
   const seeded = pickServiceSeed();
   const envSessionId = (__ENV.SESSION_ID || "").trim();
-  const maxCandidates = Number(__ENV.BOOKING_SESSION_CANDIDATE_LIMIT || 10);
+  const maxCandidates = Number(__ENV.BOOKING_SESSION_CANDIDATE_LIMIT || 16);
   const sessionCandidates = envSessionId
     ? [envSessionId]
     : resolveBookingSessionCandidates({

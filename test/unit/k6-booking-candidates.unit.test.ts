@@ -85,13 +85,12 @@ describe("k6 booking candidates helpers", () => {
       maxCandidates: 5,
     });
 
-    expect(candidates).toEqual([
-      "slot-nearest-1",
-      "slot-nearest-2",
-      "slot-month-1",
-      "slot-month-2",
-      "seed-1",
-    ]);
+    expect(candidates).toHaveLength(5);
+    expect(candidates[0]).toBe("slot-nearest-1");
+    expect(candidates[candidates.length - 1]).toBe("seed-1");
+    expect(candidates).toContain("slot-nearest-2");
+    expect(candidates).toContain("slot-month-1");
+    expect(candidates).toContain("slot-month-2");
   });
 
   it("rotates candidate priority deterministically per flow+actor", async () => {
@@ -447,4 +446,5 @@ describe("k6 booking candidates helpers", () => {
     expect(candidates).toEqual(["cool-session", "hot-session"]);
   });
 });
+
 

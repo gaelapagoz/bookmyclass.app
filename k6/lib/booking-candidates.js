@@ -133,6 +133,12 @@ function collectMonthAvailabilityCandidates(serviceSlug, maxCandidates) {
 
   const monthSpan = Math.max(1, Number(__ENV.BOOKING_CANDIDATE_MONTH_SPAN || 2));
   const maxDates = Math.max(1, Number(__ENV.BOOKING_CANDIDATE_MAX_DATES || Math.max(6, maxCandidates)));
+  const collectionMultiplier = Math.max(
+    2,
+    Math.floor(parsePositiveNumber(__ENV.BOOKING_CANDIDATE_COLLECTION_MULTIPLIER, 6)),
+  );
+  const collectionLimit = Math.max(maxCandidates, maxCandidates * collectionMultiplier);
+  const maxPerDate = Math.max(1, Math.floor(parsePositiveNumber(__ENV.BOOKING_CANDIDATE_MAX_PER_DATE, 3)));
   const now = new Date();
 
   const availabilityDates = [];
@@ -176,15 +182,22 @@ function collectMonthAvailabilityCandidates(serviceSlug, maxCandidates) {
 
     const slotsBody = slotsRes.json();
     const slots = slotsBody && Array.isArray(slotsBody.slots) ? slotsBody.slots : [];
+    let acceptedForDate = 0;
     for (const slot of slots) {
+      if (acceptedForDate >= maxPerDate || candidates.length >= collectionLimit) {
+        break;
+      }
+
       const candidate = toSlotCandidate(slot, "month", dateKey);
       if (!candidate) {
         continue;
       }
       candidates.push(candidate);
-      if (candidates.length >= maxCandidates) {
-        return candidates;
-      }
+      acceptedForDate += 1;
+    }
+
+    if (candidates.length >= collectionLimit) {
+      break;
     }
   }
 
@@ -343,6 +356,45 @@ function spreadRankedCandidates(rankedCandidates, spreadSeed, maxCandidates) {
   return ordered.slice(0, maxCandidates).map((candidate) => candidate.id);
 }
 
+function interleaveRankedCandidatesByDate(rankedCandidates) {
+  if (rankedCandidates.length <= 1) {
+    return rankedCandidates;
+  }
+
+  const seededCandidates = rankedCandidates.filter((candidate) => candidate.source === "seed");
+  const nonSeedCandidates = rankedCandidates.filter((candidate) => candidate.source !== "seed");
+  if (nonSeedCandidates.length <= 1) {
+    return [...nonSeedCandidates, ...seededCandidates];
+  }
+
+  const dateOrder = [];
+  const buckets = new Map();
+  for (const candidate of nonSeedCandidates) {
+    const bucketKey = candidate.dateKey || `seed:${candidate.id}`;
+    if (!buckets.has(bucketKey)) {
+      buckets.set(bucketKey, []);
+      dateOrder.push(bucketKey);
+    }
+    buckets.get(bucketKey).push(candidate);
+  }
+
+  const interleaved = [];
+  let hasRemaining = true;
+  while (hasRemaining) {
+    hasRemaining = false;
+    for (const bucketKey of dateOrder) {
+      const bucket = buckets.get(bucketKey);
+      if (!bucket || bucket.length === 0) {
+        continue;
+      }
+      hasRemaining = true;
+      interleaved.push(bucket.shift());
+    }
+  }
+
+  return [...interleaved, ...seededCandidates];
+}
+
 export function rotateSessionCandidatesForActor(sessionCandidates, options = {}) {
   const candidates = uniquePreservingOrder(sessionCandidates);
   if (candidates.length <= 1) {
@@ -378,8 +430,9 @@ export function resolveBookingSessionCandidates(input) {
   }));
   const merged = mergeByBestScore([...nearest, ...monthAvailability, ...seeded]);
   const ranked = rankCandidatesByHeadroom(merged, input.flowTag || "booking_common");
+  const interleaved = interleaveRankedCandidatesByDate(ranked);
   const spreadSeed = `${input.flowTag || "booking_common"}:${input.serviceSlug}:${Math.max(0, Number(__VU) - 1)}:${Math.max(0, Number(__ITER))}`;
-  return spreadRankedCandidates(ranked, spreadSeed, maxCandidates);
+  return spreadRankedCandidates(interleaved, spreadSeed, maxCandidates);
 }
 
 export function resolveEntitlementPrefilter(input) {
