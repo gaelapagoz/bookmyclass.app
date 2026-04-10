@@ -396,6 +396,61 @@ function isRetryableQueryOverlapError(error: unknown, depth = 0): boolean {
   return isRetryableQueryOverlapError(getErrorCause(error), depth + 1);
 }
 
+function isRetryableConnectionError(error: unknown, depth = 0): boolean {
+  if (depth > 2 || !error) {
+    return false;
+  }
+
+  const code = getErrorCode(error);
+  if (code === "57P01" || code === "57P02" || code === "57P03" || code === "08006" || code === "08000") {
+    return true;
+  }
+
+  const metaValues = collectPotentialSqlStateValues(getErrorMeta(error));
+  if (["57P01", "57P02", "57P03", "08006", "08000"].some((sqlState) => metaValues.includes(sqlState))) {
+    return true;
+  }
+
+  const message = getErrorMessage(error).toLowerCase();
+  if (
+    message.includes("connection terminated unexpectedly") ||
+    message.includes("server closed the connection unexpectedly") ||
+    message.includes("connection reset by peer") ||
+    message.includes("timed out fetching a new connection")
+  ) {
+    return true;
+  }
+
+  return isRetryableConnectionError(getErrorCause(error), depth + 1);
+}
+
+function isRetryableDraftStorageError(error: unknown): boolean {
+  return (
+    isRetryableSerializationError(error) ||
+    isRetryableQueryOverlapError(error) ||
+    isRetryableConnectionError(error)
+  );
+}
+
+async function withRetryableDraftStorageOperation<T>(
+  operation: () => Promise<T>,
+  maxRetries: number,
+): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (isRetryableDraftStorageError(error) && attempt < maxRetries) {
+        await delay(getP2034RetryDelay(attempt));
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error("unreachable");
+}
+
 async function findExistingActiveBooking(params: {
   clientId: string;
   now: Date;
@@ -447,11 +502,15 @@ export async function createPendingBookingDraft(params: {
 
   const MAX_TRANSACTION_RETRIES = 4;
   const now = new Date();
-  const existingActiveBooking = await findExistingActiveBooking({
-    clientId: authenticatedUserId,
-    sessionId: payload.sessionId,
-    now,
-  });
+  const existingActiveBooking = await withRetryableDraftStorageOperation(
+    () =>
+      findExistingActiveBooking({
+        clientId: authenticatedUserId,
+        sessionId: payload.sessionId,
+        now,
+      }),
+    MAX_TRANSACTION_RETRIES,
+  );
   if (existingActiveBooking) {
     if (existingActiveBooking.status === BookingStatus.PENDING) {
       return toDraftCreationResult({
@@ -468,20 +527,24 @@ export async function createPendingBookingDraft(params: {
     );
   }
 
-  await prisma.booking.updateMany({
-    where: {
-      studioSessionId: payload.sessionId,
-      status: BookingStatus.PENDING,
-      createdAt: {
-        lt: getBookingDraftExpirationCutoff(now),
-      },
-    },
-    data: {
-      status: BookingStatus.CANCELLED,
-      cancelledAt: now,
-      cancellationReason: "Expired booking draft",
-    },
-  });
+  await withRetryableDraftStorageOperation(
+    () =>
+      prisma.booking.updateMany({
+        where: {
+          studioSessionId: payload.sessionId,
+          status: BookingStatus.PENDING,
+          createdAt: {
+            lt: getBookingDraftExpirationCutoff(now),
+          },
+        },
+        data: {
+          status: BookingStatus.CANCELLED,
+          cancelledAt: now,
+          cancellationReason: "Expired booking draft",
+        },
+      }),
+    MAX_TRANSACTION_RETRIES,
+  );
 
   let booking:
     | {
@@ -588,7 +651,7 @@ export async function createPendingBookingDraft(params: {
         );
       }
 
-      if (isRetryableSerializationError(error) || isRetryableQueryOverlapError(error)) {
+      if (isRetryableDraftStorageError(error)) {
         if (attempt < MAX_TRANSACTION_RETRIES) {
           await delay(getP2034RetryDelay(attempt));
           continue;
