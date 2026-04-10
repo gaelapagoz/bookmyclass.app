@@ -2,6 +2,7 @@ import { loginWithCredentials } from "../lib/auth.js";
 import { pickServiceSeed, pickUserByCohortDeterministic } from "../lib/data.js";
 import {
   createDraftWithSessionFallback,
+  resolveBookingSessionCandidatePool,
   resolveBookingSessionCandidates,
   rotateSessionCandidatesForActor,
 } from "../lib/booking-candidates.js";
@@ -101,12 +102,12 @@ export function bookingCheckoutScenario() {
     sessionCandidates: userSessionCandidates,
     refreshCandidates: () =>
       rotateSessionCandidatesForActor(
-        resolveBookingSessionCandidates({
+        resolveBookingSessionCandidatePool({
           flowTag: "booking_checkout",
           serviceSlug,
           seed: seeded,
           maxCandidates,
-        }),
+        }).sessionCandidates,
         {
           actorKey: user.email,
           flowTag: "booking_checkout",

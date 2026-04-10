@@ -258,7 +258,7 @@ describe("k6 booking candidates helpers", () => {
       .mockReturnValueOnce(mockResponse(400, { code: "FULL_SESSION", error: "This session is full." }))
       .mockReturnValueOnce(mockResponse(201, { draft: { bookingId: "booking-refreshed-fast" } }));
 
-    const refreshCandidates = vi.fn(() => ["fresh-from-refresh", "stale-session"]);
+    const refreshCandidates = vi.fn(() => ["stale-session", "fresh-from-refresh"]);
     const { createDraftWithSessionFallback } = await import("../../k6/lib/booking-candidates.js");
     const result = createDraftWithSessionFallback({
       flowTag: "booking_checkout",
@@ -280,6 +280,81 @@ describe("k6 booking candidates helpers", () => {
     expect(result.sessionId).toBe("fresh-from-refresh");
     expect(result.attemptedSessionCount).toBe(2);
     expect(postJsonMock).toHaveBeenCalledTimes(2);
+  });
+  it("re-refreshes on repeated FULL_SESSION and selects a newly available fresh session", async () => {
+    (globalThis as unknown as { __ENV?: Record<string, string> }).__ENV = {
+      BOOKING_CANDIDATE_REFRESH_MAX: "4",
+    };
+
+    postJsonMock
+      .mockReturnValueOnce(mockResponse(400, { code: "FULL_SESSION", error: "This session is full." }))
+      .mockReturnValueOnce(mockResponse(400, { code: "FULL_SESSION", error: "This session is full." }))
+      .mockReturnValueOnce(mockResponse(201, { draft: { bookingId: "booking-fresh-after-second-refresh" } }));
+
+    const refreshCandidates = vi
+      .fn()
+      .mockReturnValueOnce(["still-full-session"])
+      .mockReturnValueOnce({
+        sessionCandidates: ["fresh-session-now-open", "still-full-session"],
+        liveAvailableSessionIds: ["fresh-session-now-open"],
+      });
+
+    const { createDraftWithSessionFallback } = await import("../../k6/lib/booking-candidates.js");
+    const result = createDraftWithSessionFallback({
+      flowTag: "booking_checkout",
+      serviceSlug: "vinyasa-yoga",
+      sessionCandidates: ["initial-full-session"],
+      refreshCandidates,
+      draftPayload: {
+        customerName: "K6 User",
+        customerEmail: "k6@example.test",
+        customerPhone: "+32000000000",
+        bookingIntent: "SINGLE_BOOKING",
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+      },
+    });
+
+    expect(refreshCandidates).toHaveBeenCalledTimes(2);
+    expect(result.bookingId).toBe("booking-fresh-after-second-refresh");
+    expect(result.sessionId).toBe("fresh-session-now-open");
+    expect(result.attemptedSessionCount).toBe(3);
+  });
+  it("does not recycle excluded FULL_SESSION ids when refresh returns the same poisoned pool", async () => {
+    (globalThis as unknown as { __ENV?: Record<string, string> }).__ENV = {
+      BOOKING_CANDIDATE_REFRESH_MAX: "2",
+      BOOKING_FULL_SESSION_COOLDOWN_MS: "600000",
+    };
+
+    postJsonMock
+      .mockReturnValueOnce(mockResponse(400, { code: "FULL_SESSION", error: "This session is full." }))
+      .mockReturnValueOnce(mockResponse(400, { code: "FULL_SESSION", error: "This session is full." }));
+
+    const refreshCandidates = vi
+      .fn()
+      .mockReturnValueOnce(["full-a", "full-b"])
+      .mockReturnValueOnce(["full-a", "full-b"]);
+
+    const { createDraftWithSessionFallback } = await import("../../k6/lib/booking-candidates.js");
+    expect(() =>
+      createDraftWithSessionFallback({
+        flowTag: "booking_checkout",
+        serviceSlug: "vinyasa-yoga",
+        sessionCandidates: ["full-a", "full-b"],
+        refreshCandidates,
+        draftPayload: {
+          customerName: "K6 User",
+          customerEmail: "k6@example.test",
+          customerPhone: "+32000000000",
+          bookingIntent: "SINGLE_BOOKING",
+          consentTermsAccepted: true,
+          consentPrivacyAccepted: true,
+        },
+      }),
+    ).toThrow(/No valid booking candidate/);
+
+    expect(postJsonMock).toHaveBeenCalledTimes(2);
+    expect(refreshCandidates).toHaveBeenCalledTimes(2);
   });
   it("treats idempotent 200 draft responses as success", async () => {
     postJsonMock.mockReturnValueOnce(
@@ -391,7 +466,7 @@ describe("k6 booking candidates helpers", () => {
     expect(new Set(iter0)).toEqual(new Set(iter1));
   });
 
-  it("down-ranks sessions that recently returned FULL_SESSION", async () => {
+  it("re-admits excluded sessions only when fresh live availability explicitly shows capacity", async () => {
     (globalThis as unknown as { __ENV?: Record<string, string> }).__ENV = {
       BOOKING_CANDIDATE_MONTH_SPAN: "1",
       BOOKING_CANDIDATE_MAX_DATES: "1",
@@ -429,6 +504,26 @@ describe("k6 booking candidates helpers", () => {
       .mockReturnValueOnce(
         mockResponse(200, {
           slots: [
+            { id: "cool-session", isAvailable: true, availableSpots: 4, capacity: 10 },
+          ],
+        }),
+      )
+      .mockReturnValueOnce(mockResponse(200, { days: [] }));
+
+    const candidatesWithoutRecovery = resolveBookingSessionCandidates({
+      flowTag: "booking_checkout",
+      serviceSlug: "vinyasa-yoga",
+      seed: { sessionIds: ["hot-session"] },
+      maxCandidates: 2,
+    });
+
+    expect(candidatesWithoutRecovery).toEqual(["cool-session"]);
+
+    getMock
+      .mockReturnValueOnce(mockResponse(200, { next: { date: "2026-05-02" } }))
+      .mockReturnValueOnce(
+        mockResponse(200, {
+          slots: [
             { id: "hot-session", isAvailable: true, availableSpots: 9, capacity: 10 },
             { id: "cool-session", isAvailable: true, availableSpots: 4, capacity: 10 },
           ],
@@ -436,15 +531,19 @@ describe("k6 booking candidates helpers", () => {
       )
       .mockReturnValueOnce(mockResponse(200, { days: [] }));
 
-    const candidates = resolveBookingSessionCandidates({
+    const candidatesWithRecovery = resolveBookingSessionCandidates({
       flowTag: "booking_checkout",
       serviceSlug: "vinyasa-yoga",
-      seed: null,
+      seed: { sessionIds: ["hot-session"] },
       maxCandidates: 2,
     });
 
-    expect(candidates).toEqual(["cool-session", "hot-session"]);
+    expect(candidatesWithRecovery).toContain("hot-session");
   });
 });
+
+
+
+
 
 

@@ -227,7 +227,7 @@ function stableHash(input) {
 }
 
 function getFullSessionCooldownMs() {
-  return Math.max(1_000, parsePositiveNumber(__ENV.BOOKING_FULL_SESSION_COOLDOWN_MS, 90_000));
+  return Math.max(1_000, parsePositiveNumber(__ENV.BOOKING_FULL_SESSION_COOLDOWN_MS, 15 * 60_000));
 }
 
 function rememberFullSessionCooldown(sessionId) {
@@ -256,6 +256,10 @@ function sourcePriority(source) {
   return 1;
 }
 
+function isLiveAvailabilitySource(source) {
+  return source === "nearest" || source === "month";
+}
+
 function mergeByBestScore(candidates) {
   const bySessionId = new Map();
   for (const candidate of candidates) {
@@ -280,20 +284,8 @@ function mergeByBestScore(candidates) {
   return [...bySessionId.values()];
 }
 
-function rankCandidatesByHeadroom(candidates, flowTag = "booking_common") {
+function rankCandidatesByHeadroom(candidates) {
   const ranked = [...candidates].sort((left, right) => {
-    const leftCooling = hasActiveFullSessionCooldown(left.id);
-    const rightCooling = hasActiveFullSessionCooldown(right.id);
-    if (leftCooling !== rightCooling) {
-      return leftCooling ? 1 : -1;
-    }
-    if (leftCooling) {
-      bookingDraftFullSessionCooldownHitTotal.add(1, { flow: flowTag });
-    }
-    if (rightCooling) {
-      bookingDraftFullSessionCooldownHitTotal.add(1, { flow: flowTag });
-    }
-
     if (left.availableSpots !== right.availableSpots) {
       return right.availableSpots - left.availableSpots;
     }
@@ -315,6 +307,31 @@ function rankCandidatesByHeadroom(candidates, flowTag = "booking_common") {
   });
 
   return ranked;
+}
+
+function splitCandidatesByExclusion(candidates, flowTag = "booking_common") {
+  const active = [];
+  const excluded = [];
+
+  for (const candidate of candidates) {
+    if (!hasActiveFullSessionCooldown(candidate.id)) {
+      active.push(candidate);
+      continue;
+    }
+
+    // Allow a previously excluded session back only when live availability
+    // explicitly reports it as available again.
+    if (isLiveAvailabilitySource(candidate.source) && candidate.availableSpots > 0) {
+      fullSessionCooldownBySessionId.delete(candidate.id);
+      active.push(candidate);
+      continue;
+    }
+
+    bookingDraftFullSessionCooldownHitTotal.add(1, { flow: flowTag });
+    excluded.push(candidate);
+  }
+
+  return { active, excluded };
 }
 
 function spreadRankedCandidates(rankedCandidates, spreadSeed, maxCandidates) {
@@ -417,10 +434,13 @@ export function rotateSessionCandidatesForActor(sessionCandidates, options = {})
   return [...candidates.slice(startIndex), ...candidates.slice(0, startIndex)];
 }
 
-export function resolveBookingSessionCandidates(input) {
+export function resolveBookingSessionCandidatePool(input) {
   const maxCandidates = Math.max(1, Number(input.maxCandidates || 8));
   const nearest = collectNearestAvailabilityCandidates(input.serviceSlug);
   const monthAvailability = collectMonthAvailabilityCandidates(input.serviceSlug, maxCandidates * 2);
+  const liveAvailableSessionIds = uniquePreservingOrder(
+    [...nearest, ...monthAvailability].map((candidate) => candidate.id),
+  );
   const seeded = collectSeedSessionCandidates(input.seed, maxCandidates).map((sessionId) => ({
     id: sessionId,
     source: "seed",
@@ -429,10 +449,18 @@ export function resolveBookingSessionCandidates(input) {
     capacity: 1,
   }));
   const merged = mergeByBestScore([...nearest, ...monthAvailability, ...seeded]);
-  const ranked = rankCandidatesByHeadroom(merged, input.flowTag || "booking_common");
+  const { active } = splitCandidatesByExclusion(merged, input.flowTag || "booking_common");
+  const ranked = rankCandidatesByHeadroom(active);
   const interleaved = interleaveRankedCandidatesByDate(ranked);
   const spreadSeed = `${input.flowTag || "booking_common"}:${input.serviceSlug}:${Math.max(0, Number(__VU) - 1)}:${Math.max(0, Number(__ITER))}`;
-  return spreadRankedCandidates(interleaved, spreadSeed, maxCandidates);
+  return {
+    sessionCandidates: spreadRankedCandidates(interleaved, spreadSeed, maxCandidates),
+    liveAvailableSessionIds,
+  };
+}
+
+export function resolveBookingSessionCandidates(input) {
+  return resolveBookingSessionCandidatePool(input).sessionCandidates;
 }
 
 export function resolveEntitlementPrefilter(input) {
@@ -491,7 +519,48 @@ export function createDraftWithSessionFallback(input) {
   const attempted = [];
   let lastSkippedCode = "";
   let candidates = uniquePreservingOrder(input.sessionCandidates);
-  let didRefreshCandidates = false;
+  const excludedSessionIds = new Set();
+  const maxRefreshAttempts = Math.max(
+    1,
+    Math.floor(parsePositiveNumber(__ENV.BOOKING_CANDIDATE_REFRESH_MAX, 4)),
+  );
+  let refreshAttemptCount = 0;
+
+  function refreshCandidatePool() {
+    if (typeof input.refreshCandidates !== "function" || refreshAttemptCount >= maxRefreshAttempts) {
+      return false;
+    }
+    refreshAttemptCount += 1;
+    const refreshedResult = input.refreshCandidates({
+      flowTag: input.flowTag,
+      attemptedSessionIds: [...attempted],
+      excludedSessionIds: [...excludedSessionIds],
+    });
+    const refreshedRaw = Array.isArray(refreshedResult)
+      ? refreshedResult
+      : refreshedResult?.sessionCandidates;
+    const refreshed = uniquePreservingOrder(refreshedRaw || []);
+    const liveAvailableSessionIds = uniquePreservingOrder(
+      Array.isArray(refreshedResult?.liveAvailableSessionIds) ? refreshedResult.liveAvailableSessionIds : [],
+    );
+    const liveAvailableSet = new Set(liveAvailableSessionIds);
+    for (const excludedId of [...excludedSessionIds]) {
+      if (liveAvailableSet.has(excludedId)) {
+        excludedSessionIds.delete(excludedId);
+        fullSessionCooldownBySessionId.delete(excludedId);
+      }
+    }
+
+    const refreshSet = new Set(refreshed);
+    const freshUnattempted = refreshed.filter(
+      (sessionId) => !attempted.includes(sessionId) && !excludedSessionIds.has(sessionId),
+    );
+    const existingUnattempted = candidates.filter(
+      (sessionId) => !attempted.includes(sessionId) && !refreshSet.has(sessionId) && !excludedSessionIds.has(sessionId),
+    );
+    candidates = uniquePreservingOrder([...freshUnattempted, ...existingUnattempted]);
+    return candidates.length > 0;
+  }
 
   while (true) {
     let refreshedOnFullSession = false;
@@ -547,6 +616,7 @@ export function createDraftWithSessionFallback(input) {
         lastSkippedCode = skippableCode;
         if (skippableCode === "FULL_SESSION") {
           bookingDraftFullSessionSkipTotal.add(1, { flow: input.flowTag });
+          excludedSessionIds.add(sessionId);
           rememberFullSessionCooldown(sessionId);
         } else if (skippableCode === "PAST_SESSION") {
           bookingDraftPastSessionSkipTotal.add(1, { flow: input.flowTag });
@@ -556,20 +626,14 @@ export function createDraftWithSessionFallback(input) {
           bookingDraftDuplicateSkipTotal.add(1, { flow: input.flowTag });
         }
 
-        // FULL_SESSION can indicate rapid inventory drift; refresh once early to avoid
-        // hammering stale seeded IDs for the remainder of this iteration.
+        // FULL_SESSION can indicate rapid inventory drift; refresh candidates immediately
+        // (bounded by BOOKING_CANDIDATE_REFRESH_MAX) to favor fresh live availability.
         if (
           skippableCode === "FULL_SESSION" &&
-          !didRefreshCandidates &&
-          typeof input.refreshCandidates === "function"
+          refreshCandidatePool()
         ) {
-          didRefreshCandidates = true;
-          const refreshed = uniquePreservingOrder(input.refreshCandidates());
-          candidates = refreshed.filter((candidateId) => !attempted.includes(candidateId));
-          if (candidates.length > 0) {
-            refreshedOnFullSession = true;
-            break;
-          }
+          refreshedOnFullSession = true;
+          break;
         }
 
         continue;
@@ -586,13 +650,8 @@ export function createDraftWithSessionFallback(input) {
       continue;
     }
 
-    if (!didRefreshCandidates && typeof input.refreshCandidates === "function") {
-      didRefreshCandidates = true;
-      const refreshed = uniquePreservingOrder(input.refreshCandidates());
-      candidates = refreshed.filter((sessionId) => !attempted.includes(sessionId));
-      if (candidates.length > 0) {
-        continue;
-      }
+    if (refreshCandidatePool()) {
+      continue;
     }
 
     break;
