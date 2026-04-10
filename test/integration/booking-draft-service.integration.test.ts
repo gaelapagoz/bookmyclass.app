@@ -387,6 +387,58 @@ describe("booking draft service concurrency", () => {
 
     transactionSpy.mockRestore();
   });
+
+  it("maps adapter-level unique violations (SQLSTATE 23505) to idempotent pending draft reuse", async () => {
+    const fixture = await createCapacityOneFixture();
+    await prisma.studioSession.update({
+      where: { id: fixture.studioSession.id },
+      data: { capacity: 2 },
+    });
+
+    const payload = {
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      consentPrivacyAccepted: true,
+      consentTermsAccepted: true,
+      customerEmail: "client@example.test",
+      customerName: "Client",
+      customerPhone: "+32000000000",
+      serviceSlug: fixture.classType.slug,
+      sessionId: fixture.studioSession.id,
+    };
+
+    const findFirstSpy = vi
+      .spyOn(prisma.booking, "findFirst")
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: "existing-pending-booking-id",
+        status: BookingStatus.PENDING,
+      } as { id: string; status: BookingStatus });
+
+    const transactionSpy = vi
+      .spyOn(prisma, "$transaction")
+      .mockImplementation(async () => {
+        const error = Object.assign(new Error("driver unique violation"), {
+          cause: {
+            code: "23505",
+            message:
+              "duplicate key value violates unique constraint \"Booking_clientId_studioSessionId_key\"",
+          },
+        });
+        throw error;
+      });
+
+    const result = await createPendingBookingDraft({
+      authenticatedUserId: fixture.userOne.id,
+      payload,
+    });
+
+    expect(result.created).toBe(false);
+    expect(result.status).toBe(BookingStatus.PENDING);
+    expect(result.bookingId).toBe("existing-pending-booking-id");
+
+    transactionSpy.mockRestore();
+    findFirstSpy.mockRestore();
+  });
   it("returns existing pending draft idempotently on duplicate create requests", async () => {
     const fixture = await createCapacityOneFixture();
     await prisma.studioSession.update({

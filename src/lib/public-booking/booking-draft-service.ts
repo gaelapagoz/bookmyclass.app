@@ -236,6 +236,37 @@ function getErrorCause(error: unknown): unknown {
   return (error as { cause?: unknown }).cause ?? null;
 }
 
+function isUniqueConstraintViolation(error: unknown, depth = 0): boolean {
+  if (!error || depth > 2) {
+    return false;
+  }
+
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    return true;
+  }
+
+  const code = getErrorCode(error);
+  if (code === "23505") {
+    return true;
+  }
+
+  const metaValues = collectPotentialSqlStateValues(getErrorMeta(error));
+  if (metaValues.includes("23505")) {
+    return true;
+  }
+
+  const message = getErrorMessage(error).toLowerCase();
+  if (
+    message.includes("unique constraint failed") ||
+    message.includes("duplicate key value violates unique constraint") ||
+    message.includes("booking_clientid_studiosessionid_key")
+  ) {
+    return true;
+  }
+
+  return isUniqueConstraintViolation(getErrorCause(error), depth + 1);
+}
+
 async function persistBookingNoteMessage(input: {
   bookingId: string;
   userId: string;
@@ -499,7 +530,7 @@ export async function createPendingBookingDraft(params: {
         throw error;
       }
 
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      if (isUniqueConstraintViolation(error)) {
         const duplicateActiveBooking = await findExistingActiveBooking({
           clientId: authenticatedUserId,
           sessionId: payload.sessionId,
