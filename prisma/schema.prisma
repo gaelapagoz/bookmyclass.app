@@ -787,6 +787,7 @@ model SubscriptionContract {
   @@unique([provider, providerSubscriptionReference])
   @@index([clientId, status, currentPeriodEnd])
   @@index([productId, status])
+  @@index([clientId, productId, status, currentPeriodEnd])
   @@index([provider, providerSubscriptionReference])
 }
 
