@@ -281,6 +281,77 @@ describe("k6 booking candidates helpers", () => {
     expect(result.attemptedSessionCount).toBe(2);
     expect(postJsonMock).toHaveBeenCalledTimes(2);
   });
+
+  it("hard-excludes INVALID_SESSION and refreshes to a fresh live candidate", async () => {
+    postJsonMock
+      .mockReturnValueOnce(mockResponse(404, { code: "INVALID_SESSION", error: "Session was not found." }))
+      .mockReturnValueOnce(mockResponse(201, { draft: { bookingId: "booking-after-invalid-session-refresh" } }));
+
+    const refreshCandidates = vi
+      .fn()
+      .mockReturnValueOnce({
+        sessionCandidates: ["stale-session", "fresh-live-session"],
+        liveAvailableSessionIds: ["fresh-live-session"],
+      });
+
+    const { createDraftWithSessionFallback } = await import("../../k6/lib/booking-candidates.js");
+    const result = createDraftWithSessionFallback({
+      flowTag: "booking_entitlement",
+      serviceSlug: "vinyasa-yoga",
+      sessionCandidates: ["stale-session"],
+      refreshCandidates,
+      draftPayload: {
+        customerName: "K6 User",
+        customerEmail: "k6@example.test",
+        customerPhone: "+32000000000",
+        bookingIntent: "USE_PLAN",
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+      },
+    });
+
+    expect(refreshCandidates).toHaveBeenCalledTimes(1);
+    expect(result.bookingId).toBe("booking-after-invalid-session-refresh");
+    expect(result.sessionId).toBe("fresh-live-session");
+    expect(postJsonMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not immediately recycle INVALID_SESSION ids unless live rediscovery re-admits them", async () => {
+    (globalThis as unknown as { __ENV?: Record<string, string> }).__ENV = {
+      BOOKING_CANDIDATE_REFRESH_MAX: "2",
+    };
+
+    postJsonMock
+      .mockReturnValueOnce(mockResponse(404, { code: "INVALID_SESSION", error: "Session was not found." }))
+      .mockReturnValueOnce(mockResponse(404, { code: "INVALID_SESSION", error: "Session was not found." }));
+
+    const refreshCandidates = vi
+      .fn()
+      .mockReturnValueOnce(["invalid-a", "invalid-b"])
+      .mockReturnValueOnce(["invalid-a", "invalid-b"]);
+
+    const { createDraftWithSessionFallback } = await import("../../k6/lib/booking-candidates.js");
+    expect(() =>
+      createDraftWithSessionFallback({
+        flowTag: "booking_checkout",
+        serviceSlug: "vinyasa-yoga",
+        sessionCandidates: ["invalid-a", "invalid-b"],
+        refreshCandidates,
+        draftPayload: {
+          customerName: "K6 User",
+          customerEmail: "k6@example.test",
+          customerPhone: "+32000000000",
+          bookingIntent: "SINGLE_BOOKING",
+          consentTermsAccepted: true,
+          consentPrivacyAccepted: true,
+        },
+      }),
+    ).toThrow(/No valid booking candidate/);
+
+    expect(postJsonMock).toHaveBeenCalledTimes(2);
+    expect(refreshCandidates).toHaveBeenCalledTimes(2);
+  });
+
   it("re-refreshes on repeated FULL_SESSION and selects a newly available fresh session", async () => {
     (globalThis as unknown as { __ENV?: Record<string, string> }).__ENV = {
       BOOKING_CANDIDATE_REFRESH_MAX: "4",
@@ -541,6 +612,7 @@ describe("k6 booking candidates helpers", () => {
     expect(candidatesWithRecovery).toContain("hot-session");
   });
 });
+
 
 
 

@@ -7,6 +7,7 @@ const bookingDraftTechnicalFailureRate = new Rate("booking_draft_technical_failu
 const bookingDraftUnexpectedClientErrorRate = new Rate("booking_draft_unexpected_client_error_rate");
 const bookingDraftExpectedConflictTotal = new Counter("booking_draft_expected_conflict_total");
 const bookingDraftFullSessionSkipTotal = new Counter("booking_draft_full_session_skip_total");
+const bookingDraftInvalidSessionSkipTotal = new Counter("booking_draft_invalid_session_skip_total");
 const bookingDraftPastSessionSkipTotal = new Counter("booking_draft_past_session_skip_total");
 const bookingDraftUnavailableSessionSkipTotal = new Counter("booking_draft_unavailable_session_skip_total");
 const bookingDraftDuplicateSkipTotal = new Counter("booking_draft_duplicate_skip_total");
@@ -506,6 +507,7 @@ export function resolveEntitlementPrefilter(input) {
 function parseDraftSkippableCode(code) {
   if (
     code === "FULL_SESSION" ||
+    code === "INVALID_SESSION" ||
     code === "DUPLICATE_BOOKING" ||
     code === "PAST_SESSION" ||
     code === "UNAVAILABLE_SESSION"
@@ -618,6 +620,9 @@ export function createDraftWithSessionFallback(input) {
           bookingDraftFullSessionSkipTotal.add(1, { flow: input.flowTag });
           excludedSessionIds.add(sessionId);
           rememberFullSessionCooldown(sessionId);
+        } else if (skippableCode === "INVALID_SESSION") {
+          bookingDraftInvalidSessionSkipTotal.add(1, { flow: input.flowTag });
+          excludedSessionIds.add(sessionId);
         } else if (skippableCode === "PAST_SESSION") {
           bookingDraftPastSessionSkipTotal.add(1, { flow: input.flowTag });
         } else if (skippableCode === "UNAVAILABLE_SESSION") {
@@ -626,12 +631,10 @@ export function createDraftWithSessionFallback(input) {
           bookingDraftDuplicateSkipTotal.add(1, { flow: input.flowTag });
         }
 
-        // FULL_SESSION can indicate rapid inventory drift; refresh candidates immediately
-        // (bounded by BOOKING_CANDIDATE_REFRESH_MAX) to favor fresh live availability.
-        if (
-          skippableCode === "FULL_SESSION" &&
-          refreshCandidatePool()
-        ) {
+        // FULL_SESSION/INVALID_SESSION can indicate rapid inventory drift;
+        // refresh candidates immediately (bounded by BOOKING_CANDIDATE_REFRESH_MAX)
+        // to favor fresh live availability.
+        if ((skippableCode === "FULL_SESSION" || skippableCode === "INVALID_SESSION") && refreshCandidatePool()) {
           refreshedOnFullSession = true;
           break;
         }
