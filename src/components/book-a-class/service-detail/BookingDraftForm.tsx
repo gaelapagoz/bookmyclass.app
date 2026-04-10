@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { runAsyncWithCursor, setGlobalLoadingCursor } from "@/lib/ui/async-loading";
 
 type BookingSessionSummary = {
   availableSpots: number;
@@ -298,102 +299,105 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setIsSubmitting(true);
     setErrorMessage(null);
+    setGlobalLoadingCursor(true);
 
     if (!selectedPaymentOption) {
       setErrorMessage("Select a payment option to continue.");
-      setIsSubmitting(false);
+      setGlobalLoadingCursor(false);
       return;
     }
 
-    try {
-      const createDraftResponse = await fetch("/api/bookings/draft", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          serviceSlug: session.serviceSlug,
-          sessionId: session.sessionId,
-          customerName,
-          customerEmail,
-          customerPhone,
-          customerMessage,
-          bookingIntent:
-            selectedPaymentOption.mode === "EXISTING_PLAN"
-              ? "USE_PLAN"
-              : "SINGLE_BOOKING",
-          consentTermsAccepted,
-          consentPrivacyAccepted,
-        }),
-      });
+    await runAsyncWithCursor(async () => {
+      setIsSubmitting(true);
+      try {
+        const createDraftResponse = await fetch("/api/bookings/draft", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            serviceSlug: session.serviceSlug,
+            sessionId: session.sessionId,
+            customerName,
+            customerEmail,
+            customerPhone,
+            customerMessage,
+            bookingIntent:
+              selectedPaymentOption.mode === "EXISTING_PLAN"
+                ? "USE_PLAN"
+                : "SINGLE_BOOKING",
+            consentTermsAccepted,
+            consentPrivacyAccepted,
+          }),
+        });
 
-      const draftPayload = (await parseJsonResponse(createDraftResponse)) as DraftResponse | ErrorResponse | null;
-      if (!createDraftResponse.ok || !draftPayload || !("draft" in draftPayload)) {
-        setErrorMessage(parseError(draftPayload as ErrorResponse | null, createDraftResponse.status));
-        return;
+        const draftPayload = (await parseJsonResponse(createDraftResponse)) as DraftResponse | ErrorResponse | null;
+        if (!createDraftResponse.ok || !draftPayload || !("draft" in draftPayload)) {
+          setErrorMessage(parseError(draftPayload as ErrorResponse | null, createDraftResponse.status));
+          return;
+        }
+
+        const bookingId = draftPayload.draft.bookingId;
+        const applyPayload =
+          selectedPaymentOption.mode === "EXISTING_PLAN"
+            ? {
+                mode: "EXISTING_PLAN",
+                entitlementId: selectedPaymentOption.id,
+              }
+            : {
+                mode: selectedPaymentOption.mode,
+                priceId: selectedPaymentOption.id,
+              };
+
+        const applyResponse = await fetch(`/api/bookings/${bookingId}/apply-plan`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(applyPayload),
+        });
+
+        const applyResponsePayload = (await parseJsonResponse(applyResponse)) as ErrorResponse | null;
+        if (!applyResponse.ok) {
+          setErrorMessage(parseError(applyResponsePayload, applyResponse.status));
+          return;
+        }
+
+        if (selectedPaymentOption.mode === "EXISTING_PLAN") {
+          router.push(`/book-a-class/${session.serviceSlug}/confirmed?bookingId=${bookingId}`);
+          return;
+        }
+
+        const checkoutResponse = await fetch("/api/checkout/session", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ bookingId }),
+        });
+
+        const checkoutPayload = (await parseJsonResponse(checkoutResponse)) as
+          | { checkout?: { checkoutUrl?: string } }
+          | ErrorResponse
+          | null;
+        if (
+          !checkoutResponse.ok ||
+          !checkoutPayload ||
+          !("checkout" in checkoutPayload) ||
+          !checkoutPayload.checkout?.checkoutUrl
+        ) {
+          setErrorMessage(parseError(checkoutPayload as ErrorResponse | null, checkoutResponse.status));
+          return;
+        }
+
+        window.location.assign(checkoutPayload.checkout.checkoutUrl);
+      } catch {
+        setErrorMessage("Could not continue booking.");
+      } finally {
+        setIsSubmitting(false);
       }
-
-      const bookingId = draftPayload.draft.bookingId;
-      const applyPayload =
-        selectedPaymentOption.mode === "EXISTING_PLAN"
-          ? {
-              mode: "EXISTING_PLAN",
-              entitlementId: selectedPaymentOption.id,
-            }
-          : {
-              mode: selectedPaymentOption.mode,
-              priceId: selectedPaymentOption.id,
-            };
-
-      const applyResponse = await fetch(`/api/bookings/${bookingId}/apply-plan`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(applyPayload),
-      });
-
-      const applyResponsePayload = (await parseJsonResponse(applyResponse)) as ErrorResponse | null;
-      if (!applyResponse.ok) {
-        setErrorMessage(parseError(applyResponsePayload, applyResponse.status));
-        return;
-      }
-
-      if (selectedPaymentOption.mode === "EXISTING_PLAN") {
-        router.push(`/book-a-class/${session.serviceSlug}/confirmed?bookingId=${bookingId}`);
-        return;
-      }
-
-      const checkoutResponse = await fetch("/api/checkout/session", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ bookingId }),
-      });
-
-      const checkoutPayload = (await parseJsonResponse(checkoutResponse)) as
-        | { checkout?: { checkoutUrl?: string } }
-        | ErrorResponse
-        | null;
-      if (
-        !checkoutResponse.ok ||
-        !checkoutPayload ||
-        !("checkout" in checkoutPayload) ||
-        !checkoutPayload.checkout?.checkoutUrl
-      ) {
-        setErrorMessage(parseError(checkoutPayload as ErrorResponse | null, checkoutResponse.status));
-        return;
-      }
-
-      window.location.assign(checkoutPayload.checkout.checkoutUrl);
-    } catch {
-      setErrorMessage("Could not continue booking.");
-    } finally {
-      setIsSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -535,9 +539,16 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
         <button
           type="submit"
           disabled={isSubmitting || isLoadingPaymentOptions || !selectedPaymentOption}
-          className="mt-6 rounded-md bg-[#7b2d2d] px-4 py-2 text-sm text-[#f4eee8] disabled:opacity-60"
+          className="mt-6 inline-flex items-center justify-center rounded-md bg-[#7b2d2d] px-4 py-2 text-sm text-[#f4eee8] disabled:opacity-60"
         >
-          {primaryCtaLabel}
+          {isSubmitting ? (
+            <>
+              <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
+              {primaryCtaLabel}
+            </>
+          ) : (
+            primaryCtaLabel
+          )}
         </button>
       </form>
 

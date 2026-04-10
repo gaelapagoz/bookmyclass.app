@@ -4,6 +4,7 @@ import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { runAsyncWithCursor } from "@/lib/ui/async-loading";
 
 type SignInModalProps = {
   onClose: () => void;
@@ -19,27 +20,29 @@ export function SignInModal({ onClose, onSuccess, targetHref }: SignInModalProps
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setIsSubmitting(true);
     setErrorMessage(null);
 
-    try {
-      const result = await signIn("credentials", {
-        email: email.trim().toLowerCase(),
-        password,
-        redirect: false,
-      });
+    await runAsyncWithCursor(async () => {
+      setIsSubmitting(true);
+      try {
+        const result = await signIn("credentials", {
+          email: email.trim().toLowerCase(),
+          password,
+          redirect: false,
+        });
 
-      if (!result || result.error) {
-        setErrorMessage("Invalid email or password.");
-        return;
+        if (!result || result.error) {
+          setErrorMessage("Invalid email or password.");
+          return;
+        }
+
+        onSuccess(targetHref);
+      } catch {
+        setErrorMessage("Could not sign in right now. Please try again.");
+      } finally {
+        setIsSubmitting(false);
       }
-
-      onSuccess(targetHref);
-    } catch {
-      setErrorMessage("Could not sign in right now. Please try again.");
-    } finally {
-      setIsSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -90,9 +93,16 @@ export function SignInModal({ onClose, onSuccess, targetHref }: SignInModalProps
           <button
             type="submit"
             disabled={isSubmitting}
-            className="rounded-md bg-[#7b2d2d] px-4 py-2 text-sm text-[#f4eee8] disabled:opacity-60"
+            className="inline-flex items-center rounded-md bg-[#7b2d2d] px-4 py-2 text-sm text-[#f4eee8] disabled:opacity-60"
           >
-            {isSubmitting ? "Signing in..." : "Sign In And Continue"}
+            {isSubmitting ? (
+              <>
+                <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
+                Signing in...
+              </>
+            ) : (
+              "Sign In And Continue"
+            )}
           </button>
         </form>
 
