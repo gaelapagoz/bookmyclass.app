@@ -164,7 +164,7 @@ function getBookingDraftUnexpectedErrorContext(
 }
 
 function isRetryableBookingDraftTechnicalFailure(context: BookingDraftUnexpectedErrorContext): boolean {
-  if (context.prismaCode && ["P2024", "P2028", "P2034"].includes(context.prismaCode)) {
+  if (context.prismaCode && ["P2024", "P2028", "P2034", "P2037"].includes(context.prismaCode)) {
     return true;
   }
 
@@ -176,6 +176,8 @@ function isRetryableBookingDraftTechnicalFailure(context: BookingDraftUnexpected
   const message = context.message.toLowerCase();
   return (
     message.includes("timed out fetching a new connection") ||
+    message.includes("too many database connections opened") ||
+    message.includes("too many clients already") ||
     message.includes("could not serialize access") ||
     message.includes("deadlock detected") ||
     message.includes("transaction already closed") ||

@@ -388,6 +388,36 @@ describe("booking draft service concurrency", () => {
     transactionSpy.mockRestore();
   });
 
+  it("maps repeated prisma connection-pool exhaustion errors to BOOKING_CONTENTION", async () => {
+    const fixture = await createCapacityOneFixture();
+    const payload = {
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      consentPrivacyAccepted: true,
+      consentTermsAccepted: true,
+      customerEmail: "client@example.test",
+      customerName: "Client",
+      customerPhone: "+32000000000",
+      serviceSlug: fixture.classType.slug,
+      sessionId: fixture.studioSession.id,
+    };
+
+    const transactionSpy = vi
+      .spyOn(prisma, "$transaction")
+      .mockImplementation(async () => {
+        throw Object.assign(new Error("Too many database connections opened"), {
+          code: "P2037",
+        });
+      });
+
+    await expect(
+      createPendingBookingDraft({
+        authenticatedUserId: fixture.userOne.id,
+        payload,
+      }),
+    ).rejects.toMatchObject({ code: "BOOKING_CONTENTION" });
+
+    transactionSpy.mockRestore();
+  });
   it("retries and succeeds when adapter reports overlapping client.query usage", async () => {
     const fixture = await createCapacityOneFixture();
     const payload = {
@@ -730,7 +760,3 @@ describe("booking draft service concurrency", () => {
     bookingNoteSpy.mockRestore();
   });
 });
-
-
-
-

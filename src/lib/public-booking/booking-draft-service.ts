@@ -402,7 +402,14 @@ function isRetryableConnectionError(error: unknown, depth = 0): boolean {
   }
 
   const code = getErrorCode(error);
-  if (code === "57P01" || code === "57P02" || code === "57P03" || code === "08006" || code === "08000") {
+  if (
+    code === "P2037" ||
+    code === "57P01" ||
+    code === "57P02" ||
+    code === "57P03" ||
+    code === "08006" ||
+    code === "08000"
+  ) {
     return true;
   }
 
@@ -413,6 +420,8 @@ function isRetryableConnectionError(error: unknown, depth = 0): boolean {
 
   const message = getErrorMessage(error).toLowerCase();
   if (
+    message.includes("too many database connections opened") ||
+    message.includes("too many clients already") ||
     message.includes("connection terminated unexpectedly") ||
     message.includes("server closed the connection unexpectedly") ||
     message.includes("connection reset by peer") ||

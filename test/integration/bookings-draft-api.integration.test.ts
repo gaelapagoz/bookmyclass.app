@@ -371,6 +371,25 @@ describe("POST /api/bookings/draft", () => {
     createDraftMock.mockRestore();
   });
 
+  it("maps transient prisma connection-pool exhaustion to 503 BOOKING_CONTENTION", async () => {
+    const fixture = await createSessionFixture();
+    await createAuthenticatedUser("auth.client.pool-exhaustion@example.test");
+
+    const createDraftMock = vi
+      .spyOn(BookingDraftService, "createPendingBookingDraft")
+      .mockRejectedValue(
+        Object.assign(new Error("Too many database connections opened"), {
+          code: "P2037",
+        }),
+      );
+
+    const response = await createDraft(buildRequest(validDraftPayload(fixture)));
+    const body = (await response.json()) as { error: string; code: string };
+
+    expect(response.status).toBe(503);
+    expect(body.code).toBe("BOOKING_CONTENTION");
+    createDraftMock.mockRestore();
+  });
   it("maps overlapping client.query technical failures to 503 BOOKING_CONTENTION", async () => {
     const fixture = await createSessionFixture();
     await createAuthenticatedUser("auth.client.query-overlap@example.test");
@@ -420,5 +439,3 @@ describe("POST /api/bookings/draft", () => {
     expect(secondBody.draft.bookingId).toBe(firstBody.draft.bookingId);
   });
 });
-
-
