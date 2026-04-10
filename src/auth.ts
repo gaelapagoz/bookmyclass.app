@@ -8,7 +8,7 @@ import { createPerfTrace } from "@/lib/monitoring/perf-trace";
 import { createInMemoryTtlCache } from "@/lib/cache/in-memory-ttl-cache";
 
 const ROLES: Role[] = ["MASTER_ADMIN", "ADMIN", "TEACHER", "CLIENT"];
-const SESSION_USER_CACHE_TTL_MS = 30_000;
+const SESSION_USER_CACHE_TTL_MS = 300_000;
 const jwtTokenUserCache = createInMemoryTtlCache<{ id: string; role: Role } | null>({
   defaultTtlMs: SESSION_USER_CACHE_TTL_MS,
 });
