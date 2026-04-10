@@ -1,4 +1,5 @@
 import { BookingIntent, BookingStatus, Prisma, StudioSessionStatus } from "@prisma/client";
+import * as Sentry from "@sentry/nextjs";
 import { prisma } from "../db";
 import { createBookingNoteMessage } from "../client-messages/client-message-service";
 import { getPublicTeacherName } from "../public-content/teacher-display";
@@ -233,6 +234,40 @@ function getErrorCause(error: unknown): unknown {
   }
 
   return (error as { cause?: unknown }).cause ?? null;
+}
+
+async function persistBookingNoteMessage(input: {
+  bookingId: string;
+  userId: string;
+  payload: BookingDraftPayload;
+}): Promise<void> {
+  const normalizedMessage = input.payload.customerMessage?.trim() ?? "";
+  if (!normalizedMessage) {
+    return;
+  }
+
+  try {
+    await createBookingNoteMessage({
+      bookingId: input.bookingId,
+      userId: input.userId,
+      name: input.payload.customerName,
+      email: input.payload.customerEmail,
+      phone: input.payload.customerPhone,
+      message: normalizedMessage,
+    });
+  } catch (error) {
+    Sentry.withScope((scope) => {
+      scope.setTag("domain", "booking_draft");
+      scope.setExtra("bookingId", input.bookingId);
+      scope.setExtra("userId", input.userId);
+      scope.setExtra("sessionId", input.payload.sessionId);
+      Sentry.captureException(error);
+    });
+
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[booking-draft-service] booking note persistence failed", error);
+    }
+  }
 }
 
 function collectPotentialSqlStateValues(value: unknown, depth = 0): string[] {
@@ -507,17 +542,11 @@ export async function createPendingBookingDraft(params: {
     );
   }
 
-  const normalizedMessage = payload.customerMessage?.trim() ?? "";
-  if (normalizedMessage) {
-    await createBookingNoteMessage({
-      bookingId: booking.id,
-      userId: authenticatedUserId,
-      name: payload.customerName,
-      email: payload.customerEmail,
-      phone: payload.customerPhone,
-      message: normalizedMessage,
-    });
-  }
+  await persistBookingNoteMessage({
+    bookingId: booking.id,
+    userId: authenticatedUserId,
+    payload,
+  });
 
   return toDraftCreationResult({
     bookingId: booking.id,

@@ -4,6 +4,7 @@ import { BookingIntent, BookingStatus, Prisma, Role, StudioSessionStatus } from 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createPendingBookingDraft } from "../../src/lib/public-booking/booking-draft-service";
+import * as ClientMessageService from "../../src/lib/client-messages/client-message-service";
 import { prisma } from "../../src/lib/db";
 import { createClassCategory, createClassType } from "./helpers/factories";
 import { resetDb } from "./helpers/reset-db";
@@ -497,6 +498,50 @@ describe("booking draft service concurrency", () => {
         payload,
       }),
     ).rejects.toMatchObject({ code: "DUPLICATE_BOOKING" });
+  });
+
+  it("keeps booking draft creation successful when optional booking note persistence fails", async () => {
+    const fixture = await createCapacityOneFixture();
+    await prisma.studioSession.update({
+      where: { id: fixture.studioSession.id },
+      data: { capacity: 2 },
+    });
+
+    const payload = {
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      consentPrivacyAccepted: true,
+      consentTermsAccepted: true,
+      customerEmail: "client@example.test",
+      customerName: "Client",
+      customerPhone: "+32000000000",
+      customerMessage: "Please reserve my spot",
+      serviceSlug: fixture.classType.slug,
+      sessionId: fixture.studioSession.id,
+    };
+
+    const bookingNoteSpy = vi
+      .spyOn(ClientMessageService, "createBookingNoteMessage")
+      .mockRejectedValueOnce(new Error("simulated booking note persistence failure"));
+
+    const result = await createPendingBookingDraft({
+      authenticatedUserId: fixture.userOne.id,
+      payload,
+    });
+
+    expect(result.status).toBe(BookingStatus.PENDING);
+    expect(result.created).toBe(true);
+    expect(bookingNoteSpy).toHaveBeenCalledTimes(1);
+
+    const persistedBooking = await prisma.booking.findUnique({
+      where: { id: result.bookingId },
+      select: { id: true, status: true, clientId: true },
+    });
+
+    expect(persistedBooking?.id).toBe(result.bookingId);
+    expect(persistedBooking?.status).toBe(BookingStatus.PENDING);
+    expect(persistedBooking?.clientId).toBe(fixture.userOne.id);
+
+    bookingNoteSpy.mockRestore();
   });
 });
 
