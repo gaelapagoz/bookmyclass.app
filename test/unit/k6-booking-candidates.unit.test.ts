@@ -44,6 +44,11 @@ describe("k6 booking candidates helpers", () => {
   });
 
   it("prioritizes nearest availability candidates ahead of seeded sessions", async () => {
+    (globalThis as unknown as { __ENV?: Record<string, string> }).__ENV = {
+      BOOKING_CANDIDATE_MONTH_SPAN: "1",
+      BOOKING_CANDIDATE_MAX_DATES: "2",
+    };
+
     getMock
       .mockReturnValueOnce(mockResponse(200, { next: { date: "2026-05-01" } }))
       .mockReturnValueOnce(
@@ -52,6 +57,24 @@ describe("k6 booking candidates helpers", () => {
             { id: "slot-nearest-1", isAvailable: true },
             { id: "slot-nearest-2", isAvailable: true },
           ],
+        }),
+      )
+      .mockReturnValueOnce(
+        mockResponse(200, {
+          days: [
+            { date: "2026-05-01", hasAvailability: true },
+            { date: "2026-05-02", hasAvailability: true },
+          ],
+        }),
+      )
+      .mockReturnValueOnce(
+        mockResponse(200, {
+          slots: [{ id: "slot-month-1", isAvailable: true }],
+        }),
+      )
+      .mockReturnValueOnce(
+        mockResponse(200, {
+          slots: [{ id: "slot-month-2", isAvailable: true }],
         }),
       );
 
@@ -62,7 +85,13 @@ describe("k6 booking candidates helpers", () => {
       maxCandidates: 5,
     });
 
-    expect(candidates).toEqual(["slot-nearest-1", "slot-nearest-2", "seed-1", "seed-2"]);
+    expect(candidates).toEqual([
+      "slot-nearest-1",
+      "slot-nearest-2",
+      "slot-month-1",
+      "slot-month-2",
+      "seed-1",
+    ]);
   });
 
   it("rotates candidate priority deterministically per flow+actor", async () => {
@@ -225,6 +254,34 @@ describe("k6 booking candidates helpers", () => {
     expect(result.attemptedSessionCount).toBe(3);
   });
 
+  it("refreshes early after FULL_SESSION to avoid hammering stale candidate list", async () => {
+    postJsonMock
+      .mockReturnValueOnce(mockResponse(400, { code: "FULL_SESSION", error: "This session is full." }))
+      .mockReturnValueOnce(mockResponse(201, { draft: { bookingId: "booking-refreshed-fast" } }));
+
+    const refreshCandidates = vi.fn(() => ["fresh-from-refresh", "stale-session"]);
+    const { createDraftWithSessionFallback } = await import("../../k6/lib/booking-candidates.js");
+    const result = createDraftWithSessionFallback({
+      flowTag: "booking_checkout",
+      serviceSlug: "vinyasa-yoga",
+      sessionCandidates: ["stale-session", "another-stale-session"],
+      refreshCandidates,
+      draftPayload: {
+        customerName: "K6 User",
+        customerEmail: "k6@example.test",
+        customerPhone: "+32000000000",
+        bookingIntent: "SINGLE_BOOKING",
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+      },
+    });
+
+    expect(refreshCandidates).toHaveBeenCalledTimes(1);
+    expect(result.bookingId).toBe("booking-refreshed-fast");
+    expect(result.sessionId).toBe("fresh-from-refresh");
+    expect(result.attemptedSessionCount).toBe(2);
+    expect(postJsonMock).toHaveBeenCalledTimes(2);
+  });
   it("treats idempotent 200 draft responses as success", async () => {
     postJsonMock.mockReturnValueOnce(
       mockResponse(200, {
@@ -252,3 +309,4 @@ describe("k6 booking candidates helpers", () => {
     expect(result.attemptedSessionCount).toBe(1);
   });
 });
+
