@@ -103,6 +103,15 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
   });
   let lookupMode: "exact" | "fallback-insensitive" | "not-found" = "not-found";
   let clientAbuseState: Awaited<ReturnType<typeof getClientLoginAbuseState>> | null = null;
+  const stepDurationsMs: Record<string, number> = {};
+  const measureStep = async <T>(step: string, operation: () => Promise<T>): Promise<T> => {
+    const startedAt = Date.now();
+    try {
+      return await operation();
+    } finally {
+      stepDurationsMs[step] = Date.now() - startedAt;
+    }
+  };
   let authResult:
     | "invalid_payload"
     | "locked_client"
@@ -116,19 +125,23 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
 
   try {
     if (!isAdminSignInFlow) {
-      clientAbuseState = await trace.db("auth.getClientLoginAbuseState", () =>
-        getClientLoginAbuseState({
-          ip,
-          normalizedEmail,
-        }),
-      );
-
-      if (clientAbuseState.isLocked) {
-        await trace.db("auth.recordClientLoginFailure.locked", () =>
-          recordClientLoginFailure({
+      clientAbuseState = await measureStep("getClientLoginAbuseState", () =>
+        trace.db("auth.getClientLoginAbuseState", () =>
+          getClientLoginAbuseState({
             ip,
             normalizedEmail,
           }),
+        ),
+      );
+
+      if (clientAbuseState.isLocked) {
+        await measureStep("recordClientLoginFailure.locked", () =>
+          trace.db("auth.recordClientLoginFailure.locked", () =>
+            recordClientLoginFailure({
+              ip,
+              normalizedEmail,
+            }),
+          ),
         );
         authResult = "locked_client";
         return null;
@@ -136,40 +149,48 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
     }
 
     if (isAdminSignInFlow) {
-      const preState = await trace.db("auth.getAdminLoginAbuseState.pre", () =>
-        getAdminLoginAbuseState({
-          ip,
-          normalizedEmail,
-        }),
+      const preState = await measureStep("getAdminLoginAbuseState.pre", () =>
+        trace.db("auth.getAdminLoginAbuseState.pre", () =>
+          getAdminLoginAbuseState({
+            ip,
+            normalizedEmail,
+          }),
+        ),
       );
 
       if (preState.isLocked) {
-        await trace.db("auth.recordAdminLoginFailure.prelocked", () =>
-          recordAdminLoginFailure({
-            ip,
-            normalizedEmail,
-            reason: "prelocked",
-          }),
+        await measureStep("recordAdminLoginFailure.prelocked", () =>
+          trace.db("auth.recordAdminLoginFailure.prelocked", () =>
+            recordAdminLoginFailure({
+              ip,
+              normalizedEmail,
+              reason: "prelocked",
+            }),
+          ),
         );
         authResult = "locked_admin";
         return null;
       }
 
       if (preState.requiresCaptcha && captchaEnforced) {
-        const captchaIsValid = await trace.db("auth.verifyAdminLoginCaptcha.pre", () =>
-          verifyAdminLoginCaptcha({
-            token: captchaToken,
-            ip,
-          }),
+        const captchaIsValid = await measureStep("verifyAdminLoginCaptcha.pre", () =>
+          trace.db("auth.verifyAdminLoginCaptcha.pre", () =>
+            verifyAdminLoginCaptcha({
+              token: captchaToken,
+              ip,
+            }),
+          ),
         );
 
         if (!captchaIsValid) {
-          await trace.db("auth.recordAdminLoginFailure.captchaFailed.pre", () =>
-            recordAdminLoginFailure({
-              ip,
-              normalizedEmail,
-              reason: "captcha_failed",
-            }),
+          await measureStep("recordAdminLoginFailure.captchaFailed.pre", () =>
+            trace.db("auth.recordAdminLoginFailure.captchaFailed.pre", () =>
+              recordAdminLoginFailure({
+                ip,
+                normalizedEmail,
+                reason: "captcha_failed",
+              }),
+            ),
           );
           authResult = "captcha_failed";
           return null;
@@ -177,27 +198,31 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
       }
     }
 
-    const exactUser = await trace.db("auth.user.findUnique.email", () =>
-      prisma.user.findUnique({
-        where: {
-          email: normalizedEmail,
-        },
-        select: AUTH_USER_SELECT,
-      }),
+    const exactUser = await measureStep("user.findUnique.email", () =>
+      trace.db("auth.user.findUnique.email", () =>
+        prisma.user.findUnique({
+          where: {
+            email: normalizedEmail,
+          },
+          select: AUTH_USER_SELECT,
+        }),
+      ),
     );
 
     const user: AuthCandidateUser | null =
       exactUser ??
-      (await trace.db("auth.user.findFirst.emailInsensitiveFallback", () =>
-        prisma.user.findFirst({
-          where: {
-            email: {
-              equals: normalizedEmail,
-              mode: "insensitive",
+      (await measureStep("user.findFirst.emailInsensitiveFallback", () =>
+        trace.db("auth.user.findFirst.emailInsensitiveFallback", () =>
+          prisma.user.findFirst({
+            where: {
+              email: {
+                equals: normalizedEmail,
+                mode: "insensitive",
+              },
             },
-          },
-          select: AUTH_USER_SELECT,
-        }),
+            select: AUTH_USER_SELECT,
+          }),
+        ),
       ));
     if (exactUser) {
       lookupMode = "exact";
@@ -210,40 +235,48 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
     const shouldApplyAdminAbuseGuard = isAdminSignInFlow || (user ? isAdminRole(user.role) : false);
 
     if (shouldApplyAdminAbuseGuard && !isAdminSignInFlow) {
-      const state = await trace.db("auth.getAdminLoginAbuseState.postUser", () =>
-        getAdminLoginAbuseState({
-          ip,
-          normalizedEmail,
-        }),
+      const state = await measureStep("getAdminLoginAbuseState.postUser", () =>
+        trace.db("auth.getAdminLoginAbuseState.postUser", () =>
+          getAdminLoginAbuseState({
+            ip,
+            normalizedEmail,
+          }),
+        ),
       );
 
       if (state.isLocked) {
-        await trace.db("auth.recordAdminLoginFailure.prelocked.postUser", () =>
-          recordAdminLoginFailure({
-            ip,
-            normalizedEmail,
-            reason: "prelocked",
-          }),
+        await measureStep("recordAdminLoginFailure.prelocked.postUser", () =>
+          trace.db("auth.recordAdminLoginFailure.prelocked.postUser", () =>
+            recordAdminLoginFailure({
+              ip,
+              normalizedEmail,
+              reason: "prelocked",
+            }),
+          ),
         );
         authResult = "locked_admin";
         return null;
       }
 
       if (state.requiresCaptcha && captchaEnforced) {
-        const captchaIsValid = await trace.db("auth.verifyAdminLoginCaptcha.postUser", () =>
-          verifyAdminLoginCaptcha({
-            token: captchaToken,
-            ip,
-          }),
+        const captchaIsValid = await measureStep("verifyAdminLoginCaptcha.postUser", () =>
+          trace.db("auth.verifyAdminLoginCaptcha.postUser", () =>
+            verifyAdminLoginCaptcha({
+              token: captchaToken,
+              ip,
+            }),
+          ),
         );
 
         if (!captchaIsValid) {
-          await trace.db("auth.recordAdminLoginFailure.captchaFailed.postUser", () =>
-            recordAdminLoginFailure({
-              ip,
-              normalizedEmail,
-              reason: "captcha_failed",
-            }),
+          await measureStep("recordAdminLoginFailure.captchaFailed.postUser", () =>
+            trace.db("auth.recordAdminLoginFailure.captchaFailed.postUser", () =>
+              recordAdminLoginFailure({
+                ip,
+                normalizedEmail,
+                reason: "captcha_failed",
+              }),
+            ),
           );
           authResult = "captcha_failed";
           return null;
@@ -253,20 +286,24 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
 
     if (!user || user.activationStatus !== UserActivationStatus.ACTIVE) {
       if (!isAdminSignInFlow) {
-        await trace.db("auth.recordClientLoginFailure.invalidUser", () =>
-          recordClientLoginFailure({
-            ip,
-            normalizedEmail,
-          }),
+        await measureStep("recordClientLoginFailure.invalidUser", () =>
+          trace.db("auth.recordClientLoginFailure.invalidUser", () =>
+            recordClientLoginFailure({
+              ip,
+              normalizedEmail,
+            }),
+          ),
         );
       }
       if (shouldApplyAdminAbuseGuard) {
-        await trace.db("auth.recordAdminLoginFailure.invalidUser", () =>
-          recordAdminLoginFailure({
-            ip,
-            normalizedEmail,
-            reason: "invalid_user",
-          }),
+        await measureStep("recordAdminLoginFailure.invalidUser", () =>
+          trace.db("auth.recordAdminLoginFailure.invalidUser", () =>
+            recordAdminLoginFailure({
+              ip,
+              normalizedEmail,
+              reason: "invalid_user",
+            }),
+          ),
         );
       }
       authResult = "invalid_user";
@@ -275,20 +312,24 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
 
     if (!user.passwordHash) {
       if (!isAdminSignInFlow) {
-        await trace.db("auth.recordClientLoginFailure.missingHash", () =>
-          recordClientLoginFailure({
-            ip,
-            normalizedEmail,
-          }),
+        await measureStep("recordClientLoginFailure.missingHash", () =>
+          trace.db("auth.recordClientLoginFailure.missingHash", () =>
+            recordClientLoginFailure({
+              ip,
+              normalizedEmail,
+            }),
+          ),
         );
       }
       if (shouldApplyAdminAbuseGuard) {
-        await trace.db("auth.recordAdminLoginFailure.missingHash", () =>
-          recordAdminLoginFailure({
-            ip,
-            normalizedEmail,
-            reason: "missing_password_hash",
-          }),
+        await measureStep("recordAdminLoginFailure.missingHash", () =>
+          trace.db("auth.recordAdminLoginFailure.missingHash", () =>
+            recordAdminLoginFailure({
+              ip,
+              normalizedEmail,
+              reason: "missing_password_hash",
+            }),
+          ),
         );
       }
       authResult = "missing_password_hash";
@@ -297,43 +338,52 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
 
     if (!user.emailVerified && !isAdminRole(user.role)) {
       if (!isAdminSignInFlow) {
-        await trace.db("auth.recordClientLoginFailure.emailNotVerified", () =>
-          recordClientLoginFailure({
-            ip,
-            normalizedEmail,
-          }),
+        await measureStep("recordClientLoginFailure.emailNotVerified", () =>
+          trace.db("auth.recordClientLoginFailure.emailNotVerified", () =>
+            recordClientLoginFailure({
+              ip,
+              normalizedEmail,
+            }),
+          ),
         );
       }
       if (shouldApplyAdminAbuseGuard) {
-        await trace.db("auth.recordAdminLoginFailure.emailNotVerified", () =>
-          recordAdminLoginFailure({
-            ip,
-            normalizedEmail,
-            reason: "email_not_verified",
-          }),
+        await measureStep("recordAdminLoginFailure.emailNotVerified", () =>
+          trace.db("auth.recordAdminLoginFailure.emailNotVerified", () =>
+            recordAdminLoginFailure({
+              ip,
+              normalizedEmail,
+              reason: "email_not_verified",
+            }),
+          ),
         );
       }
       authResult = "email_not_verified";
       return null;
     }
 
-    const isValidPassword = await verifyPassword(password, user.passwordHash);
+    const userPasswordHash = user.passwordHash;
+    const isValidPassword = await measureStep("verifyPassword", () => verifyPassword(password, userPasswordHash));
     if (!isValidPassword) {
       if (!isAdminSignInFlow) {
-        await trace.db("auth.recordClientLoginFailure.invalidPassword", () =>
-          recordClientLoginFailure({
-            ip,
-            normalizedEmail,
-          }),
+        await measureStep("recordClientLoginFailure.invalidPassword", () =>
+          trace.db("auth.recordClientLoginFailure.invalidPassword", () =>
+            recordClientLoginFailure({
+              ip,
+              normalizedEmail,
+            }),
+          ),
         );
       }
       if (shouldApplyAdminAbuseGuard) {
-        await trace.db("auth.recordAdminLoginFailure.invalidPassword", () =>
-          recordAdminLoginFailure({
-            ip,
-            normalizedEmail,
-            reason: "invalid_password",
-          }),
+        await measureStep("recordAdminLoginFailure.invalidPassword", () =>
+          trace.db("auth.recordAdminLoginFailure.invalidPassword", () =>
+            recordAdminLoginFailure({
+              ip,
+              normalizedEmail,
+              reason: "invalid_password",
+            }),
+          ),
         );
       }
       authResult = "invalid_password";
@@ -341,20 +391,24 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
     }
 
     if (shouldApplyAdminAbuseGuard) {
-      await trace.db("auth.resetAdminLoginFailureCounters", () =>
-        resetAdminLoginFailureCounters({
-          ip,
-          normalizedEmail,
-        }),
+      await measureStep("resetAdminLoginFailureCounters", () =>
+        trace.db("auth.resetAdminLoginFailureCounters", () =>
+          resetAdminLoginFailureCounters({
+            ip,
+            normalizedEmail,
+          }),
+        ),
       );
     }
     if (!isAdminSignInFlow) {
       if (clientAbuseState?.hasActiveFailureSignals) {
-        await trace.db("auth.resetClientLoginFailureCounters", () =>
-          resetClientLoginFailureCounters({
-            ip,
-            normalizedEmail,
-          }),
+        await measureStep("resetClientLoginFailureCounters", () =>
+          trace.db("auth.resetClientLoginFailureCounters", () =>
+            resetClientLoginFailureCounters({
+              ip,
+              normalizedEmail,
+            }),
+          ),
         );
       }
     }
@@ -368,6 +422,20 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
       role: user.role,
     };
   } finally {
-    trace.log({ authResult, lookupMode });
+    const slowestMeasuredStep = Object.entries(stepDurationsMs).reduce<{ step: string; durationMs: number } | null>(
+      (slowest, [step, durationMs]) => {
+        if (!slowest || durationMs > slowest.durationMs) {
+          return { step, durationMs };
+        }
+        return slowest;
+      },
+      null,
+    );
+    trace.log({
+      authResult,
+      lookupMode,
+      stepDurationsMs,
+      slowestMeasuredStep,
+    });
   }
 }

@@ -1,12 +1,18 @@
 import { UserActivationStatus } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import { compare, hash } from "bcryptjs";
+import { createInMemoryTtlCache } from "@/lib/cache/in-memory-ttl-cache";
 import { prisma } from "@/lib/db";
 import { isDeterministicEmailDeliveryMode, sendEmailViaResend } from "@/lib/email/resend-delivery";
 
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 const PASSWORD_RESET_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const PASSWORD_VERIFY_CACHE_TTL_MS = 30_000;
+const PASSWORD_VERIFY_CACHE_SECRET = process.env.AUTH_SECRET ?? "password-verify-cache-fallback";
+const passwordVerifyCache = createInMemoryTtlCache<boolean>({
+  defaultTtlMs: PASSWORD_VERIFY_CACHE_TTL_MS,
+});
 
 export type PasswordServiceErrorCode =
   | "INVALID_PASSWORD"
@@ -78,6 +84,12 @@ function validateNewPasswordOrThrow(newPassword: string, confirmPassword: string
 
 function hashResetToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+function buildPasswordVerifyCacheKey(plainTextPassword: string, passwordHash: string): string {
+  return createHash("sha256")
+    .update(`${PASSWORD_VERIFY_CACHE_SECRET}:${passwordHash}:${plainTextPassword}`)
+    .digest("hex");
 }
 
 function hashPasswordResetRateLimitKey(email: string): string {
@@ -185,7 +197,8 @@ export async function verifyPassword(
   plainTextPassword: string,
   passwordHash: string,
 ): Promise<boolean> {
-  return compare(plainTextPassword, passwordHash);
+  const cacheKey = buildPasswordVerifyCacheKey(plainTextPassword, passwordHash);
+  return passwordVerifyCache.getOrLoad(cacheKey, () => compare(plainTextPassword, passwordHash));
 }
 
 export async function changeAuthenticatedUserPassword(input: {
