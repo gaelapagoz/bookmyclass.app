@@ -355,6 +355,37 @@ describe("POST /api/bookings/draft", () => {
     expect(body.error).toContain("temporarily failed");
     createDraftMock.mockRestore();
   });
+  it("maps retryable prisma technical failures to 503 BOOKING_CONTENTION", async () => {
+    const fixture = await createSessionFixture();
+    await createAuthenticatedUser("auth.client.retryable@example.test");
+
+    const createDraftMock = vi
+      .spyOn(BookingDraftService, "createPendingBookingDraft")
+      .mockRejectedValue(Object.assign(new Error("Transaction API error"), { code: "P2024" }));
+
+    const response = await createDraft(buildRequest(validDraftPayload(fixture)));
+    const body = (await response.json()) as { error: string; code: string };
+
+    expect(response.status).toBe(503);
+    expect(body.code).toBe("BOOKING_CONTENTION");
+    createDraftMock.mockRestore();
+  });
+
+  it("keeps unknown technical failures as 500 with stable technical code", async () => {
+    const fixture = await createSessionFixture();
+    await createAuthenticatedUser("auth.client.unknown500@example.test");
+
+    const createDraftMock = vi
+      .spyOn(BookingDraftService, "createPendingBookingDraft")
+      .mockRejectedValue(new Error("Unexpected adapter failure"));
+
+    const response = await createDraft(buildRequest(validDraftPayload(fixture)));
+    const body = (await response.json()) as { error: string; code: string };
+
+    expect(response.status).toBe(500);
+    expect(body.code).toBe("BOOKING_DRAFT_TECHNICAL_FAILURE");
+    createDraftMock.mockRestore();
+  });
 
   it("returns existing pending draft idempotently for duplicate create attempts", async () => {
     const fixture = await createSessionFixture();
