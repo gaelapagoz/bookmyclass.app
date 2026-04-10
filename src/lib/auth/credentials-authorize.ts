@@ -102,6 +102,7 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
     normalizedEmail,
   });
   let lookupMode: "exact" | "fallback-insensitive" | "not-found" = "not-found";
+  let clientAbuseState: Awaited<ReturnType<typeof getClientLoginAbuseState>> | null = null;
   let authResult:
     | "invalid_payload"
     | "locked_client"
@@ -115,14 +116,14 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
 
   try {
     if (!isAdminSignInFlow) {
-      const clientState = await trace.db("auth.getClientLoginAbuseState", () =>
+      clientAbuseState = await trace.db("auth.getClientLoginAbuseState", () =>
         getClientLoginAbuseState({
           ip,
           normalizedEmail,
         }),
       );
 
-      if (clientState.isLocked) {
+      if (clientAbuseState.isLocked) {
         await trace.db("auth.recordClientLoginFailure.locked", () =>
           recordClientLoginFailure({
             ip,
@@ -348,12 +349,14 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
       );
     }
     if (!isAdminSignInFlow) {
-      await trace.db("auth.resetClientLoginFailureCounters", () =>
-        resetClientLoginFailureCounters({
-          ip,
-          normalizedEmail,
-        }),
-      );
+      if (clientAbuseState?.hasActiveFailureSignals) {
+        await trace.db("auth.resetClientLoginFailureCounters", () =>
+          resetClientLoginFailureCounters({
+            ip,
+            normalizedEmail,
+          }),
+        );
+      }
     }
 
     authResult = "success";

@@ -60,9 +60,19 @@ function buildBuckets(input: { ip: string; normalizedEmail: string }): ClientLog
 export type ClientLoginAbuseState = {
   isLocked: boolean;
   retryAfterMs: number | null;
+  hasActiveFailureSignals: boolean;
 };
 
-function normalizeStateFromCounters(counters: Array<{ lockedUntil: Date | null }>, now: Date): ClientLoginAbuseState {
+function normalizeStateFromCounters(
+  counters: Array<{
+    lockedUntil: Date | null;
+    failedAttempts?: number;
+    firstFailedAt?: Date | null;
+    lastFailedAt?: Date | null;
+    captchaRequiredUntil?: Date | null;
+  }>,
+  now: Date,
+): ClientLoginAbuseState {
   const nowTimestamp = now.getTime();
   const retryAfterMsValues = counters
     .map((counter) => {
@@ -75,9 +85,22 @@ function normalizeStateFromCounters(counters: Array<{ lockedUntil: Date | null }
     .filter((value): value is number => value !== null);
 
   const isLocked = retryAfterMsValues.length > 0;
+  const hasActiveFailureSignals = counters.some((counter) => {
+    if ((counter.failedAttempts ?? 0) > 0) {
+      return true;
+    }
+
+    if (counter.firstFailedAt || counter.lastFailedAt || counter.captchaRequiredUntil) {
+      return true;
+    }
+
+    return Boolean(counter.lockedUntil && counter.lockedUntil.getTime() > nowTimestamp);
+  });
+
   return {
     isLocked,
     retryAfterMs: isLocked ? Math.max(...retryAfterMsValues) : null,
+    hasActiveFailureSignals,
   };
 }
 
@@ -96,6 +119,10 @@ export async function getClientLoginAbuseState(input: {
     },
     select: {
       lockedUntil: true,
+      failedAttempts: true,
+      firstFailedAt: true,
+      lastFailedAt: true,
+      captchaRequiredUntil: true,
     },
   });
 

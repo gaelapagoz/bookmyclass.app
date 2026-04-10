@@ -577,5 +577,33 @@ describe("credentials authorize integration", () => {
       expect(counter.lastSuccessAt?.toISOString()).toBe(fixedLastSuccessAt.toISOString());
     }
   });
-});
 
+  it("skips client abuse-counter reset write on successful sign-in when no failure signals exist", async () => {
+    const email = `client-skip-reset.${Date.now()}@example.test`;
+    const password = "Password123!";
+    const passwordHash = await hash(password, 12);
+
+    await prisma.user.create({
+      data: {
+        name: "Skip Reset Client",
+        firstName: "Skip",
+        lastName: "Reset",
+        email,
+        role: Role.CLIENT,
+        passwordHash,
+        emailVerified: new Date(),
+      },
+    });
+
+    const updateManySpy = vi.spyOn(prisma.adminLoginAbuseCounter, "updateMany");
+
+    const result = await authorizeCredentials({
+      email,
+      password,
+    });
+
+    expect(result).not.toBeNull();
+    expect(updateManySpy).not.toHaveBeenCalled();
+    updateManySpy.mockRestore();
+  });
+});
