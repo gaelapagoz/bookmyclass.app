@@ -388,6 +388,74 @@ describe("booking draft service concurrency", () => {
     transactionSpy.mockRestore();
   });
 
+  it("retries and succeeds when adapter reports overlapping client.query usage", async () => {
+    const fixture = await createCapacityOneFixture();
+    const payload = {
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      consentPrivacyAccepted: true,
+      consentTermsAccepted: true,
+      customerEmail: "client@example.test",
+      customerName: "Client",
+      customerPhone: "+32000000000",
+      serviceSlug: fixture.classType.slug,
+      sessionId: fixture.studioSession.id,
+    };
+
+    const originalTransaction = prisma.$transaction.bind(prisma);
+    let transactionAttempts = 0;
+    const transactionSpy = vi
+      .spyOn(prisma, "$transaction")
+      .mockImplementation(async (callback, options) => {
+        if (transactionAttempts === 0) {
+          transactionAttempts += 1;
+          throw new Error(
+            "Calling client.query() when the client is already executing a query is deprecated",
+          );
+        }
+
+        return originalTransaction(callback, options);
+      });
+
+    const result = await createPendingBookingDraft({
+      authenticatedUserId: fixture.userOne.id,
+      payload,
+    });
+
+    expect(result.status).toBe("PENDING");
+    expect(transactionAttempts).toBe(1);
+    transactionSpy.mockRestore();
+  });
+
+  it("maps repeated overlapping client.query failures to BOOKING_CONTENTION", async () => {
+    const fixture = await createCapacityOneFixture();
+    const payload = {
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      consentPrivacyAccepted: true,
+      consentTermsAccepted: true,
+      customerEmail: "client@example.test",
+      customerName: "Client",
+      customerPhone: "+32000000000",
+      serviceSlug: fixture.classType.slug,
+      sessionId: fixture.studioSession.id,
+    };
+
+    const transactionSpy = vi
+      .spyOn(prisma, "$transaction")
+      .mockImplementation(async () => {
+        throw new Error(
+          "Calling client.query() when the client is already executing a query is deprecated",
+        );
+      });
+
+    await expect(
+      createPendingBookingDraft({
+        authenticatedUserId: fixture.userOne.id,
+        payload,
+      }),
+    ).rejects.toMatchObject({ code: "BOOKING_CONTENTION" });
+
+    transactionSpy.mockRestore();
+  });
   it("maps adapter-level unique violations (SQLSTATE 23505) to idempotent pending draft reuse", async () => {
     const fixture = await createCapacityOneFixture();
     await prisma.studioSession.update({
@@ -596,5 +664,6 @@ describe("booking draft service concurrency", () => {
     bookingNoteSpy.mockRestore();
   });
 });
+
 
 

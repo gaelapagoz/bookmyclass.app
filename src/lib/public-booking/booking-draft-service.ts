@@ -96,6 +96,8 @@ type SessionWithBookings = {
   };
 };
 
+type SessionForDraftValidation = Omit<SessionWithBookings, "bookings">;
+
 type ExistingActiveBooking = {
   id: string;
   status: BookingStatus;
@@ -188,6 +190,24 @@ function assertSessionAvailable(session: SessionWithBookings) {
   }
 
   if (getAvailableSpots(session) < 1) {
+    throw new BookingDraftError("FULL_SESSION", "This session is full.");
+  }
+}
+
+function assertSessionAvailableWithActiveBookingCount(
+  session: SessionForDraftValidation,
+  activeBookingCount: number,
+) {
+  if (session.status !== StudioSessionStatus.SCHEDULED || !session.isPublished) {
+    throw new BookingDraftError("UNAVAILABLE_SESSION", "This session is not available for booking.");
+  }
+
+  if (session.startsAt <= new Date()) {
+    throw new BookingDraftError("PAST_SESSION", "Only future sessions can be booked.");
+  }
+
+  const availableSpots = Math.max(0, session.capacity - activeBookingCount);
+  if (availableSpots < 1) {
     throw new BookingDraftError("FULL_SESSION", "This session is full.");
   }
 }
@@ -360,6 +380,22 @@ function isRetryableSerializationError(error: unknown, depth = 0): boolean {
   return isRetryableSerializationError(getErrorCause(error), depth + 1);
 }
 
+function isRetryableQueryOverlapError(error: unknown, depth = 0): boolean {
+  if (depth > 2 || !error) {
+    return false;
+  }
+
+  const message = getErrorMessage(error).toLowerCase();
+  if (
+    message.includes("already executing a query") ||
+    message.includes("client.query() when the client is already executing a query")
+  ) {
+    return true;
+  }
+
+  return isRetryableQueryOverlapError(getErrorCause(error), depth + 1);
+}
+
 async function findExistingActiveBooking(params: {
   clientId: string;
   now: Date;
@@ -487,12 +523,6 @@ export async function createPendingBookingDraft(params: {
                 },
               },
               location: true,
-              bookings: {
-                where: bookingDraftActiveBookingFilter(now),
-                select: {
-                  id: true,
-                },
-              },
             },
           });
 
@@ -500,7 +530,14 @@ export async function createPendingBookingDraft(params: {
             throw new BookingDraftError("INVALID_SESSION", "Selected session is invalid.");
           }
 
-          assertSessionAvailable(session);
+          const activeBookingCount = await tx.booking.count({
+            where: {
+              studioSessionId: session.id,
+              ...bookingDraftActiveBookingFilter(now),
+            },
+          });
+
+          assertSessionAvailableWithActiveBookingCount(session, activeBookingCount);
 
           return tx.booking.create({
             data: {
@@ -551,7 +588,7 @@ export async function createPendingBookingDraft(params: {
         );
       }
 
-      if (isRetryableSerializationError(error)) {
+      if (isRetryableSerializationError(error) || isRetryableQueryOverlapError(error)) {
         if (attempt < MAX_TRANSACTION_RETRIES) {
           await delay(getP2034RetryDelay(attempt));
           continue;

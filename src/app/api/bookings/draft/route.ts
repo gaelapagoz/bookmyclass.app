@@ -179,7 +179,9 @@ function isRetryableBookingDraftTechnicalFailure(context: BookingDraftUnexpected
     message.includes("could not serialize access") ||
     message.includes("deadlock detected") ||
     message.includes("transaction already closed") ||
-    message.includes("transaction api error")
+    message.includes("transaction api error") ||
+    message.includes("already executing a query") ||
+    message.includes("client.query() when the client is already executing a query")
   );
 }
 
