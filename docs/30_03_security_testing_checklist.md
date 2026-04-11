@@ -13,8 +13,10 @@ Use this checklist for local-to-UAT security baseline validation.
 
 - [ ] Run `BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-security-baseline.sh`
 - [ ] Verify run artifacts are created under `/tmp/local-uat-security-<timestamp>-baseline`
+- [ ] If seed data changed (for example learning thumbnails), run reset/reseed before baseline so DB content matches the validated tag
 - [ ] Verify artifacts include HTML report, JSON report, stdout log, exit code, run metadata
 
+- [ ] Run `bash scripts/security-check-headers.sh` and verify root + robots/static coverage
 ## Normalization and triage
 
 - [ ] Verify `normalized-summary.md` and `normalized-summary.json` exist

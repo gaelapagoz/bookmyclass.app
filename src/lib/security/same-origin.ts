@@ -9,6 +9,15 @@ export type SameOriginValidationResult = {
   allowedOrigins: string[];
 };
 
+export type SameOriginValidationInput = {
+  originHeader: string | null;
+  refererHeader: string | null;
+  forwardedHostHeader: string | null;
+  hostHeader: string | null;
+  forwardedProtoHeader: string | null;
+  appUrl: string | null;
+};
+
 function normalizeOrigin(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -27,24 +36,24 @@ function resolveForwardedValue(rawValue: string | null): string | null {
   return value && value.length > 0 ? value : null;
 }
 
-function resolveRequestOrigin(headers: Headers): string | null {
-  const host = resolveForwardedValue(headers.get("x-forwarded-host")) ?? resolveForwardedValue(headers.get("host"));
+function resolveRequestOrigin(input: SameOriginValidationInput): string | null {
+  const host = resolveForwardedValue(input.forwardedHostHeader) ?? resolveForwardedValue(input.hostHeader);
   if (!host) {
     return null;
   }
 
-  const protocol = resolveForwardedValue(headers.get("x-forwarded-proto")) ?? HTTPS_PROTOCOL;
+  const protocol = resolveForwardedValue(input.forwardedProtoHeader) ?? HTTPS_PROTOCOL;
   const normalizedProtocol = protocol.toLowerCase() === "http" ? "http" : HTTPS_PROTOCOL;
   return normalizeOrigin(`${normalizedProtocol}://${host}`);
 }
 
-function resolveProvidedOrigin(headers: Headers): string | null {
-  const origin = normalizeOrigin(headers.get("origin"));
+function resolveProvidedOrigin(input: SameOriginValidationInput): string | null {
+  const origin = normalizeOrigin(input.originHeader);
   if (origin) {
     return origin;
   }
 
-  const referer = headers.get("referer");
+  const referer = input.refererHeader;
   if (!referer) {
     return null;
   }
@@ -56,15 +65,15 @@ function resolveProvidedOrigin(headers: Headers): string | null {
   }
 }
 
-function resolveAllowedOrigins(headers: Headers): string[] {
+function resolveAllowedOrigins(input: SameOriginValidationInput): string[] {
   const origins = new Set<string>();
 
-  const requestOrigin = resolveRequestOrigin(headers);
+  const requestOrigin = resolveRequestOrigin(input);
   if (requestOrigin) {
     origins.add(requestOrigin);
   }
 
-  const appUrlOrigin = normalizeOrigin(process.env.APP_URL);
+  const appUrlOrigin = normalizeOrigin(input.appUrl);
   if (appUrlOrigin) {
     origins.add(appUrlOrigin);
   }
@@ -72,9 +81,9 @@ function resolveAllowedOrigins(headers: Headers): string[] {
   return [...origins];
 }
 
-export function validateSameOriginFromHeaders(headers: Headers): SameOriginValidationResult {
-  const allowedOrigins = resolveAllowedOrigins(headers);
-  const providedOrigin = resolveProvidedOrigin(headers);
+export function validateSameOrigin(input: SameOriginValidationInput): SameOriginValidationResult {
+  const allowedOrigins = resolveAllowedOrigins(input);
+  const providedOrigin = resolveProvidedOrigin(input);
 
   if (allowedOrigins.length < 1) {
     return {
@@ -109,6 +118,27 @@ export function validateSameOriginFromHeaders(headers: Headers): SameOriginValid
     providedOrigin,
     allowedOrigins,
   };
+}
+
+export function buildSameOriginValidationInputFromHeaders(
+  headers: Pick<Headers, "get">,
+  appUrl: string | null = process.env.APP_URL ?? null,
+): SameOriginValidationInput {
+  return {
+    originHeader: headers.get("origin"),
+    refererHeader: headers.get("referer"),
+    forwardedHostHeader: headers.get("x-forwarded-host"),
+    hostHeader: headers.get("host"),
+    forwardedProtoHeader: headers.get("x-forwarded-proto"),
+    appUrl,
+  };
+}
+
+export function validateSameOriginFromHeaders(
+  headers: Pick<Headers, "get">,
+  appUrl: string | null = process.env.APP_URL ?? null,
+): SameOriginValidationResult {
+  return validateSameOrigin(buildSameOriginValidationInputFromHeaders(headers, appUrl));
 }
 
 export function rejectIfNotSameOrigin(request: Request): Response | null {

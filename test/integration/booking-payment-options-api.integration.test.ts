@@ -27,6 +27,14 @@ import { GET as getPaymentOptions } from "../../src/app/api/bookings/[bookingId]
 import { createAdminPlan } from "../../src/lib/admin/admin-service";
 import { backfillMissingPlanEntitlementRules } from "../../src/lib/admin/plan-entitlement-rules";
 
+const sameOriginJsonHeaders = {
+  "content-type": "application/json",
+  origin: "http://localhost",
+  referer: "http://localhost/test",
+  "x-forwarded-host": "localhost",
+  "x-forwarded-proto": "http",
+};
+
 async function createFixture(input: {
   bookingIntent: BookingIntent;
   createActivePlanCount: 0 | 1 | 2;
@@ -428,6 +436,55 @@ describe("booking payment options api", () => {
       true,
     );
   });
+
+  it("rejects apply-plan when Origin is cross-site", async () => {
+    const fixture = await createFixture({
+      bookingIntent: BookingIntent.USE_PLAN,
+      createActivePlanCount: 1,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: fixture.bookingUser.id, email: fixture.bookingUser.email, name: fixture.bookingUser.name },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await applyPlan(
+      new Request("http://localhost/api", {
+        method: "POST",
+        headers: { ...sameOriginJsonHeaders, origin: "https://evil.example", referer: "https://evil.example/test" },
+        body: JSON.stringify({ mode: "EXISTING_PLAN", entitlementId: fixture.entitlementIds[0] }),
+      }),
+      { params: Promise.resolve({ bookingId: fixture.booking.id }) },
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "CSRF_ORIGIN_MISMATCH" });
+  });
+
+  it("rejects apply-plan when both Origin and Referer are missing", async () => {
+    const fixture = await createFixture({
+      bookingIntent: BookingIntent.USE_PLAN,
+      createActivePlanCount: 1,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: fixture.bookingUser.id, email: fixture.bookingUser.email, name: fixture.bookingUser.name },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await applyPlan(
+      new Request("http://localhost/api", {
+        method: "POST",
+        headers: { ...sameOriginJsonHeaders, origin: "", referer: "" },
+        body: JSON.stringify({ mode: "EXISTING_PLAN", entitlementId: fixture.entitlementIds[0] }),
+      }),
+      { params: Promise.resolve({ bookingId: fixture.booking.id }) },
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "CSRF_ORIGIN_MISMATCH" });
+  });
+
   it("applying active existing plan confirms booking and consumes one credit", async () => {
     const fixture = await createFixture({
       bookingIntent: BookingIntent.USE_PLAN,
@@ -441,7 +498,7 @@ describe("booking payment options api", () => {
     const response = await applyPlan(
       new Request("http://localhost/api", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: sameOriginJsonHeaders,
         body: JSON.stringify({
           mode: "EXISTING_PLAN",
           entitlementId: fixture.entitlementIds[0],
@@ -482,7 +539,7 @@ describe("booking payment options api", () => {
         applyPlan(
           new Request("http://localhost/api", {
             method: "POST",
-            headers: { "content-type": "application/json" },
+            headers: sameOriginJsonHeaders,
             body: JSON.stringify({
               mode: "EXISTING_PLAN",
               entitlementId: fixture.entitlementIds[0],
@@ -505,4 +562,3 @@ describe("booking payment options api", () => {
     expect(consumeEntries[0]?.idempotencyKey).toBeTruthy();
   });
 });
-

@@ -12,6 +12,10 @@ vi.mock("next/navigation", () => ({
   redirect: redirectMock,
 }));
 
+vi.mock("@/lib/security/same-origin", () => ({
+  assertSameOriginServerAction: vi.fn(async () => undefined),
+}));
+
 const { revalidatePathMock } = vi.hoisted(() => ({
   revalidatePathMock: vi.fn(),
 }));
@@ -678,11 +682,3 @@ describe("admin actions", () => {
     expect(updateAdminCancellationPeriodHours).toHaveBeenCalledWith(36);
   });
 });
-
-
-
-
-
-
-
-

@@ -57,6 +57,10 @@ vi.mock("next/headers", () => ({
   ),
 }));
 
+vi.mock("@/lib/security/same-origin", () => ({
+  assertSameOriginServerAction: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/auth", () => ({
   auth: vi.fn(async () => null),
   signIn: vi.fn(),
@@ -208,5 +212,3 @@ describe("/admin entry flow", () => {
     expect(document.querySelector(".cf-turnstile")).not.toBeNull();
   });
 });
-
-

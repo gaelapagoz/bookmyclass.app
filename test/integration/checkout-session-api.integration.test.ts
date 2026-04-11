@@ -45,6 +45,14 @@ vi.mock("../../src/lib/payments/stripe", () => ({
 import { auth } from "../../src/auth";
 import { POST as createCheckoutSession } from "../../src/app/api/checkout/session/route";
 
+const sameOriginJsonHeaders = {
+  "content-type": "application/json",
+  origin: "http://localhost",
+  referer: "http://localhost/test",
+  "x-forwarded-host": "localhost",
+  "x-forwarded-proto": "http",
+};
+
 async function createBookingWithSelection(input: {
   paymentSelection: BookingPaymentSelection;
   withClient?: boolean;
@@ -182,6 +190,61 @@ describe("POST /api/checkout/session", () => {
     await resetDb();
   });
 
+
+  it("rejects checkout session creation when Origin is cross-site", async () => {
+    const fixture = await createBookingWithSelection({
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+      withClient: true,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: fixture.client!.id,
+        name: fixture.client!.name,
+        email: fixture.client!.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await createCheckoutSession(
+      new Request("http://localhost/api/checkout/session", {
+        method: "POST",
+        headers: { ...sameOriginJsonHeaders, origin: "https://evil.example", referer: "https://evil.example/test" },
+        body: JSON.stringify({ bookingId: fixture.booking.id }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "CSRF_ORIGIN_MISMATCH" });
+  });
+
+  it("rejects checkout session creation when both Origin and Referer are missing", async () => {
+    const fixture = await createBookingWithSelection({
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+      withClient: true,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: fixture.client!.id,
+        name: fixture.client!.name,
+        email: fixture.client!.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await createCheckoutSession(
+      new Request("http://localhost/api/checkout/session", {
+        method: "POST",
+        headers: { ...sameOriginJsonHeaders, origin: "", referer: "" },
+        body: JSON.stringify({ bookingId: fixture.booking.id }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "CSRF_ORIGIN_MISMATCH" });
+  });
+
   it("creates checkout session for SINGLE_SESSION and creates payment record", async () => {
     const fixture = await createBookingWithSelection({
       paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
@@ -199,7 +262,7 @@ describe("POST /api/checkout/session", () => {
     const response = await createCheckoutSession(
       new Request("http://localhost/api/checkout/session", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: sameOriginJsonHeaders,
         body: JSON.stringify({ bookingId: fixture.booking.id }),
       }),
     );
@@ -248,7 +311,7 @@ describe("POST /api/checkout/session", () => {
     const response = await createCheckoutSession(
       new Request("http://localhost/api/checkout/session", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: sameOriginJsonHeaders,
         body: JSON.stringify({ bookingId: fixture.booking.id }),
       }),
     );
@@ -273,7 +336,7 @@ describe("POST /api/checkout/session", () => {
     const response = await createCheckoutSession(
       new Request("http://localhost/api/checkout/session", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: sameOriginJsonHeaders,
         body: JSON.stringify({ bookingId: fixture.booking.id }),
       }),
     );
@@ -298,14 +361,14 @@ describe("POST /api/checkout/session", () => {
     await createCheckoutSession(
       new Request("http://localhost/api/checkout/session", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: sameOriginJsonHeaders,
         body: JSON.stringify({ bookingId: fixture.booking.id }),
       }),
     );
     await createCheckoutSession(
       new Request("http://localhost/api/checkout/session", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: sameOriginJsonHeaders,
         body: JSON.stringify({ bookingId: fixture.booking.id }),
       }),
     );
@@ -344,7 +407,7 @@ describe("POST /api/checkout/session", () => {
     const response = await createCheckoutSession(
       new Request("http://localhost/api/checkout/session", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: sameOriginJsonHeaders,
         body: JSON.stringify({ bookingId: fixture.booking.id }),
       }),
     );
@@ -360,9 +423,3 @@ describe("POST /api/checkout/session", () => {
     expect(paymentCount).toBe(0);
   });
 });
-
-
-
-
-
-

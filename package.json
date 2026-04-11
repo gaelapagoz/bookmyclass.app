@@ -10,7 +10,7 @@
     "test": "vitest",
     "prisma:generate": "prisma generate",
     "prisma:seed": "prisma db seed",
-    "db:reset": "prisma migrate reset --force --skip-seed && prisma db seed",
+    "db:reset": "prisma migrate reset --force && prisma db seed",
     "learning:import": "tsx scripts/import-learning-platform.ts",
     "db:seed": "npm run prisma:seed",
     "db:test:setup": "dotenv -e .env.test -- prisma migrate deploy",
@@ -64,6 +64,7 @@
     "eslint-config-next": "16.2.0",
     "jsdom": "^29.0.1",
     "prisma": "^7.5.0",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5",
@@ -73,3 +74,4 @@
     "seed": "tsx prisma/seed.ts"
   }
 }
+

@@ -38,6 +38,10 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
+vi.mock("@/lib/security/same-origin", () => ({
+  assertSameOriginServerAction: vi.fn(async () => undefined),
+}));
+
 const { captureExceptionMock } = vi.hoisted(() => ({
   captureExceptionMock: vi.fn(),
 }));

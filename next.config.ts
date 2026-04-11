@@ -22,12 +22,8 @@ function buildContentSecurityPolicy() {
   return directives.join("; ");
 }
 
-function buildSecurityHeaders() {
+function buildBaseSecurityHeaders() {
   const headers = [
-    {
-      key: "Content-Security-Policy",
-      value: buildContentSecurityPolicy(),
-    },
     {
       key: "X-Content-Type-Options",
       value: "nosniff",
@@ -61,14 +57,32 @@ function buildSecurityHeaders() {
   return headers;
 }
 
+function buildDocumentSecurityHeaders() {
+  return [
+    {
+      key: "Content-Security-Policy",
+      value: buildContentSecurityPolicy(),
+    },
+    ...buildBaseSecurityHeaders(),
+  ];
+}
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactCompiler: true,
   async headers() {
     return [
       {
+        source: "/_next/static/:path*",
+        headers: buildBaseSecurityHeaders(),
+      },
+      {
+        source: "/robots.txt",
+        headers: buildBaseSecurityHeaders(),
+      },
+      {
         source: "/:path*",
-        headers: buildSecurityHeaders(),
+        headers: buildDocumentSecurityHeaders(),
       },
     ];
   },

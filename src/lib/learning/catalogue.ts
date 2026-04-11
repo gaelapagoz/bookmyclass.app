@@ -35,20 +35,20 @@ function normalizeLearningImageSrc(value: string | null): string | null {
     return value;
   }
 
-  if (value.startsWith("/images/online-learning/")) {
+  if (value.startsWith("/images/learning/")) {
     return value;
   }
 
   if (value.startsWith("/images/")) {
-    return value.replace("/images/", "/images/online-learning/");
+    return value.replace("/images/", "/images/learning/");
   }
 
   if (value.startsWith("images/")) {
-    return `/${value}`.replace("/images/", "/images/online-learning/");
+    return `/${value}`.replace("/images/", "/images/learning/");
   }
 
   if (!value.startsWith("/")) {
-    return `/images/online-learning/${value}`;
+    return `/images/learning/${value}`;
   }
 
   return value;

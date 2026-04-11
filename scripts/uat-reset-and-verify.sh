@@ -5,7 +5,7 @@ set -euo pipefail
 # Destructive: requires CONFIRM_UAT_DB_RESET=YES.
 
 APP_DIR="${APP_DIR:-/var/www/bookmyclass}"
-APP_NAME="${APP_NAME:-bookmyclass-app}"
+APP_NAME="${APP_NAME:-bookmyclass-app-uat}"
 BASE_URL="${BASE_URL:-https://uat.bookmyclass.app}"
 TARGET_TAG="${TARGET_TAG:-}"
 CONFIRM_UAT_DB_RESET="${CONFIRM_UAT_DB_RESET:-NO}"

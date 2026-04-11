@@ -5,7 +5,7 @@ EXPECTED_TAG="${1:-${EXPECTED_TAG:-}}"
 REMOTE_HOST="${REMOTE_HOST:-bookmyclass-uat}"
 REMOTE_USER="${REMOTE_USER:-deploy}"
 APP_DIR="${APP_DIR:-/var/www/bookmyclass}"
-APP_NAME="${APP_NAME:-bookmyclass-app}"
+APP_NAME="${APP_NAME:-bookmyclass-app-uat}"
 BASE_URL="${BASE_URL:-https://uat.bookmyclass.app}"
 EVIDENCE_ROOT="${EVIDENCE_ROOT:-/tmp}"
 

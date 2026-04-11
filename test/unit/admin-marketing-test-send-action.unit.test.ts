@@ -12,6 +12,10 @@ vi.mock("next/navigation", () => ({
   redirect: redirectMock,
 }));
 
+vi.mock("@/lib/security/same-origin", () => ({
+  assertSameOriginServerAction: vi.fn(async () => undefined),
+}));
+
 vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
   withScope: vi.fn((fn: (scope: { setTag: (k: string, v: string) => void; setContext: (k: string, v: unknown) => void }) => void) => {

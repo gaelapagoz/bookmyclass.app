@@ -9,8 +9,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[security-check-headers] checking response headers for $BASE_URL"
-curl -sS -I "$BASE_URL" > "$TMP_HEADERS_FILE"
+log() {
+  echo "[security-check-headers] $*"
+}
+
+fetch_headers() {
+  local url="$1"
+  curl -sS -I "$url" > "$TMP_HEADERS_FILE"
+}
 
 assert_header() {
   local header_name="$1"
@@ -22,8 +28,27 @@ assert_header() {
   fi
 }
 
+log "checking response headers for ${BASE_URL}"
+
+fetch_headers "$BASE_URL"
 assert_header "Content-Security-Policy"
 assert_header "X-Content-Type-Options"
 assert_header "Referrer-Policy"
 
-echo "[security-check-headers] required headers are present"
+fetch_headers "${BASE_URL%/}/robots.txt"
+assert_header "X-Content-Type-Options"
+assert_header "Permissions-Policy"
+assert_header "Cross-Origin-Resource-Policy"
+
+STATIC_PATH="$(curl -sS "${BASE_URL%/}" | grep -Eo '/_next/static/[^"'\'' ]+' | head -n 1 || true)"
+if [[ -n "$STATIC_PATH" ]]; then
+  fetch_headers "${BASE_URL%/}${STATIC_PATH}"
+  assert_header "X-Content-Type-Options"
+  assert_header "Permissions-Policy"
+  assert_header "Cross-Origin-Resource-Policy"
+  log "checked static asset headers at ${STATIC_PATH}"
+else
+  echo "[security-check-headers][WARN] could not resolve a _next/static asset from homepage; skipping static asset header assertion" >&2
+fi
+
+log "required headers are present on app + controlled static surfaces"

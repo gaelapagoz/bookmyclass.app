@@ -17,10 +17,17 @@ import {
   resolveBookingDraftUserRateLimitConfig,
 } from "../../src/app/api/bookings/draft/route";
 
-function buildRequest(body: object) {
+function buildRequest(body: object, headersOverride: Record<string, string> = {}) {
   return new Request("http://localhost:3000/api/bookings/draft", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      origin: "http://localhost:3000",
+      referer: "http://localhost:3000/test",
+      "x-forwarded-host": "localhost:3000",
+      "x-forwarded-proto": "http",
+      ...headersOverride,
+    },
     body: JSON.stringify(body),
   });
 }
@@ -272,6 +279,37 @@ describe("POST /api/bookings/draft", () => {
       blockDurationMs: 45_000,
     });
   });
+
+  it("rejects draft creation when Origin is cross-site", async () => {
+    const fixture = await createSessionFixture();
+    await createAuthenticatedUser("csrf.crosssite@example.test");
+
+    const response = await createDraft(
+      buildRequest(validDraftPayload(fixture), {
+        origin: "https://evil.example",
+        referer: "https://evil.example/x",
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "CSRF_ORIGIN_MISMATCH" });
+  });
+
+  it("rejects draft creation when both Origin and Referer are missing", async () => {
+    const fixture = await createSessionFixture();
+    await createAuthenticatedUser("csrf.missing@example.test");
+
+    const response = await createDraft(
+      buildRequest(validDraftPayload(fixture), {
+        origin: "",
+        referer: "",
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "CSRF_ORIGIN_MISMATCH" });
+  });
+
   it("requires authentication", async () => {
     const fixture = await createSessionFixture();
     vi.mocked(auth).mockResolvedValue(null);
@@ -484,3 +522,8 @@ describe("POST /api/bookings/draft", () => {
     expect(secondBody.draft.bookingId).toBe(firstBody.draft.bookingId);
   });
 });
+
+
+
+
+

@@ -165,22 +165,22 @@ collect_core() {
 collect_pm2() {
   if command -v pm2 >/dev/null 2>&1; then
     run_capture "$INCIDENT_DIR/pm2.status.txt" "pm2 status" pm2 status
-    run_capture "$INCIDENT_DIR/pm2.describe.bookmyclass-app.txt" "pm2 describe bookmyclass-app" pm2 describe bookmyclass-app
-    run_capture "$INCIDENT_DIR/pm2.logs.bookmyclass-app.txt" "pm2 logs bookmyclass-app" pm2 logs bookmyclass-app --lines 300 --nostream
+    run_capture "$INCIDENT_DIR/pm2.describe.bookmyclass-app-uat.txt" "pm2 describe bookmyclass-app-uat" pm2 describe bookmyclass-app-uat
+    run_capture "$INCIDENT_DIR/pm2.logs.bookmyclass-app-uat.txt" "pm2 logs bookmyclass-app-uat" pm2 logs bookmyclass-app-uat --lines 300 --nostream
     return
   fi
 
   if command -v sudo >/dev/null 2>&1 && id deploy >/dev/null 2>&1; then
     run_capture "$INCIDENT_DIR/pm2.status.txt" "pm2 status as deploy" sudo -u deploy env PM2_HOME=/home/deploy/.pm2 pm2 status
-    run_capture "$INCIDENT_DIR/pm2.describe.bookmyclass-app.txt" "pm2 describe bookmyclass-app as deploy" sudo -u deploy env PM2_HOME=/home/deploy/.pm2 pm2 describe bookmyclass-app
-    run_capture "$INCIDENT_DIR/pm2.logs.bookmyclass-app.txt" "pm2 logs bookmyclass-app as deploy" sudo -u deploy env PM2_HOME=/home/deploy/.pm2 pm2 logs bookmyclass-app --lines 300 --nostream
+    run_capture "$INCIDENT_DIR/pm2.describe.bookmyclass-app-uat.txt" "pm2 describe bookmyclass-app-uat as deploy" sudo -u deploy env PM2_HOME=/home/deploy/.pm2 pm2 describe bookmyclass-app-uat
+    run_capture "$INCIDENT_DIR/pm2.logs.bookmyclass-app-uat.txt" "pm2 logs bookmyclass-app-uat as deploy" sudo -u deploy env PM2_HOME=/home/deploy/.pm2 pm2 logs bookmyclass-app-uat --lines 300 --nostream
     return
   fi
 
   warn "pm2 not available in PATH and deploy/pm2 sudo fallback unavailable."
   echo "pm2 unavailable" >"$INCIDENT_DIR/pm2.status.txt"
-  echo "pm2 unavailable" >"$INCIDENT_DIR/pm2.describe.bookmyclass-app.txt"
-  echo "pm2 unavailable" >"$INCIDENT_DIR/pm2.logs.bookmyclass-app.txt"
+  echo "pm2 unavailable" >"$INCIDENT_DIR/pm2.describe.bookmyclass-app-uat.txt"
+  echo "pm2 unavailable" >"$INCIDENT_DIR/pm2.logs.bookmyclass-app-uat.txt"
 }
 
 collect_nginx() {

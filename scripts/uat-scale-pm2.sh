@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="${APP_NAME:-bookmyclass-app}"
+APP_NAME="${APP_NAME:-bookmyclass-app-uat}"
 TARGET_WORKERS="${TARGET_WORKERS:-}"
 BASE_URL="${BASE_URL:-https://uat.bookmyclass.app}"
 LOCAL_HEALTH_URL="${LOCAL_HEALTH_URL:-http://127.0.0.1:3000/api/health}"

@@ -13,8 +13,12 @@ Confirm these values once before first run (deployment baseline still has operat
 - `REMOTE_HOST` (default in helper scripts: `bookmyclass-uat`)
 - `REMOTE_USER` (default: `deploy`)
 - `APP_DIR` on UAT (default: `/var/www/bookmyclass`)
-- `APP_NAME` on UAT (default: `bookmyclass-app`)
+- `APP_NAME` on UAT (default: `bookmyclass-app-uat`)
 - `BASE_URL` for UAT (default: `https://uat.bookmyclass.app`)
+
+Naming note:
+- UAT PM2 app name: `bookmyclass-app-uat`
+- Production PM2 app name: `bookmyclass-app` (see deployment baseline)
 
 ## 1) Script split
 
@@ -84,7 +88,7 @@ export BOOKING_DRAFT_USER_BLOCK_DURATION_MS_LOAD=30000
 export BOOKING_DRAFT_IP_MAX_ATTEMPTS_LOAD=400
 export BOOKING_DRAFT_IP_WINDOW_MS_LOAD=60000
 export BOOKING_DRAFT_IP_BLOCK_DURATION_MS_LOAD=30000
-pm2 restart bookmyclass-app --update-env
+pm2 restart bookmyclass-app-uat --update-env
 ```
 
 When `BOOKING_DRAFT_RATE_LIMIT_MODE` is unset, app defaults remain strict production-safe values.
@@ -214,7 +218,7 @@ What deploy script does on UAT host:
 - `npx prisma migrate deploy`
 - `npx prisma generate`
 - `npm run build`
-- `pm2 restart bookmyclass-app --update-env`
+- `pm2 restart bookmyclass-app-uat --update-env`
 - `git describe --tags --exact-match`
 - health checks + PM2 status
 

@@ -71,7 +71,7 @@ describe("learning catalogue data layer", () => {
       }),
     );
     expect(programs).toHaveLength(2);
-    expect(programs[0].picture1).toBe("/images/online-learning/p1.jpg");
+    expect(programs[0].picture1).toBe("/images/learning/p1.jpg");
     expect(programs[1].picture1).toBe("https://cdn.example.com/p2.jpg");
   });
 
@@ -132,7 +132,26 @@ describe("learning catalogue data layer", () => {
       }),
     );
     expect(course?.legacyId).toBe("course-1");
-    expect(course?.thumbnail).toBe("/images/online-learning/t.jpg");
+    expect(course?.thumbnail).toBe("/images/learning/t.jpg");
+  });
+
+
+  it("preserves first-party learning thumbnails under /images/learning", async () => {
+    dbMock.learningCourse.findUnique.mockResolvedValue({
+      legacyId: "course-3",
+      title: "Core Flow",
+      description: "desc",
+      shortDescription: "short",
+      category: "Yoga",
+      categoryType: null,
+      categoryLevel: null,
+      thumbnail: "/images/learning/core-flow.jpg",
+      videoUrl: "https://www.youtube.com/watch?v=abc",
+      priority: 1,
+    });
+
+    const course = await getLearningCourseByCourseTypeAndLegacyId("Yoga", "course-3");
+    expect(course?.thumbnail).toBe("/images/learning/core-flow.jpg");
   });
 
   it("returns null for missing program or mismatched/missing course", async () => {
@@ -166,3 +185,4 @@ describe("learning catalogue data layer", () => {
     expect(mismatchedCourse).toBeNull();
   });
 });
+
