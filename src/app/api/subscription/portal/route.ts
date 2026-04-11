@@ -2,8 +2,14 @@ import * as Sentry from "@sentry/nextjs";
 import { auth } from "@/auth";
 import { createSubscriptionBillingPortalSession, getAppUrlFromStripeEnv } from "@/lib/stripe";
 import { getLatestStripeCustomerIdForUser } from "@/lib/subscription/ownership";
+import { rejectIfNotSameOrigin } from "@/lib/security/same-origin";
 
-export async function POST() {
+export async function POST(request: Request) {
+  const csrfRejection = rejectIfNotSameOrigin(request);
+  if (csrfRejection) {
+    return csrfRejection;
+  }
+
   try {
     const session = await auth();
     if (!session?.user?.id) {

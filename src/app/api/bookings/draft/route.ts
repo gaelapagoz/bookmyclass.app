@@ -4,6 +4,7 @@ import * as Sentry from "@sentry/nextjs";
 import { auth } from "../../../../auth";
 import { BookingDraftError, createPendingBookingDraft } from "../../../../lib/public-booking/booking-draft-service";
 import { createRateLimiter, getClientIpFromHeaders } from "../../../../lib/security/rate-limit";
+import { rejectIfNotSameOrigin } from "../../../../lib/security/same-origin";
 
 const draftSchema = z.object({
   serviceSlug: z.string().min(1).max(120),
@@ -282,6 +283,11 @@ function captureBookingRateLimitTriggered(input: { userId: string; ip: string })
 }
 
 export async function POST(request: Request) {
+  const csrfRejection = rejectIfNotSameOrigin(request);
+  if (csrfRejection) {
+    return csrfRejection;
+  }
+
   let body: unknown;
   try {
     body = await request.json();

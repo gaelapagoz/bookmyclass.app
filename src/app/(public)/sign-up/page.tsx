@@ -7,6 +7,7 @@ import { auth } from "@/auth";
 import { hashPassword } from "@/lib/auth/password-service";
 import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
 import { createPendingPublicRegistration } from "@/lib/auth/user-identity-service";
+import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
 type SearchParams = Promise<{
   callbackUrl?: string;
@@ -21,6 +22,8 @@ export async function registerAction(formData: FormData) {
     "auth.registerAction",
     { recordResponse: false },
     async () => {
+      await assertSameOriginServerAction();
+
       const firstName = String(formData.get("firstName") ?? "").trim();
       const lastName = String(formData.get("lastName") ?? "").trim();
       const email = String(formData.get("email") ?? "").trim().toLowerCase();

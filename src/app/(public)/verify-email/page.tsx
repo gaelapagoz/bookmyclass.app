@@ -11,6 +11,7 @@ import {
   verifyPendingRegistrationByToken,
 } from "@/lib/auth/email-verification-service";
 import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
+import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
 type SearchParams = Promise<{
   blocked?: string;
@@ -130,6 +131,8 @@ export default async function VerifyEmailPage({
       "auth.resendVerificationAction",
       { recordResponse: false },
       async () => {
+        await assertSameOriginServerAction();
+
         const parsed = resendSchema.safeParse({
           email: formData.get("email"),
           callbackUrl: formData.get("callbackUrl") ?? undefined,

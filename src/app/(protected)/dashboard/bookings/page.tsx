@@ -8,6 +8,7 @@ import {
   DashboardServiceError,
   getDashboardBookingsData,
 } from "@/lib/dashboard/dashboard-service";
+import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
 type SearchParams = Promise<{
   error?: string;
@@ -58,6 +59,8 @@ async function cancelBookingAction(formData: FormData) {
     "booking.cancelBookingAction",
     { recordResponse: false },
     async () => {
+      await assertSameOriginServerAction();
+
       const session = await requireAuth();
       const bookingId = String(formData.get("bookingId") ?? "");
       if (!bookingId) {

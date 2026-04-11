@@ -13,6 +13,7 @@ import {
   updateDashboardProfile,
 } from "@/lib/dashboard/dashboard-service";
 import { requestDashboardPasswordResetByUserId } from "@/lib/dashboard/dashboard-password-reset";
+import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
 type SearchParams = Promise<{
   profile_error?: string;
@@ -177,6 +178,8 @@ export default async function DashboardProfilePage({
       "dashboard.saveProfileAction",
       { recordResponse: false },
       async () => {
+        await assertSameOriginServerAction();
+
         const authSession = await requireAuth();
 
         try {
@@ -229,6 +232,8 @@ export default async function DashboardProfilePage({
       "dashboard.changePasswordAction",
       { recordResponse: false },
       async () => {
+        await assertSameOriginServerAction();
+
         const authSession = await requireAuth();
         const currentPassword = String(formData.get("currentPassword") ?? "");
         const newPassword = String(formData.get("newPassword") ?? "");
@@ -264,6 +269,8 @@ export default async function DashboardProfilePage({
       "dashboard.sendPasswordResetAction",
       { recordResponse: false },
       async () => {
+        await assertSameOriginServerAction();
+
         const authSession = await requireAuth();
 
         try {

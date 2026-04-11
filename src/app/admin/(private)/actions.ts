@@ -56,6 +56,7 @@ import { requireAdminSession } from "@/lib/auth/require-auth";
 import { upsertActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
 import { updateClientMessageStatus } from "@/lib/client-messages/client-message-service";
 import { normalizeMarketingContentJson } from "@/lib/marketing/marketing-renderer";
+import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 import { revalidatePath } from "next/cache";
 
 const classSchema = z.object({
@@ -585,6 +586,7 @@ type SessionManagerSession = {
 };
 
 async function assertAdminAccess(): Promise<AdminSession> {
+  await assertSameOriginServerAction();
   return requireAdminSession({ throwOnFailure: true });
 }
 

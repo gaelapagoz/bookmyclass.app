@@ -5,6 +5,7 @@ import {
   CheckoutError,
   createCheckoutSessionForBooking,
 } from "../../../../lib/public-booking/checkout-service";
+import { rejectIfNotSameOrigin } from "../../../../lib/security/same-origin";
 
 const payloadSchema = z.object({
   bookingId: z.string().min(8),
@@ -29,6 +30,11 @@ function toStatus(code: CheckoutError["code"]): number {
 }
 
 export async function POST(request: Request) {
+  const csrfRejection = rejectIfNotSameOrigin(request);
+  if (csrfRejection) {
+    return csrfRejection;
+  }
+
   let rawBody: unknown;
   try {
     rawBody = await request.json();

@@ -1,9 +1,77 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
+function buildContentSecurityPolicy() {
+  // TODO(security): tighten directives further once we capture runtime-only domain telemetry from UAT.
+  const directives = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    // Next.js + current UI patterns require inline styles in several places.
+    "style-src 'self' 'unsafe-inline'",
+    // Keep permissive enough for current runtime behavior while we harden in follow-up.
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com",
+    "font-src 'self' data:",
+    "img-src 'self' data: blob: https://static.wixstatic.com https://www.google.com",
+    "frame-src 'self' https://www.google.com https://www.youtube.com https://challenges.cloudflare.com https://checkout.stripe.com",
+    "connect-src 'self' https://challenges.cloudflare.com https://api.stripe.com https://checkout.stripe.com",
+    "form-action 'self' https://checkout.stripe.com",
+  ];
+
+  return directives.join("; ");
+}
+
+function buildSecurityHeaders() {
+  const headers = [
+    {
+      key: "Content-Security-Policy",
+      value: buildContentSecurityPolicy(),
+    },
+    {
+      key: "X-Content-Type-Options",
+      value: "nosniff",
+    },
+    {
+      key: "Referrer-Policy",
+      value: "strict-origin-when-cross-origin",
+    },
+    {
+      key: "X-Frame-Options",
+      value: "DENY",
+    },
+    {
+      key: "Permissions-Policy",
+      value: "camera=(), microphone=(), geolocation=(), payment=()",
+    },
+    {
+      key: "Cross-Origin-Resource-Policy",
+      value: "same-origin",
+    },
+  ];
+
+  // Do not enable HSTS by default in this patch.
+  if (process.env.ENABLE_HSTS === "1") {
+    headers.push({
+      key: "Strict-Transport-Security",
+      value: "max-age=31536000; includeSubDomains; preload",
+    });
+  }
+
+  return headers;
+}
+
 const nextConfig: NextConfig = {
-  /* config options here */
+  poweredByHeader: false,
   reactCompiler: true,
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: buildSecurityHeaders(),
+      },
+    ];
+  },
 };
 
 export default withSentryConfig(nextConfig, {

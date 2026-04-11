@@ -6,6 +6,7 @@ import { siteConfig } from "@/lib/site-config";
 import { createContactMessage } from "@/lib/client-messages/client-message-service";
 import { getActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
 import { getHomeAgendaTableFromSchedule } from "@/lib/public-content/home-agenda-service";
+import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
 const serviceCards = [
   {
@@ -47,6 +48,8 @@ export default async function HomePage({
 
   async function submitContactAction(formData: FormData) {
     "use server";
+
+    await assertSameOriginServerAction();
 
     const requestHeaders = await headers();
     const forwardedFor = requestHeaders.get("x-forwarded-for");

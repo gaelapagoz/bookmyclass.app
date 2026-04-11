@@ -8,6 +8,7 @@ import { auth, signIn } from "@/auth";
 import { prisma } from "@/lib/db";
 import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
 import { isInvalidCredentialsAuthError } from "@/lib/auth/auth-error-utils";
+import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
 type SearchParams = Promise<{
   callbackUrl?: string;
@@ -23,6 +24,8 @@ export async function signInAction(formData: FormData) {
     "auth.signInAction",
     { recordResponse: false },
     async () => {
+      await assertSameOriginServerAction();
+
       const email = String(formData.get("email") ?? "").trim().toLowerCase();
       const password = String(formData.get("password") ?? "");
       const callbackUrl = getSafeCallbackPath(formData.get("callbackUrl"), "/dashboard");

@@ -3,12 +3,18 @@ import * as Sentry from "@sentry/nextjs";
 import { auth } from "@/auth";
 import { CatalogCheckoutError, createCheckoutSessionForCatalogProduct } from "@/lib/public-booking/checkout-service";
 import { getStripeServerEnv } from "@/lib/payments/stripe";
+import { rejectIfNotSameOrigin } from "@/lib/security/same-origin";
 
 const checkoutSchema = z.object({
   productId: z.string().cuid("Invalid productId."),
 });
 
 export async function POST(request: Request) {
+  const csrfRejection = rejectIfNotSameOrigin(request);
+  if (csrfRejection) {
+    return csrfRejection;
+  }
+
   const session = await auth();
   if (!session?.user?.id) {
     return Response.json({ error: "Authentication required." }, { status: 401 });

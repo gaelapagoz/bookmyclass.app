@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { PasswordServiceError, resetPasswordWithToken } from "@/lib/auth/password-service";
+import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 import { TokenFromHashBridge } from "./token-from-hash-bridge";
 
 type SearchParams = Promise<{
@@ -49,6 +50,8 @@ export default async function ResetPasswordPage({
       "auth.resetPasswordAction",
       { recordResponse: false },
       async () => {
+        await assertSameOriginServerAction();
+
         const submittedToken = String(formData.get("token") ?? "").trim();
         const newPassword = String(formData.get("newPassword") ?? "");
         const confirmNewPassword = String(formData.get("confirmNewPassword") ?? "");

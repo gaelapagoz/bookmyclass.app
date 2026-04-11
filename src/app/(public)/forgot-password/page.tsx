@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { auth } from "@/auth";
 import { PasswordServiceError, requestPasswordReset } from "@/lib/auth/password-service";
+import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
 type SearchParams = Promise<{
   sent?: string;
@@ -31,6 +32,8 @@ export default async function ForgotPasswordPage({
       "auth.requestResetAction",
       { recordResponse: false },
       async () => {
+        await assertSameOriginServerAction();
+
         const email = String(formData.get("email") ?? "").trim().toLowerCase();
         if (process.env.NODE_ENV !== "production" && process.env.AUTH_DEBUG_PASSWORD_RESET === "1") {
           console.info("[forgot-password] request-entered", {

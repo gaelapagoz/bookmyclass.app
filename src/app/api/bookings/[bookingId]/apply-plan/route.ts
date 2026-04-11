@@ -6,6 +6,7 @@ import {
   BookingPaymentOptionsError,
   selectBookingPaymentOption,
 } from "../../../../../lib/public-booking/booking-payment-options-service";
+import { rejectIfNotSameOrigin } from "../../../../../lib/security/same-origin";
 
 const BOOKING_ID_PATTERN = /^[a-z0-9]{8,}$/i;
 
@@ -50,6 +51,11 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ bookingId: string }> },
 ) {
+  const csrfRejection = rejectIfNotSameOrigin(request);
+  if (csrfRejection) {
+    return csrfRejection;
+  }
+
   const { bookingId } = await context.params;
 
   if (!BOOKING_ID_PATTERN.test(bookingId)) {

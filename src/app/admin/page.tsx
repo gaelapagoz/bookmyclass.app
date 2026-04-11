@@ -10,7 +10,9 @@ import { isAdminLoginCaptchaEnforced, getAdminLoginAbuseState } from "@/lib/auth
 import { isAdminRole } from "@/lib/auth/admin-access";
 import { getAdminLoginCaptchaSiteKey } from "@/lib/auth/admin-login-captcha";
 import { isInvalidCredentialsAuthError } from "@/lib/auth/auth-error-utils";
+import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
 import { getClientIpFromHeaders } from "@/lib/security/rate-limit";
+import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
 type SearchParams = Promise<{
   callbackUrl?: string;
@@ -34,9 +36,11 @@ export async function adminSignInAction(formData: FormData) {
     "auth.adminSignInAction",
     { recordResponse: false },
     async () => {
+      await assertSameOriginServerAction();
+
       const email = String(formData.get("email") ?? "").trim().toLowerCase();
       const password = String(formData.get("password") ?? "");
-      const callbackUrl = String(formData.get("callbackUrl") ?? "/admin/dashboard");
+      const callbackUrl = getSafeCallbackPath(formData.get("callbackUrl"), "/admin/dashboard");
       const requestHeaders = await headers();
       const ip = getClientIpFromHeaders(requestHeaders);
       const captchaToken = resolveCaptchaToken(formData);
@@ -135,7 +139,8 @@ export default async function AdminEntryPage({ searchParams }: { searchParams: S
     redirect("/admin/dashboard");
   }
 
-  const { callbackUrl = "/admin/dashboard", error, guard } = await searchParams;
+  const { callbackUrl: rawCallbackUrl = "/admin/dashboard", error, guard } = await searchParams;
+  const callbackUrl = getSafeCallbackPath(rawCallbackUrl, "/admin/dashboard");
   const errorMessage = getErrorMessage(error, guard);
   const captchaSiteKey = getAdminLoginCaptchaSiteKey();
   const shouldRenderCaptcha = guard === "captcha_required" && Boolean(captchaSiteKey);

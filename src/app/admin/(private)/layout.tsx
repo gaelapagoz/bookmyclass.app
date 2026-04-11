@@ -2,12 +2,14 @@ import { signOut } from "@/auth";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import { requireAdminSession } from "@/lib/auth/require-auth";
 import { getUnreadClientMessagesCount } from "@/lib/client-messages/client-message-service";
+import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
 export default async function AdminPrivateLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   async function handleAdminSignOut(_formData: FormData) {
     "use server";
+    await assertSameOriginServerAction();
     await signOut({ redirectTo: "/admin" });
   }
 
