@@ -41,7 +41,9 @@ If a setup/runbook file conflicts with this file, treat this file as authoritati
 4. Run:
    - E2E tests
    - load testing (k6)
+   - security baseline testing (local OWASP ZAP baseline against UAT)
 5. If successful → deploy SAME tag to production
 
 Rule:
 - Never deploy directly to production from main
+

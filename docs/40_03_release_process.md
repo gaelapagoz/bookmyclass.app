@@ -12,6 +12,7 @@ There is no automated CI/CD deployment pipeline.
 - main is integration state, not deployable state
 - Only git tags (vX.Y.Z) are deployable
 - UAT must validate a release before production
+- UAT security baseline (OWASP ZAP baseline) is a mandatory validation gate before promotion
 - Production must always run a previously validated tag
 - Never deploy directly from main to production
 
@@ -26,6 +27,7 @@ There is no automated CI/CD deployment pipeline.
    - manual flows
    - e2e (if applicable)
    - load testing (k6, when applicable)
+   - security baseline testing (OWASP ZAP baseline against UAT)
 5. Promote the same validated tag to production
 
 Rule:
@@ -212,3 +214,8 @@ Defined in:
 - .github/workflows/ci.yml
 - scripts/verify-production-readiness.sh
 - docs/50_02_bookmyclass_server_setup_updated.md
+- docs/50_13_uat_security_operator_runbook.md
+- docs/30_03_security_testing_checklist.md
+
+
+

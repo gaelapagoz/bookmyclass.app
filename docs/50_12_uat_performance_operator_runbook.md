@@ -1,4 +1,4 @@
-﻿# UAT Performance + Manual CD Runbook
+# UAT Performance + Manual CD Runbook
 
 Purpose: self-serve operator flow with strict separation:
 
@@ -32,6 +32,11 @@ Local k6 scripts:
 - `scripts/local-uat-run-t750.sh`
 - `scripts/local-uat-run-t1000.sh`
 - `scripts/local-uat-collect-metrics.sh`
+
+Local security scripts:
+
+- `scripts/local-uat-security-baseline.sh`
+- `scripts/local-uat-security-collect-metrics.sh`
 
 Manual CD scripts (run from local machine via SSH):
 
@@ -173,6 +178,7 @@ Gate rule:
 
 - If a stage fails (non-zero exit code) or shows unacceptable error/latency metrics, stop ramp-up, collect metrics, and investigate before continuing.
 - Do not jump directly to higher stages unless a deliberate incident drill requires it.
+
 ## 4) Manual CD flow (tag-only)
 
 ### Sequence
@@ -182,6 +188,7 @@ Gate rule:
 3. Wait for CI and E2E to pass.
 4. Manually deploy that exact tag to UAT.
 5. Manually verify UAT is on that exact tag.
+6. Run local UAT security baseline and review normalized summary (`docs/50_13_uat_security_operator_runbook.md`).
 
 ### A. Manual deploy to UAT
 
@@ -266,6 +273,9 @@ TARGET_TAG=v0.3.1 bash scripts/uat-deploy-tag.sh
 
 # 9) verify UAT is running that tag
 EXPECTED_TAG=v0.3.1 bash scripts/uat-verify-tag.sh
+
+# 10) run local UAT security baseline
+BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-security-baseline.sh
 ```
 
 ## 6) Safety rules
@@ -274,6 +284,7 @@ EXPECTED_TAG=v0.3.1 bash scripts/uat-verify-tag.sh
 - Deploy and validate tags only.
 - Keep booking and entitlement validation server-side.
 - Keep k6 load generation local so UAT host measurements are not distorted by local load generator CPU usage.
+- Treat local UAT security baseline as an explicit UAT release gate before production promotion.
 
 ## 7) Manual configuration
 

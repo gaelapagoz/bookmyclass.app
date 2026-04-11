@@ -48,3 +48,26 @@ next-env.d.ts
 !.env.e2e.example
 
 /logs
+# -----------------------------------
+# Security / ZAP artifacts
+# -----------------------------------
+
+# ZAP reports
+zap-baseline-report.*
+zap-full-report.*
+zap-*.html
+zap-*.json
+zap-*.xml
+zap-*.md
+
+# ZAP automation files (generated)
+zap.yaml
+zap-*.yaml
+
+# Local security run artifacts
+/tmp/local-uat-security-*
+/tmp/uat-security-*
+
+# Any generic security output folders
+security-reports/
+security-output/
