@@ -132,7 +132,7 @@ function collectMonthAvailabilityCandidates(serviceSlug, maxCandidates) {
     return [];
   }
 
-  const monthSpan = Math.max(1, Number(__ENV.BOOKING_CANDIDATE_MONTH_SPAN || 2));
+  const monthSpan = Math.max(1, Number(__ENV.BOOKING_CANDIDATE_MONTH_SPAN || 12));
   const maxDates = Math.max(1, Number(__ENV.BOOKING_CANDIDATE_MAX_DATES || Math.max(6, maxCandidates)));
   const collectionMultiplier = Math.max(
     2,
@@ -442,13 +442,19 @@ export function resolveBookingSessionCandidatePool(input) {
   const liveAvailableSessionIds = uniquePreservingOrder(
     [...nearest, ...monthAvailability].map((candidate) => candidate.id),
   );
+  const liveAvailableSet = new Set(liveAvailableSessionIds);
+  const includeStaleSeedIds =
+    String(__ENV.BOOKING_ALLOW_STALE_SEEDED_SESSION_IDS || "")
+      .trim()
+      .toLowerCase() === "1";
   const seeded = collectSeedSessionCandidates(input.seed, maxCandidates).map((sessionId) => ({
     id: sessionId,
     source: "seed",
     dateKey: "",
     availableSpots: 1,
     capacity: 1,
-  }));
+  }))
+    .filter((candidate) => includeStaleSeedIds || liveAvailableSet.has(candidate.id));
   const merged = mergeByBestScore([...nearest, ...monthAvailability, ...seeded]);
   const { active } = splitCandidatesByExclusion(merged, input.flowTag || "booking_common");
   const ranked = rankCandidatesByHeadroom(active);
@@ -522,9 +528,11 @@ export function createDraftWithSessionFallback(input) {
   let lastSkippedCode = "";
   let candidates = uniquePreservingOrder(input.sessionCandidates);
   const excludedSessionIds = new Set();
+  const stageProfile = String(__ENV.STAGE_PROFILE || "").trim().toLowerCase();
+  const defaultRefreshMax = stageProfile.startsWith("t") || stageProfile === "soak1000" ? 8 : 4;
   const maxRefreshAttempts = Math.max(
     1,
-    Math.floor(parsePositiveNumber(__ENV.BOOKING_CANDIDATE_REFRESH_MAX, 4)),
+    Math.floor(parsePositiveNumber(__ENV.BOOKING_CANDIDATE_REFRESH_MAX, defaultRefreshMax)),
   );
   let refreshAttemptCount = 0;
 

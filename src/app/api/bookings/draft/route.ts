@@ -33,7 +33,20 @@ function parsePositiveIntegerEnv(envName: string, fallback: number): number {
   return parsed;
 }
 
+function isLoadWindowRateLimitModeEnabled() {
+  const mode = (process.env.BOOKING_DRAFT_RATE_LIMIT_MODE || "").trim().toLowerCase();
+  return mode === "load" || mode === "load_test";
+}
+
 export function resolveBookingDraftUserRateLimitConfig() {
+  if (isLoadWindowRateLimitModeEnabled()) {
+    return {
+      maxAttempts: parsePositiveIntegerEnv("BOOKING_DRAFT_USER_MAX_ATTEMPTS_LOAD", 200),
+      windowMs: parsePositiveIntegerEnv("BOOKING_DRAFT_USER_WINDOW_MS_LOAD", 60 * 1000),
+      blockDurationMs: parsePositiveIntegerEnv("BOOKING_DRAFT_USER_BLOCK_DURATION_MS_LOAD", 30 * 1000),
+    };
+  }
+
   return {
     maxAttempts: parsePositiveIntegerEnv("BOOKING_DRAFT_USER_MAX_ATTEMPTS", 8),
     windowMs: parsePositiveIntegerEnv("BOOKING_DRAFT_USER_WINDOW_MS", 60 * 1000),
@@ -46,6 +59,14 @@ const bookingDraftUserRateLimiter = createRateLimiter({
 });
 
 export function resolveBookingDraftIpRateLimitConfig() {
+  if (isLoadWindowRateLimitModeEnabled()) {
+    return {
+      maxAttempts: parsePositiveIntegerEnv("BOOKING_DRAFT_IP_MAX_ATTEMPTS_LOAD", 400),
+      windowMs: parsePositiveIntegerEnv("BOOKING_DRAFT_IP_WINDOW_MS_LOAD", 60 * 1000),
+      blockDurationMs: parsePositiveIntegerEnv("BOOKING_DRAFT_IP_BLOCK_DURATION_MS_LOAD", 30 * 1000),
+    };
+  }
+
   return {
     maxAttempts: parsePositiveIntegerEnv("BOOKING_DRAFT_IP_MAX_ATTEMPTS", 20),
     windowMs: parsePositiveIntegerEnv("BOOKING_DRAFT_IP_WINDOW_MS", 60 * 1000),

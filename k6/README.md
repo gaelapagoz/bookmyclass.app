@@ -13,7 +13,7 @@ This suite fails fast if `BASE_URL` does not look like UAT/staging/local (`uat`,
 
 ## Files
 
-- `config/stages.js`: smoke, smoke_booking_safe, t100, t250, t500, t750, t1000, soak1000
+- `config/stages.js`: smoke, smoke_booking_safe, t100, t100_5m, t250, t250_5m, t500, t750, t1000, soak1000
 - `config/thresholds.js`: global and scenario-level thresholds
 - `data/users.csv`: seeded test users
 - `data/services.json`: optional service/session seed values
@@ -25,7 +25,7 @@ This suite fails fast if `BASE_URL` does not look like UAT/staging/local (`uat`,
 ## Required env vars
 
 - `BASE_URL` (required)
-- `STAGE_PROFILE` (required): `smoke`, `smoke_booking_safe`, `t100`, `t250`, `t500`, `t750`, `t1000`, `soak1000`
+- `STAGE_PROFILE` (required): `smoke`, `smoke_booking_safe`, `t100`, `t100_5m`, `t250`, `t250_5m`, `t500`, `t750`, `t1000`, `soak1000`
 
 ## Optional env vars
 
@@ -52,6 +52,10 @@ This suite fails fast if `BASE_URL` does not look like UAT/staging/local (`uat`,
 If `SESSION_ID` is not set, booking scenarios use the discovered seed pool from `k6/data/services.json`:
 - `sessionIds` (preferred, deterministic modulo by VU/ITER)
 - `sessionId` (legacy fallback)
+
+Seed safety:
+- By default, seeded session IDs are only used when they still exist in live availability for the service.
+- Set `BOOKING_ALLOW_STALE_SEEDED_SESSION_IDS=1` only for explicit debugging drills.
 
 Run note:
 - Prefer `k6:discover:uat` so seed data includes a real multi-session pool.
@@ -95,9 +99,19 @@ t100:
 k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t100 k6/main.js
 ```
 
+t100_5m:
+```bash
+k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t100_5m k6/main.js
+```
+
 t250:
 ```bash
 k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t250 k6/main.js
+```
+
+t250_5m:
+```bash
+k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t250_5m k6/main.js
 ```
 
 t500:

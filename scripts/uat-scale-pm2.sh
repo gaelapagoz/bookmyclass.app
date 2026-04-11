@@ -8,7 +8,12 @@ LOCAL_HEALTH_URL="${LOCAL_HEALTH_URL:-http://127.0.0.1:3000/api/health}"
 EVIDENCE_ROOT="${EVIDENCE_ROOT:-/tmp}"
 
 if [[ -z "$TARGET_WORKERS" ]]; then
-  TARGET_WORKERS="$(nproc)"
+  cpu_count="$(nproc)"
+  if [[ "$cpu_count" -gt 16 ]]; then
+    TARGET_WORKERS="16"
+  else
+    TARGET_WORKERS="$cpu_count"
+  fi
 fi
 
 [[ "$TARGET_WORKERS" =~ ^[0-9]+$ ]] || { echo "TARGET_WORKERS must be an integer" >&2; exit 1; }

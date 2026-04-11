@@ -2,9 +2,11 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-https://uat.bookmyclass.app}"
-STAGE_PROFILE="t100"
+STAGE_PROFILE="${STAGE_PROFILE:-t100}"
 K6_SCENARIO_SET="${K6_SCENARIO_SET:-full_smoke}"
 EVIDENCE_ROOT="${EVIDENCE_ROOT:-/tmp}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 timestamp_utc="$(date -u +%Y%m%dT%H%M%SZ)"
 run_dir="${EVIDENCE_ROOT%/}/local-uat-perf-${timestamp_utc}-${STAGE_PROFILE}"
@@ -14,6 +16,13 @@ if ! command -v k6 >/dev/null 2>&1; then
   echo "k6 is required on local machine." >&2
   exit 1
 fi
+
+(
+  cd "$REPO_ROOT"
+  BASE_URL="$BASE_URL" npm run k6:discover:uat 2>&1 | tee "$run_dir/k6-discover.log"
+  cp k6/data/services.json "$run_dir/discovered-services.json"
+  cp k6/data/products.json "$run_dir/discovered-products.json"
+)
 
 start_epoch="$(date +%s)"
 set +e

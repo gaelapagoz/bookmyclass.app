@@ -58,7 +58,7 @@ Notes:
 ### B. PM2 worker sizing
 
 ```bash
-TARGET_WORKERS=4 bash scripts/uat-scale-pm2.sh
+TARGET_WORKERS="$(($(nproc)>16?16:$(nproc)))" bash scripts/uat-scale-pm2.sh
 ```
 
 Validation target:
@@ -67,7 +67,28 @@ Validation target:
 - health checks are 200
 - PM2 internal IDs are irrelevant; worker count and mode are what matter
 
+### C. Load-window booking draft rate limits
+
+Enable load-window mode on UAT before performance stages:
+
+```bash
+export BOOKING_DRAFT_RATE_LIMIT_MODE=load
+export BOOKING_DRAFT_USER_MAX_ATTEMPTS_LOAD=200
+export BOOKING_DRAFT_USER_WINDOW_MS_LOAD=60000
+export BOOKING_DRAFT_USER_BLOCK_DURATION_MS_LOAD=30000
+export BOOKING_DRAFT_IP_MAX_ATTEMPTS_LOAD=400
+export BOOKING_DRAFT_IP_WINDOW_MS_LOAD=60000
+export BOOKING_DRAFT_IP_BLOCK_DURATION_MS_LOAD=30000
+pm2 restart bookmyclass-app --update-env
+```
+
+When `BOOKING_DRAFT_RATE_LIMIT_MODE` is unset, app defaults remain strict production-safe values.
+
 ## 3) Local k6 flow
+
+Mandatory rule:
+- Before each local stage, run local discovery against UAT to refresh `k6/data/services.json` and `k6/data/products.json`.
+- `scripts/local-uat-run-smoke.sh`, `scripts/local-uat-run-t100.sh`, and `scripts/local-uat-run-t250.sh` enforce this automatically before `k6 run`.
 
 ### A. Smoke
 
@@ -78,13 +99,13 @@ BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-smoke.sh
 ### B. t100
 
 ```bash
-BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-t100.sh
+BASE_URL=https://uat.bookmyclass.app STAGE_PROFILE=t100_5m bash scripts/local-uat-run-t100.sh
 ```
 
 ### C. t250
 
 ```bash
-BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-t250.sh
+BASE_URL=https://uat.bookmyclass.app STAGE_PROFILE=t250_5m bash scripts/local-uat-run-t250.sh
 ```
 
 ### D. t500
@@ -109,6 +130,9 @@ Each local run stores:
 
 - `k6-output.log`
 - `k6-summary.json`
+- `k6-discover.log`
+- `discovered-services.json`
+- `discovered-products.json`
 - `run-meta.env`
 - `exit-code.txt`
 - `quick-summary.txt`
@@ -139,8 +163,8 @@ Summary output includes:
 Use this stage order and only continue when the previous stage is healthy:
 
 1. `smoke`
-2. `t100`
-3. `t250`
+2. `t100_5m`
+3. `t250_5m`
 4. `t500`
 5. `t750`
 6. `t1000`
@@ -217,16 +241,16 @@ Verification checks:
 CONFIRM_UAT_DB_RESET=YES TARGET_TAG=v0.3.0 bash scripts/uat-reset-and-verify.sh
 
 # 2) scale PM2
-TARGET_WORKERS=4 bash scripts/uat-scale-pm2.sh
+TARGET_WORKERS="$(($(nproc)>16?16:$(nproc)))" bash scripts/uat-scale-pm2.sh
 
 # 3) local smoke
 BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-smoke.sh
 
 # 4) local t100
-BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-t100.sh
+BASE_URL=https://uat.bookmyclass.app STAGE_PROFILE=t100_5m bash scripts/local-uat-run-t100.sh
 
 # 5) local t250
-BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-t250.sh
+BASE_URL=https://uat.bookmyclass.app STAGE_PROFILE=t250_5m bash scripts/local-uat-run-t250.sh
 
 # 6) local t500 (optional progression)
 BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-t500.sh
@@ -251,4 +275,33 @@ EXPECTED_TAG=v0.3.1 bash scripts/uat-verify-tag.sh
 - Keep booking and entitlement validation server-side.
 - Keep k6 load generation local so UAT host measurements are not distorted by local load generator CPU usage.
 
+## 7) Manual configuration
 
+Use this on the **UAT host** (manual, tag-based):
+
+```bash
+cd /var/www/bookmyclass-uat
+git fetch --all --tags
+git checkout v0.2.37-rc.3   # or your target UAT tag
+npm ci
+npx prisma migrate deploy
+npx prisma generate
+
+# App baseline seed
+npm run prisma:seed
+
+# k6/UAT load-test seed (optional but usually needed for smoke/t100 flows)
+set -a && . ./.env && set +a
+UAT_K6_SEED=1 npm run db:seed:uat:k6
+# optional server-side discover (local discover before each run is still mandatory)
+BASE_URL=https://uat.bookmyclass.app npm run k6:discover:uat
+```
+
+If you also want a full destructive reset first, run:
+
+```bash
+npx prisma migrate reset --force
+npm run prisma:seed
+```
+
+Use a **tag checkout only** for UAT (not `main`).

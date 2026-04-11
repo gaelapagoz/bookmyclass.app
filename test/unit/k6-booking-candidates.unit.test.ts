@@ -85,14 +85,35 @@ describe("k6 booking candidates helpers", () => {
       maxCandidates: 5,
     });
 
-    expect(candidates).toHaveLength(5);
+    expect(candidates).toHaveLength(4);
     expect(candidates[0]).toBe("slot-nearest-1");
-    expect(candidates[candidates.length - 1]).toBe("seed-1");
     expect(candidates).toContain("slot-nearest-2");
     expect(candidates).toContain("slot-month-1");
     expect(candidates).toContain("slot-month-2");
+    expect(candidates).not.toContain("seed-1");
   });
 
+
+  it("can include stale seeded sessions only when explicitly enabled", async () => {
+    (globalThis as unknown as { __ENV?: Record<string, string> }).__ENV = {
+      BOOKING_CANDIDATE_MONTH_SPAN: "1",
+      BOOKING_CANDIDATE_MAX_DATES: "1",
+      BOOKING_ALLOW_STALE_SEEDED_SESSION_IDS: "1",
+    };
+
+    getMock
+      .mockReturnValueOnce(mockResponse(200, { next: null }))
+      .mockReturnValueOnce(mockResponse(200, { days: [] }));
+
+    const { resolveBookingSessionCandidates } = await import("../../k6/lib/booking-candidates.js");
+    const candidates = resolveBookingSessionCandidates({
+      serviceSlug: "vinyasa-yoga",
+      seed: { sessionIds: ["seed-1"] },
+      maxCandidates: 1,
+    });
+
+    expect(candidates).toEqual(["seed-1"]);
+  });
   it("rotates candidate priority deterministically per flow+actor", async () => {
     const { rotateSessionCandidatesForActor } = await import("../../k6/lib/booking-candidates.js");
 

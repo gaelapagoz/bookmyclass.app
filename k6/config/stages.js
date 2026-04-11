@@ -2,7 +2,9 @@ const PROFILE_TOTAL_RATES = {
   smoke: 20,
   smoke_booking_safe: 13,
   t100: 100,
+  t100_5m: 100,
   t250: 250,
+  t250_5m: 250,
   t500: 500,
   t750: 750,
   t1000: 1000,
@@ -25,10 +27,20 @@ const PROFILE_STAGE_BUILDERS = {
     { duration: "10m", target: Math.max(1, rate) },
     { duration: "5m", target: 0 },
   ],
+  t100_5m: (rate) => [
+    { duration: "1m", target: Math.max(1, Math.round(rate * 0.6)) },
+    { duration: "3m", target: Math.max(1, rate) },
+    { duration: "1m", target: 0 },
+  ],
   t250: (rate) => [
     { duration: "5m", target: Math.max(1, Math.round(rate * 0.6)) },
     { duration: "15m", target: Math.max(1, rate) },
     { duration: "5m", target: 0 },
+  ],
+  t250_5m: (rate) => [
+    { duration: "1m", target: Math.max(1, Math.round(rate * 0.6)) },
+    { duration: "3m", target: Math.max(1, rate) },
+    { duration: "1m", target: 0 },
   ],
   t500: (rate) => [
     { duration: "8m", target: Math.max(1, Math.round(rate * 0.6)) },

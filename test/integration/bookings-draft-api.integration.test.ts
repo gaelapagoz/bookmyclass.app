@@ -173,13 +173,20 @@ async function createAuthenticatedUser(email: string) {
 
 describe("POST /api/bookings/draft", () => {
   beforeEach(async () => {
+    delete process.env.BOOKING_DRAFT_RATE_LIMIT_MODE;
     vi.mocked(auth).mockResolvedValue(null);
     delete process.env.BOOKING_DRAFT_IP_MAX_ATTEMPTS;
     delete process.env.BOOKING_DRAFT_IP_WINDOW_MS;
     delete process.env.BOOKING_DRAFT_IP_BLOCK_DURATION_MS;
+    delete process.env.BOOKING_DRAFT_IP_MAX_ATTEMPTS_LOAD;
+    delete process.env.BOOKING_DRAFT_IP_WINDOW_MS_LOAD;
+    delete process.env.BOOKING_DRAFT_IP_BLOCK_DURATION_MS_LOAD;
     delete process.env.BOOKING_DRAFT_USER_MAX_ATTEMPTS;
     delete process.env.BOOKING_DRAFT_USER_WINDOW_MS;
     delete process.env.BOOKING_DRAFT_USER_BLOCK_DURATION_MS;
+    delete process.env.BOOKING_DRAFT_USER_MAX_ATTEMPTS_LOAD;
+    delete process.env.BOOKING_DRAFT_USER_WINDOW_MS_LOAD;
+    delete process.env.BOOKING_DRAFT_USER_BLOCK_DURATION_MS_LOAD;
     await resetDb();
   });
 
@@ -227,6 +234,44 @@ describe("POST /api/bookings/draft", () => {
     });
   });
 
+
+  it("uses load-window-safe defaults when BOOKING_DRAFT_RATE_LIMIT_MODE=load", () => {
+    process.env.BOOKING_DRAFT_RATE_LIMIT_MODE = "load";
+
+    expect(resolveBookingDraftIpRateLimitConfig()).toEqual({
+      maxAttempts: 400,
+      windowMs: 60_000,
+      blockDurationMs: 30_000,
+    });
+
+    expect(resolveBookingDraftUserRateLimitConfig()).toEqual({
+      maxAttempts: 200,
+      windowMs: 60_000,
+      blockDurationMs: 30_000,
+    });
+  });
+
+  it("accepts explicit load-window env overrides when BOOKING_DRAFT_RATE_LIMIT_MODE=load", () => {
+    process.env.BOOKING_DRAFT_RATE_LIMIT_MODE = "load";
+    process.env.BOOKING_DRAFT_IP_MAX_ATTEMPTS_LOAD = "500";
+    process.env.BOOKING_DRAFT_IP_WINDOW_MS_LOAD = "65000";
+    process.env.BOOKING_DRAFT_IP_BLOCK_DURATION_MS_LOAD = "45000";
+    process.env.BOOKING_DRAFT_USER_MAX_ATTEMPTS_LOAD = "250";
+    process.env.BOOKING_DRAFT_USER_WINDOW_MS_LOAD = "65000";
+    process.env.BOOKING_DRAFT_USER_BLOCK_DURATION_MS_LOAD = "45000";
+
+    expect(resolveBookingDraftIpRateLimitConfig()).toEqual({
+      maxAttempts: 500,
+      windowMs: 65_000,
+      blockDurationMs: 45_000,
+    });
+
+    expect(resolveBookingDraftUserRateLimitConfig()).toEqual({
+      maxAttempts: 250,
+      windowMs: 65_000,
+      blockDurationMs: 45_000,
+    });
+  });
   it("requires authentication", async () => {
     const fixture = await createSessionFixture();
     vi.mocked(auth).mockResolvedValue(null);

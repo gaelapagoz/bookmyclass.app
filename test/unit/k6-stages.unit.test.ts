@@ -29,4 +29,20 @@ describe("k6 stage config", () => {
       { duration: "1m", target: 0 },
     ]);
   });
+  it("supports 5-minute validation profiles for t100 and t250", () => {
+    const t100Config = buildArrivalConfig("t100_5m", "booking_checkout");
+    const t250Config = buildArrivalConfig("t250_5m", "booking_checkout");
+
+    expect(t100Config.stages).toEqual([
+      { duration: "1m", target: 9 },
+      { duration: "3m", target: 15 },
+      { duration: "1m", target: 0 },
+    ]);
+
+    expect(t250Config.stages).toEqual([
+      { duration: "1m", target: 23 },
+      { duration: "3m", target: 38 },
+      { duration: "1m", target: 0 },
+    ]);
+  });
 });
