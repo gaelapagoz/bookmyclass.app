@@ -81,11 +81,12 @@ test("critical admin CRUD flows", async ({ page }) => {
   await page.getByRole("button", { name: "Save session" }).click();
 
   await expect(page).toHaveURL(/\/admin\/sessions/);
-  const seededWeek = new Date();
-  seededWeek.setDate(seededWeek.getDate() + 3);
-  await page.goto(`/admin/sessions?week=${toDateInput(seededWeek)}`);
-  const sessionLink = page.locator("a[href*='\/admin\/sessions/'][href$='/edit']").first();
+  await page.goto(`/admin/sessions?week=${toDateInput(sessionStart)}`);
+  const sessionLink = page
+    .locator("a[href*='\/admin\/sessions/'][href$='/edit']")
+    .filter({ hasText: sessionTitle });
   await expect(sessionLink).toBeVisible();
+  await expect(sessionLink).toHaveCount(1);
   await sessionLink.click();
 
   await page.getByLabel("Title").fill(updatedSessionTitle);

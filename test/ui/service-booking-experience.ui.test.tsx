@@ -55,11 +55,11 @@ describe("ServiceBookingExperience", () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockImplementation(async (input) => {
       const url = String(input);
 
-      if (url.includes("/slots?date=2026-04-11")) {
+      if (url.includes("/slots?date=2099-04-11")) {
         return {
           ok: true,
           json: async () => ({
-            date: "2026-04-11",
+            date: "2099-04-11",
             timezone: "Europe/Brussels",
             slots: [],
           }),
@@ -69,12 +69,12 @@ describe("ServiceBookingExperience", () => {
       return {
         ok: true,
         json: async () => ({
-          date: "2026-04-10",
+          date: "2099-04-10",
           timezone: "Europe/Brussels",
           slots: [
             {
               id: "slot-1",
-              date: "2026-04-10",
+              date: "2099-04-10",
               startTime: "18:00",
               endTime: "19:00",
               capacity: 12,
@@ -103,16 +103,16 @@ describe("ServiceBookingExperience", () => {
             location: "Studio Brussels",
           },
         }}
-        initialMonthKey="2026-04"
+        initialMonthKey="2099-04"
         initialAvailabilityDays={[
-          { date: "2026-04-10", totalSlots: 1, availableSlots: 1, hasAvailability: true },
-          { date: "2026-04-11", totalSlots: 0, availableSlots: 0, hasAvailability: false },
+          { date: "2099-04-10", totalSlots: 1, availableSlots: 1, hasAvailability: true },
+          { date: "2099-04-11", totalSlots: 1, availableSlots: 0, hasAvailability: true },
         ]}
-        initialSelectedDate="2026-04-10"
+        initialSelectedDate="2099-04-10"
         initialSlots={[
           {
             id: "slot-1",
-            date: "2026-04-10",
+            date: "2099-04-10",
             startTime: "18:00",
             endTime: "19:00",
             capacity: 12,
@@ -123,13 +123,13 @@ describe("ServiceBookingExperience", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Select 2026-04-11" }));
+    await userEvent.click(screen.getByRole("button", { name: "Select 2099-04-11" }));
 
     await waitFor(() => {
       expect(screen.getByText("No availability on this date.")).toBeInTheDocument();
     });
 
-    expect(fetchSpy).toHaveBeenCalledWith("/api/services/vinyasa-yoga/slots?date=2026-04-11");
+    expect(fetchSpy).toHaveBeenCalledWith("/api/services/vinyasa-yoga/slots?date=2099-04-11");
   });
 
   it("check next availability updates selected day and slot list", async () => {
