@@ -23,7 +23,7 @@ describe("GET /api/courses", () => {
           category: "Yoga",
           categoryType: "Flow",
           categoryLevel: "Beginner",
-          thumbnail: "/images/zeta.jpg",
+          thumbnail: "/images/learning/zeta.jpg",
           videoUrl: "https://www.youtube.com/watch?v=zeta",
           priority: 2,
         },
@@ -35,7 +35,7 @@ describe("GET /api/courses", () => {
           category: "Yoga",
           categoryType: "Flow",
           categoryLevel: "Beginner",
-          thumbnail: "/images/alpha.jpg",
+          thumbnail: "/images/learning/alpha.jpg",
           videoUrl: "https://www.youtube.com/watch?v=alpha",
           priority: 1,
         },
@@ -47,7 +47,7 @@ describe("GET /api/courses", () => {
           category: "Yoga",
           categoryType: "Flow",
           categoryLevel: "Intermediate",
-          thumbnail: "/images/beta.jpg",
+          thumbnail: "/images/learning/beta.jpg",
           videoUrl: "https://www.youtube.com/watch?v=beta",
           priority: 1,
         },
@@ -69,9 +69,34 @@ describe("GET /api/courses", () => {
       Category: "Yoga",
       "Category Type": "Flow",
       "Category Level": "Beginner",
-      Thumbnail: "/images/alpha.jpg",
+      Thumbnail: "/images/learning/alpha.jpg",
       VideoURL: "https://www.youtube.com/watch?v=alpha",
       Priority: 1,
+    });
+  });
+
+  it("filters invalid thumbnail paths out of the API response", async () => {
+    await prisma.learningCourse.create({
+      data: {
+        legacyId: "c4",
+        title: "Gamma",
+        description: "desc gamma",
+        shortDescription: "short gamma",
+        category: "Yoga",
+        categoryType: "Flow",
+        categoryLevel: "Advanced",
+        thumbnail: "/images/gamma.jpg",
+        videoUrl: "https://www.youtube.com/watch?v=gamma",
+        priority: 3,
+      },
+    });
+
+    const response = await getCourses();
+    const body = (await response.json()) as Array<Record<string, unknown>>;
+    const course = body.find((entry) => entry.ID === "c4");
+
+    expect(course).toMatchObject({
+      Thumbnail: null,
     });
   });
 

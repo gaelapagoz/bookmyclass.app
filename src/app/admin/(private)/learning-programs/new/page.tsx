@@ -64,15 +64,27 @@ export default async function AdminLearningProgramCreatePage({ searchParams }: {
           </label>
           <label className="block text-sm text-[#334155]">
             Picture1
-            <input name="picture1" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
+            <input
+              name="picture1"
+              placeholder="/images/learning/example.jpg"
+              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+            />
           </label>
           <label className="block text-sm text-[#334155]">
             Picture2
-            <input name="picture2" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
+            <input
+              name="picture2"
+              placeholder="/images/learning/example.jpg"
+              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+            />
           </label>
           <label className="block text-sm text-[#334155]">
             Picture3
-            <input name="picture3" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
+            <input
+              name="picture3"
+              placeholder="/images/learning/example.jpg"
+              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+            />
           </label>
         </div>
 

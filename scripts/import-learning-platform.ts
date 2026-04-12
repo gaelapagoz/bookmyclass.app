@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import "dotenv/config";
 import prisma from "../src/lib/db";
+import { isLearningImagePath, normalizeLearningImagePath } from "../src/lib/learning/image-paths";
 
 export type LearningProgramInput = {
   legacyId: string;
@@ -106,6 +107,11 @@ function pickFirstDefined(record: Record<string, unknown>, keys: string[]): unkn
   return undefined;
 }
 
+function asOptionalLearningImage(value: unknown): string | undefined {
+  const normalized = normalizeLearningImagePath(asOptionalString(value));
+  return normalized ?? undefined;
+}
+
 export function parsePayload(raw: unknown): { payload: LearningImportPayload | null; errors: string[] } {
   if (!isRecord(raw)) {
     return {
@@ -156,6 +162,20 @@ export function parsePayload(raw: unknown): { payload: LearningImportPayload | n
       return;
     }
 
+    const picture1 = asOptionalString(pickFirstDefined(item, ["picture1", "Picture1"]));
+    const picture2 = asOptionalString(pickFirstDefined(item, ["picture2", "Picture2"]));
+    const picture3 = asOptionalString(pickFirstDefined(item, ["picture3", "Picture3"]));
+
+    for (const [field, value] of [
+      ["Picture1", picture1],
+      ["Picture2", picture2],
+      ["Picture3", picture3],
+    ] as const) {
+      if (value && !isLearningImagePath(value)) {
+        errors.push(`programs[${index}].${field} must use /images/learning/*.jpg.`);
+      }
+    }
+
     programs.push({
       legacyId,
       mainTitle,
@@ -166,9 +186,9 @@ export function parsePayload(raw: unknown): { payload: LearningImportPayload | n
       description2: asOptionalString(pickFirstDefined(item, ["description2", "Description2"])),
       description3: asOptionalString(pickFirstDefined(item, ["description3", "Description3"])),
       videoPromo: asOptionalString(pickFirstDefined(item, ["videoPromo", "VideoPromo"])),
-      picture1: asOptionalString(pickFirstDefined(item, ["picture1", "Picture1"])),
-      picture2: asOptionalString(pickFirstDefined(item, ["picture2", "Picture2"])),
-      picture3: asOptionalString(pickFirstDefined(item, ["picture3", "Picture3"])),
+      picture1: asOptionalLearningImage(picture1),
+      picture2: asOptionalLearningImage(picture2),
+      picture3: asOptionalLearningImage(picture3),
     });
   });
 
@@ -195,6 +215,11 @@ export function parsePayload(raw: unknown): { payload: LearningImportPayload | n
       return;
     }
 
+    const thumbnail = asOptionalString(pickFirstDefined(item, ["thumbnail", "Thumbnail"]));
+    if (thumbnail && !isLearningImagePath(thumbnail)) {
+      errors.push(`courses[${index}].Thumbnail (or thumbnail) must use /images/learning/*.jpg.`);
+    }
+
     courses.push({
       legacyId,
       title,
@@ -203,7 +228,7 @@ export function parsePayload(raw: unknown): { payload: LearningImportPayload | n
       category,
       categoryType: asOptionalString(pickFirstDefined(item, ["categoryType", "Category Type"])),
       categoryLevel: asOptionalString(pickFirstDefined(item, ["categoryLevel", "Category Level"])),
-      thumbnail: asOptionalString(pickFirstDefined(item, ["thumbnail", "Thumbnail"])),
+      thumbnail: asOptionalLearningImage(thumbnail),
       videoUrl: asOptionalString(pickFirstDefined(item, ["videoUrl", "VideoURL"])),
       priority,
     });

@@ -55,6 +55,7 @@ import {
 import { requireAdminSession } from "@/lib/auth/require-auth";
 import { upsertActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
 import { updateClientMessageStatus } from "@/lib/client-messages/client-message-service";
+import { isLearningImagePath } from "@/lib/learning/image-paths";
 import { normalizeMarketingContentJson } from "@/lib/marketing/marketing-renderer";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 import { revalidatePath } from "next/cache";
@@ -295,9 +296,9 @@ const learningProgramSchema = z.object({
   description2: z.string().optional(),
   description3: z.string().optional(),
   videoPromo: z.string().optional(),
-  picture1: z.string().optional(),
-  picture2: z.string().optional(),
-  picture3: z.string().optional(),
+  picture1: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/*.jpg."),
+  picture2: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/*.jpg."),
+  picture3: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/*.jpg."),
 });
 
 const learningVideoSchema = z.object({
@@ -307,7 +308,7 @@ const learningVideoSchema = z.object({
   category: z.string().min(1),
   categoryType: z.string().optional(),
   categoryLevel: z.string().optional(),
-  thumbnail: z.string().optional(),
+  thumbnail: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/*.jpg."),
   videoUrl: z.string().optional(),
   priority: z.coerce.number().int(),
 });

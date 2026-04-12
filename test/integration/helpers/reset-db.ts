@@ -10,6 +10,7 @@ export async function resetDb() {
   await prisma.marketingUserSegment.deleteMany();
   await prisma.marketingSegment.deleteMany();
   await prisma.marketingCategory.deleteMany();
+
   await prisma.attendanceRecord.deleteMany();
   await prisma.waitlistEntry.deleteMany();
   await prisma.booking.deleteMany();
@@ -19,6 +20,10 @@ export async function resetDb() {
   await prisma.classTemplate.deleteMany();
   await prisma.classType.deleteMany();
   await prisma.classCategory.deleteMany();
+
+  await prisma.learningCourse.deleteMany();
+  await prisma.learningProgram.deleteMany();
+
   await prisma.loyaltyLedgerEntry.deleteMany();
   await prisma.creditLedgerEntry.deleteMany();
   await prisma.clientEntitlement.deleteMany();

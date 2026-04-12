@@ -53,8 +53,12 @@ export default async function AdminLearningVideoCreatePage({ searchParams }: { s
 
         <div className="grid gap-3 md:grid-cols-3">
           <label className="block text-sm text-[#334155]">
-            Thumbnail URL
-            <input name="thumbnail" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
+            Thumbnail Path
+            <input
+              name="thumbnail"
+              placeholder="/images/learning/example.jpg"
+              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+            />
           </label>
           <label className="block text-sm text-[#334155]">
             Video URL

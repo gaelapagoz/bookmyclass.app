@@ -24,9 +24,9 @@ describe("GET /api/programs", () => {
         description2: "d2b",
         description3: "d3b",
         videoPromo: "https://www.youtube.com/watch?v=b",
-        picture1: "/images/b1.jpg",
-        picture2: "/images/b2.jpg",
-        picture3: "/images/b3.jpg",
+        picture1: "/images/learning/b1.jpg",
+        picture2: "/images/learning/b2.jpg",
+        picture3: "/images/learning/b3.jpg",
       },
     });
 
@@ -41,9 +41,9 @@ describe("GET /api/programs", () => {
         description2: "d2a",
         description3: "d3a",
         videoPromo: "https://www.youtube.com/watch?v=a",
-        picture1: "/images/a1.jpg",
-        picture2: "/images/a2.jpg",
-        picture3: "/images/a3.jpg",
+        picture1: "/images/learning/a1.jpg",
+        picture2: "/images/learning/a2.jpg",
+        picture3: "/images/learning/a3.jpg",
       },
     });
 
@@ -65,9 +65,38 @@ describe("GET /api/programs", () => {
       Description2: "d2a",
       Description3: "d3a",
       VideoPromo: "https://www.youtube.com/watch?v=a",
-      Picture1: "/images/a1.jpg",
-      Picture2: "/images/a2.jpg",
-      Picture3: "/images/a3.jpg",
+      Picture1: "/images/learning/a1.jpg",
+      Picture2: "/images/learning/a2.jpg",
+      Picture3: "/images/learning/a3.jpg",
+    });
+  });
+
+  it("filters invalid program image paths out of the API response", async () => {
+    await prisma.learningProgram.create({
+      data: {
+        legacyId: "3",
+        mainTitle: "Program C",
+        mainDescription: "desc c",
+        courseType: "Mobility",
+        title: "Program C",
+        description1: "d1c",
+        description2: "d2c",
+        description3: "d3c",
+        videoPromo: "https://www.youtube.com/watch?v=c",
+        picture1: "/images/program.jpg",
+        picture2: "/images/not-learning.jpg",
+        picture3: "/images/learning/program-c.jpg",
+      },
+    });
+
+    const response = await getPrograms();
+    const body = (await response.json()) as Array<Record<string, unknown>>;
+    const program = body.find((entry) => entry.ID === "3");
+
+    expect(program).toMatchObject({
+      Picture1: null,
+      Picture2: null,
+      Picture3: "/images/learning/program-c.jpg",
     });
   });
 

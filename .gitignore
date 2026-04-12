@@ -34,6 +34,7 @@ yarn-error.log*
 .tmp-dev*.log
 tmp-next-dev*.log
 tmp-*.log
+runtime-*.log
 
 # env files (can opt-in for committing if needed)
 .env*

@@ -96,9 +96,10 @@ export default async function AdminLearningVideoEditPage({
 
         <div className="grid gap-3 md:grid-cols-3">
           <label className="block text-sm text-[#334155]">
-            Thumbnail URL
+            Thumbnail Path
             <input
               name="thumbnail"
+              placeholder="/images/learning/example.jpg"
               defaultValue={record.thumbnail ?? ""}
               className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
             />

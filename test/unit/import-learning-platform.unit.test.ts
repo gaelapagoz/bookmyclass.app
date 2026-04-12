@@ -15,9 +15,9 @@ describe("learning importer payload parsing", () => {
           Description2: "d2",
           Description3: "d3",
           VideoPromo: "https://www.youtube.com/watch?v=promo",
-          Picture1: "/images/program-1.jpg",
-          Picture2: "/images/program-2.jpg",
-          Picture3: "/images/program-3.jpg",
+          Picture1: "/images/learning/program-1.jpg",
+          Picture2: "/images/learning/program-2.jpg",
+          Picture3: "/images/learning/program-3.jpg",
         },
       ],
       courses: [
@@ -29,7 +29,7 @@ describe("learning importer payload parsing", () => {
           Category: "Yoga",
           "Category Type": "Flow",
           "Category Level": "Beginner",
-          Thumbnail: "/images/course-1.jpg",
+          Thumbnail: "/images/learning/course-1.jpg",
           VideoURL: "https://www.youtube.com/watch?v=course",
           Priority: "2",
         },
@@ -50,9 +50,9 @@ describe("learning importer payload parsing", () => {
       description2: "d2",
       description3: "d3",
       videoPromo: "https://www.youtube.com/watch?v=promo",
-      picture1: "/images/program-1.jpg",
-      picture2: "/images/program-2.jpg",
-      picture3: "/images/program-3.jpg",
+      picture1: "/images/learning/program-1.jpg",
+      picture2: "/images/learning/program-2.jpg",
+      picture3: "/images/learning/program-3.jpg",
     });
     expect(result.payload?.courses[0]).toEqual({
       legacyId: "101",
@@ -62,7 +62,7 @@ describe("learning importer payload parsing", () => {
       category: "Yoga",
       categoryType: "Flow",
       categoryLevel: "Beginner",
-      thumbnail: "/images/course-1.jpg",
+      thumbnail: "/images/learning/course-1.jpg",
       videoUrl: "https://www.youtube.com/watch?v=course",
       priority: 2,
     });
@@ -123,6 +123,34 @@ describe("learning importer payload parsing", () => {
         },
       ],
     });
+  });
+
+  it("rejects non-first-party learning image paths", () => {
+    const raw = {
+      programs: [
+        {
+          ID: "1",
+          MainTitle: "Yoga Program",
+          CourseType: "Yoga",
+          Title: "Yoga",
+          Picture1: "/images/program-1.jpg",
+        },
+      ],
+      courses: [
+        {
+          ID: "101",
+          Title: "Sun Salutation",
+          Category: "Yoga",
+          Thumbnail: "/images/course-1.jpg",
+        },
+      ],
+    };
+
+    const result = parsePayload(raw);
+
+    expect(result.payload).toBeNull();
+    expect(result.errors).toContain("programs[0].Picture1 must use /images/learning/*.jpg.");
+    expect(result.errors).toContain("courses[0].Thumbnail (or thumbnail) must use /images/learning/*.jpg.");
   });
 
   it("reports duplicate IDs and duplicate program courseType values", () => {

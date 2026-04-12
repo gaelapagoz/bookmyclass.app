@@ -31,6 +31,7 @@ import {
   createUserFromTrustedFlow,
 } from "@/lib/auth/user-identity-service";
 import { normalizeBookingCancellationWindowHours } from "@/lib/booking/cancellation-policy";
+import { assertLearningImagePath } from "@/lib/learning/image-paths";
 
 export type AdminDashboardData = {
   upcomingSessions: Array<{
@@ -4754,9 +4755,9 @@ export async function createAdminLearningProgram(input: {
       description2: toNullable(input.description2),
       description3: toNullable(input.description3),
       videoPromo: toNullable(input.videoPromo),
-      picture1: toNullable(input.picture1),
-      picture2: toNullable(input.picture2),
-      picture3: toNullable(input.picture3),
+      picture1: assertLearningImagePath(input.picture1, "picture1"),
+      picture2: assertLearningImagePath(input.picture2, "picture2"),
+      picture3: assertLearningImagePath(input.picture3, "picture3"),
     },
   });
 }
@@ -4791,9 +4792,9 @@ export async function updateAdminLearningProgram(
       description2: toNullable(input.description2),
       description3: toNullable(input.description3),
       videoPromo: toNullable(input.videoPromo),
-      picture1: toNullable(input.picture1),
-      picture2: toNullable(input.picture2),
-      picture3: toNullable(input.picture3),
+      picture1: assertLearningImagePath(input.picture1, "picture1"),
+      picture2: assertLearningImagePath(input.picture2, "picture2"),
+      picture3: assertLearningImagePath(input.picture3, "picture3"),
     },
   });
 }
@@ -4870,7 +4871,7 @@ export async function createAdminLearningVideo(input: {
       category: input.category.trim(),
       categoryType: toNullable(input.categoryType),
       categoryLevel: toNullable(input.categoryLevel),
-      thumbnail: toNullable(input.thumbnail),
+      thumbnail: assertLearningImagePath(input.thumbnail, "thumbnail"),
       videoUrl: toNullable(input.videoUrl),
       priority: input.priority,
     },
@@ -4903,7 +4904,7 @@ export async function updateAdminLearningVideo(
       category: input.category.trim(),
       categoryType: toNullable(input.categoryType),
       categoryLevel: toNullable(input.categoryLevel),
-      thumbnail: toNullable(input.thumbnail),
+      thumbnail: assertLearningImagePath(input.thumbnail, "thumbnail"),
       videoUrl: toNullable(input.videoUrl),
       priority: input.priority,
     },

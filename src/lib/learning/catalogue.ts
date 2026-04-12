@@ -1,4 +1,5 @@
 import prisma from "@/lib/db";
+import { normalizeLearningImagePath } from "@/lib/learning/image-paths";
 
 export type LearningProgramView = {
   legacyId: string;
@@ -28,32 +29,6 @@ export type LearningCourseView = {
   priority: number;
 };
 
-function normalizeLearningImageSrc(value: string | null): string | null {
-  if (!value) return null;
-
-  if (/^https?:\/\//i.test(value) || value.startsWith("data:")) {
-    return value;
-  }
-
-  if (value.startsWith("/images/learning/")) {
-    return value;
-  }
-
-  if (value.startsWith("/images/")) {
-    return value.replace("/images/", "/images/learning/");
-  }
-
-  if (value.startsWith("images/")) {
-    return `/${value}`.replace("/images/", "/images/learning/");
-  }
-
-  if (!value.startsWith("/")) {
-    return `/images/learning/${value}`;
-  }
-
-  return value;
-}
-
 function mapProgram(program: {
   legacyId: string;
   mainTitle: string;
@@ -70,9 +45,9 @@ function mapProgram(program: {
 }): LearningProgramView {
   return {
     ...program,
-    picture1: normalizeLearningImageSrc(program.picture1),
-    picture2: normalizeLearningImageSrc(program.picture2),
-    picture3: normalizeLearningImageSrc(program.picture3),
+    picture1: normalizeLearningImagePath(program.picture1),
+    picture2: normalizeLearningImagePath(program.picture2),
+    picture3: normalizeLearningImagePath(program.picture3),
   };
 }
 
@@ -90,7 +65,7 @@ function mapCourse(course: {
 }): LearningCourseView {
   return {
     ...course,
-    thumbnail: normalizeLearningImageSrc(course.thumbnail),
+    thumbnail: normalizeLearningImagePath(course.thumbnail),
   };
 }
 

@@ -43,7 +43,7 @@ describe("learning catalogue data layer", () => {
         description2: null,
         description3: null,
         videoPromo: null,
-        picture1: "/images/p1.jpg",
+        picture1: "/images/learning/p1.jpg",
         picture2: null,
         picture3: null,
       },
@@ -57,7 +57,7 @@ describe("learning catalogue data layer", () => {
         description2: null,
         description3: null,
         videoPromo: null,
-        picture1: "https://cdn.example.com/p2.jpg",
+        picture1: "/images/outside-learning/p2.jpg",
         picture2: null,
         picture3: null,
       },
@@ -72,7 +72,30 @@ describe("learning catalogue data layer", () => {
     );
     expect(programs).toHaveLength(2);
     expect(programs[0].picture1).toBe("/images/learning/p1.jpg");
-    expect(programs[1].picture1).toBe("https://cdn.example.com/p2.jpg");
+    expect(programs[1].picture1).toBeNull();
+  });
+
+  it("drops invalid learning program image paths from runtime views", async () => {
+    dbMock.learningProgram.findMany.mockResolvedValue([
+      {
+        legacyId: "5",
+        mainTitle: "Online Yoga Classes",
+        mainDescription: "A",
+        courseType: "Yoga",
+        title: "Program A",
+        description1: null,
+        description2: null,
+        description3: null,
+        videoPromo: null,
+        picture1: "/images/online-yoga-image-1.jpg",
+        picture2: null,
+        picture3: null,
+      },
+    ]);
+
+    const programs = await getLearningPrograms();
+
+    expect(programs[0].picture1).toBeNull();
   });
 
   it("getLearningProgramByCourseType returns the matching program", async () => {
@@ -119,7 +142,7 @@ describe("learning catalogue data layer", () => {
       category: "Yoga",
       categoryType: null,
       categoryLevel: null,
-      thumbnail: "/images/t.jpg",
+      thumbnail: "/images/learning/t.jpg",
       videoUrl: "https://www.youtube.com/watch?v=abc",
       priority: 1,
     });
@@ -135,6 +158,27 @@ describe("learning catalogue data layer", () => {
     expect(course?.thumbnail).toBe("/images/learning/t.jpg");
   });
 
+  it("drops invalid learning thumbnails from runtime views", async () => {
+    dbMock.learningCourse.findUnique.mockResolvedValue({
+      legacyId: "06369c36-bc85-48ef-9b3a-c40c9175efe3",
+      title: "Core Flow",
+      description: "desc",
+      shortDescription: "short",
+      category: "Yoga",
+      categoryType: null,
+      categoryLevel: null,
+      thumbnail: "/images/course-thumb.jpg",
+      videoUrl: "https://www.youtube.com/watch?v=abc",
+      priority: 1,
+    });
+
+    const course = await getLearningCourseByCourseTypeAndLegacyId(
+      "Yoga",
+      "06369c36-bc85-48ef-9b3a-c40c9175efe3",
+    );
+
+    expect(course?.thumbnail).toBeNull();
+  });
 
   it("preserves first-party learning thumbnails under /images/learning", async () => {
     dbMock.learningCourse.findUnique.mockResolvedValue({

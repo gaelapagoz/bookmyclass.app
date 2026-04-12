@@ -1262,9 +1262,9 @@
       "Description2": "If you would to have a guided workout for Pilates then this program is for you!\n - How to modify exercises to your own level\n - How to perform variations and modifications to exercises so they became easier or harder for you, according to your actual needs\n - Learn how to work out by your own: without props, with long elastic, with short elastic and with water bottles\n - Understand the basics of Pilates the correct alignments and the correct breathing.",
       "Description3": "The program includes:\n - Essentials about Pilates\n - 12 video workouts of 30min from beginner to advance\n - How to workout without props, elastics, and water bottles\n - Bonus track: 30min Intermediate and Advance Pilates Classes",
       "VideoPromo": "https://www.youtube.com/watch?v=OLxyHlbyqo4",
-      "Picture1": "/images/body-sculpting-image-1.jpg",
-      "Picture2": "/images/body-sculpting-image-2.jpg",
-      "Picture3": "/images/body-sculpting-image-3.jpg"
+      "Picture1": "/images/learning/body-sculpting-image-1.jpg",
+      "Picture2": "/images/learning/body-sculpting-image-2.jpg",
+      "Picture3": "/images/learning/body-sculpting-image-3.jpg"
     },
     {
       "ID": 2,
@@ -1276,9 +1276,9 @@
       "Description2": "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua semper.",
       "Description3": "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua semper.",
       "VideoPromo": "https://www.youtube.com/watch?v=OLxyHlbyqo4",
-      "Picture1": "/images/home-travel-fitness-workout-image-1.jpg",
-      "Picture2": "/images/home-travel-fitness-workout-image-2.jpg",
-      "Picture3": "/images/home-travel-fitness-workout-image-3.jpg"
+      "Picture1": "/images/learning/home-travel-fitness-workout-image-1.jpg",
+      "Picture2": "/images/learning/home-travel-fitness-workout-image-2.jpg",
+      "Picture3": "/images/learning/home-travel-fitness-workout-image-3.jpg"
     },
     {
       "ID": 3,
@@ -1290,9 +1290,9 @@
       "Description2": "If you would like to get beautiful deep and balanced backbends then this program is for you!\n - Lose the fears of changing your grip\n - Have a beautifully balanced extension\n - Get your legs to your head or close to your head in pigeon, bow, and in royal cobra\n - Get a nice balanced arch in backbends and arrive to drop backbend\n - Lose the fear of falling in drop backbend\nWith this program I will help you to improve:\n - The flexibility of your upper back\n - The flexibility of your lower back\n - The flexibility of your hip flexors\n - Strengthen your back\n - Mobilize your shoulders\n - Hip flexibility and mobility",
       "Description3": "The program includes:\n - Understand better how the backbends function\n - Prewarm up, sun salutations, sequenced classes, drills for achieving better skills, closing sequences, meditation\n - Grip flip with king pigeon pose, bow pose and tiger pose, bhujangasana.\n - Build up and establish a solid and safe home practice\n - How to use the wall and props to adjust yourself\n - Bonus tracks: Split class and drop backbend preparation tutorials",
       "VideoPromo": "https://www.youtube.com/watch?v=OLxyHlbyqo4",
-      "Picture1": "/images/backbend-image-1.jpg",
-      "Picture2": "/images/backbend-image-2.jpg",
-      "Picture3": "/images/backbend-image-3.jpg"
+      "Picture1": "/images/learning/backbend-image-1.jpg",
+      "Picture2": "/images/learning/backbend-image-2.jpg",
+      "Picture3": "/images/learning/backbend-image-3.jpg"
     },
     {
       "ID": 4,
@@ -1304,9 +1304,9 @@
       "Description2": "Set of videos explaining deeper concepts about Pilates exercises for a full body workout. Diverse and fun exercises are given using props.",
       "Description3": "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua semper.",
       "VideoPromo": "https://www.youtube.com/watch?v=OLxyHlbyqo4",
-      "Picture1": "/images/online-pilates-image-1.jpg",
-      "Picture2": "/images/home-travel-fitness-workout-image-1.jpg",
-      "Picture3": "/images/body-sculpting-image-3.jpg"
+      "Picture1": "/images/learning/online-pilates-image-1.jpg",
+      "Picture2": "/images/learning/home-travel-fitness-workout-image-1.jpg",
+      "Picture3": "/images/learning/body-sculpting-image-3.jpg"
     },
     {
       "ID": 5,
@@ -1318,9 +1318,9 @@
       "Description2": "Set of videos explaining deeper about certain yoga asanas. Hip openings, back bends, standing postures, twists or core focus are equally possible to be selected. These are open level videos for everyone.",
       "Description3": "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua semper.",
       "VideoPromo": "https://www.youtube.com/watch?v=OLxyHlbyqo4",
-      "Picture1": "/images/online-yoga-image-1.jpg",
-      "Picture2": "/images/backbend-image-1.jpg",
-      "Picture3": "/images/backbend-image-3.jpg"
+      "Picture1": "/images/learning/online-yoga-image-1.jpg",
+      "Picture2": "/images/learning/backbend-image-1.jpg",
+      "Picture3": "/images/learning/backbend-image-3.jpg"
     }
   ]
 }

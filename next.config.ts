@@ -13,7 +13,7 @@ function buildContentSecurityPolicy() {
     // Keep permissive enough for current runtime behavior while we harden in follow-up.
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com",
     "font-src 'self' data:",
-    "img-src 'self' data: blob: https://static.wixstatic.com https://www.google.com",
+    "img-src 'self' data: blob: https://www.google.com",
     "frame-src 'self' https://www.google.com https://www.youtube.com https://challenges.cloudflare.com https://checkout.stripe.com",
     "connect-src 'self' https://challenges.cloudflare.com https://api.stripe.com https://checkout.stripe.com",
     "form-action 'self' https://checkout.stripe.com",
@@ -45,14 +45,6 @@ function buildBaseSecurityHeaders() {
       value: "same-origin",
     },
   ];
-
-  // Do not enable HSTS by default in this patch.
-  if (process.env.ENABLE_HSTS === "1") {
-    headers.push({
-      key: "Strict-Transport-Security",
-      value: "max-age=31536000; includeSubDomains; preload",
-    });
-  }
 
   return headers;
 }

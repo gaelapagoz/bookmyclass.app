@@ -27,6 +27,7 @@ import { hash } from "bcryptjs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import prisma from "../src/lib/db";
+import { assertLearningImagePath } from "../src/lib/learning/image-paths";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -1697,7 +1698,11 @@ async function seedLearningFromJson() {
       categoryLevel: asOptionalString(
         pickFirstDefined(item, ["categoryLevel", "Category Level"]),
       ),
-      thumbnail: asOptionalString(pickFirstDefined(item, ["thumbnail", "Thumbnail"])),
+      thumbnail:
+        assertLearningImagePath(
+          asOptionalString(pickFirstDefined(item, ["thumbnail", "Thumbnail"])),
+          `courses[${index}].thumbnail`,
+        ) ?? undefined,
       videoUrl: asOptionalString(pickFirstDefined(item, ["videoUrl", "VideoURL"])),
       priority,
     });
@@ -1732,9 +1737,21 @@ async function seedLearningFromJson() {
         description2: asOptionalString(pickFirstDefined(item, ["description2", "Description2"])),
         description3: asOptionalString(pickFirstDefined(item, ["description3", "Description3"])),
         videoPromo: asOptionalString(pickFirstDefined(item, ["videoPromo", "VideoPromo"])),
-        picture1: asOptionalString(pickFirstDefined(item, ["picture1", "Picture1"])),
-        picture2: asOptionalString(pickFirstDefined(item, ["picture2", "Picture2"])),
-        picture3: asOptionalString(pickFirstDefined(item, ["picture3", "Picture3"])),
+        picture1:
+          assertLearningImagePath(
+            asOptionalString(pickFirstDefined(item, ["picture1", "Picture1"])),
+            `programs[${index}].picture1`,
+          ) ?? undefined,
+        picture2:
+          assertLearningImagePath(
+            asOptionalString(pickFirstDefined(item, ["picture2", "Picture2"])),
+            `programs[${index}].picture2`,
+          ) ?? undefined,
+        picture3:
+          assertLearningImagePath(
+            asOptionalString(pickFirstDefined(item, ["picture3", "Picture3"])),
+            `programs[${index}].picture3`,
+          ) ?? undefined,
       });
     }
   } else {

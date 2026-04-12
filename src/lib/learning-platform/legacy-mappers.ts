@@ -1,4 +1,5 @@
 import type { LearningCourse, LearningProgram } from "@prisma/client";
+import { normalizeLearningImagePath } from "@/lib/learning/image-paths";
 
 export type LegacyLearningProgram = {
   ID: string;
@@ -39,9 +40,9 @@ export function toLegacyLearningProgram(program: LearningProgram): LegacyLearnin
     Description2: program.description2,
     Description3: program.description3,
     VideoPromo: program.videoPromo,
-    Picture1: program.picture1,
-    Picture2: program.picture2,
-    Picture3: program.picture3,
+    Picture1: normalizeLearningImagePath(program.picture1),
+    Picture2: normalizeLearningImagePath(program.picture2),
+    Picture3: normalizeLearningImagePath(program.picture3),
   };
 }
 
@@ -54,7 +55,7 @@ export function toLegacyLearningCourse(course: LearningCourse): LegacyLearningCo
     Category: course.category,
     "Category Type": course.categoryType,
     "Category Level": course.categoryLevel,
-    Thumbnail: course.thumbnail,
+    Thumbnail: normalizeLearningImagePath(course.thumbnail),
     VideoURL: course.videoUrl,
     Priority: course.priority,
   };
