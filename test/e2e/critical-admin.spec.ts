@@ -32,7 +32,8 @@ test("critical admin CRUD flows", async ({ page }) => {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const sessionStart = new Date();
   sessionStart.setDate(sessionStart.getDate() + 5);
-  sessionStart.setSeconds(0, 0);
+  // Keep the created session inside the rendered admin calendar window (06:00-21:59).
+  sessionStart.setHours(10, 0, 0, 0);
   const sessionEnd = new Date(sessionStart.getTime() + 60 * 60 * 1000);
 
   await signInAdmin(page, SEEDED_ADMIN);
@@ -67,20 +68,14 @@ test("critical admin CRUD flows", async ({ page }) => {
 
   await page.goto("/admin/sessions/new");
   const templateSelect = page.getByLabel("Class Template");
-  const templateValue = await templateSelect.evaluate((element) => {
-    const select = element as HTMLSelectElement;
-    const firstSelectable = Array.from(select.options).find((option) => Boolean(option.value));
-    return firstSelectable?.value ?? null;
-  });
-  expect(templateValue).toBeTruthy();
-  await templateSelect.selectOption(templateValue as string);
+  await templateSelect.selectOption({ label: `${updatedClassName} Schedule` });
   await page.getByLabel("Teacher").selectOption({ label: teacherName });
   await page.getByLabel("Title").fill(sessionTitle);
   await page.getByLabel("Starts At").fill(toDateTimeLocalInput(sessionStart));
   await page.getByLabel("Ends At").fill(toDateTimeLocalInput(sessionEnd));
   await page.getByRole("button", { name: "Save session" }).click();
 
-  await expect(page).toHaveURL(/\/admin\/sessions/);
+  await expect(page).toHaveURL(/\/admin\/sessions$/);
   await page.goto(`/admin/sessions?week=${toDateInput(sessionStart)}`);
   const sessionLink = page
     .locator("a[href*='\/admin\/sessions/'][href$='/edit']")
