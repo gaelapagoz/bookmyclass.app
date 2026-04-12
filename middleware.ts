@@ -1,12 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { buildBaseSecurityHeaders, buildContentSecurityPolicy } from "@/lib/security/response-security";
-
-function isHtmlRequest(request: NextRequest): boolean {
-  const acceptHeader = request.headers.get("accept") ?? "";
-  return acceptHeader.includes("text/html");
-}
+import { buildBaseSecurityHeaders, buildContentSecurityPolicy, shouldAttachContentSecurityPolicy } from "@/lib/security/response-security";
 
 function createNonce(): string {
   const random = crypto.getRandomValues(new Uint8Array(16));
@@ -36,7 +31,7 @@ export function middleware(request: NextRequest) {
     response.headers.set(key, value);
   }
 
-  if (isHtmlRequest(request)) {
+  if (shouldAttachContentSecurityPolicy(request.nextUrl.pathname)) {
     response.headers.set("Content-Security-Policy", buildContentSecurityPolicy({ nonce }));
   }
 
@@ -46,4 +41,3 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: ["/:path*"],
 };
-

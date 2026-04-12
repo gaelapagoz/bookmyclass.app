@@ -73,6 +73,7 @@ export function buildBaseSecurityHeaders(options: HeaderOptions = {}): Array<{ k
     { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
     { key: "X-Frame-Options", value: "DENY" },
     { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
+    { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
     { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
   ];
 
@@ -86,3 +87,23 @@ export function buildBaseSecurityHeaders(options: HeaderOptions = {}): Array<{ k
   return headers;
 }
 
+export function shouldAttachContentSecurityPolicy(pathname: string): boolean {
+  if (!pathname) return false;
+  if (pathname.startsWith("/api/")) return false;
+  if (pathname.startsWith("/cdn-cgi/")) return false;
+
+  if (pathname === "/" || pathname === "") return true;
+  if (pathname === "/robots.txt") return true;
+  if (pathname === "/sitemap.xml") return true;
+  if (pathname === "/_next/image") return true;
+
+  if (pathname.startsWith("/_next/static/")) return false;
+  if (pathname.startsWith("/_next/static/media/")) return false;
+
+  const lastSegment = pathname.split("/").pop() ?? "";
+  if (!lastSegment.includes(".")) {
+    return true;
+  }
+
+  return false;
+}

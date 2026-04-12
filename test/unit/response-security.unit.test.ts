@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildBaseSecurityHeaders, buildContentSecurityPolicy } from "../../src/lib/security/response-security";
+import {
+  buildBaseSecurityHeaders,
+  buildContentSecurityPolicy,
+  shouldAttachContentSecurityPolicy,
+} from "../../src/lib/security/response-security";
 
 function toHeaderMap(headers: Array<{ key: string; value: string }>) {
   return new Map(headers.map((header) => [header.key, header.value]));
@@ -25,6 +29,7 @@ describe("response security headers", () => {
 
     expect(headerMap.get("X-Content-Type-Options")).toBe("nosniff");
     expect(headerMap.get("Permissions-Policy")).toContain("camera=()");
+    expect(headerMap.get("Cross-Origin-Opener-Policy")).toBe("same-origin");
     expect(headerMap.get("Cross-Origin-Resource-Policy")).toBe("same-origin");
     expect(headerMap.get("Strict-Transport-Security")).toBe("max-age=31536000; includeSubDomains");
   });
@@ -39,5 +44,18 @@ describe("response security headers", () => {
 
     expect(headerMap.has("Strict-Transport-Security")).toBe(false);
   });
-});
 
+  it("attaches CSP for document and metadata routes", () => {
+    expect(shouldAttachContentSecurityPolicy("/")).toBe(true);
+    expect(shouldAttachContentSecurityPolicy("/about/studio")).toBe(true);
+    expect(shouldAttachContentSecurityPolicy("/sitemap.xml")).toBe(true);
+    expect(shouldAttachContentSecurityPolicy("/robots.txt")).toBe(true);
+    expect(shouldAttachContentSecurityPolicy("/_next/image")).toBe(true);
+  });
+
+  it("does not attach CSP for API and static assets", () => {
+    expect(shouldAttachContentSecurityPolicy("/api/health")).toBe(false);
+    expect(shouldAttachContentSecurityPolicy("/_next/static/chunks/app.js")).toBe(false);
+    expect(shouldAttachContentSecurityPolicy("/_next/static/media/font.woff2")).toBe(false);
+  });
+});
