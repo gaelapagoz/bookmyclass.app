@@ -11,7 +11,7 @@ function buildContentSecurityPolicy() {
     // Next.js + current UI patterns require inline styles in several places.
     "style-src 'self' 'unsafe-inline'",
     // Keep permissive enough for current runtime behavior while we harden in follow-up.
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com",
+    "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
     "font-src 'self' data:",
     "img-src 'self' data: blob: https://www.google.com",
     "frame-src 'self' https://www.google.com https://www.youtube.com https://challenges.cloudflare.com https://checkout.stripe.com",
@@ -44,19 +44,37 @@ function buildBaseSecurityHeaders() {
       key: "Cross-Origin-Resource-Policy",
       value: "same-origin",
     },
+    {
+      key: "Cross-Origin-Embedder-Policy",
+      value: "require-corp",
+    },
+    {
+      key: "Cross-Origin-Opener-Policy",
+      value: "same-origin",
+    },
   ];
 
   return headers;
 }
 
 function buildDocumentSecurityHeaders() {
-  return [
+  const headers = [
     {
       key: "Content-Security-Policy",
       value: buildContentSecurityPolicy(),
     },
     ...buildBaseSecurityHeaders(),
   ];
+
+  // Add HSTS only in production-like environments (not localhost/dev)
+  if (process.env.NODE_ENV === "production" || process.env.APP_URL?.includes("uat.") || process.env.APP_URL?.includes("bookmyclass.app")) {
+    headers.push({
+      key: "Strict-Transport-Security",
+      value: "max-age=31536000; includeSubDomains",
+    });
+  }
+
+  return headers;
 }
 
 const nextConfig: NextConfig = {

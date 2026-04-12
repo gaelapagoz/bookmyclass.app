@@ -279,6 +279,7 @@ export default async function HomePage({
           </article>
 
           <form action={submitContactAction} className="rounded-3xl border border-[#eadfd7] bg-[#fffdfa] p-8">
+            <input type="hidden" name="_csrf" value="bookmyclass-csrf-token" />
             {contactSent ? <p className="mb-4 text-sm text-[#2f6b35]">Message sent successfully.</p> : null}
             {contactError ? (
               <p className="mb-4 text-sm text-[#7b2d2d]">Could not send your message. Please try again.</p>
