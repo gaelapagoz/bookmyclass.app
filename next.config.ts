@@ -15,11 +15,19 @@ function buildContentSecurityPolicy() {
     "font-src 'self' data:",
     "img-src 'self' data: blob: https://www.google.com",
     "frame-src 'self' https://www.google.com https://www.youtube.com https://challenges.cloudflare.com https://checkout.stripe.com",
-    "connect-src 'self' https://challenges.cloudflare.com https://api.stripe.com https://checkout.stripe.com",
+    "connect-src 'self' https://challenges.cloudflare.com",
     "form-action 'self' https://checkout.stripe.com",
   ];
 
   return directives.join("; ");
+}
+
+function shouldEnableHsts() {
+  return (
+    process.env.NODE_ENV === "production" ||
+    process.env.APP_URL?.includes("uat.") ||
+    process.env.APP_URL?.includes("bookmyclass.app")
+  );
 }
 
 function buildBaseSecurityHeaders() {
@@ -53,6 +61,12 @@ function buildBaseSecurityHeaders() {
       value: "same-origin",
     },
   ];
+  if (shouldEnableHsts()) {
+    headers.push({
+      key: "Strict-Transport-Security",
+      value: "max-age=31536000; includeSubDomains",
+    });
+  }
 
   return headers;
 }
@@ -65,14 +79,6 @@ function buildDocumentSecurityHeaders() {
     },
     ...buildBaseSecurityHeaders(),
   ];
-
-  // Add HSTS only in production-like environments (not localhost/dev)
-  if (process.env.NODE_ENV === "production" || process.env.APP_URL?.includes("uat.") || process.env.APP_URL?.includes("bookmyclass.app")) {
-    headers.push({
-      key: "Strict-Transport-Security",
-      value: "max-age=31536000; includeSubDomains",
-    });
-  }
 
   return headers;
 }

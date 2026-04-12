@@ -6,6 +6,7 @@ import { siteConfig } from "@/lib/site-config";
 import { createContactMessage } from "@/lib/client-messages/client-message-service";
 import { getActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
 import { getHomeAgendaTableFromSchedule } from "@/lib/public-content/home-agenda-service";
+import { assertValidCsrfToken, createCsrfToken, getCsrfFieldName } from "@/lib/security/csrf-token";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
 const serviceCards = [
@@ -45,11 +46,14 @@ export default async function HomePage({
   const weeklyAgenda = await getHomeAgendaTableFromSchedule();
   const contactSent = params.contact === "sent";
   const contactError = params.error === "contact_failed";
+  const csrfToken = await createCsrfToken();
+  const csrfFieldName = getCsrfFieldName();
 
   async function submitContactAction(formData: FormData) {
     "use server";
 
     await assertSameOriginServerAction();
+    await assertValidCsrfToken(formData);
 
     const requestHeaders = await headers();
     const forwardedFor = requestHeaders.get("x-forwarded-for");
@@ -279,6 +283,7 @@ export default async function HomePage({
           </article>
 
           <form action={submitContactAction} className="rounded-3xl border border-[#eadfd7] bg-[#fffdfa] p-8">
+            {csrfToken ? <input type="hidden" name={csrfFieldName} value={csrfToken} /> : null}
             {contactSent ? <p className="mb-4 text-sm text-[#2f6b35]">Message sent successfully.</p> : null}
             {contactError ? (
               <p className="mb-4 text-sm text-[#7b2d2d]">Could not send your message. Please try again.</p>

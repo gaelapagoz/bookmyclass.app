@@ -27,3 +27,13 @@ export async function completeStripeCheckoutForTest(request: APIRequestContext, 
   const payload = (await response.json()) as { completed?: boolean };
   expect(payload.completed).toBe(true);
 }
+
+export async function cleanSeededClientBookingsForTest(request: APIRequestContext, clientEmail: string) {
+  const response = await request.post("/api/test/e2e/clean-seeded-client-bookings", {
+    headers: testHeaders(),
+    data: { clientEmail },
+  });
+  expect(response.ok()).toBeTruthy();
+  const payload = (await response.json()) as { success?: boolean };
+  expect(payload.success).toBe(true);
+}

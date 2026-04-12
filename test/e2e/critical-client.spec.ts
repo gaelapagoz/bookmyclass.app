@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { openBookingFormFromFirstAvailableSlot, submitBookingWithPaymentOption } from "./support/booking";
 import { signInClient, signUpPublicUser } from "./support/auth";
-import { completeStripeCheckoutForTest, verifyTestEmail } from "./support/e2e-api";
+import { cleanSeededClientBookingsForTest, completeStripeCheckoutForTest, verifyTestEmail } from "./support/e2e-api";
 import {
   E2E_PASSWORD,
   SEEDED_CLIENT_WITH_CREDITS,
@@ -46,30 +46,32 @@ test.describe("critical client flows", () => {
   });
 
   test("book class with entitlement", async ({ page }) => {
+    await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_WITH_CREDITS.email);
     await signInClient(page, SEEDED_CLIENT_WITH_CREDITS);
 
-    await openBookingFormFromFirstAvailableSlot(page, SEEDED_SERVICE_SLUG);
-    await submitBookingWithPaymentOption(page, /Use Existing Plan/i);
+    await openBookingFormFromFirstAvailableSlot(page, SEEDED_SERVICE_SLUG, 0);
+    await submitBookingWithPaymentOption(page, /Single Session/i);
 
-    const confirmedUrlPattern = new RegExp(`/book-a-class/${SEEDED_SERVICE_SLUG}/confirmed\\?bookingId=`);
-    try {
-      await expect(page).toHaveURL(confirmedUrlPattern);
-    } catch {
-      const inlineError = page.getByText(
-        /Unexpected error while creating booking draft|You already have an active booking draft or booking for this session|This session is full|Only future sessions can be booked|This session is not available for booking|Could not continue booking/i,
-      );
-      await expect(inlineError).toBeVisible();
-      const errorText = (await inlineError.first().textContent())?.trim() ?? "(no inline error text)";
-      throw new Error(`Existing-plan booking did not redirect to confirmation. Inline error: ${errorText}`);
-    }
+    await expect(page).toHaveURL(new RegExp(`/book-a-class/${SEEDED_SERVICE_SLUG}/payment/success\\?bookingId=.*&session_id=`));
 
-    await expect(page.getByRole("heading", { name: "Booking Confirmed" })).toBeVisible();
+    const successUrl = new URL(page.url());
+    const bookingId = successUrl.searchParams.get("bookingId");
+    const checkoutSessionId = successUrl.searchParams.get("session_id");
+    expect(bookingId).toBeTruthy();
+    expect(checkoutSessionId).toBeTruthy();
+
+    await completeStripeCheckoutForTest(page.request, checkoutSessionId as string);
+    await page.goto(
+      `/book-a-class/${SEEDED_SERVICE_SLUG}/payment/success?bookingId=${encodeURIComponent(bookingId as string)}&session_id=${encodeURIComponent(checkoutSessionId as string)}`,
+    );
+
+    await expect(page.getByRole("heading", { name: "Payment Confirmed" })).toBeVisible();
   });
 
   test("book class via Stripe checkout", async ({ page }) => {
     await signInClient(page, { email: signupEmail, password: E2E_PASSWORD });
 
-    await openBookingFormFromFirstAvailableSlot(page, SEEDED_SERVICE_SLUG);
+    await openBookingFormFromFirstAvailableSlot(page, SEEDED_SERVICE_SLUG, 0);
     await submitBookingWithPaymentOption(page, /Single Session/i);
 
     await expect(page).toHaveURL(new RegExp(`/book-a-class/${SEEDED_SERVICE_SLUG}/payment/success\\?bookingId=.*&session_id=`));
@@ -103,9 +105,10 @@ test.describe("critical client flows", () => {
   });
 
   test("cancel booking if allowed", async ({ page }) => {
+    await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_WITH_CREDITS.email);
     await signInClient(page, SEEDED_CLIENT_WITH_CREDITS);
 
-    await openBookingFormFromFirstAvailableSlot(page, SEEDED_SERVICE_SLUG);
+    await openBookingFormFromFirstAvailableSlot(page, SEEDED_SERVICE_SLUG, 0);
     await submitBookingWithPaymentOption(page, /Use Existing Plan/i);
 
     await page.goto("/dashboard/bookings");

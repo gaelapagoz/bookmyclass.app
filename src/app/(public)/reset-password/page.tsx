@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { PasswordServiceError, resetPasswordWithToken } from "@/lib/auth/password-service";
+import { assertValidCsrfToken, createCsrfToken, getCsrfFieldName } from "@/lib/security/csrf-token";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 import { TokenFromHashBridge } from "./token-from-hash-bridge";
 
@@ -42,6 +43,8 @@ export default async function ResetPasswordPage({
   const params = await searchParams;
   const token = String(params.token ?? "").trim();
   const message = getMessage(params);
+  const csrfToken = await createCsrfToken();
+  const csrfFieldName = getCsrfFieldName();
 
   async function resetPasswordAction(formData: FormData) {
     "use server";
@@ -51,6 +54,7 @@ export default async function ResetPasswordPage({
       { recordResponse: false },
       async () => {
         await assertSameOriginServerAction();
+        await assertValidCsrfToken(formData);
 
         const submittedToken = String(formData.get("token") ?? "").trim();
         const newPassword = String(formData.get("newPassword") ?? "");
@@ -100,6 +104,7 @@ export default async function ResetPasswordPage({
       {token ? (
         <form action={resetPasswordAction} className="mt-8 space-y-4 rounded-xl border border-[#d8cec6] bg-white p-5">
           <input type="hidden" name="token" value={token} />
+          {csrfToken ? <input type="hidden" name={csrfFieldName} value={csrfToken} /> : null}
 
           <label className="block text-sm text-[#5f4040]">
             New password

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { auth } from "@/auth";
 import { PasswordServiceError, requestPasswordReset } from "@/lib/auth/password-service";
+import { assertValidCsrfToken, createCsrfToken, getCsrfFieldName } from "@/lib/security/csrf-token";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
 type SearchParams = Promise<{
@@ -24,6 +25,8 @@ export default async function ForgotPasswordPage({
   const sent = params.sent === "1";
   const deliveryFailed = params.error === "delivery_failed";
   const requestFailed = params.error === "request_failed";
+  const csrfToken = await createCsrfToken();
+  const csrfFieldName = getCsrfFieldName();
 
   async function requestResetAction(formData: FormData) {
     "use server";
@@ -33,6 +36,7 @@ export default async function ForgotPasswordPage({
       { recordResponse: false },
       async () => {
         await assertSameOriginServerAction();
+        await assertValidCsrfToken(formData);
 
         const email = String(formData.get("email") ?? "").trim().toLowerCase();
         if (process.env.NODE_ENV !== "production" && process.env.AUTH_DEBUG_PASSWORD_RESET === "1") {
@@ -87,6 +91,7 @@ export default async function ForgotPasswordPage({
       ) : null}
 
       <form action={requestResetAction} className="mt-8 space-y-4 rounded-xl border border-[#d8cec6] bg-white p-5">
+        {csrfToken ? <input type="hidden" name={csrfFieldName} value={csrfToken} /> : null}
         <label className="block text-sm text-[#5f4040]">
           Email
           <input

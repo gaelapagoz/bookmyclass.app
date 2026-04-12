@@ -11,6 +11,7 @@ import {
   verifyPendingRegistrationByToken,
 } from "@/lib/auth/email-verification-service";
 import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
+import { assertValidCsrfToken, createCsrfToken, getCsrfFieldName } from "@/lib/security/csrf-token";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
 type SearchParams = Promise<{
@@ -67,6 +68,8 @@ export default async function VerifyEmailPage({
   const params = await searchParams;
   const callbackUrl = getSafeCallbackPath(params.callbackUrl, "/dashboard");
   const email = String(params.email ?? session?.user?.email ?? "").trim().toLowerCase();
+  const csrfToken = await createCsrfToken();
+  const csrfFieldName = getCsrfFieldName();
 
   if (params.registrationToken) {
     const result = await verifyPendingRegistrationByToken({
@@ -132,6 +135,7 @@ export default async function VerifyEmailPage({
       { recordResponse: false },
       async () => {
         await assertSameOriginServerAction();
+        await assertValidCsrfToken(formData);
 
         const parsed = resendSchema.safeParse({
           email: formData.get("email"),
@@ -192,6 +196,7 @@ export default async function VerifyEmailPage({
         <>
           <form action={resendVerificationAction} className="mt-8 space-y-4 rounded-xl border border-[#d8cec6] bg-white p-5">
             <input type="hidden" name="callbackUrl" value={callbackUrl} />
+            {csrfToken ? <input type="hidden" name={csrfFieldName} value={csrfToken} /> : null}
             <label className="block text-sm text-[#5f4040]">
               Email
               <input

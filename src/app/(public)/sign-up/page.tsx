@@ -7,6 +7,7 @@ import { auth } from "@/auth";
 import { hashPassword } from "@/lib/auth/password-service";
 import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
 import { createPendingPublicRegistration } from "@/lib/auth/user-identity-service";
+import { assertValidCsrfToken, createCsrfToken, getCsrfFieldName } from "@/lib/security/csrf-token";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
 type SearchParams = Promise<{
@@ -23,6 +24,7 @@ export async function registerAction(formData: FormData) {
     { recordResponse: false },
     async () => {
       await assertSameOriginServerAction();
+      await assertValidCsrfToken(formData);
 
       const firstName = String(formData.get("firstName") ?? "").trim();
       const lastName = String(formData.get("lastName") ?? "").trim();
@@ -111,6 +113,8 @@ export default async function SignUpPage({
   }
 
   const errorMessage = getErrorMessage(error);
+  const csrfToken = await createCsrfToken();
+  const csrfFieldName = getCsrfFieldName();
 
   return (
     <main className="mx-auto flex w-full max-w-xl flex-1 flex-col px-6 py-16">
@@ -121,6 +125,7 @@ export default async function SignUpPage({
 
       <form action={registerAction} className="mt-8 space-y-4 rounded-xl border border-[#d8cec6] bg-white p-5">
         <input type="hidden" name="callbackUrl" value={callbackUrl} />
+        {csrfToken ? <input type="hidden" name={csrfFieldName} value={csrfToken} /> : null}
 
         <label className="block text-sm text-[#5f4040]">
           First name

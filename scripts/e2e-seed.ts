@@ -393,6 +393,19 @@ async function main() {
     },
   });
 
+  const seededUnlimitedEntitlement = await prisma.clientEntitlement.create({
+    data: {
+      clientId: clientWithCredits.id,
+      productId: recurringProduct.id,
+      orderId: null,
+      entitlementType: EntitlementType.UNLIMITED_ACCESS,
+      entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+      status: ClientEntitlementStatus.ACTIVE,
+      activatedAt: now,
+      notes: "Seeded e2e unlimited access",
+    },
+  });
+
   await prisma.clientMessage.create({
     data: {
       type: ClientMessageType.CONTACT,

@@ -8,6 +8,7 @@ import { auth, signIn } from "@/auth";
 import { prisma } from "@/lib/db";
 import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
 import { isInvalidCredentialsAuthError } from "@/lib/auth/auth-error-utils";
+import { assertValidCsrfToken, createCsrfToken, getCsrfFieldName } from "@/lib/security/csrf-token";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
 type SearchParams = Promise<{
@@ -25,6 +26,7 @@ export async function signInAction(formData: FormData) {
     { recordResponse: false },
     async () => {
       await assertSameOriginServerAction();
+      await assertValidCsrfToken(formData);
 
       const email = String(formData.get("email") ?? "").trim().toLowerCase();
       const password = String(formData.get("password") ?? "");
@@ -113,6 +115,8 @@ export default async function SignInPage({
   const email = String(rawEmail ?? "").trim();
   const callbackUrl = getSafeCallbackPath(rawCallbackUrl, "/dashboard");
   const errorMessage = getErrorMessage(error);
+  const csrfToken = await createCsrfToken();
+  const csrfFieldName = getCsrfFieldName();
 
   return (
     <main className="mx-auto flex w-full max-w-xl flex-1 flex-col px-6 py-16">
@@ -136,6 +140,7 @@ export default async function SignInPage({
 
       <form action={signInAction} className="mt-8 space-y-4 rounded-xl border border-[#d8cec6] bg-white p-5">
         <input type="hidden" name="callbackUrl" value={callbackUrl} />
+        {csrfToken ? <input type="hidden" name={csrfFieldName} value={csrfToken} /> : null}
 
         <label className="block text-sm text-[#5f4040]">
           Email

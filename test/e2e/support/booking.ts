@@ -1,10 +1,10 @@
 import { expect, type Page } from "@playwright/test";
 
-export async function openBookingFormFromFirstAvailableSlot(page: Page, serviceSlug: string) {
+export async function openBookingFormFromFirstAvailableSlot(page: Page, serviceSlug: string, slotIndex = 0) {
   await page.goto(`/book-a-class/${serviceSlug}`);
-  const slotBookButton = page.getByRole("link", { name: /Book slot/i }).first();
-  await expect(slotBookButton).toBeVisible();
-  await slotBookButton.click();
+  const slotBookButtons = page.getByRole("link", { name: /Book slot/i });
+  await expect(slotBookButtons.nth(slotIndex)).toBeVisible();
+  await slotBookButtons.nth(slotIndex).click();
   await expect(page).toHaveURL(new RegExp(`/book-a-class/${serviceSlug}/book\\?sessionId=`));
 }
 

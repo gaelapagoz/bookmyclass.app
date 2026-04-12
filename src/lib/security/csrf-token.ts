@@ -1,0 +1,223 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { headers as nextHeaders } from "next/headers";
+
+const CSRF_FIELD_NAME = "_csrf";
+const CSRF_TOKEN_VERSION = "v1";
+const CSRF_TOKEN_TTL_SECONDS = 60 * 60;
+
+type CsrfValidationResult = {
+  ok: boolean;
+  reason: string;
+};
+
+function normalizeValue(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeOrigin(value: string | null | undefined): string | null {
+  const normalized = normalizeValue(value);
+  if (!normalized) {
+    return null;
+  }
+
+  try {
+    return new URL(normalized).origin.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function resolveForwardedValue(rawValue: string | null): string | null {
+  return normalizeValue(rawValue?.split(",")[0]);
+}
+
+function resolveRequestOrigin(headers: Pick<Headers, "get">): string | null {
+  const host = resolveForwardedValue(headers.get("x-forwarded-host")) ?? resolveForwardedValue(headers.get("host"));
+  if (!host) {
+    return normalizeOrigin(process.env.APP_URL);
+  }
+
+  const proto = resolveForwardedValue(headers.get("x-forwarded-proto"));
+  const protocol = proto?.toLowerCase() === "http" ? "http" : "https";
+  return normalizeOrigin(`${protocol}://${host}`);
+}
+
+function resolveCsrfSecret(): string | null {
+  const secret = normalizeValue(process.env.AUTH_SECRET);
+  if (secret) {
+    return secret;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    return null;
+  }
+
+  return "bookmyclass-dev-csrf-secret";
+}
+
+function signTokenPayload(payload: string): string | null {
+  const secret = resolveCsrfSecret();
+  if (!secret) {
+    return null;
+  }
+
+  return createHmac("sha256", secret).update(payload).digest("base64url");
+}
+
+function constantTimeEquals(a: string, b: string): boolean {
+  const aBuffer = Buffer.from(a);
+  const bBuffer = Buffer.from(b);
+
+  if (aBuffer.length !== bBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(aBuffer, bBuffer);
+}
+
+function parseToken(rawToken: string): { timestampSeconds: number; signature: string } | null {
+  const token = normalizeValue(rawToken);
+  if (!token) {
+    return null;
+  }
+
+  const tokenParts = token.split(".");
+  if (tokenParts.length !== 3 || tokenParts[0] !== CSRF_TOKEN_VERSION) {
+    return null;
+  }
+
+  const timestampSeconds = Number.parseInt(tokenParts[1] ?? "", 10);
+  if (!Number.isFinite(timestampSeconds)) {
+    return null;
+  }
+
+  const signature = tokenParts[2] ?? "";
+  if (!signature) {
+    return null;
+  }
+
+  return {
+    timestampSeconds,
+    signature,
+  };
+}
+
+export function getCsrfFieldName(): string {
+  return CSRF_FIELD_NAME;
+}
+
+export function createCsrfTokenFromHeaders(
+  headers: Pick<Headers, "get">,
+  issuedAt: Date = new Date(),
+): string | null {
+  const origin = resolveRequestOrigin(headers);
+  if (!origin) {
+    return null;
+  }
+
+  const timestampSeconds = Math.floor(issuedAt.getTime() / 1000);
+  const payload = `${CSRF_TOKEN_VERSION}.${timestampSeconds}.${origin}`;
+  const signature = signTokenPayload(payload);
+  if (!signature) {
+    return null;
+  }
+
+  return `${CSRF_TOKEN_VERSION}.${timestampSeconds}.${signature}`;
+}
+
+export async function createCsrfToken(): Promise<string | null> {
+  if (process.env.NODE_ENV === "test") {
+    return "test-csrf-token";
+  }
+
+  try {
+    const headerStore = await nextHeaders();
+    return createCsrfTokenFromHeaders(headerStore);
+  } catch {
+    return null;
+  }
+}
+
+export function validateCsrfTokenFromHeadersAndFormData(
+  headers: Pick<Headers, "get">,
+  formData: FormData,
+  now: Date = new Date(),
+): CsrfValidationResult {
+  if (process.env.NODE_ENV === "test") {
+    return { ok: true, reason: "CSRF token validation skipped in test mode." };
+  }
+
+  const parsedToken = parseToken(String(formData.get(CSRF_FIELD_NAME) ?? ""));
+  if (!parsedToken) {
+    return {
+      ok: false,
+      reason: "Missing or malformed CSRF token.",
+    };
+  }
+
+  const nowSeconds = Math.floor(now.getTime() / 1000);
+  if (parsedToken.timestampSeconds > nowSeconds + 120) {
+    return {
+      ok: false,
+      reason: "CSRF token has an invalid timestamp.",
+    };
+  }
+
+  if (nowSeconds - parsedToken.timestampSeconds > CSRF_TOKEN_TTL_SECONDS) {
+    return {
+      ok: false,
+      reason: "CSRF token expired.",
+    };
+  }
+
+  const allowedOrigins = new Set<string>();
+  const requestOrigin = resolveRequestOrigin(headers);
+  if (requestOrigin) {
+    allowedOrigins.add(requestOrigin);
+  }
+
+  const appUrlOrigin = normalizeOrigin(process.env.APP_URL);
+  if (appUrlOrigin) {
+    allowedOrigins.add(appUrlOrigin);
+  }
+
+  if (allowedOrigins.size < 1) {
+    return {
+      ok: false,
+      reason: "Could not resolve an allowed origin for CSRF validation.",
+    };
+  }
+
+  for (const origin of allowedOrigins) {
+    const payload = `${CSRF_TOKEN_VERSION}.${parsedToken.timestampSeconds}.${origin}`;
+    const expectedSignature = signTokenPayload(payload);
+    if (!expectedSignature) {
+      continue;
+    }
+
+    if (constantTimeEquals(parsedToken.signature, expectedSignature)) {
+      return {
+        ok: true,
+        reason: "CSRF token validated.",
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    reason: "CSRF token mismatch.",
+  };
+}
+
+export async function assertValidCsrfToken(formData: FormData): Promise<void> {
+  if (process.env.NODE_ENV === "test") {
+    return;
+  }
+
+  const headerStore = await nextHeaders();
+  const result = validateCsrfTokenFromHeadersAndFormData(headerStore, formData);
+  if (!result.ok) {
+    throw new Error(`[csrf] ${result.reason}`);
+  }
+}
