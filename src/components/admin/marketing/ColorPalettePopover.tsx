@@ -28,7 +28,9 @@ export default function ColorPalettePopover({
         className="inline-flex items-center gap-2 rounded border border-[#d3dbe5] bg-white px-2 py-1 text-xs text-[#334155] hover:bg-[#f3f6fb]"
         data-testid={`${testId}-trigger`}
       >
-        <span className="h-4 w-4 rounded border border-[#cbd5e1]" style={{ backgroundColor: value }} />
+        <svg className="h-4 w-4 rounded border border-[#cbd5e1]" viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="0" y="0" width="16" height="16" rx="3" fill={value} />
+        </svg>
         <span>{label}</span>
       </button>
 
@@ -50,8 +52,11 @@ export default function ColorPalettePopover({
                     setOpen(false);
                   }}
                   className={`h-5 w-5 rounded-full border ${selected ? "border-[#0f172a] ring-1 ring-[#0f172a]" : "border-[#cbd5e1]"}`}
-                  style={{ backgroundColor: swatch }}
-                />
+                >
+                  <svg className="h-full w-full rounded-full" viewBox="0 0 20 20" aria-hidden="true">
+                    <circle cx="10" cy="10" r="10" fill={swatch} />
+                  </svg>
+                </button>
               );
             })}
           </div>
@@ -71,4 +76,3 @@ export default function ColorPalettePopover({
     </div>
   );
 }
-

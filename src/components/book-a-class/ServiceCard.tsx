@@ -39,15 +39,7 @@ export function ServiceCard({ service }: ServiceCardProps) {
 
       <div className="flex flex-1 flex-col p-5">
         <h2 className="text-xl font-semibold text-[#6f2b2b]">{service.title}</h2>
-        <p
-          className="mt-2 min-h-[3.75rem] text-sm leading-5 text-[#7f5a5a]"
-          style={{
-            display: "-webkit-box",
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
+        <p className="mt-2 min-h-[3.75rem] overflow-hidden text-sm leading-5 text-[#7f5a5a] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">
           {service.shortDescription}
         </p>
 

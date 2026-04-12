@@ -36,6 +36,8 @@ function headingClassName(size: "lg" | "md" = "lg") {
   return `${size === "lg" ? "text-3xl md:text-5xl" : "text-2xl md:text-4xl"} font-semibold tracking-tight text-[#682c2f]`;
 }
 
+const serifHeadingClassName = "font-brand-serif";
+
 export default async function HomePage({
   searchParams,
 }: {
@@ -95,8 +97,7 @@ export default async function HomePage({
               Brussels
             </p>
             <h1
-              className={`${headingClassName("lg")} text-[#fffaf6]`}
-              style={{ fontFamily: "Iowan Old Style, Baskerville, Georgia, serif" }}
+              className={`${headingClassName("lg")} ${serifHeadingClassName} text-[#fffaf6]`}
             >
               Move Better. Feel Stronger. Slow Down.
             </h1>
@@ -123,7 +124,7 @@ export default async function HomePage({
       </section>
 
       <section id="agenda" className="mx-auto w-full max-w-6xl px-6 py-20 md:px-10">
-        <h2 className={headingClassName("md")} style={{ fontFamily: "Iowan Old Style, Baskerville, Georgia, serif" }}>
+        <h2 className={`${headingClassName("md")} ${serifHeadingClassName}`}>
           Weekly Agenda
         </h2>
         <p className="mt-3 text-base text-[#7f6660]">Find the class that fits your rhythm</p>
@@ -183,8 +184,7 @@ export default async function HomePage({
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           <article className="rounded-3xl border border-[#eadfd7] bg-[#fffdfa] p-8 shadow-[0_18px_35px_-30px_rgba(47,25,25,0.45)]">
             <h3
-              className="text-2xl font-semibold text-[#692f32]"
-              style={{ fontFamily: "Iowan Old Style, Baskerville, Georgia, serif" }}
+              className={`text-2xl font-semibold text-[#692f32] ${serifHeadingClassName}`}
             >
               Book a Class
             </h3>
@@ -201,8 +201,7 @@ export default async function HomePage({
 
           <article className="rounded-3xl border border-[#eadfd7] bg-[#fffdfa] p-8 shadow-[0_18px_35px_-30px_rgba(47,25,25,0.45)]">
             <h3
-              className="text-2xl font-semibold text-[#692f32]"
-              style={{ fontFamily: "Iowan Old Style, Baskerville, Georgia, serif" }}
+              className={`text-2xl font-semibold text-[#692f32] ${serifHeadingClassName}`}
             >
               Subscriptions
             </h3>
@@ -220,7 +219,7 @@ export default async function HomePage({
       </section>
 
       <section className="mx-auto w-full max-w-6xl px-6 py-20 md:px-10">
-        <h2 className={headingClassName("md")} style={{ fontFamily: "Iowan Old Style, Baskerville, Georgia, serif" }}>
+        <h2 className={`${headingClassName("md")} ${serifHeadingClassName}`}>
           Our Services
         </h2>
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -242,7 +241,7 @@ export default async function HomePage({
             <Image src="/images/yoga-split-main.jpg" alt="Studio atmosphere" fill className="object-cover" />
           </div>
           <article className="rounded-3xl border border-[#eadfd7] bg-[#fffdfa] p-8 shadow-[0_18px_35px_-30px_rgba(47,25,25,0.45)] md:p-10">
-            <h2 className={headingClassName("md")} style={{ fontFamily: "Iowan Old Style, Baskerville, Georgia, serif" }}>
+            <h2 className={`${headingClassName("md")} ${serifHeadingClassName}`}>
               A Space to Reconnect with Your Body
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-[#6f605b]">
@@ -260,7 +259,7 @@ export default async function HomePage({
       </section>
 
       <section className="mx-auto w-full max-w-6xl px-6 pb-24 md:px-10">
-        <h2 className={headingClassName("md")} style={{ fontFamily: "Iowan Old Style, Baskerville, Georgia, serif" }}>
+        <h2 className={`${headingClassName("md")} ${serifHeadingClassName}`}>
           Visit the Studio
         </h2>
         <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">

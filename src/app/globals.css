@@ -21,3 +21,7 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), "Avenir Next", "Segoe UI", sans-serif;
 }
+
+.font-brand-serif {
+  font-family: "Iowan Old Style", Baskerville, Georgia, serif;
+}

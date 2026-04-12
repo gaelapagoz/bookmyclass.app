@@ -223,20 +223,19 @@ export default function CampaignFlowStep1BlocksForm({
                   />
                   <div className="md:col-span-2">
                     <p className="mb-1 text-xs text-[#5a6d86]">Button preview</p>
-                    <span
-                      className="inline-flex items-center"
-                      style={{
-                        backgroundColor: block.backgroundColor ?? "#1d3652",
-                        color: block.textColor ?? "#ffffff",
-                        borderRadius: "10px",
-                        padding: "12px 22px",
-                        fontSize: "14px",
-                        fontWeight: 600,
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      Book now
-                    </span>
+                    <svg width="170" height="44" viewBox="0 0 170 44" role="img" aria-label="Button preview">
+                      <rect x="0" y="0" width="170" height="44" rx="10" fill={block.backgroundColor ?? "#1d3652"} />
+                      <text
+                        x="85"
+                        y="27"
+                        fill={block.textColor ?? "#ffffff"}
+                        textAnchor="middle"
+                        fontSize="14"
+                        fontWeight="600"
+                      >
+                        Book now
+                      </text>
+                    </svg>
                   </div>
                 </div>
               ) : null}
