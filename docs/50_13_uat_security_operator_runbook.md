@@ -14,6 +14,7 @@ Purpose: define the minimum local, repo-owned UAT security baseline flow using D
 
 - Baseline runner: `scripts/local-uat-security-baseline.sh`
 - Summary normalizer: `scripts/local-uat-security-collect-metrics.sh`
+- Header forensics runner: `scripts/local-uat-header-forensics.sh`
 
 ## 2) Local baseline run
 
@@ -154,6 +155,46 @@ CONFIRM_UAT_DB_RESET=YES TARGET_TAG=vX.Y.Z BASE_URL=https://uat.bookmyclass.app 
 - Do not run this against production URLs
 - Do not bypass tag-only validation flow
 - Keep this as the minimum baseline gate; expand only with explicit scope approval
+
+## 9.1) Header forensics (origin vs edge classification)
+
+Use this after deploying and verifying a UAT tag when you need to classify whether missing headers are:
+- app/origin emission gaps,
+- reverse-proxy/edge behavior,
+- Cloudflare-managed residuals,
+- or scanner artifact URL classes.
+
+Public-only check:
+
+```bash
+BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-header-forensics.sh
+```
+
+Public + origin-direct compare (when origin IP is known):
+
+```bash
+BASE_URL=https://uat.bookmyclass.app ORIGIN_IP=<origin_ip> bash scripts/local-uat-header-forensics.sh
+```
+
+Optional flags:
+- `ORIGIN_PORT` (defaults to 443 for https base URL, 80 for http)
+- `ORIGIN_INSECURE=YES` (only if TLS chain mismatch must be bypassed)
+- `RUN_TAG_CHECK=NO` (local non-release debugging only)
+- `EXTRA_URLS` (newline-delimited additional paths)
+
+What the script captures:
+- URL classes: `/`, `/learning`, `/robots.txt`, `/sitemap.xml`, one discovered `/_next/static/*.js`, one discovered `/_next/static/media/*`, one `/_next/image` optimizer URL, known malformed scanner-style image URLs, and `/cdn-cgi/l/email-protection`.
+- Headers: `Content-Security-Policy`, `Strict-Transport-Security`, `X-Content-Type-Options`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`, `Cross-Origin-Embedder-Policy`, `Cross-Origin-Resource-Policy`, `Cache-Control`, `Age`, `cf-cache-status`.
+- Artifacts:
+  - `summary.md`
+  - `summary.csv`
+  - raw per-URL header captures under `raw/`
+
+Interpretation:
+- Origin has header, public missing: edge/proxy/cache issue.
+- Origin and public both missing on normal routes: app/origin gap.
+- Missing only on malformed scanner paths: scanner artifact route class.
+- Missing on `/cdn-cgi/*`: Cloudflare-managed residual.
 
 ## 10) Current residual findings (expected for now)
 
