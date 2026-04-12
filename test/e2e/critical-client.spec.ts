@@ -110,6 +110,7 @@ test.describe("critical client flows", () => {
 
     await openBookingFormFromFirstAvailableSlot(page, SEEDED_SERVICE_SLUG, 0);
     await submitBookingWithPaymentOption(page, /Use Existing Plan/i);
+    await expect(page).toHaveURL(new RegExp(`/book-a-class/${SEEDED_SERVICE_SLUG}/confirmed\\?bookingId=`));
 
     await page.goto("/dashboard/bookings");
     await page.getByRole("button", { name: "Cancel booking" }).first().click();

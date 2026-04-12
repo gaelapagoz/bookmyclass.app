@@ -1,8 +1,8 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { headers as nextHeaders } from "next/headers";
 
 const CSRF_FIELD_NAME = "_csrf";
-const CSRF_TOKEN_VERSION = "v1";
+const CSRF_TOKEN_VERSION = "v2";
 const CSRF_TOKEN_TTL_SECONDS = 60 * 60;
 
 type CsrfValidationResult = {
@@ -76,7 +76,41 @@ function constantTimeEquals(a: string, b: string): boolean {
   return timingSafeEqual(aBuffer, bBuffer);
 }
 
-function parseToken(rawToken: string): { timestampSeconds: number; signature: string } | null {
+type CsrfTokenPayload = {
+  issuedAtSeconds: number;
+  nonce: string;
+};
+
+function encodeTokenPayload(payload: CsrfTokenPayload): string {
+  return Buffer.from(
+    JSON.stringify({
+      iat: payload.issuedAtSeconds,
+      n: payload.nonce,
+    }),
+  ).toString("base64url");
+}
+
+function decodeTokenPayload(rawPayload: string): CsrfTokenPayload | null {
+  try {
+    const decoded = Buffer.from(rawPayload, "base64url").toString("utf8");
+    const parsed = JSON.parse(decoded) as { iat?: unknown; n?: unknown };
+    const issuedAtSeconds = Number.parseInt(String(parsed.iat ?? ""), 10);
+    const nonce = typeof parsed.n === "string" ? parsed.n : "";
+
+    if (!Number.isFinite(issuedAtSeconds) || !nonce || nonce.length < 8) {
+      return null;
+    }
+
+    return {
+      issuedAtSeconds,
+      nonce,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseToken(rawToken: string): { payload: CsrfTokenPayload; payloadEncoded: string; signature: string } | null {
   const token = normalizeValue(rawToken);
   if (!token) {
     return null;
@@ -87,8 +121,9 @@ function parseToken(rawToken: string): { timestampSeconds: number; signature: st
     return null;
   }
 
-  const timestampSeconds = Number.parseInt(tokenParts[1] ?? "", 10);
-  if (!Number.isFinite(timestampSeconds)) {
+  const payloadEncoded = tokenParts[1] ?? "";
+  const payload = decodeTokenPayload(payloadEncoded);
+  if (!payload) {
     return null;
   }
 
@@ -98,7 +133,8 @@ function parseToken(rawToken: string): { timestampSeconds: number; signature: st
   }
 
   return {
-    timestampSeconds,
+    payload,
+    payloadEncoded,
     signature,
   };
 }
@@ -116,14 +152,17 @@ export function createCsrfTokenFromHeaders(
     return null;
   }
 
-  const timestampSeconds = Math.floor(issuedAt.getTime() / 1000);
-  const payload = `${CSRF_TOKEN_VERSION}.${timestampSeconds}.${origin}`;
-  const signature = signTokenPayload(payload);
+  const payloadEncoded = encodeTokenPayload({
+    issuedAtSeconds: Math.floor(issuedAt.getTime() / 1000),
+    nonce: randomBytes(8).toString("base64url"),
+  });
+  const signaturePayload = `${CSRF_TOKEN_VERSION}.${payloadEncoded}.${origin}`;
+  const signature = signTokenPayload(signaturePayload);
   if (!signature) {
     return null;
   }
 
-  return `${CSRF_TOKEN_VERSION}.${timestampSeconds}.${signature}`;
+  return `${CSRF_TOKEN_VERSION}.${payloadEncoded}.${signature}`;
 }
 
 export async function createCsrfToken(): Promise<string | null> {
@@ -157,14 +196,14 @@ export function validateCsrfTokenFromHeadersAndFormData(
   }
 
   const nowSeconds = Math.floor(now.getTime() / 1000);
-  if (parsedToken.timestampSeconds > nowSeconds + 120) {
+  if (parsedToken.payload.issuedAtSeconds > nowSeconds + 120) {
     return {
       ok: false,
       reason: "CSRF token has an invalid timestamp.",
     };
   }
 
-  if (nowSeconds - parsedToken.timestampSeconds > CSRF_TOKEN_TTL_SECONDS) {
+  if (nowSeconds - parsedToken.payload.issuedAtSeconds > CSRF_TOKEN_TTL_SECONDS) {
     return {
       ok: false,
       reason: "CSRF token expired.",
@@ -190,8 +229,8 @@ export function validateCsrfTokenFromHeadersAndFormData(
   }
 
   for (const origin of allowedOrigins) {
-    const payload = `${CSRF_TOKEN_VERSION}.${parsedToken.timestampSeconds}.${origin}`;
-    const expectedSignature = signTokenPayload(payload);
+    const signaturePayload = `${CSRF_TOKEN_VERSION}.${parsedToken.payloadEncoded}.${origin}`;
+    const expectedSignature = signTokenPayload(signaturePayload);
     if (!expectedSignature) {
       continue;
     }
