@@ -34,21 +34,41 @@ fetch_headers "$BASE_URL"
 assert_header "Content-Security-Policy"
 assert_header "X-Content-Type-Options"
 assert_header "Referrer-Policy"
+if [[ "$BASE_URL" == https://* ]]; then
+  assert_header "Strict-Transport-Security"
+fi
 
-fetch_headers "${BASE_URL%/}/robots.txt"
-assert_header "X-Content-Type-Options"
-assert_header "Permissions-Policy"
-assert_header "Cross-Origin-Resource-Policy"
-
-STATIC_PATH="$(curl -sS "${BASE_URL%/}" | grep -Eo '/_next/static/[^"'\'' ]+' | head -n 1 || true)"
-if [[ -n "$STATIC_PATH" ]]; then
-  fetch_headers "${BASE_URL%/}${STATIC_PATH}"
+assert_common_low_headers() {
   assert_header "X-Content-Type-Options"
   assert_header "Permissions-Policy"
   assert_header "Cross-Origin-Resource-Policy"
-  log "checked static asset headers at ${STATIC_PATH}"
+  assert_header "Cross-Origin-Opener-Policy"
+  if [[ "$BASE_URL" == https://* ]]; then
+    assert_header "Strict-Transport-Security"
+  fi
+}
+
+fetch_headers "${BASE_URL%/}/robots.txt"
+assert_common_low_headers
+
+HOME_BODY="$(curl -sS "${BASE_URL%/}")"
+STATIC_JS_PATH="$(echo "$HOME_BODY" | grep -Eo '/_next/static/[^"'\'' ]+\.js' | head -n 1 || true)"
+STATIC_MEDIA_PATH="$(echo "$HOME_BODY" | grep -Eo '/_next/static/media/[^"'\'' )]+' | head -n 1 || true)"
+
+if [[ -n "$STATIC_JS_PATH" ]]; then
+  fetch_headers "${BASE_URL%/}${STATIC_JS_PATH}"
+  assert_common_low_headers
+  log "checked static JS headers at ${STATIC_JS_PATH}"
 else
-  echo "[security-check-headers][WARN] could not resolve a _next/static asset from homepage; skipping static asset header assertion" >&2
+  echo "[security-check-headers][WARN] could not resolve a _next/static/*.js asset from homepage; skipping static JS header assertion" >&2
 fi
 
-log "required headers are present on app + controlled static surfaces"
+if [[ -n "$STATIC_MEDIA_PATH" ]]; then
+  fetch_headers "${BASE_URL%/}${STATIC_MEDIA_PATH}"
+  assert_common_low_headers
+  log "checked static media headers at ${STATIC_MEDIA_PATH}"
+else
+  echo "[security-check-headers][WARN] could not resolve a _next/static/media/* asset from homepage; skipping static media header assertion" >&2
+fi
+
+log "required headers are present on app + robots/static/static-media surfaces"

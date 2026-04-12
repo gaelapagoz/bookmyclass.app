@@ -196,6 +196,74 @@ Interpretation:
 - Missing only on malformed scanner paths: scanner artifact route class.
 - Missing on `/cdn-cgi/*`: Cloudflare-managed residual.
 
+## 9.2) Narrow remediation for public static/text header propagation
+
+Use this only when UAT forensics prove that app routes have headers but public delivery is missing headers on:
+- `/robots.txt`
+- `/_next/static/*`
+- `/_next/static/media/*`
+
+Do not use this section for CSP redesign and do not force `Cross-Origin-Embedder-Policy`.
+
+### Step A - confirm origin vs public first
+
+```bash
+BASE_URL=https://uat.bookmyclass.app ORIGIN_IP=<origin_ip> bash scripts/local-uat-header-forensics.sh
+```
+
+Proceed only if origin shows expected low-level headers and public misses them on the path classes above.
+
+### Step B - Cloudflare response header propagation (UAT zone)
+
+Create one Response Header Transform Rule for URI path matching:
+- equals `/robots.txt`
+- starts with `/_next/static/`
+
+Set these response headers (overwrite):
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains`
+- `X-Content-Type-Options: nosniff`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`
+- `Cross-Origin-Resource-Policy: same-origin`
+- `Cross-Origin-Opener-Policy: same-origin`
+
+Keep CSP handling unchanged. Do not add/force COEP in this remediation.
+
+### Step C - targeted cache purge
+
+Purge only:
+- `https://uat.bookmyclass.app/robots.txt`
+- `https://uat.bookmyclass.app/_next/static/*`
+
+Avoid full-zone purge unless emergency response requires it.
+
+### Step D - optional nginx fallback (only if static is served directly by nginx)
+
+If UAT nginx has dedicated static locations bypassing app proxy, add these with `always`:
+- `Strict-Transport-Security`
+- `X-Content-Type-Options`
+- `Permissions-Policy`
+- `Cross-Origin-Resource-Policy`
+- `Cross-Origin-Opener-Policy`
+
+Then run:
+
+```bash
+nginx -t && systemctl reload nginx
+```
+
+### Step E - verify post-change behavior
+
+```bash
+BASE_URL=https://uat.bookmyclass.app bash scripts/security-check-headers.sh
+BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-header-forensics.sh
+```
+
+Expected after remediation:
+- `/robots.txt` has required low-level security headers.
+- `/_next/static/*.js` has required low-level security headers.
+- `/_next/static/media/*` has required low-level security headers.
+- Remaining misses are limited to malformed scanner-style URLs and Cloudflare-managed `/cdn-cgi/*`.
+
 ## 10) Current residual findings (expected for now)
 
 - App-level header baseline is in place (CSP, `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy`, `Cross-Origin-Resource-Policy`).
