@@ -33,6 +33,7 @@
     "@prisma/adapter-pg": "^7.5.0",
     "@prisma/client": "^7.5.0",
     "@sentry/nextjs": "^10.47.0",
+    "@tailwindcss/postcss": "^4.2.2",
     "@tiptap/extension-link": "^3.22.0",
     "@tiptap/extension-text-align": "^3.22.0",
     "@tiptap/extension-text-style": "^3.22.0",
@@ -50,7 +51,6 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
-    "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -75,4 +75,3 @@
     "seed": "tsx prisma/seed.ts"
   }
 }
-
