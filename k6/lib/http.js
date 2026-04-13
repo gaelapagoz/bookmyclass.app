@@ -45,6 +45,14 @@ function hasHeader(headers, headerName) {
   return Object.keys(headers).some((key) => key.toLowerCase() === target);
 }
 
+function resolveOriginFromBaseUrl(baseUrl) {
+  const match = String(baseUrl).match(/^https?:\/\/[^/]+/i);
+  if (!match) {
+    throw new Error(`BASE_URL='${baseUrl}' must include protocol and host (for example, https://uat.bookmyclass.app).`);
+  }
+  return match[0];
+}
+
 function ensureSameOriginMutationHeaders(method, headers = {}) {
   const normalizedMethod = String(method || "").trim().toUpperCase();
   if (!MUTATION_METHODS.has(normalizedMethod)) {
@@ -53,7 +61,7 @@ function ensureSameOriginMutationHeaders(method, headers = {}) {
 
   const merged = { ...headers };
   const baseUrl = getBaseUrl();
-  const origin = new URL(baseUrl).origin;
+  const origin = resolveOriginFromBaseUrl(baseUrl);
 
   if (!hasHeader(merged, "origin")) {
     merged.Origin = origin;
