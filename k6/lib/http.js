@@ -1,5 +1,7 @@
 import http from "k6/http";
 
+const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 function normalizeBaseUrl() {
   const baseUrl = (__ENV.BASE_URL || "").trim();
   if (!baseUrl) {
@@ -38,11 +40,39 @@ export function jsonHeaders(extra = {}) {
   };
 }
 
+function hasHeader(headers, headerName) {
+  const target = headerName.toLowerCase();
+  return Object.keys(headers).some((key) => key.toLowerCase() === target);
+}
+
+function ensureSameOriginMutationHeaders(method, headers = {}) {
+  const normalizedMethod = String(method || "").trim().toUpperCase();
+  if (!MUTATION_METHODS.has(normalizedMethod)) {
+    return headers;
+  }
+
+  const merged = { ...headers };
+  const baseUrl = getBaseUrl();
+  const origin = new URL(baseUrl).origin;
+
+  if (!hasHeader(merged, "origin")) {
+    merged.Origin = origin;
+  }
+
+  if (!hasHeader(merged, "referer")) {
+    merged.Referer = `${baseUrl}/`;
+  }
+
+  return merged;
+}
+
 export function request(method, path, body, params = {}) {
+  const headers = ensureSameOriginMutationHeaders(method, params.headers || {});
   const requestParams = {
     redirects: 5,
     timeout: "30s",
     ...params,
+    headers,
   };
   return http.request(method, buildUrl(path), body, requestParams);
 }
@@ -72,4 +102,3 @@ export function postForm(path, values, params = {}) {
     ...params,
   });
 }
-
