@@ -7,7 +7,7 @@ import * as Sentry from "@sentry/nextjs";
 
 import { auth, signIn } from "@/auth";
 import { isAdminLoginCaptchaEnforced, getAdminLoginAbuseState } from "@/lib/auth/admin-login-abuse-service";
-import { isAdminRole } from "@/lib/auth/admin-access";
+import { resolveStaffWorkspacePath, isStaffRole } from "@/lib/auth/admin-access";
 import { getAdminLoginCaptchaSiteKey } from "@/lib/auth/admin-login-captcha";
 import { isInvalidCredentialsAuthError } from "@/lib/auth/auth-error-utils";
 import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
@@ -40,7 +40,7 @@ export async function adminSignInAction(formData: FormData) {
 
       const email = String(formData.get("email") ?? "").trim().toLowerCase();
       const password = String(formData.get("password") ?? "");
-      const callbackUrl = getSafeCallbackPath(formData.get("callbackUrl"), "/admin/dashboard");
+      const callbackUrl = getSafeCallbackPath(formData.get("callbackUrl"), "/admin");
       const requestHeaders = await headers();
       const ip = getClientIpFromHeaders(requestHeaders);
       const captchaToken = resolveCaptchaToken(formData);
@@ -69,7 +69,7 @@ export async function adminSignInAction(formData: FormData) {
           password,
           authFlow: "admin",
           captchaToken: captchaToken ?? undefined,
-          redirectTo: callbackUrl || "/admin/dashboard",
+          redirectTo: "/admin",
         });
       } catch (error) {
         if (isInvalidCredentialsAuthError(error)) {
@@ -122,7 +122,7 @@ function getErrorMessage(error?: string, guard?: string) {
   }
 
   if (error === "unauthorized") {
-    return "Your account does not have admin access.";
+    return "Your account does not have staff access.";
   }
 
   if (error === "auth_failed") {
@@ -134,18 +134,18 @@ function getErrorMessage(error?: string, guard?: string) {
 
 export default async function AdminEntryPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await auth();
-
-  if (session?.user && isAdminRole(session.user.role)) {
-    redirect("/admin/dashboard");
+  const staffWorkspacePath = resolveStaffWorkspacePath(session?.user?.role);
+  if (staffWorkspacePath) {
+    redirect(staffWorkspacePath);
   }
 
-  const { callbackUrl: rawCallbackUrl = "/admin/dashboard", error, guard } = await searchParams;
-  const callbackUrl = getSafeCallbackPath(rawCallbackUrl, "/admin/dashboard");
+  const { callbackUrl: rawCallbackUrl = "/admin", error, guard } = await searchParams;
+  const callbackUrl = getSafeCallbackPath(rawCallbackUrl, "/admin");
   const errorMessage = getErrorMessage(error, guard);
   const captchaSiteKey = getAdminLoginCaptchaSiteKey();
   const shouldRenderCaptcha = guard === "captcha_required" && Boolean(captchaSiteKey);
 
-  const isNonAdminUser = Boolean(session?.user) && !isAdminRole(session?.user?.role);
+  const isNonStaffUser = Boolean(session?.user) && !isStaffRole(session?.user?.role);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f2ede7] px-4 py-10 text-[#4f2a2a]">
@@ -163,9 +163,9 @@ export default async function AdminEntryPage({ searchParams }: { searchParams: S
           <h1 className="mt-1 text-2xl font-semibold text-[#6f2b2b]">Yoga Pilates Fitness Studio</h1>
         </div>
 
-        {isNonAdminUser ? (
+        {isNonStaffUser ? (
           <div className="space-y-4 rounded-xl border border-[#e4d8cf] bg-[#f9f5f1] p-4">
-            <p className="text-sm text-[#7b2d2d]">Your account is signed in but does not have admin access.</p>
+            <p className="text-sm text-[#7b2d2d]">Your account is signed in but does not have staff access.</p>
             <div className="flex gap-3">
               <Link href="/" className="rounded-md bg-[#7b2d2d] px-4 py-2 text-sm text-[#f4eee8] hover:opacity-90">
                 Back to Site

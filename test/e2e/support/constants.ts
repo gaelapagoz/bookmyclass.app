@@ -10,6 +10,11 @@ export const SEEDED_CLIENT_WITH_CREDITS = {
   password: E2E_PASSWORD,
 };
 
+export const SEEDED_TEACHER = {
+  email: "teacher.e2e@bookmyclass.local",
+  password: E2E_PASSWORD,
+};
+
 export const SEEDED_CLIENT_NO_CREDITS = {
   email: "client.nocredits.e2e@bookmyclass.local",
   password: E2E_PASSWORD,

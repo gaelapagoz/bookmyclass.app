@@ -37,3 +37,14 @@ export async function cleanSeededClientBookingsForTest(request: APIRequestContex
   const payload = (await response.json()) as { success?: boolean };
   expect(payload.success).toBe(true);
 }
+
+export async function createUnassignedTeacherSessionForTest(request: APIRequestContext): Promise<string> {
+  const response = await request.post("/api/test/e2e/teacher/unassigned-session", {
+    headers: testHeaders(),
+    data: {},
+  });
+  expect(response.ok()).toBeTruthy();
+  const payload = (await response.json()) as { sessionId?: string };
+  expect(payload.sessionId).toBeTruthy();
+  return payload.sessionId as string;
+}

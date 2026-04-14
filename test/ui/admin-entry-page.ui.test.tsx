@@ -123,7 +123,23 @@ describe("/admin entry flow", () => {
     );
   });
 
-  it("authenticated non-admin sees access denied message", async () => {
+  it("authenticated teacher is redirected to /teacher", async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: "teacher-1",
+        name: "Teacher",
+        email: "teacher@example.test",
+        role: "TEACHER",
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    await expect(AdminEntryPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      "NEXT_REDIRECT:/teacher",
+    );
+  });
+
+  it("authenticated non-staff sees access denied message", async () => {
     vi.mocked(auth).mockResolvedValue({
       user: {
         id: "client-1",
@@ -136,7 +152,7 @@ describe("/admin entry flow", () => {
 
     render(await AdminEntryPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByText("does not have admin access", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("does not have staff access", { exact: false })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sign In to Admin" })).not.toBeInTheDocument();
   });
 
@@ -192,7 +208,7 @@ describe("/admin entry flow", () => {
       password: "very-secure-password",
       authFlow: "admin",
       captchaToken: undefined,
-      redirectTo: "/admin/dashboard",
+      redirectTo: "/admin",
     });
   });
 

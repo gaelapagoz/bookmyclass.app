@@ -22,7 +22,7 @@ vi.mock("@/auth", () => ({
 }));
 
 import { auth } from "@/auth";
-import { requireAuth } from "../../src/lib/auth/require-auth";
+import { requireAuth, requireTeacherSession } from "../../src/lib/auth/require-auth";
 
 describe("route protection", () => {
   beforeEach(async () => {
@@ -101,6 +101,59 @@ describe("route protection", () => {
     const session = await requireAuth();
 
     expect(session.user?.email).toBe(user.email);
+    expect(redirectMock).not.toHaveBeenCalled();
+  });
+
+  it("non-teacher authenticated user cannot access /teacher", async () => {
+    const user = await prisma.user.create({
+      data: {
+        name: "Verified Client",
+        firstName: "Verified",
+        lastName: "Client",
+        email: `verified.teacher.blocked.${Date.now()}@example.test`,
+        emailVerified: new Date(),
+        role: "CLIENT",
+      },
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    await expect(requireTeacherSession()).rejects.toThrow("NEXT_REDIRECT:/dashboard");
+    expect(redirectMock).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("teacher authenticated user can access /teacher", async () => {
+    const teacher = await prisma.user.create({
+      data: {
+        name: "Verified Teacher",
+        firstName: "Verified",
+        lastName: "Teacher",
+        email: `verified.teacher.${Date.now()}@example.test`,
+        emailVerified: new Date(),
+        role: "TEACHER",
+      },
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: teacher.id,
+        name: teacher.name,
+        email: teacher.email,
+        role: teacher.role,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const session = await requireTeacherSession();
+    expect(session.user.role).toBe("TEACHER");
     expect(redirectMock).not.toHaveBeenCalled();
   });
 });

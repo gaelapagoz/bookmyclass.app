@@ -1770,17 +1770,20 @@ export async function upsertAdminClassScheduleConfig(input: {
 export async function getAdminSessionsData(input?: {
   weekStart?: Date;
   weekEnd?: Date;
+  teacherId?: string;
 }): Promise<AdminSessionItem[]> {
   const sessions = await prisma.studioSession.findMany({
-    where:
-      input?.weekStart && input.weekEnd
+    where: {
+      ...(input?.weekStart && input.weekEnd
         ? {
             startsAt: {
               gte: input.weekStart,
               lt: input.weekEnd,
             },
           }
-        : undefined,
+        : {}),
+      ...(input?.teacherId ? { teacherId: input.teacherId } : {}),
+    },
     orderBy: [{ startsAt: "asc" }, { title: "asc" }],
     take: 200,
     select: {
@@ -2391,6 +2394,7 @@ export async function addSessionAttendeeByManager(input: {
       where: { id: input.studioSessionId },
       select: {
         id: true,
+        teacherId: true,
         title: true,
         startsAt: true,
         capacity: true,
@@ -2418,6 +2422,9 @@ export async function addSessionAttendeeByManager(input: {
 
   if (!session) {
     throw new Error("SESSION_NOT_FOUND");
+  }
+  if (actorUser.role === Role.TEACHER && session.teacherId !== actorUser.id) {
+    throw new Error("TEACHER_SESSION_FORBIDDEN");
   }
 
   if (session.status !== StudioSessionStatus.SCHEDULED || session.startsAt <= now) {
@@ -2557,19 +2564,36 @@ export async function removeSessionAttendeeByManager(input: {
     throw new Error("SESSION_MANAGER_FORBIDDEN");
   }
 
-  const booking = await prisma.booking.findFirst({
-    where: {
-      id: input.bookingId,
-      studioSessionId: input.studioSessionId,
-    },
-    select: {
-      id: true,
-      clientId: true,
-      status: true,
-      selectedEntitlementId: true,
-      creditRefundedAt: true,
-    },
-  });
+  const [session, booking] = await prisma.$transaction([
+    prisma.studioSession.findUnique({
+      where: { id: input.studioSessionId },
+      select: {
+        id: true,
+        teacherId: true,
+      },
+    }),
+    prisma.booking.findFirst({
+      where: {
+        id: input.bookingId,
+        studioSessionId: input.studioSessionId,
+      },
+      select: {
+        id: true,
+        clientId: true,
+        status: true,
+        selectedEntitlementId: true,
+        creditRefundedAt: true,
+      },
+    }),
+  ]);
+
+  if (!session) {
+    throw new Error("SESSION_NOT_FOUND");
+  }
+
+  if (actorUser.role === Role.TEACHER && session.teacherId !== actorUser.id) {
+    throw new Error("TEACHER_SESSION_FORBIDDEN");
+  }
 
   if (!booking) {
     throw new Error("SESSION_ATTENDEE_NOT_FOUND");

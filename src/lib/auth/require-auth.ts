@@ -26,6 +26,12 @@ type AdminSession = AuthenticatedSession & {
   };
 };
 
+type TeacherSession = AuthenticatedSession & {
+  user: AuthenticatedSession["user"] & {
+    role: "TEACHER";
+  };
+};
+
 function withCallback(path: string, callbackUrl: string): string {
   return `${path}?callbackUrl=${encodeURIComponent(callbackUrl)}`;
 }
@@ -123,6 +129,32 @@ export async function requireAdminSession(options?: {
     user: {
       ...session.user,
       role,
+    },
+  };
+}
+
+export async function requireTeacherSession(options?: {
+  callbackUrl?: string;
+  signInPath?: string;
+  unauthorizedPath?: string;
+  throwOnFailure?: boolean;
+}): Promise<TeacherSession> {
+  const callbackUrl = options?.callbackUrl ?? "/teacher";
+  const session = await requireUserSession({
+    callbackUrl,
+    signInPath: options?.signInPath ?? DEFAULT_CUSTOMER_SIGN_IN_PATH,
+  });
+  const unauthorizedPath = options?.unauthorizedPath ?? "/dashboard";
+
+  if (session.user.role !== "TEACHER") {
+    failAuth(Boolean(options?.throwOnFailure), "FORBIDDEN", unauthorizedPath);
+  }
+
+  return {
+    ...session,
+    user: {
+      ...session.user,
+      role: "TEACHER",
     },
   };
 }

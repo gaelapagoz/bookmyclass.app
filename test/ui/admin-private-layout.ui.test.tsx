@@ -70,6 +70,23 @@ describe("/admin private layout", () => {
     ).rejects.toThrow("NEXT_REDIRECT:/admin?error=unauthorized");
   });
 
+  it("redirects authenticated teacher users to /admin?error=unauthorized", async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: "teacher-1",
+        email: "teacher@example.test",
+        role: "TEACHER",
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    await expect(
+      AdminPrivateLayout({
+        children: <div>Protected</div>,
+      }),
+    ).rejects.toThrow("NEXT_REDIRECT:/admin?error=unauthorized");
+  });
+
   it("renders grouped sidebar and content for admin users", async () => {
     vi.mocked(auth).mockResolvedValue({
       user: {

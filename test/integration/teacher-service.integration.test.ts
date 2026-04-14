@@ -1,0 +1,242 @@
+import "./helpers/setup-env";
+
+import {
+  ClientEntitlementStatus,
+  CreditLedgerEntryType,
+  EntitlementScope,
+  EntitlementType,
+  ProductType,
+  Role,
+  StudioSessionStatus,
+} from "@prisma/client";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { prisma } from "./helpers/db";
+import { createClassCategory, createClassType } from "./helpers/factories";
+import { resetDb } from "./helpers/reset-db";
+import {
+  addTeacherSessionAttendee,
+  getTeacherAssignedSessions,
+  getTeacherSelfProfile,
+  getTeacherSessionRosterData,
+  removeTeacherSessionAttendee,
+  updateTeacherSelfProfile,
+} from "../../src/lib/teacher/teacher-service";
+
+async function seedTeacherSessionFixture() {
+  const category = await createClassCategory(prisma, {
+    name: "Collective",
+    slug: `teacher-collective-${Date.now()}`,
+    sortOrder: 1,
+    isActive: true,
+  });
+
+  const classType = await createClassType(prisma, {
+    categoryId: category.id,
+    name: "Teacher Pilates",
+    slug: `teacher-pilates-${Date.now()}`,
+    sortOrder: 1,
+    isActive: true,
+    isVisible: true,
+  });
+
+  const [teacherA, teacherB, client] = await Promise.all([
+    prisma.user.create({
+      data: {
+        name: "Teacher A",
+        email: `teacher.a.${Date.now()}@example.test`,
+        role: Role.TEACHER,
+        teacherProfile: { create: {} },
+      },
+    }),
+    prisma.user.create({
+      data: {
+        name: "Teacher B",
+        email: `teacher.b.${Date.now()}@example.test`,
+        role: Role.TEACHER,
+        teacherProfile: { create: {} },
+      },
+    }),
+    prisma.user.create({
+      data: {
+        name: "Client One",
+        email: `teacher.client.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    }),
+  ]);
+
+  const template = await prisma.classTemplate.create({
+    data: {
+      classTypeId: classType.id,
+      defaultTeacherId: teacherA.id,
+      title: "Teacher Fixture Template",
+      slug: `teacher-template-${Date.now()}`,
+      defaultCapacity: 10,
+      defaultDurationMinutes: 60,
+      isActive: true,
+      isPublished: true,
+    },
+  });
+
+  const startsAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+  const [sessionA, sessionB] = await Promise.all([
+    prisma.studioSession.create({
+      data: {
+        classTemplateId: template.id,
+        classTypeId: classType.id,
+        teacherId: teacherA.id,
+        title: "Teacher A Session",
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
+        capacity: 10,
+        status: StudioSessionStatus.SCHEDULED,
+        isPublished: true,
+      },
+    }),
+    prisma.studioSession.create({
+      data: {
+        classTemplateId: template.id,
+        classTypeId: classType.id,
+        teacherId: teacherB.id,
+        title: "Teacher B Session",
+        startsAt: new Date(startsAt.getTime() + 24 * 60 * 60 * 1000),
+        endsAt: new Date(startsAt.getTime() + 25 * 60 * 60 * 1000),
+        capacity: 10,
+        status: StudioSessionStatus.SCHEDULED,
+        isPublished: true,
+      },
+    }),
+  ]);
+
+  const product = await prisma.product.create({
+    data: {
+      name: `Teacher Pack ${Date.now()}`,
+      slug: `teacher-pack-${Date.now()}`,
+      productType: ProductType.CLASS_PACK,
+      isActive: true,
+      isArchived: false,
+      sortOrder: 1,
+    },
+  });
+
+  const entitlement = await prisma.clientEntitlement.create({
+    data: {
+      clientId: client.id,
+      productId: product.id,
+      entitlementType: EntitlementType.CREDIT_PACK,
+      entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+      status: ClientEntitlementStatus.ACTIVE,
+      activatedAt: new Date(),
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  await prisma.creditLedgerEntry.create({
+    data: {
+      clientId: client.id,
+      entitlementId: entitlement.id,
+      entryType: CreditLedgerEntryType.GRANT,
+      amount: 2,
+      notes: "Teacher integration seed grant",
+    },
+  });
+
+  return { teacherA, teacherB, client, sessionA, sessionB, entitlement };
+}
+
+describe("teacher service", () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it("returns only assigned sessions for teacher", async () => {
+    const { teacherA, sessionA } = await seedTeacherSessionFixture();
+    const sessions = await getTeacherAssignedSessions({ teacherUserId: teacherA.id });
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]?.id).toBe(sessionA.id);
+  });
+
+  it("allows reading own profile and updating only own teacher profile", async () => {
+    const { teacherA } = await seedTeacherSessionFixture();
+    const profileBefore = await getTeacherSelfProfile(teacherA.id);
+
+    expect(profileBefore?.id).toBe(teacherA.id);
+
+    await updateTeacherSelfProfile({
+      teacherUserId: teacherA.id,
+      requestedTeacherUserId: teacherA.id,
+      firstName: "Updated",
+      lastName: "Teacher",
+      phone: "+32000000010",
+      bio: "Updated bio",
+      specialties: ["Pilates"],
+      certifications: ["L1"],
+    });
+
+    const profileAfter = await getTeacherSelfProfile(teacherA.id);
+    expect(profileAfter?.firstName).toBe("Updated");
+    expect(profileAfter?.lastName).toBe("Teacher");
+    expect(profileAfter?.phone).toBe("+32000000010");
+
+    await expect(
+      updateTeacherSelfProfile({
+        teacherUserId: teacherA.id,
+        requestedTeacherUserId: "different-teacher-id",
+        firstName: "Blocked",
+        lastName: "Update",
+      }),
+    ).rejects.toThrow("TEACHER_SELF_SCOPE_FORBIDDEN");
+  });
+
+  it("restricts roster reads and mutations to assigned sessions and reuses eligibility rules", async () => {
+    const { teacherA, teacherB, client, sessionA, sessionB, entitlement } = await seedTeacherSessionFixture();
+
+    const roster = await getTeacherSessionRosterData({
+      teacherUserId: teacherA.id,
+      sessionId: sessionA.id,
+    });
+    expect(roster?.session.id).toBe(sessionA.id);
+
+    await expect(
+      getTeacherSessionRosterData({
+        teacherUserId: teacherA.id,
+        sessionId: sessionB.id,
+      }),
+    ).rejects.toThrow("TEACHER_SESSION_FORBIDDEN");
+
+    const added = await addTeacherSessionAttendee({
+      teacherUserId: teacherA.id,
+      studioSessionId: sessionA.id,
+      clientId: client.id,
+    });
+    expect(added.usedCreditEntitlementId).toBe(entitlement.id);
+
+    const consume = await prisma.creditLedgerEntry.findFirst({
+      where: {
+        bookingId: added.bookingId,
+        entitlementId: entitlement.id,
+        entryType: CreditLedgerEntryType.CONSUME,
+      },
+      select: { amount: true },
+    });
+    expect(consume?.amount).toBe(-1);
+
+    await expect(
+      addTeacherSessionAttendee({
+        teacherUserId: teacherA.id,
+        studioSessionId: sessionB.id,
+        clientId: client.id,
+      }),
+    ).rejects.toThrow("TEACHER_SESSION_FORBIDDEN");
+
+    await expect(
+      removeTeacherSessionAttendee({
+        teacherUserId: teacherB.id,
+        studioSessionId: sessionA.id,
+        bookingId: added.bookingId,
+      }),
+    ).rejects.toThrow("TEACHER_SESSION_FORBIDDEN");
+  });
+});

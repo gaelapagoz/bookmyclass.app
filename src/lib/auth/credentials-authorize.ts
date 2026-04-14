@@ -13,7 +13,7 @@ import {
   recordClientLoginFailure,
   resetClientLoginFailureCounters,
 } from "@/lib/auth/client-login-abuse-service";
-import { isAdminRole } from "@/lib/auth/admin-access";
+import { isAdminRole, isStaffRole } from "@/lib/auth/admin-access";
 import { verifyAdminLoginCaptcha } from "@/lib/auth/admin-login-captcha";
 import { verifyPassword } from "@/lib/auth/password-service";
 import { prisma } from "@/lib/db";
@@ -310,6 +310,20 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
       return null;
     }
 
+    if (isAdminSignInFlow && !isStaffRole(user.role)) {
+      await measureStep("recordAdminLoginFailure.nonStaffAdminFlow", () =>
+        trace.db("auth.recordAdminLoginFailure.nonStaffAdminFlow", () =>
+          recordAdminLoginFailure({
+            ip,
+            normalizedEmail,
+            reason: "invalid_user",
+          }),
+        ),
+      );
+      authResult = "invalid_user";
+      return null;
+    }
+
     if (!user.passwordHash) {
       if (!isAdminSignInFlow) {
         await measureStep("recordClientLoginFailure.missingHash", () =>
@@ -336,7 +350,7 @@ export async function authorizeCredentials(rawCredentials: unknown, rawRequest?:
       return null;
     }
 
-    if (!user.emailVerified && !isAdminRole(user.role)) {
+    if (!user.emailVerified && user.role === "CLIENT") {
       if (!isAdminSignInFlow) {
         await measureStep("recordClientLoginFailure.emailNotVerified", () =>
           trace.db("auth.recordClientLoginFailure.emailNotVerified", () =>

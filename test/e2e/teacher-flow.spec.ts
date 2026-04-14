@@ -1,0 +1,48 @@
+import { expect, test } from "@playwright/test";
+
+import { signInClient, signInTeacher } from "./support/auth";
+import { cleanSeededClientBookingsForTest, createUnassignedTeacherSessionForTest } from "./support/e2e-api";
+import { SEEDED_CLIENT_WITH_CREDITS, SEEDED_TEACHER } from "./support/constants";
+
+test.describe("teacher flow", () => {
+  test.describe.configure({ mode: "serial" });
+
+  test("teacher can sign in, view own sessions, and manage own class roster", async ({ page }) => {
+    await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_WITH_CREDITS.email);
+    await signInTeacher(page, SEEDED_TEACHER);
+
+    await expect(page.getByRole("heading", { name: "Teacher Dashboard" })).toBeVisible();
+
+    await page.goto("/teacher/sessions");
+    await expect(page.getByRole("heading", { name: "My Sessions" })).toBeVisible();
+
+    // Click on the first session link in the calendar
+    await page.getByRole("link", { name: /E2E Flow Class - E2E Session/ }).first().click();
+    await expect(page.getByTestId("teacher-session-roster")).toBeVisible();
+
+    const clientOptionValue = await page
+      .getByRole("option", { name: /client\.e2e@bookmyclass\.local/i })
+      .getAttribute("value");
+    expect(clientOptionValue).toBeTruthy();
+    await page.getByRole("combobox", { name: "Client" }).selectOption(clientOptionValue as string);
+    await page.getByRole("button", { name: "Add client" }).click();
+
+    await expect(page.getByText("Attendee added.")).toBeVisible();
+    await expect(page.getByText("E2E Client Credits").first()).toBeVisible();
+  });
+
+  test("teacher cannot manage another teacher class roster", async ({ page }) => {
+    await signInTeacher(page, SEEDED_TEACHER);
+    const unassignedSessionId = await createUnassignedTeacherSessionForTest(page.request);
+
+    await page.goto(`/teacher/sessions/${encodeURIComponent(unassignedSessionId)}`);
+    await expect(page).toHaveURL(/\/teacher\/sessions\?error=/);
+    await expect(page.getByRole("heading", { name: "My Sessions" })).toBeVisible();
+  });
+
+  test("non-teacher user is blocked from teacher area", async ({ page }) => {
+    await signInClient(page, SEEDED_CLIENT_WITH_CREDITS);
+    await page.goto("/teacher");
+    await expect(page).toHaveURL(/\/dashboard$/);
+  });
+});

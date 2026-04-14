@@ -299,6 +299,7 @@ cd /var/www/bookmyclass-uat
 git fetch --all --tags
 git checkout v0.2.37-rc.3   # or your target UAT tag
 npm ci
+npx prisma migrate reset
 npx prisma migrate deploy
 npx prisma generate
 

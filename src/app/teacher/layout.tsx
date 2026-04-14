@@ -1,18 +1,13 @@
-import { redirect } from "next/navigation";
 import TeacherSidebar from "@/components/teacher/TeacherSidebar";
-import { requireUserSession } from "@/lib/auth/require-auth";
+import { requireTeacherSession } from "@/lib/auth/require-auth";
 
 export default async function TeacherLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const session = await requireUserSession({
+  await requireTeacherSession({
     callbackUrl: "/teacher",
+    unauthorizedPath: "/dashboard",
   });
-
-  const role = session.user.role;
-  if (role !== "TEACHER" && role !== "ADMIN" && role !== "MASTER_ADMIN") {
-    redirect("/dashboard");
-  }
 
   return (
     <div className="min-h-screen bg-[#eef2f7] text-[#1f2735] md:flex">

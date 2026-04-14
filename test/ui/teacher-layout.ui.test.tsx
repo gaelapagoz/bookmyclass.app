@@ -4,28 +4,18 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const requireUserSessionMock = vi.fn();
-const redirectMock = vi.fn();
+const requireTeacherSessionMock = vi.fn();
 
 vi.mock("@/lib/auth/require-auth", () => ({
-  requireUserSession: (...args: unknown[]) => requireUserSessionMock(...args),
+  requireTeacherSession: (...args: unknown[]) => requireTeacherSessionMock(...args),
 }));
-
-vi.mock("next/navigation", async () => {
-  const actual = await vi.importActual<typeof import("next/navigation")>("next/navigation");
-  return {
-    ...actual,
-    redirect: (...args: unknown[]) => redirectMock(...args),
-  };
-});
 
 import TeacherLayout from "../../src/app/teacher/layout";
 
 describe("Teacher layout guard", () => {
   beforeEach(() => {
-    requireUserSessionMock.mockReset();
-    redirectMock.mockReset();
-    requireUserSessionMock.mockResolvedValue({
+    requireTeacherSessionMock.mockReset();
+    requireTeacherSessionMock.mockResolvedValue({
       user: { id: "teacher-1", role: "TEACHER" },
     });
   });
@@ -38,18 +28,15 @@ describe("Teacher layout guard", () => {
     );
 
     expect(screen.getByText("Teacher content")).toBeInTheDocument();
-    expect(redirectMock).not.toHaveBeenCalled();
   });
 
   it("redirects non-teacher/admin users", async () => {
-    requireUserSessionMock.mockResolvedValue({
-      user: { id: "client-1", role: "CLIENT" },
-    });
+    requireTeacherSessionMock.mockRejectedValue(new Error("FORBIDDEN"));
 
-    await TeacherLayout({
-      children: <div>Hidden content</div>,
-    });
-
-    expect(redirectMock).toHaveBeenCalledWith("/dashboard");
+    await expect(
+      TeacherLayout({
+        children: <div>Hidden content</div>,
+      }),
+    ).rejects.toThrow("FORBIDDEN");
   });
 });

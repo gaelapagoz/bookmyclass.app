@@ -8,6 +8,14 @@ export async function signInClient(page: Page, input: { email: string; password:
   await expect(page).toHaveURL(/\/dashboard$/);
 }
 
+export async function signInTeacher(page: Page, input: { email: string; password: string }) {
+  await page.goto("/admin");
+  await page.getByLabel("Email").fill(input.email);
+  await page.getByLabel("Password").fill(input.password);
+  await page.getByRole("button", { name: "Sign In to Admin" }).click();
+  await expect(page).toHaveURL(/\/teacher$/);
+}
+
 export async function signInAdmin(page: Page, input: { email: string; password: string }) {
   await page.goto("/admin");
   await page.getByLabel("Email").fill(input.email);

@@ -562,6 +562,9 @@ function getAdminActionErrorMessage(error: unknown): string {
   if (code === "TEACHER_CREDIT_OVERRIDE_FORBIDDEN") {
     return "Teachers cannot add attendees without available credits.";
   }
+  if (code === "TEACHER_SESSION_FORBIDDEN") {
+    return "You can only manage attendees for sessions assigned to you.";
+  }
   if (code === "SESSION_ATTENDEE_NOT_FOUND") {
     return "Selected attendee booking was not found for this session.";
   }

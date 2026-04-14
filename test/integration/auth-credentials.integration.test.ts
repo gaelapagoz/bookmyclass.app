@@ -165,6 +165,60 @@ describe("credentials authorize integration", () => {
     expect(result?.role).toBe(Role.ADMIN);
   });
 
+  it("accepts unverified teacher users through admin auth flow", async () => {
+    const password = "Password123!";
+    const passwordHash = await hash(password, 12);
+
+    const user = await prisma.user.create({
+      data: {
+        name: "Teacher Staff",
+        firstName: "Teacher",
+        lastName: "Staff",
+        email: "teacher.staff@example.test",
+        role: Role.TEACHER,
+        passwordHash,
+        emailVerified: null,
+      },
+    });
+
+    const result = await authorizeCredentials({
+      email: "teacher.staff@example.test",
+      password,
+      authFlow: "admin",
+      captchaToken: "pass-captcha",
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.id).toBe(user.id);
+    expect(result?.role).toBe(Role.TEACHER);
+  });
+
+  it("rejects non-staff users through admin auth flow", async () => {
+    const password = "Password123!";
+    const passwordHash = await hash(password, 12);
+
+    await prisma.user.create({
+      data: {
+        name: "Client Non Staff",
+        firstName: "Client",
+        lastName: "NonStaff",
+        email: "client.nonstaff@example.test",
+        role: Role.CLIENT,
+        passwordHash,
+        emailVerified: new Date(),
+      },
+    });
+
+    const result = await authorizeCredentials({
+      email: "client.nonstaff@example.test",
+      password,
+      authFlow: "admin",
+      captchaToken: "pass-captcha",
+    });
+
+    expect(result).toBeNull();
+  });
+
   it("blocks repeated failed admin attempts with database lockout", { timeout: 20000 }, async () => {
     const email = `rate-limit.${Date.now()}@example.test`;
     const password = "Password123!";

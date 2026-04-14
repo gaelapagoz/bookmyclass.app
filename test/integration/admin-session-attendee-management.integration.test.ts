@@ -76,6 +76,7 @@ async function createSessionFixture() {
 
   return {
     session,
+    teacher,
   };
 }
 
@@ -334,20 +335,13 @@ describe("admin session attendee management service", () => {
   });
 
   it("TEACHER cannot add attendee without available credits", async () => {
-    const { session } = await createSessionFixture();
-    const [client, teacher] = await Promise.all([
+    const { session, teacher } = await createSessionFixture();
+    const [client] = await Promise.all([
       prisma.user.create({
         data: {
           name: "Client Six",
           email: `client.six.${Date.now()}@example.test`,
           role: Role.CLIENT,
-        },
-      }),
-      prisma.user.create({
-        data: {
-          name: "Teacher Actor",
-          email: `teacher.actor.${Date.now()}@example.test`,
-          role: Role.TEACHER,
         },
       }),
     ]);
@@ -363,6 +357,37 @@ describe("admin session attendee management service", () => {
         },
       }),
     ).rejects.toThrow("TEACHER_CREDIT_OVERRIDE_FORBIDDEN");
+  });
+
+  it("TEACHER cannot add attendee on unassigned session", async () => {
+    const { session } = await createSessionFixture();
+    const [client, unassignedTeacher] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Client Unassigned",
+          email: `client.unassigned.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Teacher Unassigned",
+          email: `teacher.unassigned.${Date.now()}@example.test`,
+          role: Role.TEACHER,
+        },
+      }),
+    ]);
+
+    await expect(
+      addSessionAttendeeByManager({
+        studioSessionId: session.id,
+        clientId: client.id,
+        actor: {
+          userId: unassignedTeacher.id,
+          role: Role.TEACHER,
+        },
+      }),
+    ).rejects.toThrow("TEACHER_SESSION_FORBIDDEN");
   });
 
   it("shows attendee after add and removes from detail list after removal", async () => {

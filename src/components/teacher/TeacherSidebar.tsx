@@ -3,7 +3,7 @@
 const teacherNavItems = [
   { href: "/teacher", label: "Dashboard" },
   { href: "/teacher/sessions", label: "Sessions" },
-  { href: "/teacher/bookings", label: "Bookings" },
+  { href: "/teacher/profile", label: "Profile" },
 ] as const;
 
 export default function TeacherSidebar() {

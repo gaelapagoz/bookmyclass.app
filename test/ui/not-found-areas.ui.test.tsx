@@ -11,6 +11,12 @@ vi.mock("@/lib/auth/require-auth", () => ({
       role: "TEACHER",
     },
   })),
+  requireTeacherSession: vi.fn(async () => ({
+    user: {
+      id: "teacher-user",
+      role: "TEACHER",
+    },
+  })),
 }));
 
 vi.mock("@/components/Navbar", () => ({
@@ -71,7 +77,7 @@ describe("route-area not-found handling", () => {
     expect(screen.getByText("Teacher page not found")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Sessions" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Bookings" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Profile" })).toBeInTheDocument();
     expect(screen.queryByTestId("public-navbar")).not.toBeInTheDocument();
     expect(screen.queryByTestId("public-footer")).not.toBeInTheDocument();
   });
