@@ -5,10 +5,10 @@ Purpose: summarize the current CI/CD posture from repository evidence.
 ## Current Pipeline
 - Single workflow: `.github/workflows/ci.yml`.
 - Two jobs:
-  - `ci`
-  - `e2e` (depends on `ci`).
+  - `regression`
+  - `e2e` (depends on `regression`).
 
-## `ci` Job (Current)
+## `regression` Job (Current)
 - Uses Postgres service (`studio_test`).
 - Runs: dependency install, Prisma generate, build, full Vitest run, Prisma migrate status.
 
@@ -21,6 +21,7 @@ Purpose: summarize the current CI/CD posture from repository evidence.
 ## Deployment Automation Status
 - No automated production deploy job exists in this repository.
 - Deployment is documented as manual runbook-driven process.
+- Tag-based UAT release workflow exists at `.github/workflows/uat-release.yml` and runs deployed-UAT gates.
 
 ## Canonical References
 - `docs/00_02_deployment_baseline.md`

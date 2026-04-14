@@ -48,9 +48,16 @@ Required:
 ## GitHub Actions order
 
 In `.github/workflows/uat-release.yml`, release-tag sequence is:
-1. `ci`
-2. `deploy_uat`
-3. `smoke_uat`
-4. `e2e_uat`
+1. `regression`
+2. `e2e`
+3. `deploy_uat`
+4. `smoke_uat`
+5. `e2e_uat`
+6. `k6_smoke_uat`
+7. `zap_uat`
 
 If `e2e_uat` fails, the workflow fails and Playwright artifacts are uploaded.
+
+Pre-deploy CI e2e and deployed-UAT release e2e are distinct:
+- `e2e` in `.github/workflows/ci.yml` is pre-deploy CI e2e
+- `e2e_uat` in `.github/workflows/uat-release.yml` is post-deploy UAT release e2e

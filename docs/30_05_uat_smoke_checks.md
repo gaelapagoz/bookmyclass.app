@@ -40,10 +40,13 @@ BASE_URL=https://uat.bookmyclass.app npm run test:uat:smoke
 ## Release sequence in GitHub Actions
 
 Expected order:
-1. Deploy exact tag to UAT over SSH
-2. Run `npm run test:uat:smoke` from the GitHub runner against the public UAT URL
-3. Run UAT E2E checks
-4. Run later-stage validation (for example ZAP baseline and k6)
+1. `regression`
+2. `e2e`
+3. Deploy exact tag to UAT over SSH (`deploy_uat`)
+4. Run `npm run test:uat:smoke` (`smoke_uat`)
+5. Run deployed UAT release e2e (`e2e_uat`)
+6. Run k6 smoke (`k6_smoke_uat`)
+7. Run ZAP baseline (`zap_uat`)
 
 Assumed SSH secrets for deploy step:
 - `UAT_SSH_HOST`

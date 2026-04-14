@@ -35,11 +35,18 @@ Rule:
 ## GitHub Actions Tag Release (UAT only)
 
 For `v*` tag pushes, workflow `.github/workflows/uat-release.yml` runs:
-1. CI job (build, tests, Prisma checks)
-2. Deploy exact tag to UAT over SSH
-3. Run `npm run test:uat:smoke` from the GitHub runner against public UAT URL
-4. Run deployed-UAT release e2e suite (`npm run test:e2e:uat`)
-5. Stop on failure (no production deployment in this workflow)
+1. `regression` (pre-deploy build/test/validation)
+2. `e2e` (pre-deploy CI e2e)
+3. `deploy_uat` (exact tag deploy over SSH)
+4. `smoke_uat` (public UAT smoke checks)
+5. `e2e_uat` (narrow deployed-UAT release e2e)
+6. `k6_smoke_uat` (short non-booking k6 smoke profile)
+7. `zap_uat` (OWASP ZAP baseline)
+
+Flat release view:
+- `regression -> e2e -> deploy_uat -> smoke_uat -> e2e_uat -> k6_smoke_uat -> zap_uat`
+
+All jobs are release-blocking and stop on failure (no production deployment in this workflow).
 
 This preserves immutable tag deployment because deploy and smoke jobs both use `${github.ref}` / `${github.ref_name}`.
 
@@ -53,6 +60,7 @@ This preserves immutable tag deployment because deploy and smoke jobs both use `
 - `UAT_BASE_URL`
 - `UAT_E2E_EMAIL`
 - `UAT_E2E_PASSWORD`
+- `E2E_TEST_SECRET`
 
 ### Optional repository/environment variables
 
@@ -237,7 +245,7 @@ Defined in:
 
 ## Known Constraints
 
-- Tag-triggered automation covers UAT deploy + smoke + release e2e only
+- Tag-triggered automation covers UAT deploy + smoke + release e2e + k6 smoke + ZAP baseline
 - UAT e2e/security/load validation still requires additional jobs or operator runbooks
 - Production deployment remains operator-driven
 - Infrastructure values (host, DB name, etc.) must not be guessed
