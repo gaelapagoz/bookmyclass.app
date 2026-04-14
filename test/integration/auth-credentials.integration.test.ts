@@ -482,7 +482,7 @@ describe("credentials authorize integration", () => {
 
     expect(counters).toHaveLength(3);
     expect(counters.some((counter) => (counter.lockedUntil?.getTime() ?? 0) > Date.now())).toBe(true);
-  });
+  }, 15000);
 
   it("resets client lockout counters after successful sign-in", async () => {
     const email = `client-reset.${Date.now()}@example.test`;

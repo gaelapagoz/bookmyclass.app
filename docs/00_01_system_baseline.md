@@ -35,6 +35,9 @@ Evidence label legend used in this file:
 - `Missing / not verifiable`: not recoverable with confidence from repository contents.
 
 ## 1. Purpose of the application
+- Delivery objective:
+  - Production launch readiness with stable, correct, and operationally safe real-user flows.
+  - Evidence status: Repository objective/alignment statement.
 - Product scope:
   - Booking + subscription SaaS for a yoga/pilates/fitness studio, with public discovery pages, authenticated customer flows, and an admin back office.
   - Evidence status: Confirmed from repo (`README.md`, `src/app`, `src/lib`, `prisma/schema.prisma`).
@@ -43,7 +46,7 @@ Evidence label legend used in this file:
   - Admin users (`ADMIN`, `MASTER_ADMIN`) for operations.
   - Teacher role exists (`TEACHER`) but current app usage appears limited.
   - Evidence status: Confirmed from repo (`prisma/schema.prisma`, `src/lib/auth/require-auth.ts`, `src/app/admin/*`, `src/app/teacher/*`).
-- Beta scope implemented:
+- Current scope implemented:
   - Public class catalogue + availability APIs.
   - Booking draft -> payment-option selection -> Stripe checkout/confirmation.
   - Product/subscription checkout from `/subscription`.

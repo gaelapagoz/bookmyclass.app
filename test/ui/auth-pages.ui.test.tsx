@@ -89,6 +89,17 @@ describe("Auth pages UI", () => {
     expect(screen.getByRole("button", { name: "Send Reset Link" })).toBeInTheDocument();
   });
 
+  it("renders forgot-password success and failure state messages", async () => {
+    render(await ForgotPasswordPage({ searchParams: Promise.resolve({ sent: "1" }) }));
+    expect(screen.getByText("If an account exists for that email, a reset link has been sent.")).toBeInTheDocument();
+
+    render(await ForgotPasswordPage({ searchParams: Promise.resolve({ error: "delivery_failed" }) }));
+    expect(screen.getByText("We could not send reset email right now. Please try again in a few minutes.")).toBeInTheDocument();
+
+    render(await ForgotPasswordPage({ searchParams: Promise.resolve({ error: "request_failed" }) }));
+    expect(screen.getByText("Password reset is temporarily unavailable. Please try again shortly.")).toBeInTheDocument();
+  });
+
   it("shows sign-up specific error messages", async () => {
     render(await SignUpPage({ searchParams: Promise.resolve({ error: "invalid_input" }) }));
     expect(

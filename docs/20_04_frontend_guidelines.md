@@ -21,7 +21,7 @@ Purpose: document current frontend engineering constraints for this project.
 ## Testing Expectations for Frontend Work
 - Use UI tests for branching states and rendering behavior.
 - Use integration tests when behavior crosses route/service boundaries.
-- Keep E2E focused on beta-critical end-to-end flows.
+- Keep E2E focused on production-critical, release-blocking end-to-end flows.
 
 ## Canonical References
 - `docs/30_01_testing_rulebook.md`

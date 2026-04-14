@@ -74,4 +74,32 @@ describe("DashboardProfilePage", () => {
 
     expect(screen.getByText("Could not send password reset email right now.")).toBeInTheDocument();
   });
+
+  it("renders profile and password success/error messaging branches", async () => {
+    render(
+      await DashboardProfilePage({
+        searchParams: Promise.resolve({
+          profile_saved: "1",
+          password_saved: "1",
+          reset_sent: "1",
+        }),
+      }),
+    );
+
+    expect(screen.getByText("Profile updated successfully.")).toBeInTheDocument();
+    expect(screen.getByText("Password updated successfully.")).toBeInTheDocument();
+    expect(screen.getByText("Password reset email sent. Check your inbox for the reset link.")).toBeInTheDocument();
+
+    render(
+      await DashboardProfilePage({
+        searchParams: Promise.resolve({
+          profile_error: "email_exists",
+          password_error: "password_mismatch",
+        }),
+      }),
+    );
+
+    expect(screen.getByText("This email is already used by another account.")).toBeInTheDocument();
+    expect(screen.getByText("New password and confirmation do not match.")).toBeInTheDocument();
+  });
 });

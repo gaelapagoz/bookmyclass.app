@@ -237,7 +237,7 @@ npm run ops:verify-production-readiness -- \
   --confirm-restore-proof
 ```
 
-## Current Beta Scope
+## Current System State (toward production launch)
 - Public discovery + class browsing
 - Authenticated customer booking flow with plan and Stripe payment paths
 - Product/subscription checkout flow from `/subscription`
@@ -315,7 +315,7 @@ scripts/          # maintenance and verification scripts
 
 - `docs/30_01_testing_rulebook.md`: required testing standards and minimum coverage expectations.
 - `docs/30_02_testing_checklist.md`: implementation checklist for test planning and handoff quality.
-- `docs/30_03_e2e_inventory.md`: prioritized e2e inventory (smoke/critical/extended) for beta-relevant flows.
+- `docs/30_03_e2e_inventory.md`: prioritized e2e inventory (smoke/critical/extended) for production-critical flows.
 - `docs/30_04_e2e_setup.md`: e2e environment setup, execution model, and deterministic test guidance.
 
 - `docs/40_01_ci_cd_overview.md`: current CI pipeline structure, gates, and responsibilities.

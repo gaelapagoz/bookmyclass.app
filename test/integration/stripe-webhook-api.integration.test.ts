@@ -869,6 +869,68 @@ describe("POST /api/stripe/webhook", () => {
     expect(relatedPayments).toHaveLength(1);
     expect(relatedOrders).toHaveLength(1);
   });
+
+  it("keeps finalized checkout state stable when async payment failed arrives late", async () => {
+    const fixture = await createWebhookFixture({
+      paymentSelection: BookingPaymentSelection.NEW_PLAN_PURCHASE,
+    });
+
+    const completedEvent = {
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: fixture.payment.providerReference,
+          payment_status: "paid",
+          metadata: {
+            paymentId: fixture.payment.id,
+            bookingId: fixture.booking.id,
+            selectedPriceId: fixture.price.id,
+            orderId: fixture.order.id,
+          },
+        },
+      },
+    };
+
+    verifyStripeWebhookEventMock.mockReturnValueOnce(completedEvent);
+    const completedResponse = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(completedResponse.status).toBe(200);
+
+    verifyStripeWebhookEventMock.mockReturnValueOnce({
+      type: "checkout.session.async_payment_failed",
+      data: {
+        object: {
+          id: fixture.payment.providerReference,
+          metadata: {
+            paymentId: fixture.payment.id,
+            bookingId: fixture.booking.id,
+            orderId: fixture.order.id,
+          },
+        },
+      },
+    });
+    const failedResponse = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(failedResponse.status).toBe(200);
+
+    const booking = await prisma.booking.findUnique({ where: { id: fixture.booking.id } });
+    const payment = await prisma.payment.findUnique({ where: { id: fixture.payment.id } });
+    const order = await prisma.order.findUnique({ where: { id: fixture.order.id } });
+
+    expect(payment?.status).toBe(PaymentStatus.SUCCEEDED);
+    expect(order?.status).toBe(OrderStatus.PAID);
+    expect(booking?.status).toBe(BookingStatus.CONFIRMED);
+  });
   it("activates catalog purchase entitlements and exposes them in booking payment options", async () => {
     const fixture = await createCatalogCheckoutFixture();
 

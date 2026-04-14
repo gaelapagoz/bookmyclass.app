@@ -67,4 +67,36 @@ describe("Verify email page UI states", () => {
     expect(screen.getByRole("button", { name: "Resend Verification Email" })).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
   });
+
+  it("shows blocked, rate-limited, and send-failed messages", async () => {
+    render(
+      await VerifyEmailPage({
+        searchParams: Promise.resolve({
+          blocked: "1",
+          email: "user@example.test",
+        }),
+      }),
+    );
+    expect(screen.getByText("Please verify your email before accessing the dashboard.")).toBeInTheDocument();
+
+    render(
+      await VerifyEmailPage({
+        searchParams: Promise.resolve({
+          error: "rate_limited",
+          email: "user@example.test",
+        }),
+      }),
+    );
+    expect(screen.getByText("Please wait before requesting another verification email.")).toBeInTheDocument();
+
+    render(
+      await VerifyEmailPage({
+        searchParams: Promise.resolve({
+          error: "send_failed",
+          email: "user@example.test",
+        }),
+      }),
+    );
+    expect(screen.getByText("Could not send verification email right now.")).toBeInTheDocument();
+  });
 });

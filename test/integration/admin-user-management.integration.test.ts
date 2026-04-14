@@ -69,6 +69,122 @@ describe("admin user management service", () => {
     ).rejects.toThrow("MASTER_ADMIN_MANAGEMENT_FORBIDDEN");
   });
 
+  it("rejects non-admin actor at admin mutation boundary", async () => {
+    const clientActor = await prisma.user.create({
+      data: {
+        name: "Client Actor",
+        firstName: "Client",
+        lastName: "Actor",
+        email: `client.actor.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+    const targetUser = await prisma.user.create({
+      data: {
+        name: "Target User",
+        firstName: "Target",
+        lastName: "User",
+        email: `target.user.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await expect(
+      updateAdminUser(
+        targetUser.id,
+        {
+          firstName: "Target",
+          lastName: "Updated",
+          email: targetUser.email,
+          role: Role.CLIENT,
+          isActive: true,
+        },
+        {
+          id: clientActor.id,
+          role: Role.CLIENT,
+        },
+      ),
+    ).rejects.toThrow("ADMIN_USER_NOT_FOUND");
+  });
+
+  it("allows MASTER_ADMIN to update another MASTER_ADMIN password", async () => {
+    const [masterActor, masterTarget] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Master Actor",
+          firstName: "Master",
+          lastName: "Actor",
+          email: `master.actor.${Date.now()}@example.test`,
+          role: Role.MASTER_ADMIN,
+          passwordHash: await hash("MasterActor123!", 12),
+          emailVerified: new Date(),
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Master Target",
+          firstName: "Master",
+          lastName: "Target",
+          email: `master.target.${Date.now()}@example.test`,
+          role: Role.MASTER_ADMIN,
+          passwordHash: await hash("MasterTarget123!", 12),
+          emailVerified: new Date(),
+        },
+      }),
+    ]);
+
+    await updateAdminUser(
+      masterTarget.id,
+      {
+        firstName: "Master",
+        lastName: "Target",
+        email: masterTarget.email,
+        role: Role.MASTER_ADMIN,
+        isActive: true,
+        password: "MasterTarget456!",
+      },
+      {
+        id: masterActor.id,
+        role: Role.MASTER_ADMIN,
+      },
+    );
+
+    const updated = await prisma.user.findUniqueOrThrow({
+      where: { id: masterTarget.id },
+      select: { passwordHash: true },
+    });
+    expect(updated.passwordHash).not.toBe(masterTarget.passwordHash);
+  });
+
+  it("fails safely when admin update target user does not exist", async () => {
+    const admin = await prisma.user.create({
+      data: {
+        name: "Admin Missing Target",
+        firstName: "Admin",
+        lastName: "Missing",
+        email: `admin.missing.${Date.now()}@example.test`,
+        role: Role.ADMIN,
+      },
+    });
+
+    await expect(
+      updateAdminUser(
+        "user_missing_target",
+        {
+          firstName: "Ghost",
+          lastName: "User",
+          email: `ghost.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+          isActive: true,
+        },
+        {
+          id: admin.id,
+          role: Role.ADMIN,
+        },
+      ),
+    ).rejects.toThrow("USER_NOT_FOUND");
+  });
+
   it("adjusts credits through ledger entries and updates derived balance", async () => {
     const [client, admin] = await Promise.all([
       prisma.user.create({

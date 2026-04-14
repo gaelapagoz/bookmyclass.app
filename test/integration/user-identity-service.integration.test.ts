@@ -264,4 +264,52 @@ describe("user identity hardening", () => {
     });
     expect(unchangedUser.emailVerified).toBeNull();
   });
+
+  it("rejects email verification with invalid token", async () => {
+    const email = `verify-user.invalid.${Date.now()}@example.test`;
+    await prisma.user.create({
+      data: {
+        name: "Verify Invalid",
+        firstName: "Verify",
+        lastName: "Invalid",
+        email,
+        passwordHash: await hash("Password123!", 12),
+        emailVerified: null,
+      },
+    });
+
+    const verified = await verifyEmailByToken({
+      email,
+      token: "invalid-token",
+    });
+    expect(verified).toBe(false);
+  });
+
+  it("verifies email token once and safely rejects replay", async () => {
+    const email = `verify-user.replay.${Date.now()}@example.test`;
+    await prisma.user.create({
+      data: {
+        name: "Verify Replay",
+        firstName: "Verify",
+        lastName: "Replay",
+        email,
+        passwordHash: await hash("Password123!", 12),
+        emailVerified: null,
+      },
+    });
+
+    const outcome = await requestEmailVerification({
+      email,
+      appUrl: "http://localhost:3000",
+      now: new Date(),
+    });
+    expect(outcome.outcome).toBe("SENT");
+
+    const token = getTokenFromCapturedEmail("token", email);
+    const first = await verifyEmailByToken({ email, token });
+    const second = await verifyEmailByToken({ email, token });
+
+    expect(first).toBe(true);
+    expect(second).toBe(false);
+  });
 });

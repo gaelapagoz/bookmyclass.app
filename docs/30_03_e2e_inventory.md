@@ -1,6 +1,6 @@
-# E2E Inventory (Beta-Critical)
+# E2E Inventory (Production-Critical)
 
-This inventory defines the production-relevant Playwright scope for the current beta.
+This inventory defines the production-launch Playwright scope for release-blocking and safety-critical flows.
 
 ## Scope Rules
 
