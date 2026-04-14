@@ -317,6 +317,8 @@ scripts/          # maintenance and verification scripts
 - `docs/30_02_testing_checklist.md`: implementation checklist for test planning and handoff quality.
 - `docs/30_03_e2e_inventory.md`: prioritized e2e inventory (smoke/critical/extended) for production-critical flows.
 - `docs/30_04_e2e_setup.md`: e2e environment setup, execution model, and deterministic test guidance.
+- `docs/30_05_uat_smoke_checks.md`: minimal post-deploy UAT smoke checks and GitHub Actions usage.
+- `docs/30_06_uat_release_e2e.md`: deployed-UAT release e2e scope and workflow integration.
 
 - `docs/40_01_ci_cd_overview.md`: current CI pipeline structure, gates, and responsibilities.
 - `docs/40_02_environment_variables.md`: environment variable requirements by runtime context.

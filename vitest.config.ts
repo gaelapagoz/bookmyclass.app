@@ -13,5 +13,18 @@ export default defineConfig({
     globals: true,
     fileParallelism: false,
     exclude: [...configDefaults.exclude, "test/e2e/**"],
+
+    // 👇 ADD THIS
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html"],
+      reportsDirectory: "./coverage",
+      exclude: [
+        ...configDefaults.exclude,
+        "test/**",
+        "scripts/**",
+        "k6/**",
+      ],
+    },
   },
 });

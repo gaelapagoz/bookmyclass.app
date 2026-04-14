@@ -1,0 +1,203 @@
+name: uat-release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: studio_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d studio_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/studio_test
+      AUTH_SECRET: ci-auth-secret
+      NEXTAUTH_SECRET: ci-nextauth-secret
+      APP_URL: http://localhost:3000
+      STRIPE_SECRET_KEY: sk_test_ci
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci
+      STRIPE_WEBHOOK_SECRET: whsec_ci
+      RESEND_API_KEY: ci-resend-key
+      EMAIL_FROM: CI <ci@example.test>
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Build application
+        run: npm run build
+
+      - name: Run full test suite
+        run: npm test -- --run
+
+      - name: Check Prisma migration status
+        run: npx prisma migrate status
+
+  deploy_uat:
+    runs-on: ubuntu-latest
+    needs: ci
+    env:
+      TARGET_TAG: ${{ github.ref_name }}
+      REMOTE_HOST: ${{ secrets.UAT_SSH_HOST }}
+      REMOTE_USER: ${{ secrets.UAT_SSH_USER }}
+      BASE_URL: ${{ secrets.UAT_BASE_URL }}
+      APP_DIR: ${{ vars.UAT_APP_DIR }}
+      APP_NAME: ${{ vars.UAT_PM2_APP_NAME }}
+      EVIDENCE_ROOT: ${{ runner.temp }}/uat-deploy-evidence
+
+    steps:
+      - name: Check out repository at pushed tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Validate release tag format
+        run: |
+          [[ "${TARGET_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]] || {
+            echo "Invalid release tag: ${TARGET_TAG}" >&2
+            exit 1
+          }
+
+      - name: Configure SSH with strict host key checking
+        run: |
+          mkdir -p "${HOME}/.ssh"
+          chmod 700 "${HOME}/.ssh"
+          printf '%s\n' "${{ secrets.UAT_SSH_PRIVATE_KEY }}" > "${HOME}/.ssh/id_ed25519"
+          chmod 600 "${HOME}/.ssh/id_ed25519"
+          printf '%s\n' "${{ secrets.UAT_SSH_KNOWN_HOSTS }}" > "${HOME}/.ssh/known_hosts"
+          chmod 600 "${HOME}/.ssh/known_hosts"
+          cat > "${HOME}/.ssh/config" <<EOF
+          Host *
+            IdentityFile ~/.ssh/id_ed25519
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            Port ${{ secrets.UAT_SSH_PORT }}
+          EOF
+          chmod 600 "${HOME}/.ssh/config"
+
+      - name: Show release context
+        run: |
+          echo "target_tag=${TARGET_TAG}"
+          echo "remote_host=${REMOTE_HOST}"
+          echo "remote_user=${REMOTE_USER}"
+          echo "app_dir=${APP_DIR:-<default from script>}"
+          echo "app_name=${APP_NAME:-<default from script>}"
+          echo "base_url=${BASE_URL}"
+
+      - name: Deploy exact tag to UAT over SSH
+        run: |
+          mkdir -p "${EVIDENCE_ROOT}"
+          bash scripts/uat-deploy-tag.sh "${TARGET_TAG}" 2>&1 | tee "${EVIDENCE_ROOT}/deploy-command.log"
+
+      - name: Upload UAT deploy evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uat-deploy-evidence-${{ github.ref_name }}
+          path: ${{ runner.temp }}/uat-deploy-evidence
+          if-no-files-found: ignore
+
+  smoke_uat:
+    runs-on: ubuntu-latest
+    needs: deploy_uat
+    env:
+      BASE_URL: ${{ secrets.UAT_BASE_URL }}
+
+    steps:
+      - name: Check out repository at pushed tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run UAT smoke checks
+        run: |
+          mkdir -p "${RUNNER_TEMP}/uat-smoke-evidence"
+          npm run test:uat:smoke 2>&1 | tee "${RUNNER_TEMP}/uat-smoke-evidence/smoke.log"
+
+      - name: Upload UAT smoke evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uat-smoke-evidence-${{ github.ref_name }}
+          path: ${{ runner.temp }}/uat-smoke-evidence
+          if-no-files-found: ignore
+
+  e2e_uat:
+    runs-on: ubuntu-latest
+    needs: smoke_uat
+    env:
+      BASE_URL: ${{ secrets.UAT_BASE_URL }}
+      UAT_BASE_URL: ${{ secrets.UAT_BASE_URL }}
+      UAT_E2E_EMAIL: ${{ secrets.UAT_E2E_EMAIL }}
+      UAT_E2E_PASSWORD: ${{ secrets.UAT_E2E_PASSWORD }}
+
+    steps:
+      - name: Check out repository at pushed tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run deployed UAT release e2e
+        run: |
+          mkdir -p "${RUNNER_TEMP}/uat-e2e-evidence"
+          npm run test:e2e:uat 2>&1 | tee "${RUNNER_TEMP}/uat-e2e-evidence/e2e.log"
+
+      - name: Upload UAT e2e artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uat-e2e-artifacts-${{ github.ref_name }}
+          path: |
+            ${{ runner.temp }}/uat-e2e-evidence
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore

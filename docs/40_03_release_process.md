@@ -1,9 +1,6 @@
 # Release Process
 
-Purpose: define the canonical, operator-driven release process for this repository.
-
-This project uses a manual deployment model.
-There is no automated CI/CD deployment pipeline.
+Purpose: define the canonical release process for this repository.
 
 ---
 
@@ -32,6 +29,46 @@ There is no automated CI/CD deployment pipeline.
 
 Rule:
 - Do not deploy directly from unvalidated main to production
+
+---
+
+## GitHub Actions Tag Release (UAT only)
+
+For `v*` tag pushes, workflow `.github/workflows/uat-release.yml` runs:
+1. CI job (build, tests, Prisma checks)
+2. Deploy exact tag to UAT over SSH
+3. Run `npm run test:uat:smoke` from the GitHub runner against public UAT URL
+4. Run deployed-UAT release e2e suite (`npm run test:e2e:uat`)
+5. Stop on failure (no production deployment in this workflow)
+
+This preserves immutable tag deployment because deploy and smoke jobs both use `${github.ref}` / `${github.ref_name}`.
+
+### Required secrets
+
+- `UAT_SSH_HOST`
+- `UAT_SSH_PORT`
+- `UAT_SSH_USER`
+- `UAT_SSH_PRIVATE_KEY`
+- `UAT_SSH_KNOWN_HOSTS`
+- `UAT_BASE_URL`
+- `UAT_E2E_EMAIL`
+- `UAT_E2E_PASSWORD`
+
+### Optional repository/environment variables
+
+- `UAT_APP_DIR` (defaults to script value when unset)
+- `UAT_PM2_APP_NAME` (defaults to script value when unset)
+
+### SSH safety model
+
+- Uses deploy user from `UAT_SSH_USER` (no root requirement)
+- Writes private key to `~/.ssh/id_ed25519`
+- Writes host fingerprints from `UAT_SSH_KNOWN_HOSTS` to `~/.ssh/known_hosts`
+- Enforces:
+  - `StrictHostKeyChecking yes`
+  - `UserKnownHostsFile ~/.ssh/known_hosts`
+  - `IdentitiesOnly yes`
+- Host key checking is never disabled
 
 ---
 
@@ -200,9 +237,9 @@ Defined in:
 
 ## Known Constraints
 
-- No automated deployment pipeline
-- No GitHub Actions deploy job
-- Deployment is operator-driven
+- Tag-triggered automation covers UAT deploy + smoke + release e2e only
+- UAT e2e/security/load validation still requires additional jobs or operator runbooks
+- Production deployment remains operator-driven
 - Infrastructure values (host, DB name, etc.) must not be guessed
 
 ---
@@ -212,6 +249,7 @@ Defined in:
 - docs/00_02_deployment_baseline.md
 - docs/00_01_system_baseline.md
 - .github/workflows/ci.yml
+- .github/workflows/uat-release.yml
 - scripts/verify-production-readiness.sh
 - docs/50_02_bookmyclass_server_setup_updated.md
 - docs/50_13_uat_security_operator_runbook.md
