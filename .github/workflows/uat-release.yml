@@ -73,7 +73,7 @@ jobs:
       BASE_URL: ${{ secrets.UAT_BASE_URL }}
       APP_DIR: ${{ vars.UAT_APP_DIR }}
       APP_NAME: ${{ vars.UAT_PM2_APP_NAME }}
-      EVIDENCE_ROOT: ${{ runner.temp }}/uat-deploy-evidence
+      EVIDENCE_ROOT: artifacts/uat-deploy
 
     steps:
       - name: Check out repository at pushed tag
@@ -125,7 +125,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: uat-deploy-evidence-${{ github.ref_name }}
-          path: ${{ runner.temp }}/uat-deploy-evidence
+          path: artifacts/uat-deploy
           if-no-files-found: ignore
 
   smoke_uat:
@@ -152,15 +152,15 @@ jobs:
 
       - name: Run UAT smoke checks
         run: |
-          mkdir -p "${RUNNER_TEMP}/uat-smoke-evidence"
-          npm run test:uat:smoke 2>&1 | tee "${RUNNER_TEMP}/uat-smoke-evidence/smoke.log"
+          mkdir -p artifacts/uat-smoke
+          npm run test:uat:smoke 2>&1 | tee artifacts/uat-smoke/smoke.log
 
       - name: Upload UAT smoke evidence on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: uat-smoke-evidence-${{ github.ref_name }}
-          path: ${{ runner.temp }}/uat-smoke-evidence
+          path: artifacts/uat-smoke
           if-no-files-found: ignore
 
   e2e_uat:
@@ -193,8 +193,8 @@ jobs:
 
       - name: Run deployed UAT release e2e
         run: |
-          mkdir -p "${RUNNER_TEMP}/uat-e2e-evidence"
-          npm run test:e2e:uat 2>&1 | tee "${RUNNER_TEMP}/uat-e2e-evidence/e2e.log"
+          mkdir -p artifacts/uat-e2e
+          npm run test:e2e:uat 2>&1 | tee artifacts/uat-e2e/e2e.log
 
       - name: Upload UAT e2e artifacts on failure
         if: failure()
@@ -202,7 +202,7 @@ jobs:
         with:
           name: uat-e2e-artifacts-${{ github.ref_name }}
           path: |
-            ${{ runner.temp }}/uat-e2e-evidence
+            artifacts/uat-e2e
             playwright-report/
             test-results/
           if-no-files-found: ignore
