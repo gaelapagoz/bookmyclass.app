@@ -225,6 +225,21 @@ describe("BookingPaymentOptionsStep", () => {
       expect(screen.getByRole("button", { name: /Pay .*150\.00/ })).toBeInTheDocument();
     });
   });
+
+  it("surfaces API denial when payment options cannot be loaded", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({
+        error: "This booking does not belong to the signed-in user.",
+      }),
+    } as Response);
+
+    render(<BookingPaymentOptionsStep bookingId="booking-4" serviceSlug="vinyasa-yoga" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("This booking does not belong to the signed-in user.")).toBeInTheDocument();
+    });
+  });
 });
 
 

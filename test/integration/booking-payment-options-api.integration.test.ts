@@ -248,6 +248,75 @@ describe("booking payment options api", () => {
     expect(body.paymentOptions.ux.requiresChoice).toBe(false);
   });
 
+  it("returns 403 when booking is owned by another user", async () => {
+    const fixture = await createFixture({
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      createActivePlanCount: 0,
+    });
+    const otherUser = await prisma.user.create({
+      data: {
+        name: "Other Client",
+        email: `other.client.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: otherUser.id, email: otherUser.email, name: otherUser.name },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await getPaymentOptions(new Request("http://localhost/api"), {
+      params: Promise.resolve({ bookingId: fixture.booking.id }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "BOOKING_NOT_OWNED" });
+  });
+
+  it("returns 409 when booking is not pending", async () => {
+    const fixture = await createFixture({
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      createActivePlanCount: 0,
+    });
+    await prisma.booking.update({
+      where: { id: fixture.booking.id },
+      data: { status: BookingStatus.CONFIRMED },
+    });
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: fixture.bookingUser.id, email: fixture.bookingUser.email, name: fixture.bookingUser.name },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await getPaymentOptions(new Request("http://localhost/api"), {
+      params: Promise.resolve({ bookingId: fixture.booking.id }),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ code: "BOOKING_NOT_PENDING" });
+  });
+
+  it("returns 400 when session is no longer bookable", async () => {
+    const fixture = await createFixture({
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      createActivePlanCount: 0,
+    });
+    await prisma.studioSession.update({
+      where: { id: fixture.booking.studioSessionId },
+      data: { startsAt: new Date(Date.now() - 60 * 60 * 1000) },
+    });
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: fixture.bookingUser.id, email: fixture.bookingUser.email, name: fixture.bookingUser.name },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await getPaymentOptions(new Request("http://localhost/api"), {
+      params: Promise.resolve({ bookingId: fixture.booking.id }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: "SESSION_NOT_BOOKABLE" });
+  });
+
   it("use-plan intent with one eligible plan auto-selects that plan", async () => {
     const fixture = await createFixture({
       bookingIntent: BookingIntent.USE_PLAN,
@@ -522,6 +591,90 @@ describe("booking payment options api", () => {
     expect(updated?.paymentSelection).toBe(BookingPaymentSelection.EXISTING_PLAN);
     expect(consumeEntries).toHaveLength(1);
     expect(consumeEntries[0]?.amount).toBe(-1);
+  });
+
+  it("returns 404 when selected existing plan is not found", async () => {
+    const fixture = await createFixture({
+      bookingIntent: BookingIntent.USE_PLAN,
+      createActivePlanCount: 1,
+    });
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: fixture.bookingUser.id, email: fixture.bookingUser.email, name: fixture.bookingUser.name },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await applyPlan(
+      new Request("http://localhost/api", {
+        method: "POST",
+        headers: sameOriginJsonHeaders,
+        body: JSON.stringify({
+          mode: "EXISTING_PLAN",
+          entitlementId: "entitlement_missing_1234",
+        }),
+      }),
+      { params: Promise.resolve({ bookingId: fixture.booking.id }) },
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ code: "PLAN_NOT_FOUND" });
+  });
+
+  it("returns 400 when selected new-plan price is not eligible", async () => {
+    const fixture = await createFixture({
+      bookingIntent: BookingIntent.USE_PLAN,
+      createActivePlanCount: 0,
+    });
+    const privateProduct = await prisma.product.create({
+      data: {
+        name: "Private Session Product",
+        slug: `private-plan-${Date.now()}`,
+        productType: ProductType.PRIVATE_CLASS,
+        isActive: true,
+        isArchived: false,
+        sortOrder: 99,
+      },
+    });
+    const privatePrice = await prisma.price.create({
+      data: {
+        productId: privateProduct.id,
+        lookupKey: `private-price-${Date.now()}`,
+        name: "Private One-Time",
+        priceType: PriceType.ONE_TIME,
+        currencyCode: "EUR",
+        unitAmountMinor: 20000,
+        isActive: true,
+        isArchived: false,
+      },
+    });
+    await prisma.entitlementRule.create({
+      data: {
+        productId: privateProduct.id,
+        entitlementType: EntitlementType.SINGLE_USE,
+        entitlementScope: EntitlementScope.PRIVATE_CLASSES,
+        quantity: 1,
+        isActive: true,
+      },
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: fixture.bookingUser.id, email: fixture.bookingUser.email, name: fixture.bookingUser.name },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await applyPlan(
+      new Request("http://localhost/api", {
+        method: "POST",
+        headers: sameOriginJsonHeaders,
+        body: JSON.stringify({
+          mode: "NEW_PLAN_PURCHASE",
+          priceId: privatePrice.id,
+        }),
+      }),
+      { params: Promise.resolve({ bookingId: fixture.booking.id }) },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: "PRICE_NOT_ELIGIBLE" });
   });
   it("keeps credit consume idempotent when existing-plan apply is submitted concurrently", async () => {
     const fixture = await createFixture({

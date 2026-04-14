@@ -7,6 +7,10 @@ import { SEEDED_CLIENT_WITH_CREDITS, SEEDED_TEACHER } from "./support/constants"
 test.describe("teacher flow", () => {
   test.describe.configure({ mode: "serial" });
 
+  // @covers teacher-allowed
+  // @covers teacher-sessions-page-loads
+  // @covers teacher-session-detail-loads
+  // @covers teacher-mutation-action-works
   test("teacher can sign in, view own sessions, and manage own class roster", async ({ page }) => {
     await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_WITH_CREDITS.email);
     await signInTeacher(page, SEEDED_TEACHER);
@@ -40,9 +44,23 @@ test.describe("teacher flow", () => {
     await expect(page.getByRole("heading", { name: "My Sessions" })).toBeVisible();
   });
 
+  // @covers teacher-client-blocked
   test("non-teacher user is blocked from teacher area", async ({ page }) => {
     await signInClient(page, SEEDED_CLIENT_WITH_CREDITS);
     await page.goto("/teacher");
     await expect(page).toHaveURL(/\/dashboard$/);
+  });
+
+  // @covers teacher-anonymous-blocked
+  test("anonymous user is blocked from teacher area", async ({ page }) => {
+    await page.goto("/teacher");
+    await expect(page).toHaveURL(/\/sign-in\?callbackUrl=/);
+  });
+
+  // @covers teacher-profile-page-loads
+  test("teacher profile page loads", async ({ page }) => {
+    await signInTeacher(page, SEEDED_TEACHER);
+    await page.goto("/teacher/profile");
+    await expect(page.getByRole("heading", { name: "My Teacher Profile" })).toBeVisible();
   });
 });

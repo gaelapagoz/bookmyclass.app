@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { clearCapturedTestEmails, getCapturedTestEmails } from "@/lib/email/resend-delivery";
 import {
+  requestEmailVerification,
+  verifyEmailByToken,
   clearPublicAuthRateLimitForTests,
   confirmEmailChangeByToken,
   createPendingPublicRegistration,
@@ -120,6 +122,34 @@ describe("user identity hardening", () => {
     expect(user.createdIp).toBe("203.0.113.3");
   });
 
+  it("rejects pending-registration verification with invalid token", async () => {
+    const result = await verifyPendingRegistrationByToken({ token: "not-a-valid-token" });
+    expect(result).toEqual({ verified: false, email: null });
+  });
+
+  it("rejects pending-registration verification with expired token", async () => {
+    const email = `verify-expired.${Date.now()}@example.test`;
+    const created = await createPendingPublicRegistration({
+      firstName: "Verify",
+      lastName: "Expired",
+      email,
+      passwordHash: await hash("Password123!", 12),
+      ipAddress: "203.0.113.31",
+      appUrl: "http://localhost:3000",
+    });
+    expect(created.outcome).toBe("PENDING_VERIFICATION");
+
+    const token = getTokenFromCapturedEmail("registrationToken", email);
+    const expired = await verifyPendingRegistrationByToken({
+      token,
+      now: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000),
+    });
+    expect(expired.verified).toBe(false);
+
+    const user = await prisma.user.findFirst({ where: { email } });
+    expect(user).toBeNull();
+  });
+
   it("keeps email unchanged until email-change verification succeeds", async () => {
     const user = await prisma.user.create({
       data: {
@@ -168,5 +198,70 @@ describe("user identity hardening", () => {
     expect(afterConfirm.pendingEmail).toBeNull();
     expect(afterConfirm.pendingEmailTokenHash).toBeNull();
     expect(afterConfirm.lastEmailChangeAt).not.toBeNull();
+  });
+
+  it("rejects reused email-change verification token", async () => {
+    const user = await prisma.user.create({
+      data: {
+        name: "Email Change Reuse",
+        firstName: "Email",
+        lastName: "Reuse",
+        email: `email-change.reuse.${Date.now()}@example.test`,
+        passwordHash: await hash("Password123!", 12),
+        emailVerified: new Date(),
+        emailVerifiedAt: new Date(),
+      },
+    });
+
+    const newEmail = `email-change.reuse.new.${Date.now()}@example.test`;
+    const request = await requestEmailChange({
+      userId: user.id,
+      newEmail,
+      currentPassword: "Password123!",
+      appUrl: "http://localhost:3000",
+    });
+    expect(request.outcome).toBe("SENT");
+
+    const token = getTokenFromCapturedEmail("emailChangeToken", newEmail);
+    const firstConfirm = await confirmEmailChangeByToken({ token });
+    const secondConfirm = await confirmEmailChangeByToken({ token });
+
+    expect(firstConfirm.verified).toBe(true);
+    expect(secondConfirm.verified).toBe(false);
+  });
+
+  it("rejects expired email verification token", async () => {
+    const email = `verify-user.expired.${Date.now()}@example.test`;
+    const user = await prisma.user.create({
+      data: {
+        name: "Verify Expired",
+        firstName: "Verify",
+        lastName: "Expired",
+        email,
+        passwordHash: await hash("Password123!", 12),
+        emailVerified: null,
+      },
+    });
+
+    const outcome = await requestEmailVerification({
+      email,
+      appUrl: "http://localhost:3000",
+      now: new Date(),
+    });
+    expect(outcome.outcome).toBe("SENT");
+
+    const token = getTokenFromCapturedEmail("token", email);
+    const verified = await verifyEmailByToken({
+      email,
+      token,
+      now: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000),
+    });
+    expect(verified).toBe(false);
+
+    const unchangedUser = await prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
+      select: { emailVerified: true },
+    });
+    expect(unchangedUser.emailVerified).toBeNull();
   });
 });

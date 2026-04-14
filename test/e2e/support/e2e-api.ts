@@ -28,6 +28,19 @@ export async function completeStripeCheckoutForTest(request: APIRequestContext, 
   expect(payload.completed).toBe(true);
 }
 
+export async function failStripeCheckoutForTest(
+  request: APIRequestContext,
+  input: { checkoutSessionId: string; mode?: "async_failed" | "expired" },
+) {
+  const response = await request.post("/api/test/e2e/stripe/fail", {
+    headers: testHeaders(),
+    data: input,
+  });
+  expect(response.ok()).toBeTruthy();
+  const payload = (await response.json()) as { failed?: boolean };
+  expect(payload.failed).toBe(true);
+}
+
 export async function cleanSeededClientBookingsForTest(request: APIRequestContext, clientEmail: string) {
   const response = await request.post("/api/test/e2e/clean-seeded-client-bookings", {
     headers: testHeaders(),
@@ -47,4 +60,38 @@ export async function createUnassignedTeacherSessionForTest(request: APIRequestC
   const payload = (await response.json()) as { sessionId?: string };
   expect(payload.sessionId).toBeTruthy();
   return payload.sessionId as string;
+}
+
+export async function clearCapturedPasswordResetOutboxForTest(request: APIRequestContext, email: string) {
+  const response = await request.post("/api/test/e2e/password-reset-token", {
+    headers: testHeaders(),
+    data: { email, clearOutbox: true },
+  });
+  expect(response.ok()).toBeTruthy();
+}
+
+export async function getPasswordResetTokenForTest(
+  request: APIRequestContext,
+  email: string,
+  options?: { requestReset?: boolean },
+): Promise<string> {
+  const response = await request.post("/api/test/e2e/password-reset-token", {
+    headers: testHeaders(),
+    data: { email, requestReset: options?.requestReset ?? false },
+  });
+  expect(response.ok()).toBeTruthy();
+  const payload = (await response.json()) as { token?: string };
+  expect(payload.token).toBeTruthy();
+  return payload.token as string;
+}
+
+export async function prepareCancellationWindowBookingForTest(
+  request: APIRequestContext,
+  input: { clientEmail: string; mode: "late" | "early" },
+) {
+  const response = await request.post("/api/test/e2e/bookings/prepare-cancellation-window", {
+    headers: testHeaders(),
+    data: input,
+  });
+  expect(response.ok()).toBeTruthy();
 }

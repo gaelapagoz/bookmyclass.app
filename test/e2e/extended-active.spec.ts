@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { signInAdmin } from "./support/auth";
 import { SEEDED_ADMIN } from "./support/constants";
 
+// @covers-partial customer-protected-learning-access
 test("online learning navigation flow", async ({ page }) => {
   await page.goto("/learning");
   await expect(page.getByRole("heading", { name: "Online Learning Programs" })).toBeVisible();
@@ -14,6 +15,7 @@ test("online learning navigation flow", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Sign In To Watch" })).toBeVisible();
 });
 
+// @covers-partial admin-marketing-campaign-draft-flow
 test("marketing campaign active flow", async ({ page }) => {
   await signInAdmin(page, SEEDED_ADMIN);
 
@@ -31,6 +33,7 @@ test("marketing campaign active flow", async ({ page }) => {
   }
 });
 
+// @covers admin-inbox-loads
 test("inbox review flow", async ({ page }) => {
   await signInAdmin(page, SEEDED_ADMIN);
 
@@ -43,4 +46,16 @@ test("inbox review flow", async ({ page }) => {
   await firstRow.getByRole("button", { name: "Update" }).click();
 
   await expect(firstRow.getByRole("combobox")).toHaveValue("READ");
+});
+
+// @covers customer-contact-form-submit
+test("public contact form submit succeeds", async ({ page }) => {
+  await page.goto("/");
+  await page.getByPlaceholder("Name").fill("E2E Contact");
+  await page.getByPlaceholder("Email").fill("contact.e2e@example.test");
+  await page.getByPlaceholder("Phone").fill("+32000111222");
+  await page.getByPlaceholder("Message").fill("E2E contact flow message.");
+  await page.getByRole("button", { name: "Submit" }).click();
+  await expect(page).toHaveURL(/\/\?contact=sent$/);
+  await expect(page.getByText("Message sent successfully.")).toBeVisible();
 });

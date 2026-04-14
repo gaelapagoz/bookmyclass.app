@@ -18,6 +18,11 @@ function toDateTimeLocalInput(date: Date): string {
   return `${year}-${month}-${day}T${hour}:${minute}`;
 }
 
+// @covers admin-sign-in
+// @covers-partial admin-user-edit-persists
+// @covers admin-class-edit-create
+// @covers admin-sessions-list-loads
+// @covers admin-session-edit-persists
 test("critical admin CRUD flows", async ({ page }) => {
   const unique = Date.now();
   const teacherName = `E2E Teacher ${unique}`;
@@ -89,5 +94,25 @@ test("critical admin CRUD flows", async ({ page }) => {
 
   await expect(page.getByText("Session updated.")).toBeVisible();
   await expect(page.getByLabel("Title")).toHaveValue(updatedSessionTitle);
+});
+
+// @covers admin-bookings-list-loads
+// @covers admin-product-plan-area-loads
+// @covers admin-subscriptions-list-loads
+// @covers-partial admin-online-learning-crud
+test("admin list pages load with stable headings", async ({ page }) => {
+  await signInAdmin(page, SEEDED_ADMIN);
+
+  await page.goto("/admin/bookings");
+  await expect(page.getByRole("heading", { name: "Booking List" })).toBeVisible();
+
+  await page.goto("/admin/plans");
+  await expect(page.getByRole("heading", { name: "Plans" })).toBeVisible();
+
+  await page.goto("/admin/subscriptions");
+  await expect(page.getByRole("heading", { name: "Subscriptions" })).toBeVisible();
+
+  await page.goto("/admin/online-learning");
+  await expect(page.getByRole("heading", { name: "Online Learning" })).toBeVisible();
 });
 

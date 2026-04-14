@@ -601,6 +601,40 @@ describe("POST /api/stripe/webhook", () => {
     expect(booking?.status).toBe(BookingStatus.PENDING);
   });
 
+  it("marks payment failed and order cancelled on async payment failure", async () => {
+    const fixture = await createWebhookFixture({
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+    });
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.async_payment_failed",
+      data: {
+        object: {
+          id: fixture.payment.providerReference,
+          metadata: {},
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const payment = await prisma.payment.findUnique({ where: { id: fixture.payment.id } });
+    const booking = await prisma.booking.findUnique({ where: { id: fixture.booking.id } });
+    const order = await prisma.order.findUnique({ where: { id: fixture.order.id } });
+
+    expect(payment?.status).toBe(PaymentStatus.FAILED);
+    expect(order?.status).toBe(OrderStatus.CANCELLED);
+    expect(booking?.status).toBe(BookingStatus.PENDING);
+  });
+
   it("does not confirm booking when checkout.session.completed is unpaid", async () => {
     const fixture = await createWebhookFixture({
       paymentSelection: BookingPaymentSelection.NEW_PLAN_PURCHASE,
