@@ -90,10 +90,10 @@ async function main() {
   const now = new Date();
   const entitlementExpiry = new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000);
   const startsAtA = new Date(now.getTime() + 72 * 60 * 60 * 1000);
-  startsAtA.setMinutes(0, 0, 0);
+  startsAtA.setHours(10, 0, 0, 0);
   const endsAtA = new Date(startsAtA.getTime() + 60 * 60 * 1000);
   const startsAtB = new Date(now.getTime() + 96 * 60 * 60 * 1000);
-  startsAtB.setMinutes(0, 0, 0);
+  startsAtB.setHours(12, 0, 0, 0);
   const endsAtB = new Date(startsAtB.getTime() + 60 * 60 * 1000);
 
   const admin = await prisma.user.create({

@@ -20,8 +20,13 @@ test.describe("teacher flow", () => {
     await page.goto("/teacher/sessions");
     await expect(page.getByRole("heading", { name: "My Sessions" })).toBeVisible();
 
-    // Click on the first session link in the calendar
-    await page.getByRole("link", { name: /E2E Flow Class - E2E Session/ }).first().click();
+    // Seeded sessions are created 72h/96h ahead; if they spill into next week, move forward once.
+    const sessionLink = page.getByRole("link", { name: /E2E Flow Class - E2E Session/ }).first();
+    if ((await sessionLink.count()) === 0) {
+      await page.getByRole("link", { name: "Next week" }).click();
+    }
+    await expect(sessionLink).toBeVisible();
+    await sessionLink.click();
     await expect(page.getByTestId("teacher-session-roster")).toBeVisible();
 
     const clientOptionValue = await page

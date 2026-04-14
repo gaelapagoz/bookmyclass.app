@@ -19,8 +19,8 @@ Purpose: summarize the current CI/CD posture from repository evidence.
 - Uploads Playwright artifacts (`playwright-report/`, `test-results/`) on failure.
 
 ## Deployment Automation Status
-- No automated production deploy job exists in this repository.
-- Deployment is documented as manual runbook-driven process.
+- Manual production promotion workflow exists at `.github/workflows/prod-release.yml`.
+- Production deployment remains explicit and operator-approved via GitHub Environment protection.
 - Tag-based UAT release workflow exists at `.github/workflows/uat-release.yml` and runs deployed-UAT gates.
 
 ## Canonical References

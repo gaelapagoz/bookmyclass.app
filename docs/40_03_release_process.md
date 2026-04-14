@@ -80,6 +80,35 @@ This preserves immutable tag deployment because deploy and smoke jobs both use `
 
 ---
 
+## Manual Production Promotion
+
+Production promotion uses `.github/workflows/prod-release.yml`.
+
+Rules:
+- Triggered only by `workflow_dispatch`
+- Requires explicit `tag` input
+- Deploys an exact tag only, never a branch
+- Uses separate production SSH secrets/variables
+- Uses `environment: production` on deploy job for approval protection
+- Runs small post-deploy production smoke checks
+- Uploads deploy/smoke artifacts on failure
+
+Required production secrets:
+- `PROD_SSH_HOST`
+- `PROD_SSH_PORT`
+- `PROD_SSH_USER`
+- `PROD_SSH_PRIVATE_KEY`
+- `PROD_SSH_KNOWN_HOSTS`
+- `PROD_BASE_URL`
+
+Optional production variables:
+- `PROD_APP_DIR`
+- `PROD_PM2_APP_NAME`
+
+Production flat view:
+- UAT release workflow validates the tag first
+- Production promotion manually deploys the same validated tag
+
 ## Git Tagging
 
 Create a release tag from main:
@@ -247,7 +276,7 @@ Defined in:
 
 - Tag-triggered automation covers UAT deploy + smoke + release e2e + k6 smoke + ZAP baseline
 - UAT e2e/security/load validation still requires additional jobs or operator runbooks
-- Production deployment remains operator-driven
+- Production deployment remains manual, explicit, and approval-gated
 - Infrastructure values (host, DB name, etc.) must not be guessed
 
 ---
@@ -258,6 +287,7 @@ Defined in:
 - docs/00_01_system_baseline.md
 - .github/workflows/ci.yml
 - .github/workflows/uat-release.yml
+- .github/workflows/prod-release.yml
 - scripts/verify-production-readiness.sh
 - docs/50_02_bookmyclass_server_setup_updated.md
 - docs/50_13_uat_security_operator_runbook.md
