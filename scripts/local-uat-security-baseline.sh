@@ -58,15 +58,20 @@ timestamp_utc="$(date -u +%Y%m%dT%H%M%SZ)"
 run_dir="${EVIDENCE_ROOT%/}/local-uat-security-${timestamp_utc}-baseline"
 mkdir -p "$run_dir"
 
+# The ZAP Docker image writes the generated automation plan to /zap/wrk/zap.yaml.
+# Create the workspace file ahead of time and mount the workspace into /zap/wrk.
+workspace_dir="$run_dir"
+touch "$workspace_dir/zap.yaml"
+
 pushd "$run_dir" >/dev/null
 host_work_dir="$(resolve_host_work_dir)"
 log "Running ZAP baseline against $BASE_URL"
-log "tag=$current_tag commit=$current_commit run_dir=$run_dir"
+log "tag=$current_tag commit=$current_commit run_dir=$run_dir workspace_dir=$workspace_dir"
 
 start_epoch="$(date +%s)"
 set +e
 docker run --rm -t \
-  -v "${host_work_dir}:/zap/wrk/:rw" \
+  -v "${workspace_dir}:/zap/wrk:rw" \
   "$ZAP_DOCKER_IMAGE" \
   zap-baseline.py \
   -t "$BASE_URL" \

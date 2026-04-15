@@ -388,8 +388,13 @@ jobs:
         with:
           ref: ${{ github.ref }}
 
+      - name: Ensure ZAP scripts are executable
+        run: |
+          chmod +x scripts/local-uat-security-baseline.sh scripts/local-uat-security-collect-metrics.sh
+
       - name: Run OWASP ZAP baseline against deployed UAT
         run: |
+          set -euo pipefail
           mkdir -p artifacts/uat-zap
           bash scripts/local-uat-security-baseline.sh 2>&1 | tee artifacts/uat-zap/zap-baseline.log
 
