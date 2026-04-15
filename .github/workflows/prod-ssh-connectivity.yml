@@ -6,7 +6,7 @@ on:
 jobs:
   test_prod_ssh:
     runs-on: ubuntu-latest
-    environment: prod
+    environment: production
     env:
       REMOTE_HOST: ${{ secrets.PROD_SSH_HOST }}
       REMOTE_PORT: ${{ secrets.PROD_SSH_PORT }}

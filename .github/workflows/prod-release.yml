@@ -14,7 +14,7 @@ jobs:
     if: startsWith(inputs.tag, 'v')
     runs-on: ubuntu-latest
     # Production promotion is manual and uses the prod environment approval gate.
-    environment: prod
+    environment: production
     env:
       TARGET_TAG: ${{ inputs.tag }}
       REMOTE_HOST: ${{ secrets.PROD_SSH_HOST }}
