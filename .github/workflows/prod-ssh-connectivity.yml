@@ -1,0 +1,59 @@
+name: prod-ssh-connectivity
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test_prod_ssh:
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      REMOTE_HOST: ${{ secrets.PROD_SSH_HOST }}
+      REMOTE_PORT: ${{ secrets.PROD_SSH_PORT }}
+      REMOTE_USER: ${{ secrets.PROD_SSH_USER }}
+      CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.PROD_CLOUDFLARE_ACCESS_CLIENT_ID }}
+      CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.PROD_CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+      SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+
+    steps:
+      - name: Install cloudflared
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.ssh"
+          chmod 700 "${HOME}/.ssh"
+
+          curl -L -o /tmp/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+          sudo install -m 0755 /tmp/cloudflared /usr/bin/cloudflared
+          /usr/bin/cloudflared version
+
+      - name: Configure SSH with Cloudflare Access
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.ssh"
+          chmod 700 "${HOME}/.ssh"
+
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > "${HOME}/.ssh/id_ed25519"
+          chmod 600 "${HOME}/.ssh/id_ed25519"
+          printf '%s\n' "${SSH_KNOWN_HOSTS}" > "${HOME}/.ssh/known_hosts"
+          chmod 600 "${HOME}/.ssh/known_hosts"
+
+          cat > "${HOME}/.ssh/config" <<EOF
+          Host deploy-target
+            HostName ${REMOTE_HOST}
+            Port ${REMOTE_PORT}
+            User ${REMOTE_USER}
+            IdentityFile ~/.ssh/id_ed25519
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            ProxyCommand /usr/bin/cloudflared access ssh --hostname %h
+          EOF
+          chmod 600 "${HOME}/.ssh/config"
+
+      - name: Test SSH connectivity via Cloudflare Access
+        run: |
+          set -euo pipefail
+          export CLOUDFLARE_ACCESS_CLIENT_ID="${CLOUDFLARE_ACCESS_CLIENT_ID}"
+          export CLOUDFLARE_ACCESS_CLIENT_SECRET="${CLOUDFLARE_ACCESS_CLIENT_SECRET}"
+          ssh deploy-target 'hostname && whoami && pm2 status'
