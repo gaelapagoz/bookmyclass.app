@@ -224,10 +224,13 @@ jobs:
           echo "app_name=${APP_NAME:-<default from script>}"
           echo "base_url=${BASE_URL}"
           
+          export CLOUDFLARE_ACCESS_CLIENT_ID="$CLOUDFLARE_ACCESS_CLIENT_ID"
+          export CLOUDFLARE_ACCESS_CLIENT_SECRET="$CLOUDFLARE_ACCESS_CLIENT_SECRET"
           echo "Testing SSH connectivity via Cloudflare Access..."
           ssh deploy-target 'hostname && whoami && pm2 status'
 
-      - name: Deploy exact tag to UAT over SSH
+      - naset -euo pipefail
+          me: Deploy exact tag to UAT over SSH
         run: |
           mkdir -p "${EVIDENCE_ROOT}"
           bash scripts/uat-deploy-tag.sh "${TARGET_TAG}" 2>&1 | tee "${EVIDENCE_ROOT}/deploy-command.log"
