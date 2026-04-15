@@ -45,7 +45,18 @@ npm run build
 pm2 restart "$APP_NAME" --update-env
 git describe --tags --exact-match
 pm2 status
-curl -sSf -o /dev/null -w "url=http://127.0.0.1:3000/api/health code=%{http_code} total=%{time_total}s\n" http://127.0.0.1:3000/api/health
+for attempt in {1..30}; do
+  if curl -fsS http://127.0.0.1:3000/api/health >/dev/null; then
+    echo "Local health check passed"
+    break
+  fi
+  echo "Waiting for local app health... attempt ${attempt}/30"
+  sleep 2
+  if [[ ${attempt} -eq 30 ]]; then
+    echo "Local health check did not become healthy within 60 seconds" >&2
+    exit 1
+  fi
+done
 REMOTE
 remote_exit="${PIPESTATUS[0]}"
 set -e
