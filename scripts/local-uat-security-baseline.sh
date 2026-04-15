@@ -60,7 +60,7 @@ mkdir -p "$run_dir"
 
 # The ZAP Docker image writes the generated automation plan to /zap/wrk/zap.yaml.
 # Create the workspace file ahead of time and mount the workspace into /zap/wrk.
-workspace_dir="$run_dir"
+workspace_dir="$(cd "$run_dir" && pwd)"
 touch "$workspace_dir/zap.yaml"
 
 pushd "$run_dir" >/dev/null
