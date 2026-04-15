@@ -166,9 +166,9 @@ jobs:
       REMOTE_USER: ${{ secrets.UAT_SSH_USER }}
       CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_ID }}
       CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_SECRET }}
-      BASE_URL: ${{ vars.UAT_BASE_URL }}
-      APP_DIR: ${{ vars.UAT_APP_DIR }}
-      APP_NAME: ${{ vars.UAT_PM2_APP_NAME }}
+      BASE_URL: ${{ secrets.UAT_BASE_URL }}
+      APP_DIR: ${{ secrets.UAT_APP_DIR }}
+      APP_NAME: ${{ secrets.UAT_PM2_APP_NAME }}
       EVIDENCE_ROOT: artifacts/uat-deploy
 
     steps:
