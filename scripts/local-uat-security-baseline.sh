@@ -70,7 +70,7 @@ log "tag=$current_tag commit=$current_commit run_dir=$run_dir workspace_dir=$wor
 
 start_epoch="$(date +%s)"
 set +e
-docker run --rm -t \
+docker run --rm -t --user root \
   -v "${workspace_dir}:/zap/wrk:rw" \
   "$ZAP_DOCKER_IMAGE" \
   zap-baseline.py \
