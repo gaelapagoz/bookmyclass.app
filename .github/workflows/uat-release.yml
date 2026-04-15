@@ -166,7 +166,7 @@ jobs:
       REMOTE_USER: ${{ secrets.UAT_SSH_USER }}
       CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_ID }}
       CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_SECRET }}
-      BASE_URL: ${{ secrets.UAT_BASE_URL }}
+      BASE_URL: ${{ vars.UAT_BASE_URL }}
       APP_DIR: ${{ vars.UAT_APP_DIR }}
       APP_NAME: ${{ vars.UAT_PM2_APP_NAME }}
       EVIDENCE_ROOT: artifacts/uat-deploy
@@ -185,8 +185,7 @@ jobs:
             exit 1
           }
 
-      - name: Install cloudflared and configure SSH with strict host key checking
-        # Uses the cloudflared access ssh proxy for GitHub-hosted runners.
+      - name: Install cloudflared
         run: |
           set -euo pipefail
           mkdir -p "${HOME}/.ssh"
@@ -196,6 +195,12 @@ jobs:
           sudo install -m 0755 /tmp/cloudflared /usr/bin/cloudflared
           /usr/bin/cloudflared version
 
+      - name: Configure SSH with Cloudflare Access
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.ssh"
+          chmod 700 "${HOME}/.ssh"
+
           printf '%s\n' "${{ secrets.UAT_SSH_PRIVATE_KEY }}" > "${HOME}/.ssh/id_ed25519"
           chmod 600 "${HOME}/.ssh/id_ed25519"
           printf '%s\n' "${{ secrets.UAT_SSH_KNOWN_HOSTS }}" > "${HOME}/.ssh/known_hosts"
@@ -203,9 +208,9 @@ jobs:
 
           cat > "${HOME}/.ssh/config" <<EOF
           Host deploy-target
-            HostName ${REMOTE_HOST}
-            Port ${REMOTE_PORT}
-            User ${REMOTE_USER}
+            HostName ${{ secrets.UAT_SSH_HOST }}
+            Port ${{ secrets.UAT_SSH_PORT }}
+            User ${{ secrets.UAT_SSH_USER }}
             IdentityFile ~/.ssh/id_ed25519
             IdentitiesOnly yes
             StrictHostKeyChecking yes
@@ -214,7 +219,7 @@ jobs:
           EOF
           chmod 600 "${HOME}/.ssh/config"
 
-      - name: Show release context and verify connectivity
+      - name: Show release context
         run: |
           set -euo pipefail
           echo "target_tag=${TARGET_TAG}"
@@ -223,15 +228,19 @@ jobs:
           echo "app_dir=${APP_DIR:-<default from script>}"
           echo "app_name=${APP_NAME:-<default from script>}"
           echo "base_url=${BASE_URL}"
-          
-          export CLOUDFLARE_ACCESS_CLIENT_ID="$CLOUDFLARE_ACCESS_CLIENT_ID"
-          export CLOUDFLARE_ACCESS_CLIENT_SECRET="$CLOUDFLARE_ACCESS_CLIENT_SECRET"
-          echo "Testing SSH connectivity via Cloudflare Access..."
+
+      - name: Test SSH connectivity via Cloudflare Access
+        run: |
+          set -euo pipefail
+          export CLOUDFLARE_ACCESS_CLIENT_ID="${CLOUDFLARE_ACCESS_CLIENT_ID}"
+          export CLOUDFLARE_ACCESS_CLIENT_SECRET="${CLOUDFLARE_ACCESS_CLIENT_SECRET}"
           ssh deploy-target 'hostname && whoami && pm2 status'
 
-      - naset -euo pipefail
-          me: Deploy exact tag to UAT over SSH
+      - name: Deploy exact tag to UAT over SSH
         run: |
+          set -euo pipefail
+          export CLOUDFLARE_ACCESS_CLIENT_ID="${CLOUDFLARE_ACCESS_CLIENT_ID}"
+          export CLOUDFLARE_ACCESS_CLIENT_SECRET="${CLOUDFLARE_ACCESS_CLIENT_SECRET}"
           mkdir -p "${EVIDENCE_ROOT}"
           bash scripts/uat-deploy-tag.sh "${TARGET_TAG}" 2>&1 | tee "${EVIDENCE_ROOT}/deploy-command.log"
 
