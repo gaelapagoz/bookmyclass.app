@@ -157,10 +157,15 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     needs: e2e
+    # UAT deployment must use the uat environment for secrets and approval gating.
+    environment: uat
     env:
       TARGET_TAG: ${{ github.ref_name }}
       REMOTE_HOST: ${{ secrets.UAT_SSH_HOST }}
+      REMOTE_PORT: ${{ secrets.UAT_SSH_PORT }}
       REMOTE_USER: ${{ secrets.UAT_SSH_USER }}
+      CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_ID }}
+      CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_SECRET }}
       BASE_URL: ${{ secrets.UAT_BASE_URL }}
       APP_DIR: ${{ vars.UAT_APP_DIR }}
       APP_NAME: ${{ vars.UAT_PM2_APP_NAME }}
@@ -174,37 +179,53 @@ jobs:
 
       - name: Validate release tag format
         run: |
+          set -euo pipefail
           [[ "${TARGET_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]] || {
             echo "Invalid release tag: ${TARGET_TAG}" >&2
             exit 1
           }
 
-      - name: Configure SSH with strict host key checking
+      - name: Install cloudflared and configure SSH with strict host key checking
+        # Uses the cloudflared access ssh proxy for GitHub-hosted runners.
         run: |
+          set -euo pipefail
           mkdir -p "${HOME}/.ssh"
           chmod 700 "${HOME}/.ssh"
+
+          curl -L -o /tmp/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+          sudo install -m 0755 /tmp/cloudflared /usr/bin/cloudflared
+          /usr/bin/cloudflared version
+
           printf '%s\n' "${{ secrets.UAT_SSH_PRIVATE_KEY }}" > "${HOME}/.ssh/id_ed25519"
           chmod 600 "${HOME}/.ssh/id_ed25519"
           printf '%s\n' "${{ secrets.UAT_SSH_KNOWN_HOSTS }}" > "${HOME}/.ssh/known_hosts"
           chmod 600 "${HOME}/.ssh/known_hosts"
+
           cat > "${HOME}/.ssh/config" <<EOF
-          Host *
+          Host deploy-target
+            HostName ${REMOTE_HOST}
+            Port ${REMOTE_PORT}
+            User ${REMOTE_USER}
             IdentityFile ~/.ssh/id_ed25519
             IdentitiesOnly yes
             StrictHostKeyChecking yes
             UserKnownHostsFile ~/.ssh/known_hosts
-            Port ${{ secrets.UAT_SSH_PORT }}
+            ProxyCommand /usr/bin/cloudflared access ssh --hostname %h
           EOF
           chmod 600 "${HOME}/.ssh/config"
 
-      - name: Show release context
+      - name: Show release context and verify connectivity
         run: |
+          set -euo pipefail
           echo "target_tag=${TARGET_TAG}"
           echo "remote_host=${REMOTE_HOST}"
           echo "remote_user=${REMOTE_USER}"
           echo "app_dir=${APP_DIR:-<default from script>}"
           echo "app_name=${APP_NAME:-<default from script>}"
           echo "base_url=${BASE_URL}"
+          
+          echo "Testing SSH connectivity via Cloudflare Access..."
+          ssh deploy-target 'hostname && whoami && pm2 status'
 
       - name: Deploy exact tag to UAT over SSH
         run: |

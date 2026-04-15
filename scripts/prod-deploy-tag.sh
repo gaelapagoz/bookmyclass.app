@@ -24,9 +24,9 @@ timestamp_utc="$(date -u +%Y%m%dT%H%M%SZ)"
 evidence_dir="${EVIDENCE_ROOT%/}/manual-prod-${timestamp_utc}-${TARGET_TAG}"
 mkdir -p "$evidence_dir"
 
-ssh_target="${REMOTE_USER}@${REMOTE_HOST}"
+ssh_target="deploy-target"
 
-echo "Deploying tag $TARGET_TAG to production host $ssh_target"
+echo "Deploying tag $TARGET_TAG to production alias $ssh_target (user=${REMOTE_USER} host=${REMOTE_HOST})"
 
 set +e
 ssh "$ssh_target" bash -s -- "$TARGET_TAG" "$APP_DIR" "$APP_NAME" <<'REMOTE' 2>&1 | tee "$evidence_dir/deploy.log"
@@ -45,12 +45,12 @@ npm run build
 pm2 restart "$APP_NAME" --update-env
 git describe --tags --exact-match
 pm2 status
-curl -sS -o /dev/null -w "url=http://127.0.0.1:3000/api/health code=%{http_code} total=%{time_total}s\n" http://127.0.0.1:3000/api/health
+curl -sSf -o /dev/null -w "url=http://127.0.0.1:3000/api/health code=%{http_code} total=%{time_total}s\n" http://127.0.0.1:3000/api/health
 REMOTE
 remote_exit="${PIPESTATUS[0]}"
 set -e
 
-curl -sS -o /dev/null -w "url=${BASE_URL%/}/api/health code=%{http_code} total=%{time_total}s\n" "${BASE_URL%/}/api/health" \
+curl -sSf -o /dev/null -w "url=${BASE_URL%/}/api/health code=%{http_code} total=%{time_total}s\n" "${BASE_URL%/}/api/health" \
   | tee "$evidence_dir/public-health.txt"
 
 echo "remote_exit_code=$remote_exit" | tee "$evidence_dir/exit-code.txt"

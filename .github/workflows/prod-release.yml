@@ -13,11 +13,15 @@ jobs:
   deploy_prod:
     if: startsWith(inputs.tag, 'v')
     runs-on: ubuntu-latest
-    environment: production
+    # Production promotion is manual and uses the prod environment approval gate.
+    environment: prod
     env:
       TARGET_TAG: ${{ inputs.tag }}
       REMOTE_HOST: ${{ secrets.PROD_SSH_HOST }}
+      REMOTE_PORT: ${{ secrets.PROD_SSH_PORT }}
       REMOTE_USER: ${{ secrets.PROD_SSH_USER }}
+      CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.PROD_CLOUDFLARE_ACCESS_CLIENT_ID }}
+      CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.PROD_CLOUDFLARE_ACCESS_CLIENT_SECRET }}
       BASE_URL: ${{ secrets.PROD_BASE_URL }}
       APP_DIR: ${{ vars.PROD_APP_DIR }}
       APP_NAME: ${{ vars.PROD_PM2_APP_NAME }}
@@ -29,6 +33,7 @@ jobs:
 
       - name: Validate release tag format
         run: |
+          set -euo pipefail
           [[ "${TARGET_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]] || {
             echo "Invalid release tag: ${TARGET_TAG}" >&2
             exit 1
@@ -36,35 +41,51 @@ jobs:
 
       - name: Verify tag exists in repository
         run: |
+          set -euo pipefail
           git fetch --tags --force
           git rev-parse "refs/tags/${TARGET_TAG}" >/dev/null
 
-      - name: Configure SSH with strict host key checking
+      - name: Install cloudflared and configure SSH with strict host key checking
+        # Uses the cloudflared access ssh proxy for GitHub-hosted runners.
         run: |
+          set -euo pipefail
           mkdir -p "${HOME}/.ssh"
           chmod 700 "${HOME}/.ssh"
+
+          curl -L -o /tmp/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+          sudo install -m 0755 /tmp/cloudflared /usr/bin/cloudflared
+          /usr/bin/cloudflared version
+
           printf '%s\n' "${{ secrets.PROD_SSH_PRIVATE_KEY }}" > "${HOME}/.ssh/id_ed25519"
           chmod 600 "${HOME}/.ssh/id_ed25519"
           printf '%s\n' "${{ secrets.PROD_SSH_KNOWN_HOSTS }}" > "${HOME}/.ssh/known_hosts"
           chmod 600 "${HOME}/.ssh/known_hosts"
+
           cat > "${HOME}/.ssh/config" <<EOF
-          Host *
+          Host deploy-target
+            HostName ${REMOTE_HOST}
+            Port ${REMOTE_PORT}
+            User ${REMOTE_USER}
             IdentityFile ~/.ssh/id_ed25519
             IdentitiesOnly yes
             StrictHostKeyChecking yes
             UserKnownHostsFile ~/.ssh/known_hosts
-            Port ${{ secrets.PROD_SSH_PORT }}
+            ProxyCommand /usr/bin/cloudflared access ssh --hostname %h
           EOF
           chmod 600 "${HOME}/.ssh/config"
 
-      - name: Show production release context
+      - name: Show production release context and verify connectivity
         run: |
+          set -euo pipefail
           echo "target_tag=${TARGET_TAG}"
           echo "remote_host=${REMOTE_HOST}"
           echo "remote_user=${REMOTE_USER}"
           echo "app_dir=${APP_DIR:-<default from script>}"
           echo "app_name=${APP_NAME:-<default from script>}"
           echo "base_url=${BASE_URL}"
+          
+          echo "Testing SSH connectivity via Cloudflare Access to production..."
+          ssh deploy-target 'hostname && whoami && pm2 status'
 
       - name: Deploy exact tag to production over SSH
         run: |
