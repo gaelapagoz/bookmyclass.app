@@ -4,10 +4,17 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const requireTeacherSessionMock = vi.fn();
+const { requireTeacherSessionMock, signOutMock } = vi.hoisted(() => ({
+  requireTeacherSessionMock: vi.fn(),
+  signOutMock: vi.fn(),
+}));
 
 vi.mock("@/lib/auth/require-auth", () => ({
   requireTeacherSession: (...args: unknown[]) => requireTeacherSessionMock(...args),
+}));
+
+vi.mock("@/auth", () => ({
+  signOut: signOutMock,
 }));
 
 import TeacherLayout from "../../src/app/teacher/layout";
@@ -28,6 +35,16 @@ describe("Teacher layout guard", () => {
     );
 
     expect(screen.getByText("Teacher content")).toBeInTheDocument();
+  });
+
+  it("renders a logout control in the teacher sidebar", async () => {
+    render(
+      await TeacherLayout({
+        children: <div>Teacher content</div>,
+      }),
+    );
+
+    expect(screen.getByRole("button", { name: /logout/i })).toBeInTheDocument();
   });
 
   it("redirects non-teacher/admin users", async () => {

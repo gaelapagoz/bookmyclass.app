@@ -3,8 +3,12 @@ import { redirect } from "next/navigation";
 import type { Role } from "@prisma/client";
 import type { Session } from "next-auth";
 
-import { auth } from "@/auth";
 import { isAdminRole } from "@/lib/auth/admin-access";
+
+async function getAuth() {
+  const { auth } = await import("@/auth");
+  return auth;
+}
 
 const DEFAULT_CUSTOMER_CALLBACK_URL = "/dashboard";
 const DEFAULT_CUSTOMER_SIGN_IN_PATH = "/sign-in";
@@ -29,6 +33,12 @@ type AdminSession = AuthenticatedSession & {
 type TeacherSession = AuthenticatedSession & {
   user: AuthenticatedSession["user"] & {
     role: "TEACHER";
+  };
+};
+
+type StaffSession = AuthenticatedSession & {
+  user: AuthenticatedSession["user"] & {
+    role: "TEACHER" | "ADMIN" | "MASTER_ADMIN";
   };
 };
 
@@ -65,6 +75,7 @@ export async function requireUserSession(options?: {
 }): Promise<AuthenticatedSession> {
   const callbackUrl = options?.callbackUrl ?? DEFAULT_CUSTOMER_CALLBACK_URL;
   const signInPath = options?.signInPath ?? DEFAULT_CUSTOMER_SIGN_IN_PATH;
+  const auth = await getAuth();
   const session = toAuthenticatedSession(await auth());
 
   if (!session) {
@@ -111,6 +122,7 @@ export async function requireAdminSession(options?: {
   unauthorizedPath?: string;
   throwOnFailure?: boolean;
 }): Promise<AdminSession> {
+  const auth = await getAuth();
   const session = toAuthenticatedSession(await auth());
   const signInPath = options?.signInPath ?? DEFAULT_ADMIN_SIGN_IN_PATH;
   const unauthorizedPath = options?.unauthorizedPath ?? DEFAULT_ADMIN_UNAUTHORIZED_PATH;
@@ -155,6 +167,33 @@ export async function requireTeacherSession(options?: {
     user: {
       ...session.user,
       role: "TEACHER",
+    },
+  };
+}
+
+export async function requireStaffSession(options?: {
+  callbackUrl?: string;
+  signInPath?: string;
+  unauthorizedPath?: string;
+  throwOnFailure?: boolean;
+}): Promise<StaffSession> {
+  const callbackUrl = options?.callbackUrl ?? "/kiosk";
+  const session = await requireUserSession({
+    callbackUrl,
+    signInPath: options?.signInPath ?? DEFAULT_CUSTOMER_SIGN_IN_PATH,
+  });
+  const unauthorizedPath = options?.unauthorizedPath ?? "/dashboard";
+  const role = session.user.role;
+
+  if (role !== "TEACHER" && !isAdminRole(role)) {
+    failAuth(Boolean(options?.throwOnFailure), "FORBIDDEN", unauthorizedPath);
+  }
+
+  return {
+    ...session,
+    user: {
+      ...session.user,
+      role: role as StaffSession["user"]["role"],
     },
   };
 }

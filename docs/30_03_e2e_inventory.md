@@ -24,6 +24,8 @@ This inventory defines the production-launch Playwright scope for release-blocki
 4. Book class via Stripe checkout handoff and completion.
 5. Dashboard shows booking and membership state.
 6. Cancel booking when cancellation window allows it.
+7. Dashboard self check-in within check-in window.
+8. Client blocked from staff-only kiosk routes.
 
 ### Admin
 
@@ -32,6 +34,15 @@ This inventory defines the production-launch Playwright scope for release-blocki
 3. Update booking service.
 4. Create calendar session.
 5. Update calendar session.
+6. Kiosk access for staff check-in oversight.
+7. Attendance finalization from session detail.
+
+### Teacher
+
+1. Kiosk session selection and check-in for collective classes.
+2. Kiosk exit requires password re-entry.
+3. Kiosk check-in blocked outside window.
+4. Private class sessions excluded from kiosk self check-in flow.
 
 ## Extended (active + stable only)
 
@@ -44,4 +55,3 @@ This inventory defines the production-launch Playwright scope for release-blocki
 1. Waitlist runtime behavior.
 2. No-show runtime behavior.
 3. Any cleanup-only destructive admin feature.
-

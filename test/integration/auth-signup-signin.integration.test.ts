@@ -304,6 +304,145 @@ describe("auth actions integration", () => {
     expect(result).toEqual(session);
   });
 
+  it("unverified CLIENT user cannot sign in", async () => {
+    const email = `unverified.client.${Date.now()}@example.test`;
+    await prisma.user.create({
+      data: {
+        name: "Unverified Client",
+        firstName: "Unverified",
+        lastName: "Client",
+        email,
+        role: Role.CLIENT,
+        passwordHash: await hash("Password123!", 12),
+        emailVerified: null,
+        emailVerifiedAt: null,
+        activationStatus: UserActivationStatus.ACTIVE,
+      },
+    });
+
+    await expect(signInAction(makeSignInForm({ email, password: "Password123!" }))).rejects.toThrow(
+      `NEXT_REDIRECT:/sign-in?error=email_not_verified&email=${encodeURIComponent(email)}&callbackUrl=%2Fdashboard`,
+    );
+
+    expect(vi.mocked(signIn)).not.toHaveBeenCalled();
+  });
+
+  it("unverified TEACHER user CAN sign in", async () => {
+    const email = `unverified.teacher.${Date.now()}@example.test`;
+    await prisma.user.create({
+      data: {
+        name: "Unverified Teacher",
+        firstName: "Unverified",
+        lastName: "Teacher",
+        email,
+        role: Role.TEACHER,
+        passwordHash: await hash("Password123!", 12),
+        emailVerified: null,
+        emailVerifiedAt: null,
+        activationStatus: UserActivationStatus.ACTIVE,
+      },
+    });
+
+    vi.mocked(signIn).mockImplementation(async (_provider, options) => {
+      expect(_provider).toBe("credentials");
+      expect((options as { email?: string }).email).toBe(email);
+      const error = new Error("NEXT_REDIRECT:/teacher");
+      (error as Error & { digest?: string }).digest = "NEXT_REDIRECT;replace;/teacher;307;";
+      throw error;
+    });
+
+    await expect(signInAction(makeSignInForm({ email, password: "Password123!" }))).rejects.toThrow(
+      "NEXT_REDIRECT:/teacher",
+    );
+
+    expect(vi.mocked(signIn)).toHaveBeenCalledTimes(1);
+  });
+
+  it("unverified ADMIN user CAN sign in", async () => {
+    const email = `unverified.admin.${Date.now()}@example.test`;
+    await prisma.user.create({
+      data: {
+        name: "Unverified Admin",
+        firstName: "Unverified",
+        lastName: "Admin",
+        email,
+        role: Role.ADMIN,
+        passwordHash: await hash("Password123!", 12),
+        emailVerified: null,
+        emailVerifiedAt: null,
+        activationStatus: UserActivationStatus.ACTIVE,
+      },
+    });
+
+    vi.mocked(signIn).mockImplementation(async (_provider, options) => {
+      expect(_provider).toBe("credentials");
+      expect((options as { email?: string }).email).toBe(email);
+      const error = new Error("NEXT_REDIRECT:/admin");
+      (error as Error & { digest?: string }).digest = "NEXT_REDIRECT;replace;/admin;307;";
+      throw error;
+    });
+
+    await expect(signInAction(makeSignInForm({ email, password: "Password123!" }))).rejects.toThrow(
+      "NEXT_REDIRECT:/admin",
+    );
+
+    expect(vi.mocked(signIn)).toHaveBeenCalledTimes(1);
+  });
+
+  it("unverified MASTER_ADMIN user CAN sign in", async () => {
+    const email = `unverified.master.${Date.now()}@example.test`;
+    await prisma.user.create({
+      data: {
+        name: "Unverified Master Admin",
+        firstName: "Unverified",
+        lastName: "Master",
+        email,
+        role: Role.MASTER_ADMIN,
+        passwordHash: await hash("Password123!", 12),
+        emailVerified: null,
+        emailVerifiedAt: null,
+        activationStatus: UserActivationStatus.ACTIVE,
+      },
+    });
+
+    vi.mocked(signIn).mockImplementation(async (_provider, options) => {
+      expect(_provider).toBe("credentials");
+      expect((options as { email?: string }).email).toBe(email);
+      const error = new Error("NEXT_REDIRECT:/admin");
+      (error as Error & { digest?: string }).digest = "NEXT_REDIRECT;replace;/admin;307;";
+      throw error;
+    });
+
+    await expect(signInAction(makeSignInForm({ email, password: "Password123!" }))).rejects.toThrow(
+      "NEXT_REDIRECT:/admin",
+    );
+
+    expect(vi.mocked(signIn)).toHaveBeenCalledTimes(1);
+  });
+
+  it("inactive user (any role) cannot sign in", async () => {
+    const email = `inactive.teacher.${Date.now()}@example.test`;
+    await prisma.user.create({
+      data: {
+        name: "Inactive Teacher",
+        firstName: "Inactive",
+        lastName: "Teacher",
+        email,
+        role: Role.TEACHER,
+        passwordHash: await hash("Password123!", 12),
+        emailVerified: new Date(),
+        emailVerifiedAt: new Date(),
+        activationStatus: UserActivationStatus.DISABLED,
+      },
+    });
+
+    await expect(signInAction(makeSignInForm({ email, password: "Password123!" }))).rejects.toThrow(
+      `NEXT_REDIRECT:/sign-in?error=email_not_verified&email=${encodeURIComponent(email)}&callbackUrl=%2Fdashboard`,
+    );
+
+    expect(vi.mocked(signIn)).not.toHaveBeenCalled();
+  });
+
   it("sign-in action rejects invalid credentials", async () => {
     vi.mocked(signIn).mockRejectedValue(new AuthError("CredentialsSignin"));
 

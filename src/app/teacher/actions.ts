@@ -42,6 +42,12 @@ const attendeeRemoveSchema = z.object({
   note: z.string().trim().max(400).optional(),
 });
 
+const attendanceUpdateSchema = z.object({
+  bookingId: z.string().trim().min(1),
+  targetStatus: z.enum(["CHECKED_IN", "ATTENDED", "NO_SHOW", "CLEAR"]),
+  note: z.string().trim().max(400).optional(),
+});
+
 function redirectWithError(path: string, message: string): never {
   const separator = path.includes("?") ? "&" : "?";
   redirect(`${path}${separator}error=${encodeURIComponent(message)}`);
@@ -96,6 +102,15 @@ function mapTeacherActionError(error: unknown): string {
   }
   if (code === "SESSION_ATTENDEE_NOT_FOUND") {
     return "Attendee booking not found for this session.";
+  }
+  if (code === "BOOKING_NOT_CONFIRMED") {
+    return "Attendance can be managed only for confirmed bookings.";
+  }
+  if (code === "ATTENDANCE_NOT_FOUND") {
+    return "No check-in record exists to clear.";
+  }
+  if (code === "ATTENDANCE_ALREADY_FINALIZED") {
+    return "Attendance is finalized and cannot be changed from this state.";
   }
   if (code === "CLIENT_NOT_FOUND") {
     return "Selected client was not found.";
@@ -197,6 +212,38 @@ export async function removeTeacherSessionAttendeeAction(sessionId: string, form
 
   revalidatePath(returnTo);
   redirect(`${returnTo}?success=${encodeURIComponent("Attendee removed.")}`);
+}
+
+export async function updateTeacherSessionAttendanceAction(sessionId: string, formData: FormData) {
+  await assertSameOriginServerAction();
+  const session = await requireTeacherSession({ throwOnFailure: true });
+  const returnTo = `/teacher/sessions/${sessionId}`;
+
+  const parsed = attendanceUpdateSchema.safeParse({
+    bookingId: formData.get("bookingId"),
+    targetStatus: formData.get("targetStatus"),
+    note: String(formData.get("note") ?? "").trim() || undefined,
+  });
+
+  if (!parsed.success) {
+    redirectWithError(returnTo, "Please submit a valid attendance update.");
+  }
+
+  try {
+    const { markBookingAttendanceByStaff } = await import("@/lib/attendance/attendance-service");
+    await markBookingAttendanceByStaff({
+      bookingId: parsed.data.bookingId,
+      studioSessionId: sessionId,
+      actorUserId: session.user.id,
+      targetStatus: parsed.data.targetStatus,
+      notes: parsed.data.note,
+    });
+  } catch (error) {
+    redirectWithError(returnTo, mapTeacherActionError(error));
+  }
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Attendance updated.")}`);
 }
 
 export async function changeTeacherPasswordAction(formData: FormData) {

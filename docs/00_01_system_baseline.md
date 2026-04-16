@@ -82,9 +82,9 @@ Evidence label legend used in this file:
   - Public contact form persists unified client messages with spam/rate-limit checks; admin inbox supports review/status updates.
   - Evidence status: Confirmed from repo (`src/app/(public)/page.tsx`, `src/lib/client-messages/client-message-service.ts`, `src/app/admin/(private)/inbox/page.tsx`).
 - Capability status summary:
-  - Confirmed: booking draft/payment/checkout, subscription checkout, admin operations, auth flows, contact/inbox.
+  - Confirmed: booking draft/payment/checkout, subscription checkout, admin operations, auth flows, contact/inbox, attendance self check-in (dashboard + kiosk), staff attendance finalization.
   - Inferred: teacher operational workflows (UI placeholder suggests planned expansion).
-  - Missing: waitlist promotion workflow and no-show marking workflow in active app paths.
+  - Missing: waitlist promotion workflow.
   - Evidence status: Confirmed/Inferred/Missing based on `src` usage.
 
 ## 3. Roles and access model
@@ -640,7 +640,6 @@ Rule:
 - Confirm Sentry project/environment values in production.
 - Confirm PM2 process list and systemd auto-start unit currently active.
 - Confirm exact manual deploy runbook currently used (including rollback steps).
-
 
 
 

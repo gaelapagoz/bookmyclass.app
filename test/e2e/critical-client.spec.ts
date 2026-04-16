@@ -7,6 +7,7 @@ import {
   completeStripeCheckoutForTest,
   failStripeCheckoutForTest,
   getPasswordResetTokenForTest,
+  prepareCheckInWindowBookingForTest,
   prepareCancellationWindowBookingForTest,
   verifyTestEmail,
 } from "./support/e2e-api";
@@ -140,17 +141,19 @@ test.describe("critical client flows", () => {
 
   // @covers customer-cancel-booking-before-cutoff
   // @covers cross-cancellation-policy-enforced
-  // @covers customer-apply-plan-entitlement
   test("cancel booking if allowed", async ({ page }) => {
     await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_WITH_CREDITS.email);
+    const prepared = await prepareCancellationWindowBookingForTest(page.request, {
+      clientEmail: SEEDED_CLIENT_WITH_CREDITS.email,
+      mode: "early",
+    });
     await signInClient(page, SEEDED_CLIENT_WITH_CREDITS);
 
-    await openBookingFormFromFirstAvailableSlot(page, SEEDED_SERVICE_SLUG, 0);
-    await submitBookingWithPaymentOption(page, /Use Existing Plan/i);
-    await expect(page).toHaveURL(new RegExp(`/book-a-class/${SEEDED_SERVICE_SLUG}/confirmed\\?bookingId=`));
-
     await page.goto("/dashboard/bookings");
-    await page.getByRole("button", { name: "Cancel booking" }).first().click();
+    const bookingCard = page.getByTestId(`dashboard-booking-${prepared.bookingId}`);
+    const cancelButton = page.getByTestId(`dashboard-cancel-${prepared.bookingId}`);
+    await expect(cancelButton).toBeEnabled();
+    await cancelButton.click();
     await expect(page.getByText("Booking cancelled.")).toBeVisible();
   });
 
@@ -158,17 +161,45 @@ test.describe("critical client flows", () => {
   // @covers cross-cancellation-policy-enforced
   test("cancel booking is blocked after cutoff", async ({ page }) => {
     await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_WITH_CREDITS.email);
-    await prepareCancellationWindowBookingForTest(page.request, {
+    const prepared = await prepareCancellationWindowBookingForTest(page.request, {
       clientEmail: SEEDED_CLIENT_WITH_CREDITS.email,
       mode: "late",
     });
     await signInClient(page, SEEDED_CLIENT_WITH_CREDITS);
 
     await page.goto("/dashboard/bookings");
-    const cancelButton = page.getByRole("button", { name: "Cancel booking" }).first();
+    const bookingCard = page.getByTestId(`dashboard-booking-${prepared.bookingId}`);
+    const cancelButton = page.getByTestId(`dashboard-cancel-${prepared.bookingId}`);
     await expect(cancelButton).toBeVisible();
     await expect(cancelButton).toBeDisabled();
-    await expect(cancelButton.locator("xpath=../p")).toBeVisible();
+    const reasonId = await cancelButton.getAttribute("aria-describedby");
+    expect(reasonId).toBeTruthy();
+    const reasonText = page.locator(`#${reasonId}`);
+    await expect(reasonText).toBeVisible();
+    await expect(reasonText).toContainText(/less than 24 hour/i);
+  });
+
+  test("dashboard self check-in succeeds within window", async ({ page }) => {
+    await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_WITH_CREDITS.email);
+    const prepared = await prepareCheckInWindowBookingForTest(page.request, {
+      clientEmail: SEEDED_CLIENT_WITH_CREDITS.email,
+    });
+    await signInClient(page, SEEDED_CLIENT_WITH_CREDITS);
+
+    await page.goto("/dashboard/bookings");
+    const bookingCard = page.getByTestId(`dashboard-booking-${prepared.bookingId}`);
+    await expect(bookingCard).toBeVisible();
+    await page.getByTestId(`dashboard-check-in-${prepared.bookingId}`).click();
+
+    await expect(page.getByText("Successfully checked in!")).toBeVisible();
+    await expect(page.getByTestId(`dashboard-checked-in-${prepared.bookingId}`)).toBeVisible();
+  });
+
+  // @covers customer-kiosk-blocked
+  test("client is blocked from kiosk routes", async ({ page }) => {
+    await signInClient(page, SEEDED_CLIENT_WITH_CREDITS);
+    await page.goto("/kiosk");
+    await expect(page).toHaveURL(/\/dashboard$/);
   });
 
   // @covers customer-dashboard-profile-page

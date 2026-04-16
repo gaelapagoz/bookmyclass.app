@@ -11,6 +11,7 @@ Purpose: document the current service-first boundaries and where logic belongs.
 ## Boundary Map
 - Auth and identity: `src/lib/auth/*`.
 - Booking and checkout domain: `src/lib/public-booking/*`.
+- Attendance and check-in domain: `src/lib/attendance/*`.
 - Subscription domain: `src/lib/subscription/*`.
 - Dashboard domain: `src/lib/dashboard/*`.
 - Admin domain: `src/lib/admin/*`.
@@ -25,6 +26,7 @@ Purpose: document the current service-first boundaries and where logic belongs.
 ## Guardrails
 - Keep Stripe, Resend, and Sentry integration boundaries centralized under `src/lib/*` integration modules.
 - Reuse shared validators/utilities rather than re-implementing per route.
+- Attendance transition rules are owned by `attendance-service`; pages/actions must call the service instead of duplicating transition checks.
 
 ## Canonical References
 - `docs/10_01_business_rules.md`

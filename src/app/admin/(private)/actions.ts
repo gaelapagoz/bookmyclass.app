@@ -171,6 +171,12 @@ const sessionAttendeeRemoveSchema = z.object({
   note: z.string().max(400).optional(),
 });
 
+const sessionAttendanceUpdateSchema = z.object({
+  bookingId: z.string().min(1),
+  targetStatus: z.enum(["CHECKED_IN", "ATTENDED", "NO_SHOW", "CLEAR"]),
+  note: z.string().max(400).optional(),
+});
+
 const recurringSessionSchema = z
   .object({
     startsOn: z.date(),
@@ -567,6 +573,15 @@ function getAdminActionErrorMessage(error: unknown): string {
   }
   if (code === "SESSION_ATTENDEE_NOT_FOUND") {
     return "Selected attendee booking was not found for this session.";
+  }
+  if (code === "BOOKING_NOT_CONFIRMED") {
+    return "Attendance can be managed only for confirmed bookings.";
+  }
+  if (code === "ATTENDANCE_NOT_FOUND") {
+    return "No check-in record exists to clear.";
+  }
+  if (code === "ATTENDANCE_ALREADY_FINALIZED") {
+    return "Attendance is finalized and cannot be changed from this state.";
   }
   if (code === "INVALID_SITE_SCHEDULE_TIME" || code === "INVALID_SITE_SCHEDULE_TIME_RANGE") {
     return "Schedule start and end time are invalid.";
@@ -1087,6 +1102,38 @@ export async function removeSessionAttendeeAction(id: string, formData: FormData
 
   revalidatePath(returnTo);
   redirect(`${returnTo}?success=${encodeURIComponent("Attendee removed.")}`);
+}
+
+export async function updateSessionAttendanceAction(id: string, formData: FormData) {
+  const session = await assertSessionManagerAccess();
+  const returnTo = `/admin/sessions/${id}/edit`;
+
+  const parsed = sessionAttendanceUpdateSchema.safeParse({
+    bookingId: formData.get("bookingId"),
+    targetStatus: formData.get("targetStatus"),
+    note: toOptionalTrimmedString(formData.get("note")),
+  });
+
+  if (!parsed.success) {
+    redirectWithError(returnTo, "Please submit a valid attendance update.");
+  }
+
+  try {
+    const { markBookingAttendanceByStaff } = await import("@/lib/attendance/attendance-service");
+    await markBookingAttendanceByStaff({
+      bookingId: parsed.data.bookingId,
+      studioSessionId: id,
+      actorUserId: session.user.id,
+      targetStatus: parsed.data.targetStatus,
+      notes: parsed.data.note,
+    });
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(returnTo, getAdminActionErrorMessage(error));
+  }
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Attendance updated.")}`);
 }
 
 export async function createPlanAction(formData: FormData) {

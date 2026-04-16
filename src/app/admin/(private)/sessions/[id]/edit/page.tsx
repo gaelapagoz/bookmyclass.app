@@ -5,8 +5,10 @@ import { notFound } from "next/navigation";
 import {
   addSessionAttendeeAction,
   removeSessionAttendeeAction,
+  updateSessionAttendanceAction,
   updateSessionAction,
 } from "@/app/admin/(private)/actions";
+import { StaffAttendanceControls } from "@/components/attendance/StaffAttendanceControls";
 import { getAdminSessionById, getAdminSessionOptions } from "@/lib/admin/admin-service";
 
 type Params = Promise<{ id: string }>;
@@ -184,14 +186,32 @@ export default async function AdminSessionEditPage({
         {record.attendees.length > 0 ? (
           <ul className="space-y-3">
             {record.attendees.map((attendee) => (
-              <li key={attendee.bookingId} className="rounded-md border border-[#d3dbe5] p-3">
+              <li
+                key={attendee.bookingId}
+                data-testid={`admin-attendee-${attendee.bookingId}`}
+                className="rounded-md border border-[#d3dbe5] p-3"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold text-[#1f2735]">{attendee.clientName}</p>
                     <p className="text-xs text-[#4a5b73]">{attendee.clientEmail}</p>
+                    <p className="mt-1 text-xs text-[#1f2735]">
+                      Attendance: {attendee.attendanceStatus ?? "NOT_MARKED"}
+                    </p>
+                    {attendee.attendanceStatus ? (
+                      <p className="text-xs text-[#4a5b73]">
+                        Source: {attendee.attendanceSource ?? "N/A"}
+                        {attendee.checkedInAt && ` | Marked at ${new Date(attendee.checkedInAt).toLocaleString()}`}
+                      </p>
+                    ) : null}
                   </div>
                   <p className="text-xs text-[#4a5b73]">Status: {attendee.status}</p>
                 </div>
+                <StaffAttendanceControls
+                  bookingId={attendee.bookingId}
+                  attendanceStatus={attendee.attendanceStatus}
+                  action={updateSessionAttendanceAction.bind(null, id)}
+                />
                 <form action={removeSessionAttendeeAction.bind(null, id)} className="mt-3 space-y-2">
                   <input type="hidden" name="bookingId" value={attendee.bookingId} />
                   <label className="block text-xs text-[#334155]">

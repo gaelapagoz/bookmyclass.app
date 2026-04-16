@@ -1,12 +1,17 @@
 ﻿import Link from "next/link";
 
+type TeacherSidebarProps = {
+  onSignOutAction?: (formData: FormData) => Promise<void>;
+};
+
 const teacherNavItems = [
   { href: "/teacher", label: "Dashboard" },
   { href: "/teacher/sessions", label: "Sessions" },
   { href: "/teacher/profile", label: "Profile" },
+  { href: "/kiosk", label: "Launch Kiosk", isKiosk: true },
 ] as const;
 
-export default function TeacherSidebar() {
+export default function TeacherSidebar({ onSignOutAction }: TeacherSidebarProps) {
   return (
     <aside className="w-full border-r border-[#223046] bg-[#13263a] text-[#f4eee8] md:w-64">
       <div className="border-b border-[#223046] px-5 py-5">
@@ -16,16 +21,36 @@ export default function TeacherSidebar() {
 
       <nav className="p-3">
         <ul className="space-y-1">
-          {teacherNavItems.map((item) => (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                className="block rounded-md px-3 py-2 text-sm text-[#d9c8be] transition-colors hover:bg-[#1b2f47] hover:text-[#f4eee8]"
-              >
-                {item.label}
-              </Link>
+          {teacherNavItems.map((item) => {
+            const isKiosk = "isKiosk" in item && item.isKiosk;
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={`block rounded-md px-3 py-2 text-sm transition-colors ${
+                    isKiosk
+                      ? "border border-[#8a5959] bg-[#0f1f2d] text-[#f4eee8] hover:bg-[#1b2f47]"
+                      : "text-[#d9c8be] hover:bg-[#1b2f47] hover:text-[#f4eee8]"
+                  }`}
+                  data-testid={isKiosk ? "teacher-nav-kiosk-item" : undefined}
+                >
+                  {item.label}
+                </Link>
+              </li>
+            );
+          })}
+          {onSignOutAction ? (
+            <li data-testid="teacher-nav-logout-item">
+              <form action={onSignOutAction}>
+                <button
+                  type="submit"
+                  className="w-full rounded-md px-3 py-2 text-left text-sm text-[#d9c8be] transition-colors hover:bg-[#1b2f47] hover:text-[#f4eee8]"
+                >
+                  Logout
+                </button>
+              </form>
             </li>
-          ))}
+          ) : null}
         </ul>
       </nav>
     </aside>

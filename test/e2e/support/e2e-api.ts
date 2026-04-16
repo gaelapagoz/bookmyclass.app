@@ -88,10 +88,41 @@ export async function getPasswordResetTokenForTest(
 export async function prepareCancellationWindowBookingForTest(
   request: APIRequestContext,
   input: { clientEmail: string; mode: "late" | "early" },
-) {
+): Promise<{ bookingId: string }> {
   const response = await request.post("/api/test/e2e/bookings/prepare-cancellation-window", {
     headers: testHeaders(),
     data: input,
   });
   expect(response.ok()).toBeTruthy();
+  const payload = (await response.json()) as { bookingId?: string };
+  expect(payload.bookingId).toBeTruthy();
+  return { bookingId: payload.bookingId as string };
+}
+
+export async function prepareCheckInWindowBookingForTest(
+  request: APIRequestContext,
+  input: {
+    clientEmail: string;
+    mode?: "in_window" | "before_window" | "after_window";
+    classMode?: "collective" | "private";
+  },
+): Promise<{ bookingId: string; sessionId: string; sessionTitle: string }> {
+  const response = await request.post("/api/test/e2e/bookings/prepare-checkin-window", {
+    headers: testHeaders(),
+    data: input,
+  });
+  expect(response.ok()).toBeTruthy();
+  const payload = (await response.json()) as {
+    bookingId?: string;
+    sessionId?: string;
+    sessionTitle?: string;
+  };
+  expect(payload.bookingId).toBeTruthy();
+  expect(payload.sessionId).toBeTruthy();
+  expect(payload.sessionTitle).toBeTruthy();
+  return {
+    bookingId: payload.bookingId as string,
+    sessionId: payload.sessionId as string,
+    sessionTitle: payload.sessionTitle as string,
+  };
 }

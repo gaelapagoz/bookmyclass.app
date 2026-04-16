@@ -1,6 +1,8 @@
 import "./helpers/setup-env";
 
 import {
+  AttendanceSource,
+  AttendanceStatus,
   BookingStatus,
   ClientEntitlementStatus,
   CreditLedgerEntryType,
@@ -17,6 +19,7 @@ import {
   getAdminSessionOptions,
   removeSessionAttendeeByManager,
 } from "../../src/lib/admin/admin-service";
+import { markBookingAttendanceByStaff } from "../../src/lib/attendance/attendance-service";
 import { prisma } from "./helpers/db";
 import { createClassCategory, createClassType } from "./helpers/factories";
 import { resetDb } from "./helpers/reset-db";
@@ -147,6 +150,52 @@ describe("admin session attendee management service", () => {
     expect(detail).not.toBeNull();
     expect(detail?.attendees).toHaveLength(1);
     expect(detail?.attendees[0]?.clientName).toBe("Client One");
+  });
+
+  it("shows only confirmed bookings in session attendee roster", async () => {
+    const { session } = await createSessionFixture();
+    const [confirmedClient, pendingClient] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Confirmed Client",
+          email: `confirmed.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Pending Client",
+          email: `pending.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+    ]);
+
+    await Promise.all([
+      prisma.booking.create({
+        data: {
+          clientId: confirmedClient.id,
+          studioSessionId: session.id,
+          status: BookingStatus.CONFIRMED,
+          customerName: confirmedClient.name,
+          customerEmail: confirmedClient.email,
+        },
+      }),
+      prisma.booking.create({
+        data: {
+          clientId: pendingClient.id,
+          studioSessionId: session.id,
+          status: BookingStatus.PENDING,
+          customerName: pendingClient.name,
+          customerEmail: pendingClient.email,
+        },
+      }),
+    ]);
+
+    const detail = await getAdminSessionById(session.id);
+
+    expect(detail?.attendees).toHaveLength(1);
+    expect(detail?.attendees[0]?.clientName).toBe("Confirmed Client");
   });
 
   it("removing attendee restores consumed credit through ledger", async () => {
@@ -465,5 +514,67 @@ describe("admin session attendee management service", () => {
     expect(withCredits?.availableCredits).toBe(2);
     expect(withoutCredits?.hasAvailableCredits).toBe(false);
     expect(withoutCredits?.availableCredits).toBe(0);
+  });
+
+  it("applies staff attendance transitions and blocks finalized rewrites", async () => {
+    const { session } = await createSessionFixture();
+    const [client, admin] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Client Ten",
+          email: `client.ten.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Admin Five",
+          email: `admin.five.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+    ]);
+
+    const booking = await prisma.booking.create({
+      data: {
+        clientId: client.id,
+        studioSessionId: session.id,
+        status: BookingStatus.CONFIRMED,
+        customerName: client.name,
+        customerEmail: client.email,
+      },
+    });
+
+    await markBookingAttendanceByStaff({
+      bookingId: booking.id,
+      studioSessionId: session.id,
+      actorUserId: admin.id,
+      targetStatus: AttendanceStatus.CHECKED_IN,
+      notes: "Desk check-in",
+    });
+
+    await markBookingAttendanceByStaff({
+      bookingId: booking.id,
+      studioSessionId: session.id,
+      actorUserId: admin.id,
+      targetStatus: AttendanceStatus.ATTENDED,
+    });
+
+    const record = await prisma.attendanceRecord.findUnique({
+      where: { bookingId: booking.id },
+      select: { status: true, source: true },
+    });
+
+    expect(record?.status).toBe(AttendanceStatus.ATTENDED);
+    expect(record?.source).toBe(AttendanceSource.DASHBOARD);
+
+    await expect(
+      markBookingAttendanceByStaff({
+        bookingId: booking.id,
+        studioSessionId: session.id,
+        actorUserId: admin.id,
+        targetStatus: AttendanceStatus.NO_SHOW,
+      }),
+    ).rejects.toThrow("ATTENDANCE_ALREADY_FINALIZED");
   });
 });

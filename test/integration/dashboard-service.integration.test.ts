@@ -14,6 +14,8 @@ import {
   Role,
   StudioSessionStatus,
   SubscriptionStatus,
+  AttendanceSource,
+  AttendanceStatus,
 } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -212,6 +214,84 @@ describe("dashboard-service integration", () => {
     });
   });
 
+  it("rejects cancellation after the booking has an attendance record", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Checked In Client",
+        firstName: "Checked",
+        lastName: "In",
+        email: `checkedin.client.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    const { booking } = await createSessionFixture(client.id, { startsInHours: 26 });
+
+    await prisma.attendanceRecord.create({
+      data: {
+        bookingId: booking.id,
+        status: AttendanceStatus.CHECKED_IN,
+        source: AttendanceSource.DASHBOARD,
+        markedById: client.id,
+      },
+    });
+
+    await expect(
+      cancelClientBooking({ bookingId: booking.id, clientId: client.id }),
+    ).rejects.toMatchObject<Partial<DashboardServiceError>>({
+      code: "BOOKING_ALREADY_CHECKED_IN",
+    });
+  });
+
+  it("marks booking as self check-in eligible when session is within check-in window", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Checkin Eligible Client",
+        firstName: "Checkin",
+        lastName: "Eligible",
+        email: `checkin.eligible.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await createSessionFixture(client.id, { startsInHours: 0.08 });
+    const bookings = await getDashboardBookingsData(client.id);
+
+    expect(bookings.upcoming).toHaveLength(1);
+    expect(bookings.upcoming[0]?.canCheckIn).toBe(true);
+    expect(bookings.upcoming[0]?.checkInBlockedReason).toBeNull();
+    expect(bookings.upcoming[0]?.isCheckedIn).toBe(false);
+  });
+
+  it("marks booking as already checked in when attendance record exists", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Already Checked Client",
+        firstName: "Already",
+        lastName: "Checked",
+        email: `already.checked.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    const { booking } = await createSessionFixture(client.id, { startsInHours: 0.08 });
+
+    await prisma.attendanceRecord.create({
+      data: {
+        bookingId: booking.id,
+        status: AttendanceStatus.CHECKED_IN,
+        source: AttendanceSource.KIOSK,
+        markedById: client.id,
+      },
+    });
+
+    const bookings = await getDashboardBookingsData(client.id);
+
+    expect(bookings.upcoming).toHaveLength(1);
+    expect(bookings.upcoming[0]?.canCheckIn).toBe(false);
+    expect(bookings.upcoming[0]?.isCheckedIn).toBe(true);
+    expect(bookings.upcoming[0]?.checkInBlockedReason).toBe("Already checked in");
+  });
 
   it("marks booking as cancellable when start is more than 24 hours away", async () => {
     const client = await prisma.user.create({

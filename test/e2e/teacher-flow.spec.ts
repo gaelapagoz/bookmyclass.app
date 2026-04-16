@@ -1,8 +1,12 @@
 import { expect, test } from "@playwright/test";
 
-import { signInClient, signInTeacher } from "./support/auth";
-import { cleanSeededClientBookingsForTest, createUnassignedTeacherSessionForTest } from "./support/e2e-api";
-import { SEEDED_CLIENT_WITH_CREDITS, SEEDED_TEACHER } from "./support/constants";
+import { signInAdmin, signInClient, signInTeacher } from "./support/auth";
+import {
+  cleanSeededClientBookingsForTest,
+  createUnassignedTeacherSessionForTest,
+  prepareCheckInWindowBookingForTest,
+} from "./support/e2e-api";
+import { E2E_PASSWORD, SEEDED_ADMIN, SEEDED_CLIENT_WITH_CREDITS, SEEDED_TEACHER } from "./support/constants";
 
 test.describe("teacher flow", () => {
   test.describe.configure({ mode: "serial" });
@@ -40,6 +44,99 @@ test.describe("teacher flow", () => {
     await expect(page.getByText("E2E Client Credits").first()).toBeVisible();
   });
 
+  test("teacher can check in a client from kiosk for a selected session", async ({ page }) => {
+    const isolatedClientEmail = `e2e.kiosk.${Date.now()}@example.test`;
+    const prepared = await prepareCheckInWindowBookingForTest(page.request, {
+      clientEmail: isolatedClientEmail,
+    });
+    await signInTeacher(page, SEEDED_TEACHER);
+
+    await page.goto(`/kiosk/${encodeURIComponent(prepared.sessionId)}`);
+    await expect(page.getByRole("heading", { name: prepared.sessionTitle })).toBeVisible();
+    const bookingRow = page.getByTestId(`kiosk-booking-${prepared.bookingId}`);
+    await expect(bookingRow.getByText(isolatedClientEmail)).toBeVisible();
+    await page.getByTestId(`kiosk-check-in-${prepared.bookingId}`).click();
+    await expect(bookingRow.getByText(/^Checked In$/)).toBeVisible();
+  });
+
+  // @covers admin-kiosk-access
+  test("admin can access kiosk and check in a client", async ({ page }) => {
+    const isolatedClientEmail = `e2e.kiosk.admin.${Date.now()}@example.test`;
+    const prepared = await prepareCheckInWindowBookingForTest(page.request, {
+      clientEmail: isolatedClientEmail,
+      mode: "in_window",
+    });
+    await signInAdmin(page, SEEDED_ADMIN);
+
+    await page.goto(`/kiosk/${encodeURIComponent(prepared.sessionId)}`);
+    await expect(page.getByRole("heading", { name: prepared.sessionTitle })).toBeVisible();
+    await expect(page.getByTestId(`kiosk-booking-${prepared.bookingId}`)).toBeVisible();
+    await page.getByTestId(`kiosk-check-in-${prepared.bookingId}`).click();
+    await expect(page.getByTestId(`kiosk-booking-${prepared.bookingId}`).getByText(/^Checked In$/)).toBeVisible();
+  });
+
+  // @covers teacher-kiosk-checkin-window-before-blocked
+  test("kiosk check-in is blocked before check-in window", async ({ page }) => {
+    const isolatedClientEmail = `e2e.kiosk.before.${Date.now()}@example.test`;
+    const prepared = await prepareCheckInWindowBookingForTest(page.request, {
+      clientEmail: isolatedClientEmail,
+      mode: "before_window",
+    });
+    await signInTeacher(page, SEEDED_TEACHER);
+
+    await page.goto(`/kiosk/${encodeURIComponent(prepared.sessionId)}`);
+    const bookingRow = page.getByTestId(`kiosk-booking-${prepared.bookingId}`);
+    await expect(bookingRow.getByText(/Check-in opens at/i)).toBeVisible();
+    await expect(page.getByTestId(`kiosk-check-in-${prepared.bookingId}`)).toHaveCount(0);
+  });
+
+  // @covers teacher-kiosk-checkin-window-after-blocked
+  test("kiosk check-in is blocked after check-in window", async ({ page }) => {
+    const isolatedClientEmail = `e2e.kiosk.after.${Date.now()}@example.test`;
+    const prepared = await prepareCheckInWindowBookingForTest(page.request, {
+      clientEmail: isolatedClientEmail,
+      mode: "after_window",
+    });
+    await signInTeacher(page, SEEDED_TEACHER);
+
+    await page.goto(`/kiosk/${encodeURIComponent(prepared.sessionId)}`);
+    const bookingRow = page.getByTestId(`kiosk-booking-${prepared.bookingId}`);
+    await expect(bookingRow.getByText(/window has closed/i)).toBeVisible();
+    await expect(page.getByTestId(`kiosk-check-in-${prepared.bookingId}`)).toHaveCount(0);
+  });
+
+  // @covers teacher-kiosk-private-class-excluded
+  test("private class session is excluded from kiosk check-in route", async ({ page }) => {
+    const isolatedClientEmail = `e2e.kiosk.private.${Date.now()}@example.test`;
+    const prepared = await prepareCheckInWindowBookingForTest(page.request, {
+      clientEmail: isolatedClientEmail,
+      mode: "in_window",
+      classMode: "private",
+    });
+    await signInTeacher(page, SEEDED_TEACHER);
+
+    await page.goto(`/kiosk/${encodeURIComponent(prepared.sessionId)}`);
+    await expect(page).toHaveURL(/\/kiosk$/);
+  });
+
+  // @covers teacher-staff-attendance-marking
+  test("teacher can privately mark attendance from session detail", async ({ page }) => {
+    const isolatedClientEmail = `e2e.staff.attendance.${Date.now()}@example.test`;
+    const prepared = await prepareCheckInWindowBookingForTest(page.request, {
+      clientEmail: isolatedClientEmail,
+    });
+
+    await signInTeacher(page, SEEDED_TEACHER);
+    await page.goto(`/teacher/sessions/${encodeURIComponent(prepared.sessionId)}`);
+
+    const attendeeRow = page.getByTestId(`teacher-attendee-${prepared.bookingId}`);
+    await expect(attendeeRow).toBeVisible();
+    await attendeeRow.getByRole("button", { name: "Mark attended" }).click();
+
+    await expect(page.getByText("Attendance updated.")).toBeVisible();
+    await expect(attendeeRow.getByText("Attendance: ATTENDED")).toBeVisible();
+  });
+
   test("teacher cannot manage another teacher class roster", async ({ page }) => {
     await signInTeacher(page, SEEDED_TEACHER);
     const unassignedSessionId = await createUnassignedTeacherSessionForTest(page.request);
@@ -67,5 +164,36 @@ test.describe("teacher flow", () => {
     await signInTeacher(page, SEEDED_TEACHER);
     await page.goto("/teacher/profile");
     await expect(page.getByRole("heading", { name: "My Teacher Profile" })).toBeVisible();
+  });
+
+  // @covers teacher-kiosk-exit-password-reentry
+  test("kiosk exit requires password re-entry", async ({ page }) => {
+    await signInTeacher(page, SEEDED_TEACHER);
+    await page.goto("/kiosk/exit");
+
+    await page.getByLabel("Password").fill("WrongPassword123!");
+    await page.getByRole("button", { name: "Exit Kiosk" }).click();
+    await expect(page).toHaveURL(/\/kiosk\/exit\?error=invalid_password$/);
+    await expect(page.getByText("Invalid password. Please try again.")).toBeVisible();
+
+    await page.getByLabel("Password").fill(E2E_PASSWORD);
+    await page.getByRole("button", { name: "Exit Kiosk" }).click();
+    await expect(page).toHaveURL(/\/teacher$/);
+  });
+
+  // @covers teacher-kiosk-exit-rate-limit-lockout
+  test("kiosk exit locks out after repeated invalid password attempts", async ({ page }) => {
+    await signInTeacher(page, SEEDED_TEACHER);
+    await page.goto("/kiosk/exit");
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await page.getByTestId("kiosk-exit-password").fill("DefinitelyWrongPassword!");
+      await page.getByTestId("kiosk-exit-submit").click();
+    }
+
+    await page.getByTestId("kiosk-exit-password").fill("DefinitelyWrongPassword!");
+    await page.getByTestId("kiosk-exit-submit").click();
+    await expect(page).toHaveURL(/\/kiosk\/exit\?error=rate_limited$/);
+    await expect(page.getByText(/Too many attempts/i)).toBeVisible();
   });
 });

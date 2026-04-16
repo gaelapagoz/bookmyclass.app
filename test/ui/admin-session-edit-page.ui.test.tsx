@@ -22,6 +22,7 @@ vi.mock("@/app/admin/(private)/actions", () => ({
   updateSessionAction: vi.fn(),
   addSessionAttendeeAction: vi.fn(),
   removeSessionAttendeeAction: vi.fn(),
+  updateSessionAttendanceAction: vi.fn(),
 }));
 
 vi.mock("@/lib/admin/admin-service", () => ({
@@ -56,6 +57,9 @@ describe("admin session edit page", () => {
           bookedAt: new Date().toISOString(),
           status: "CONFIRMED",
           selectedEntitlementId: "ent-1",
+          attendanceStatus: "CHECKED_IN",
+          attendanceSource: "KIOSK",
+          checkedInAt: new Date().toISOString(),
         },
       ],
     });
@@ -93,6 +97,11 @@ describe("admin session edit page", () => {
     expect(screen.getByText("Client One")).toBeInTheDocument();
     expect(screen.getByText("client1@example.test")).toBeInTheDocument();
     expect(screen.getByTestId("session-attendees-section")).toBeInTheDocument();
+    expect(screen.getByTestId("admin-attendee-booking-1")).toBeInTheDocument();
+    expect(screen.getByText(/Attendance: CHECKED_IN/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mark attended" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mark no-show" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Undo check-in" })).toBeInTheDocument();
 
     expect(screen.getByRole("option", { name: /Client Two .*3 credits available/i })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /Client Three .*No credits available/i })).toBeInTheDocument();

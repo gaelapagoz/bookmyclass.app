@@ -24,6 +24,7 @@ vi.mock("@/app/teacher/actions", () => ({
   updateTeacherProfileAction: vi.fn(),
   addTeacherSessionAttendeeAction: vi.fn(),
   removeTeacherSessionAttendeeAction: vi.fn(),
+  updateTeacherSessionAttendanceAction: vi.fn(),
   changeTeacherPasswordAction: vi.fn(),
 }));
 
@@ -117,6 +118,9 @@ describe("teacher pages", () => {
             clientName: "Client One",
             clientEmail: "client.one@example.test",
             status: "CONFIRMED",
+            attendanceStatus: "CHECKED_IN",
+            attendanceSource: "DASHBOARD",
+            checkedInAt: new Date().toISOString(),
           },
         ],
       },
@@ -142,6 +146,8 @@ describe("teacher pages", () => {
     expect(screen.getByText("Client One")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add client" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove client" })).toBeInTheDocument();
+    expect(screen.getByText(/Attendance: CHECKED_IN/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mark attended" })).toBeInTheDocument();
   });
 
   it("redirects roster access when session is not found", async () => {
@@ -240,4 +246,3 @@ describe("teacher pages", () => {
     expect(screen.getByText("Password updated successfully.")).toBeInTheDocument();
   });
 });
-

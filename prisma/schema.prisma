@@ -120,6 +120,11 @@ enum AttendanceStatus {
   NO_SHOW
 }
 
+enum AttendanceSource {
+  DASHBOARD
+  KIOSK
+}
+
 enum OrderStatus {
   DRAFT
   PLACED
@@ -628,11 +633,13 @@ model Booking {
 }
 
 model BookingPolicy {
-  id                      String   @id @default(cuid())
-  scope                   String   @unique @default("GLOBAL")
-  cancellationCutoffHours Int      @default(24)
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  id                          String   @id @default(cuid())
+  scope                       String   @unique @default("GLOBAL")
+  cancellationCutoffHours     Int      @default(24)
+  checkInOpensMinutesBefore   Int      @default(15)
+  checkInClosesMinutesAfter   Int      @default(10)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
 }
 
 model SiteWeeklyScheduleEntry {
@@ -674,6 +681,7 @@ model AttendanceRecord {
   id         String           @id @default(cuid())
   bookingId  String           @unique
   status     AttendanceStatus
+  source     AttendanceSource @default(DASHBOARD)
   markedAt   DateTime         @default(now())
   markedById String
   notes      String?

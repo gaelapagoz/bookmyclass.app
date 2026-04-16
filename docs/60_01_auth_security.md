@@ -18,6 +18,12 @@ Purpose: document the current authentication and auth-related security controls.
 - CAPTCHA enforcement supports Cloudflare Turnstile when env keys are configured.
 - Turnstile verification occurs server-side against Cloudflare siteverify endpoint.
 
+## Kiosk Exit Security
+- Kiosk routes require staff session authorization (`TEACHER`, `ADMIN`, `MASTER_ADMIN`).
+- Exiting kiosk mode requires password re-entry through server-side credential verification.
+- Kiosk exit password attempts are rate-limited.
+- Kiosk exit mutations run behind same-origin server action checks.
+
 ## Known Constraints
 - MFA is not currently implemented in repository code.
 

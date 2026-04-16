@@ -125,7 +125,24 @@ These rules guide the Prisma schema design and must remain consistent across the
   - attended
   - no-show
 
-> Final attendance tracking method (client self check-in vs teacher validation) will be defined later.
+### Attendance state machine (active)
+- Allowed transitions:
+  - `null -> CHECKED_IN`
+  - `null -> ATTENDED`
+  - `null -> NO_SHOW`
+  - `CHECKED_IN -> ATTENDED`
+  - `CHECKED_IN -> NO_SHOW`
+  - `CHECKED_IN -> null` (staff undo only)
+- Finalized states:
+  - `ATTENDED` and `NO_SHOW` are terminal in normal operations.
+
+### Kiosk and dashboard check-in rules (active)
+- Self check-in can originate from:
+  - kiosk (`AttendanceSource.KIOSK`)
+  - dashboard (`AttendanceSource.DASHBOARD`)
+- Self check-in is only allowed for confirmed bookings in the configured check-in window.
+- Private classes are excluded from self check-in routes.
+- Staff can finalize attendance privately from teacher/admin session detail pages.
 
 ---
 

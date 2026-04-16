@@ -1,4 +1,6 @@
 import {
+  AttendanceSource,
+  AttendanceStatus,
   BillingInterval,
   BookingIntent,
   BookingPaymentSelection,
@@ -193,6 +195,9 @@ export type AdminSessionAttendeeItem = {
   bookedAt: string;
   status: BookingStatus;
   selectedEntitlementId: string | null;
+  attendanceStatus: AttendanceStatus | null;
+  attendanceSource: AttendanceSource | null;
+  checkedInAt: string | null;
 };
 
 export type AdminSessionDetail = {
@@ -1850,9 +1855,7 @@ export async function getAdminSessionById(id: string): Promise<AdminSessionDetai
       isPublished: true,
       bookings: {
         where: {
-          status: {
-            in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
-          },
+          status: BookingStatus.CONFIRMED,
           clientId: {
             not: null,
           },
@@ -1868,6 +1871,14 @@ export async function getAdminSessionById(id: string): Promise<AdminSessionDetai
             select: {
               name: true,
               email: true,
+            },
+          },
+          attendanceRecord: {
+            select: {
+              id: true,
+              status: true,
+              source: true,
+              markedAt: true,
             },
           },
         },
@@ -1898,6 +1909,9 @@ export async function getAdminSessionById(id: string): Promise<AdminSessionDetai
         bookedAt: booking.bookedAt.toISOString(),
         status: booking.status,
         selectedEntitlementId: booking.selectedEntitlementId,
+        attendanceStatus: booking.attendanceRecord?.status ?? null,
+        attendanceSource: booking.attendanceRecord?.source ?? null,
+        checkedInAt: booking.attendanceRecord?.markedAt?.toISOString() ?? null,
       })),
     };
   });
@@ -3539,6 +3553,65 @@ export async function updateAdminCancellationPeriodHours(hours: number): Promise
   });
 
   return normalizeBookingCancellationWindowHours(policy.cancellationCutoffHours);
+}
+
+export type AdminAttendanceWindowPolicy = {
+  checkInOpensMinutesBefore: number;
+  checkInClosesMinutesAfter: number;
+};
+
+export async function getAdminAttendanceWindowPolicy(): Promise<AdminAttendanceWindowPolicy> {
+  const policy = await prisma.bookingPolicy.findFirst({
+    where: { scope: "GLOBAL" },
+    orderBy: { createdAt: "asc" },
+    select: {
+      checkInOpensMinutesBefore: true,
+      checkInClosesMinutesAfter: true,
+    },
+  });
+
+  return {
+    checkInOpensMinutesBefore: policy?.checkInOpensMinutesBefore ?? 15,
+    checkInClosesMinutesAfter: policy?.checkInClosesMinutesAfter ?? 10,
+  };
+}
+
+export async function updateAdminAttendanceWindowPolicy(input: {
+  checkInOpensMinutesBefore: number;
+  checkInClosesMinutesAfter: number;
+}): Promise<AdminAttendanceWindowPolicy> {
+  const opens = Number(input.checkInOpensMinutesBefore);
+  const closes = Number(input.checkInClosesMinutesAfter);
+
+  if (!Number.isInteger(opens) || opens < 0) {
+    throw new Error("INVALID_CHECKIN_OPENS_MINUTES_BEFORE");
+  }
+  if (!Number.isInteger(closes) || closes < 0) {
+    throw new Error("INVALID_CHECKIN_CLOSES_MINUTES_AFTER");
+  }
+
+  const policy = await prisma.bookingPolicy.upsert({
+    where: { scope: "GLOBAL" },
+    create: {
+      scope: "GLOBAL",
+      cancellationCutoffHours: 24,
+      checkInOpensMinutesBefore: opens,
+      checkInClosesMinutesAfter: closes,
+    },
+    update: {
+      checkInOpensMinutesBefore: opens,
+      checkInClosesMinutesAfter: closes,
+    },
+    select: {
+      checkInOpensMinutesBefore: true,
+      checkInClosesMinutesAfter: true,
+    },
+  });
+
+  return {
+    checkInOpensMinutesBefore: policy.checkInOpensMinutesBefore,
+    checkInClosesMinutesAfter: policy.checkInClosesMinutesAfter,
+  };
 }
 
 export async function getAdminUsersData(): Promise<AdminUserItem[]> {

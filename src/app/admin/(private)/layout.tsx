@@ -1,4 +1,3 @@
-import { signOut } from "@/auth";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import { requireAdminSession } from "@/lib/auth/require-auth";
 import { getUnreadClientMessagesCount } from "@/lib/client-messages/client-message-service";
@@ -10,6 +9,7 @@ export default async function AdminPrivateLayout({
   async function handleAdminSignOut(_formData: FormData) {
     "use server";
     await assertSameOriginServerAction();
+    const { signOut } = await import("@/auth");
     await signOut({ redirectTo: "/admin" });
   }
 

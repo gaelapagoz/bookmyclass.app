@@ -6,7 +6,7 @@ import * as Sentry from "@sentry/nextjs";
 
 import { auth, signIn } from "@/auth";
 import { prisma } from "@/lib/db";
-import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
+import { getSafeCallbackPath, getPostSignInRedirectUrl } from "@/lib/auth/safe-callback-url";
 import { isInvalidCredentialsAuthError } from "@/lib/auth/auth-error-utils";
 import { assertValidCsrfToken, createCsrfToken, getCsrfFieldName } from "@/lib/security/csrf-token";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
@@ -30,10 +30,10 @@ export async function signInAction(formData: FormData) {
 
       const email = String(formData.get("email") ?? "").trim().toLowerCase();
       const password = String(formData.get("password") ?? "");
-      const callbackUrl = getSafeCallbackPath(formData.get("callbackUrl"), "/dashboard");
+      const explicitCallbackUrl = String(formData.get("callbackUrl") ?? "");
 
       if (!email || !password) {
-        redirect(`/sign-in?error=invalid_input&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+        redirect(`/sign-in?error=invalid_input&callbackUrl=${encodeURIComponent(explicitCallbackUrl ?? "/dashboard")}`);
       }
 
       const user = await prisma.user.findFirst({
@@ -44,31 +44,45 @@ export async function signInAction(formData: FormData) {
           },
         },
         select: {
+          role: true,
           emailVerified: true,
           activationStatus: true,
         },
       });
 
-      if (user && (user.activationStatus !== UserActivationStatus.ACTIVE || !user.emailVerified)) {
+      // Check user activation status (required for all roles)
+      if (user && user.activationStatus !== UserActivationStatus.ACTIVE) {
         redirect(
-          `/sign-in?error=email_not_verified&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`,
+          `/sign-in?error=email_not_verified&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(explicitCallbackUrl ?? "/dashboard")}`,
         );
       }
+
+      // Check email verification (required only for CLIENT users)
+      if (user && user.role === "CLIENT" && !user.emailVerified) {
+        redirect(
+          `/sign-in?error=email_not_verified&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(explicitCallbackUrl ?? "/dashboard")}`,
+        );
+      }
+
+      // Determine redirect URL based on user role
+      const roleBasedRedirectUrl = user ? getPostSignInRedirectUrl(user.role) : "/dashboard";
+      // Use explicit callback if provided and safe, otherwise use role-based redirect
+      const finalRedirectUrl = getSafeCallbackPath(explicitCallbackUrl, roleBasedRedirectUrl);
 
       try {
         await signIn("credentials", {
           email,
           password,
-          redirectTo: callbackUrl,
+          redirectTo: finalRedirectUrl,
         });
       } catch (error) {
         if (isInvalidCredentialsAuthError(error)) {
-          redirect(`/sign-in?error=invalid_credentials&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+          redirect(`/sign-in?error=invalid_credentials&callbackUrl=${encodeURIComponent(finalRedirectUrl)}`);
         }
 
         if (error instanceof AuthError) {
           Sentry.captureException(error);
-          redirect(`/sign-in?error=auth_failed&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+          redirect(`/sign-in?error=auth_failed&callbackUrl=${encodeURIComponent(finalRedirectUrl)}`);
         }
 
         throw error;

@@ -20,12 +20,14 @@ import {
   evaluateBookingCancellation,
   normalizeBookingCancellationWindowHours,
 } from "@/lib/booking/cancellation-policy";
+import { assertBookingNotCheckedInForCancellation, getBookingSelfCheckInEligibility } from "@/lib/attendance/attendance-service";
 
 type DashboardServiceErrorCode =
   | "BOOKING_NOT_FOUND"
   | "BOOKING_NOT_OWNED"
   | "BOOKING_NOT_CANCELLABLE"
   | "BOOKING_TOO_LATE_TO_CANCEL"
+  | "BOOKING_ALREADY_CHECKED_IN"
   | "EMAIL_ALREADY_IN_USE"
   | "INVALID_PROFILE_INPUT"
   | "EMAIL_CHANGE_REQUIRES_PASSWORD"
@@ -50,6 +52,9 @@ export type DashboardBookingItem = {
   cancellationEligibleUntilAt: string | null;
   canCancel: boolean;
   cancellationBlockedReason: string | null;
+  canCheckIn: boolean;
+  checkInBlockedReason: string | null;
+  isCheckedIn: boolean;
 };
 
 export type DashboardHomeData = {
@@ -117,7 +122,7 @@ function buildBookingCreditLedgerIdempotencyKey(input: {
   return ["dashboard-booking", input.type, input.clientId, input.entitlementId, input.bookingId].join(":");
 }
 
-function toBookingItem(input: {
+async function toBookingItem(input: {
   booking: {
     id: string;
     status: BookingStatus;
@@ -129,10 +134,11 @@ function toBookingItem(input: {
       status: StudioSessionStatus;
     };
   };
+  clientId: string;
   now: Date;
   cancellationCutoffHours: number;
-}): DashboardBookingItem {
-  const { booking, now, cancellationCutoffHours } = input;
+}): Promise<DashboardBookingItem> {
+  const { booking, clientId, now, cancellationCutoffHours } = input;
   const session = booking.studioSession;
   const cancellation = evaluateBookingCancellation({
     bookingStatus: booking.status,
@@ -141,6 +147,8 @@ function toBookingItem(input: {
     now,
     cancellationWindowHours: cancellationCutoffHours,
   });
+
+  const checkInEligibility = await getBookingSelfCheckInEligibility(booking.id, clientId);
 
   return {
     bookingId: booking.id,
@@ -152,6 +160,9 @@ function toBookingItem(input: {
     cancellationEligibleUntilAt: cancellation.cancellationEligibleUntilAt.toISOString(),
     canCancel: cancellation.canCancel,
     cancellationBlockedReason: cancellation.cancellationBlockedReason,
+    canCheckIn: checkInEligibility.isConfirmedBooking && checkInEligibility.isSessionScheduled && !checkInEligibility.isPrivateClass && checkInEligibility.isWithinWindow && checkInEligibility.attendanceStatus !== "CHECKED_IN",
+    checkInBlockedReason: checkInEligibility.isPrivateClass ? "Private classes not eligible for self check-in" : checkInEligibility.attendanceStatus === "CHECKED_IN" ? "Already checked in" : !checkInEligibility.isConfirmedBooking ? "Booking not confirmed" : !checkInEligibility.isSessionScheduled ? "Session not scheduled" : !checkInEligibility.isWithinWindow ? "Outside check-in window" : null,
+    isCheckedIn: checkInEligibility.attendanceStatus === "CHECKED_IN",
   };
 }
 
@@ -279,7 +290,7 @@ export async function getDashboardHomeData(clientId: string): Promise<DashboardH
   return {
     userName: user.firstName?.trim() || user.name,
     nextUpcomingBooking: upcoming
-      ? toBookingItem({ booking: upcoming, now, cancellationCutoffHours })
+      ? await toBookingItem({ booking: upcoming, clientId, now, cancellationCutoffHours })
       : null,
     activeSubscription: activeSubscription
       ? {
@@ -288,9 +299,9 @@ export async function getDashboardHomeData(clientId: string): Promise<DashboardH
         }
       : null,
     creditsLeft: usableCredits,
-    recentBookings: recent.map((booking) =>
-      toBookingItem({ booking, now, cancellationCutoffHours }),
-    ),
+    recentBookings: await Promise.all(recent.map((booking) =>
+      toBookingItem({ booking, clientId, now, cancellationCutoffHours }),
+    )),
   };
 }
 
@@ -452,9 +463,9 @@ export async function getDashboardBookingsData(clientId: string): Promise<Dashbo
     },
   });
 
-  const mapped = bookings.map((booking) =>
-    toBookingItem({ booking, now, cancellationCutoffHours }),
-  );
+  const mapped = await Promise.all(bookings.map((booking) =>
+    toBookingItem({ booking, clientId, now, cancellationCutoffHours }),
+  ));
   const upcoming = mapped.filter(
     (booking) =>
       booking.status !== BookingStatus.CANCELLED &&
@@ -499,6 +510,15 @@ export async function cancelClientBooking(input: {
 
   if (booking.clientId !== input.clientId) {
     throw new DashboardServiceError("BOOKING_NOT_OWNED", "You cannot cancel this booking.");
+  }
+
+  try {
+    await assertBookingNotCheckedInForCancellation(booking.id);
+  } catch (error) {
+    if (error instanceof Error && error.message === "BOOKING_ALREADY_CHECKED_IN") {
+      throw new DashboardServiceError("BOOKING_ALREADY_CHECKED_IN", "Cannot cancel a booking that has already been checked in.");
+    }
+    throw error;
   }
 
   const cancellation = evaluateBookingCancellation({

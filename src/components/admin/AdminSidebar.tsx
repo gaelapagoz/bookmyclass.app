@@ -132,6 +132,14 @@ export default function AdminSidebar({ unreadInboxCount = 0, onSignOutAction }: 
               </li>
             );
           })}
+          <li data-testid="admin-nav-kiosk-item">
+            <Link
+              href="/kiosk"
+              className="block rounded-md border border-[#8a5959] bg-[#0f1f2d] px-3 py-2 text-sm text-[#f4eee8] transition-colors hover:bg-[#1b2f47]"
+            >
+              Launch Kiosk
+            </Link>
+          </li>
           {onSignOutAction ? (
             <li data-testid="admin-nav-logout-item">
               <form action={onSignOutAction}>
