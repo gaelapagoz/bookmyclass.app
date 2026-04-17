@@ -40,7 +40,7 @@ scheduleWindowStart.setUTCHours(0, 0, 0, 0);
 scheduleWindowStart.setUTCDate(scheduleWindowStart.getUTCDate() + 1);
 
 const scheduleWindowEnd = new Date(scheduleWindowStart);
-scheduleWindowEnd.setUTCDate(scheduleWindowEnd.getUTCDate() + 56);
+scheduleWindowEnd.setUTCMonth(scheduleWindowEnd.getUTCMonth() + 3);
 scheduleWindowEnd.setUTCHours(23, 59, 59, 999);
 
 const SCHEDULE_BLACKOUT_DATES = new Set<string>();
@@ -1455,8 +1455,8 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     name: "Vinyasa Yoga",
     description: "Breath-led flowing yoga for strength and mobility.",
     imageUrl: "/images/classes/vinyasa-yoga.jpg",
-    defaultDurationMinutes: 60,
-    defaultCapacity: 22,
+    defaultDurationMinutes: 30,
+    defaultCapacity: 10,
     pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
     sortOrder: 10,
   });
@@ -1466,8 +1466,8 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     name: "Rocket Yoga",
     description: "High-energy yoga sequencing with progressive options.",
     imageUrl: "/images/classes/rocket-yoga.jpg",
-    defaultDurationMinutes: 75,
-    defaultCapacity: 16,
+    defaultDurationMinutes: 30,
+    defaultCapacity: 10,
     pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
     sortOrder: 20,
   });
@@ -1477,8 +1477,8 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     name: "Hatha Yoga",
     description: "Slower paced foundational yoga and alignment practice.",
     imageUrl: "/images/classes/hatha-yoga.jpg",
-    defaultDurationMinutes: 60,
-    defaultCapacity: 18,
+    defaultDurationMinutes: 30,
+    defaultCapacity: 10,
     pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
     sortOrder: 30,
   });
@@ -1488,8 +1488,8 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     name: "Mat Pilates",
     description: "Core-driven pilates session suitable for all levels.",
     imageUrl: "/images/classes/mat-pilates.jpg",
-    defaultDurationMinutes: 50,
-    defaultCapacity: 18,
+    defaultDurationMinutes: 30,
+    defaultCapacity: 10,
     pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
     sortOrder: 10,
   });
@@ -1499,7 +1499,7 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     name: "Reformer Foundations",
     description: "Small group reformer fundamentals for technique and control.",
     imageUrl: "/images/classes/reformer-foundations.jpg",
-    defaultDurationMinutes: 55,
+    defaultDurationMinutes: 30,
     defaultCapacity: 10,
     pricingMode: ServicePricingMode.PLAN_ONLY,
     sortOrder: 20,
@@ -1510,8 +1510,8 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     name: "Functional Strength",
     description: "Strength and conditioning with athletic movement patterns.",
     imageUrl: "/images/classes/functional-strength.jpg",
-    defaultDurationMinutes: 45,
-    defaultCapacity: 14,
+    defaultDurationMinutes: 30,
+    defaultCapacity: 10,
     pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
     sortOrder: 10,
   });
@@ -1521,8 +1521,8 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     name: "Private Reformer Coaching",
     description: "Private 1:1 or duo coaching on the reformer.",
     imageUrl: "/images/classes/private-reformer-coaching.jpg",
-    defaultDurationMinutes: 50,
-    defaultCapacity: 2,
+    defaultDurationMinutes: 30,
+    defaultCapacity: 10,
     pricingMode: ServicePricingMode.PLAN_ONLY,
     sortOrder: 10,
   });
@@ -1534,8 +1534,8 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     title: "Vinyasa Flow Brussels",
     description: "A full-spectrum vinyasa class with warm-up, flow and cooldown.",
     location: "Ixelles Studio A",
-    defaultCapacity: vinyasaYoga.defaultCapacity,
-    defaultDurationMinutes: vinyasaYoga.defaultDurationMinutes,
+    defaultCapacity: 10,
+    defaultDurationMinutes: 30,
   });
   const rocketTemplate = await upsertClassTemplate({
     slug: "rocket-yoga-power-sequence",
@@ -1544,8 +1544,8 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     title: "Rocket Yoga Power Sequence",
     description: "Progressive rocket yoga with core and inversion prep.",
     location: "Ixelles Studio B",
-    defaultCapacity: rocketYoga.defaultCapacity,
-    defaultDurationMinutes: rocketYoga.defaultDurationMinutes,
+    defaultCapacity: 10,
+    defaultDurationMinutes: 30,
   });
   const hathaTemplate = await upsertClassTemplate({
     slug: "hatha-reset-weekend",
@@ -1554,8 +1554,8 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     title: "Hatha Reset Weekend",
     description: "Grounding hatha class focused on breath and posture quality.",
     location: "Ixelles Studio A",
-    defaultCapacity: hathaYoga.defaultCapacity,
-    defaultDurationMinutes: hathaYoga.defaultDurationMinutes,
+    defaultCapacity: 10,
+    defaultDurationMinutes: 30,
   });
   const matPilatesTemplate = await upsertClassTemplate({
     slug: "mat-pilates-core-lab",
@@ -1564,8 +1564,8 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     title: "Mat Pilates Core Lab",
     description: "Core and glute-focused mat pilates with progression options.",
     location: "Etterbeek Studio C",
-    defaultCapacity: matPilates.defaultCapacity,
-    defaultDurationMinutes: matPilates.defaultDurationMinutes,
+    defaultCapacity: 10,
+    defaultDurationMinutes: 30,
   });
   const reformerTemplate = await upsertClassTemplate({
     slug: "reformer-foundations-small-group",
@@ -1574,8 +1574,8 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     title: "Reformer Foundations Small Group",
     description: "Technique-first reformer foundations for beginners.",
     location: "Ixelles Reformer Room",
-    defaultCapacity: reformerFoundations.defaultCapacity,
-    defaultDurationMinutes: reformerFoundations.defaultDurationMinutes,
+    defaultCapacity: 10,
+    defaultDurationMinutes: 30,
   });
   const functionalTemplate = await upsertClassTemplate({
     slug: "functional-strength-express",
@@ -1584,8 +1584,8 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     title: "Functional Strength Express",
     description: "High-focus functional strength class with mobility warm-up.",
     location: "Etterbeek Performance Room",
-    defaultCapacity: functionalStrength.defaultCapacity,
-    defaultDurationMinutes: functionalStrength.defaultDurationMinutes,
+    defaultCapacity: 10,
+    defaultDurationMinutes: 30,
   });
   const privateReformerTemplate = await upsertClassTemplate({
     slug: "private-reformer-coaching-slot",
@@ -1594,54 +1594,93 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     title: "Private Reformer Coaching",
     description: "Private coaching slot tailored to goals and mobility.",
     location: "Ixelles Private Studio",
-    defaultCapacity: privateReformerCoaching.defaultCapacity,
-    defaultDurationMinutes: privateReformerCoaching.defaultDurationMinutes,
+    defaultCapacity: 10,
+    defaultDurationMinutes: 30,
   });
 
-  const recurringDefinitions = [
-    { template: vinyasaTemplate, classType: vinyasaYoga, teacherId: teachers.anaId, weekday: Weekday.MONDAY, startTime: "07:00" },
-    { template: vinyasaTemplate, classType: vinyasaYoga, teacherId: teachers.anaId, weekday: Weekday.WEDNESDAY, startTime: "18:30" },
-    { template: rocketTemplate, classType: rocketYoga, teacherId: teachers.sofiaId, weekday: Weekday.SATURDAY, startTime: "09:00" },
-    { template: hathaTemplate, classType: hathaYoga, teacherId: teachers.anaId, weekday: Weekday.SUNDAY, startTime: "10:30" },
-    { template: matPilatesTemplate, classType: matPilates, teacherId: teachers.elenaId, weekday: Weekday.TUESDAY, startTime: "12:15" },
-    { template: matPilatesTemplate, classType: matPilates, teacherId: teachers.elenaId, weekday: Weekday.THURSDAY, startTime: "19:00" },
-    { template: reformerTemplate, classType: reformerFoundations, teacherId: teachers.elenaId, weekday: Weekday.FRIDAY, startTime: "17:30" },
-    { template: functionalTemplate, classType: functionalStrength, teacherId: teachers.sofiaId, weekday: Weekday.TUESDAY, startTime: "07:00" },
-    { template: functionalTemplate, classType: functionalStrength, teacherId: teachers.sofiaId, weekday: Weekday.THURSDAY, startTime: "07:00" },
-    { template: privateReformerTemplate, classType: privateReformerCoaching, teacherId: teachers.anaId, weekday: Weekday.WEDNESDAY, startTime: "12:00" },
-    { template: privateReformerTemplate, classType: privateReformerCoaching, teacherId: teachers.anaId, weekday: Weekday.SATURDAY, startTime: "11:30" },
+  const clients = await prisma.user.findMany({
+    where: {
+      role: Role.CLIENT,
+      isActive: true,
+      isInactive: false,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  });
+
+  if (clients.length === 0) {
+    throw new Error("Scheduling seed requires at least one CLIENT user.");
+  }
+
+  const rotation = [
+    { template: vinyasaTemplate, classTypeId: vinyasaYoga.id, teacherId: teachers.anaId },
+    { template: rocketTemplate, classTypeId: rocketYoga.id, teacherId: teachers.sofiaId },
+    { template: hathaTemplate, classTypeId: hathaYoga.id, teacherId: teachers.anaId },
+    { template: matPilatesTemplate, classTypeId: matPilates.id, teacherId: teachers.elenaId },
+    { template: reformerTemplate, classTypeId: reformerFoundations.id, teacherId: teachers.elenaId },
+    { template: functionalTemplate, classTypeId: functionalStrength.id, teacherId: teachers.sofiaId },
+    { template: privateReformerTemplate, classTypeId: privateReformerCoaching.id, teacherId: teachers.anaId },
   ] as const;
 
-  for (const definition of recurringDefinitions) {
-    const recurringRule = await upsertRecurringRule({
-      classTemplateId: definition.template.id,
-      weekday: definition.weekday,
-      startTime: definition.startTime,
-      startDate: scheduleWindowStart,
-      endDate: scheduleWindowEnd,
-    });
+  const SLOT_DURATION_MINUTES = 30;
+  const SLOT_START_HOUR = 8;
+  const SLOT_END_HOUR = 20;
+  const slotsPerDay = (SLOT_END_HOUR - SLOT_START_HOUR) * 2;
 
-    const startsAtList = nextOccurrencesInWindow({
-      weekday: definition.weekday,
-      time: definition.startTime,
-      windowStart: scheduleWindowStart,
-      windowEnd: scheduleWindowEnd,
-    });
+  const dayCursor = new Date(scheduleWindowStart);
+  let dayIndex = 0;
+  while (dayCursor <= scheduleWindowEnd) {
+    const dayStart = new Date(dayCursor);
+    dayStart.setUTCHours(0, 0, 0, 0);
 
-    for (const startsAt of startsAtList) {
-      await upsertStudioSession({
-        classTemplateId: definition.template.id,
-        recurringRuleId: recurringRule.id,
-        classTypeId: definition.classType.id,
-        teacherId: definition.teacherId,
-        title: definition.template.title,
-        description: definition.template.description ?? undefined,
-        location: definition.template.location ?? undefined,
+    for (let slotIndex = 0; slotIndex < slotsPerDay; slotIndex += 1) {
+      const hour = SLOT_START_HOUR + Math.floor(slotIndex / 2);
+      const minute = slotIndex % 2 === 0 ? 0 : 30;
+      const startsAt = new Date(dayStart);
+      startsAt.setUTCHours(hour, minute, 0, 0);
+
+      const sessionDefinition = rotation[(dayIndex * slotsPerDay + slotIndex) % rotation.length]!;
+      const session = await upsertStudioSession({
+        classTemplateId: sessionDefinition.template.id,
+        classTypeId: sessionDefinition.classTypeId,
+        teacherId: sessionDefinition.teacherId,
+        title: sessionDefinition.template.title,
+        description: sessionDefinition.template.description ?? undefined,
+        location: sessionDefinition.template.location ?? undefined,
         startsAt,
-        endsAt: new Date(startsAt.getTime() + definition.template.defaultDurationMinutes * 60 * 1000),
-        capacity: definition.template.defaultCapacity,
+        endsAt: new Date(startsAt.getTime() + SLOT_DURATION_MINUTES * 60 * 1000),
+        capacity: 10,
       });
+
+      const randomizedClients = [...clients].sort(() => Math.random() - 0.5);
+      const bookingsToCreate = Math.min(Math.floor(Math.random() * 7), randomizedClients.length);
+      const selectedClients = randomizedClients.slice(0, bookingsToCreate);
+
+      for (const client of selectedClients) {
+        const bookedAt = new Date(startsAt.getTime() - 24 * 60 * 60 * 1000);
+        await prisma.booking.create({
+          data: {
+            clientId: client.id,
+            studioSessionId: session.id,
+            status: BookingStatus.CONFIRMED,
+            bookingIntent: BookingIntent.SINGLE_BOOKING,
+            paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
+            bookedAt,
+            customerName: client.name,
+            customerEmail: client.email,
+            consentTermsAccepted: true,
+            consentPrivacyAccepted: true,
+            consentAcceptedAt: bookedAt,
+          },
+        });
+      }
     }
+
+    dayCursor.setUTCDate(dayCursor.getUTCDate() + 1);
+    dayIndex += 1;
   }
 }
 
@@ -2989,17 +3028,17 @@ async function verifyCleanSeed(clientEmail: string) {
     prisma.studioSession.count({ where: { status: StudioSessionStatus.CANCELLED } }),
   ]);
 
-  if (userCount < 30) {
-    throw new Error(`Seed verification failed: expected at least 30 users, got ${userCount}.`);
+  if (userCount < 6) {
+    throw new Error(`Seed verification failed: expected at least 6 users, got ${userCount}.`);
   }
 
   if (productCount !== 6) {
     throw new Error(`Seed verification failed: expected 6 active products, got ${productCount}.`);
   }
 
-  if (futureSessionCount < 20) {
+  if (futureSessionCount < 2000) {
     throw new Error(
-      `Seed verification failed: expected at least 20 future sessions, got ${futureSessionCount}.`,
+      `Seed verification failed: expected at least 2000 future sessions, got ${futureSessionCount}.`,
     );
   }
 
@@ -3024,7 +3063,7 @@ async function verifyCleanSeed(clientEmail: string) {
     throw new Error("Seed verification failed: QA client missing.");
   }
 
-  const [totalBookings, last30Bookings, topClientCount, atRiskNoRecentCount] = await prisma.$transaction([
+  const [totalBookings, last30Bookings] = await prisma.$transaction([
     prisma.booking.count(),
     prisma.booking.count({
       where: {
@@ -3032,38 +3071,16 @@ async function verifyCleanSeed(clientEmail: string) {
         bookedAt: { gte: daysAgo(30) },
       },
     }),
-    prisma.booking.count({
-      where: {
-        status: { in: COUNTED_BOOKING_STATUSES },
-        bookedAt: { gte: daysAgo(30) },
-        client: { is: { name: "Katalin" } },
-      },
-    }),
-    prisma.booking.count({
-      where: {
-        status: { in: COUNTED_BOOKING_STATUSES },
-        bookedAt: { gte: daysAgo(30) },
-        client: { is: { name: "Engy Sawah" } },
-      },
-    }),
   ]);
 
-  if (totalBookings < 100) {
-    throw new Error(`Seed verification failed: expected at least 100 bookings, got ${totalBookings}.`);
+  if (totalBookings < 200) {
+    throw new Error(`Seed verification failed: expected at least 200 bookings, got ${totalBookings}.`);
   }
 
   if (last30Bookings < 50) {
     throw new Error(
       `Seed verification failed: expected at least 50 counted bookings in last 30 days, got ${last30Bookings}.`,
     );
-  }
-
-  if (topClientCount < 11) {
-    throw new Error(`Seed verification failed: expected Katalin to have at least 11 recent bookings.`);
-  }
-
-  if (atRiskNoRecentCount !== 0) {
-    throw new Error("Seed verification failed: Engy Sawah should have zero recent counted bookings.");
   }
 }
 
@@ -3073,17 +3090,16 @@ async function main() {
   const users = await seedUsers();
   await seedBookingPolicy();
   await seedCatalog(stripePriceIdByLookupKey);
+  await seedMarketingDemoData({ createdById: users.admin.id });
   await seedScheduling({
     anaId: users.teachers.ana.id,
     elenaId: users.teachers.elena.id,
     sofiaId: users.teachers.sofia.id,
   });
-  await seedDashboardInsightsTraffic({ id: users.client.id });
   await seedLearningFromJson();
-  await seedMarketingDemoData({ createdById: users.admin.id });
   await verifyCleanSeed(users.client.email);
 
-  console.info("Seed completed with deterministic dashboard insights traffic.");
+  console.info("Seed completed with 3-month 30-minute class scheduling.");
 }
 
 main()

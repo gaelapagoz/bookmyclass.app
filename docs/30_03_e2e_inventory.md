@@ -6,7 +6,7 @@ This inventory defines the production-launch Playwright scope for release-blocki
 
 - Include only active runtime flows confirmed in `docs/00_01_system_baseline.md`.
 - Exclude modeled-but-inactive flows for this pass.
-- Waitlist and no-show are explicitly out of scope.
+- No-show is explicitly out of scope for this pass.
 
 ## Smoke
 
@@ -26,6 +26,7 @@ This inventory defines the production-launch Playwright scope for release-blocki
 6. Cancel booking when cancellation window allows it.
 7. Dashboard self check-in within check-in window.
 8. Client blocked from staff-only kiosk routes.
+9. Full class waitlist join from public booking UI and waitlist cancellation from dashboard.
 
 ### Admin
 
@@ -52,6 +53,5 @@ This inventory defines the production-launch Playwright scope for release-blocki
 
 ## Out Of Scope (This Pass)
 
-1. Waitlist runtime behavior.
-2. No-show runtime behavior.
-3. Any cleanup-only destructive admin feature.
+1. No-show runtime behavior.
+2. Any cleanup-only destructive admin feature.

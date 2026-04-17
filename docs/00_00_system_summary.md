@@ -146,7 +146,7 @@ Public sign-up / sign-in uses credentials auth with pending registration and ema
                     | VerificationToken     |
                     +-----------------------+
 
-Customers browse public catalogue and availability APIs. Booking drafts are created before payment or entitlement application. Payment options include entitlement consumption or Stripe checkout. Success-page reconciliation finalizes booking, payment, and entitlement state. Waitlist auto-promotion and no-show handling are modeled but not confirmed as active flows.
+Customers browse public catalogue and availability APIs. Booking drafts are created before payment or entitlement application. Payment options include entitlement consumption or Stripe checkout. Success-page reconciliation finalizes booking, payment, and entitlement state. Waitlist join/cancel and auto-promotion are active for collective classes; no-show handling remains modeled and not fully active.
 
 +---------+    +------------------+    +--------------------+
 | Client  | -> | Public catalogue | -> | Availability APIs  |

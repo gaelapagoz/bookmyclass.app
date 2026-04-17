@@ -84,7 +84,7 @@ Evidence label legend used in this file:
 - Capability status summary:
   - Confirmed: booking draft/payment/checkout, subscription checkout, admin operations, auth flows, contact/inbox, attendance self check-in (dashboard + kiosk), staff attendance finalization.
   - Inferred: teacher operational workflows (UI placeholder suggests planned expansion).
-  - Missing: waitlist promotion workflow.
+  - Confirmed: waitlist join/cancel + auto-promotion workflow for collective classes.
   - Evidence status: Confirmed/Inferred/Missing based on `src` usage.
 
 ## 3. Roles and access model
@@ -144,8 +144,8 @@ Evidence label legend used in this file:
   5. Stripe path creates order/payment and checkout session.
   6. Webhook + success-page reconciliation finalizes booking/payment.
   7. Dashboard cancellation evaluates policy and optionally restores credit.
-  - Flow status: Partial (waitlist/no-show runtime flows not evidenced).
-  - Evidence status: Confirmed from repo (`src/app/api/bookings/*`, `src/lib/public-booking/*`, `src/lib/dashboard/dashboard-service.ts`), Missing / not verifiable for waitlist/no-show runtime flow.
+  - Flow status: Partial (no-show runtime flow not evidenced).
+  - Evidence status: Confirmed from repo (`src/app/api/bookings/*`, `src/app/api/waitlist/*`, `src/lib/public-booking/*`, `src/lib/dashboard/dashboard-service.ts`), Missing / not verifiable for no-show runtime flow.
 - Subscription lifecycle:
   1. Subscription page loads active checkout-enabled products.
   2. Authenticated user starts checkout.
@@ -413,7 +413,7 @@ Evidence label legend used in this file:
   - Evidence status: Confirmed from repo.
 - Missing critical test areas:
   - Limited e2e (single Playwright mobile navigation spec).
-  - Waitlist/no-show runtime workflows not implemented/covered.
+  - No-show runtime workflow not implemented/covered.
   - Teacher route auth behavior lacks dedicated coverage.
   - Evidence status: Confirmed from repo / Inferred from test inventory + feature implementation.
 
@@ -486,7 +486,7 @@ Evidence label legend used in this file:
 ## 18. Known gaps / risks
 - Teacher route group lacks explicit auth/role enforcement.
   - Evidence status: Confirmed from repo (`src/app/teacher/layout.tsx`).
-- Waitlist and attendance/no-show are modeled but not implemented in active app flows.
+- No-show workflow is modeled but not implemented in active app flows.
   - Evidence status: Confirmed from repo (schema present, route/service usage absent).
 - Admin role assignment can set `MASTER_ADMIN` without visible extra guard.
   - Evidence status: Confirmed from repo.
@@ -640,7 +640,6 @@ Rule:
 - Confirm Sentry project/environment values in production.
 - Confirm PM2 process list and systemd auto-start unit currently active.
 - Confirm exact manual deploy runbook currently used (including rollback steps).
-
 
 
 

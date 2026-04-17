@@ -43,7 +43,10 @@ type Slot = {
   endTime: string;
   id: string;
   isAvailable: boolean;
+  isWaitlistAvailable: boolean;
+  isWaitlistSupported: boolean;
   startTime: string;
+  waitlistSpotsLeft: number;
 };
 
 type SlotsResponse = {
@@ -82,12 +85,16 @@ export function ServiceBookingExperience({
   const [isCalendarLoading, setIsCalendarLoading] = useState(false);
   const [isSlotsLoading, setIsSlotsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [waitlistMessage, setWaitlistMessage] = useState<string | null>(null);
+  const [joiningSlotId, setJoiningSlotId] = useState<string | null>(null);
+  const [joinedWaitlistSlotIds, setJoinedWaitlistSlotIds] = useState<string[]>([]);
   const [signInTargetHref, setSignInTargetHref] = useState<string | null>(null);
   const todayDateKey = getStudioDateKey(new Date());
 
   const fetchMonthAvailability = async (nextMonthKey: string) => {
     setIsCalendarLoading(true);
     setErrorMessage(null);
+    setWaitlistMessage(null);
     try {
       const response = await fetch(
         `/api/services/${encodeURIComponent(service.slug)}/availability?month=${nextMonthKey}`,
@@ -117,6 +124,7 @@ export function ServiceBookingExperience({
   const fetchSlots = async (date: string) => {
     setIsSlotsLoading(true);
     setErrorMessage(null);
+    setWaitlistMessage(null);
     try {
       const response = await fetch(
         `/api/services/${encodeURIComponent(service.slug)}/slots?date=${encodeURIComponent(date)}`,
@@ -144,6 +152,7 @@ export function ServiceBookingExperience({
     const fromDate = selectedDate ?? todayDateKey;
     setIsSlotsLoading(true);
     setErrorMessage(null);
+    setWaitlistMessage(null);
     try {
       const response = await fetch(
         `/api/services/${encodeURIComponent(service.slug)}/next-availability?from=${encodeURIComponent(fromDate)}`,
@@ -173,6 +182,70 @@ export function ServiceBookingExperience({
 
   const handleRequireSignIn = (targetHref: string) => {
     setSignInTargetHref(targetHref);
+  };
+
+  const handleJoinWaitlist = async (sessionId: string) => {
+    if (joiningSlotId) {
+      return;
+    }
+
+    setJoiningSlotId(sessionId);
+    setErrorMessage(null);
+    setWaitlistMessage(null);
+    try {
+      const response = await fetch("/api/waitlist/join", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ sessionId }),
+      });
+      const payload = (await response.json()) as {
+        code?: string;
+        error?: string;
+      };
+
+      if (response.ok) {
+        setJoinedWaitlistSlotIds((previous) => (
+          previous.includes(sessionId) ? previous : [...previous, sessionId]
+        ));
+        await fetchSlots(selectedDate ?? todayDateKey);
+        setWaitlistMessage("You have been added to the waitlist.");
+        return;
+      }
+
+      if (response.status === 401) {
+        setWaitlistMessage("Please sign in to join the waitlist.");
+        setSignInTargetHref(`/book-a-class/${service.slug}`);
+        return;
+      }
+
+      if (payload.code === "ALREADY_WAITLISTED") {
+        setJoinedWaitlistSlotIds((previous) => (
+          previous.includes(sessionId) ? previous : [...previous, sessionId]
+        ));
+        await fetchSlots(selectedDate ?? todayDateKey);
+        setWaitlistMessage("You are already on the waitlist for this session.");
+        return;
+      }
+
+      if (
+        payload.code === "WAITLIST_FULL"
+        || payload.code === "SESSION_NOT_FULL"
+        || payload.code === "SESSION_NOT_BOOKABLE"
+        || payload.code === "WAITLIST_NOT_SUPPORTED"
+      ) {
+        await fetchSlots(selectedDate ?? todayDateKey);
+        setWaitlistMessage(payload.error ?? "Waitlist is unavailable for this session.");
+        return;
+      }
+
+      setErrorMessage(payload.error ?? "Could not join the waitlist. Please try again.");
+    } catch {
+      setErrorMessage("Could not join the waitlist. Please try again.");
+    } finally {
+      setJoiningSlotId(null);
+    }
   };
 
   return (
@@ -228,6 +301,9 @@ export function ServiceBookingExperience({
           ) : (
             <SlotList
               isAuthenticated={isAuthenticated}
+              joinedWaitlistSlotIds={joinedWaitlistSlotIds}
+              joiningSlotId={joiningSlotId}
+              onJoinWaitlist={handleJoinWaitlist}
               onRequireSignIn={handleRequireSignIn}
               serviceSlug={service.slug}
               selectedDate={selectedDate}
@@ -243,6 +319,7 @@ export function ServiceBookingExperience({
           >
             Check Next Availability
           </button>
+          {waitlistMessage ? <p className="mt-3 text-sm text-[#2f6b35]">{waitlistMessage}</p> : null}
           {errorMessage ? <p className="mt-3 text-sm text-[#7b2d2d]">{errorMessage}</p> : null}
         </div>
       </div>

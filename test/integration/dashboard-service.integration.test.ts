@@ -14,12 +14,14 @@ import {
   Role,
   StudioSessionStatus,
   SubscriptionStatus,
+  WaitlistStatus,
   AttendanceSource,
   AttendanceStatus,
 } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cancelClientBooking,
+  cancelClientWaitlistEntry,
   DashboardServiceError,
   getDashboardBookingsData,
   getDashboardHomeData,
@@ -149,6 +151,106 @@ async function createSessionFixture(
   });
 
   return { booking, entitlement };
+}
+
+async function createCollectiveWaitlistFixture(clientId: string) {
+  const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+  const category = await createClassCategory(prisma, {
+    name: "Collective",
+    slug: `collective-${unique}`,
+    sortOrder: 1,
+    isActive: true,
+  });
+  const classType = await createClassType(prisma, {
+    categoryId: category.id,
+    name: "Collective Waitlist",
+    slug: `collective-waitlist-${unique}`,
+    sortOrder: 1,
+    isActive: true,
+    isVisible: true,
+  });
+  const teacher = await prisma.user.create({
+    data: {
+      name: "Waitlist Teacher",
+      email: `teacher.waitlist.${unique}@example.test`,
+      role: Role.TEACHER,
+    },
+  });
+  const template = await prisma.classTemplate.create({
+    data: {
+      classTypeId: classType.id,
+      defaultTeacherId: teacher.id,
+      title: "Collective Waitlist Template",
+      slug: `collective-waitlist-template-${unique}`,
+      defaultCapacity: 2,
+      defaultDurationMinutes: 60,
+      isActive: true,
+      isPublished: true,
+    },
+  });
+
+  const startsAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+  const session = await prisma.studioSession.create({
+    data: {
+      classTemplateId: template.id,
+      classTypeId: classType.id,
+      teacherId: teacher.id,
+      title: "Collective Waitlist Class",
+      startsAt,
+      endsAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
+      capacity: 2,
+      status: StudioSessionStatus.SCHEDULED,
+      isPublished: true,
+      location: "Room B",
+    },
+  });
+
+  const fillerOne = await prisma.user.create({
+    data: {
+      name: `Filler One ${unique}`,
+      email: `filler.one.${unique}@example.test`,
+      role: Role.CLIENT,
+    },
+  });
+  const fillerTwo = await prisma.user.create({
+    data: {
+      name: `Filler Two ${unique}`,
+      email: `filler.two.${unique}@example.test`,
+      role: Role.CLIENT,
+    },
+  });
+
+  await prisma.booking.createMany({
+    data: [
+      {
+        clientId: fillerOne.id,
+        studioSessionId: session.id,
+        status: BookingStatus.CONFIRMED,
+        customerName: fillerOne.name,
+        customerEmail: fillerOne.email,
+      },
+      {
+        clientId: fillerTwo.id,
+        studioSessionId: session.id,
+        status: BookingStatus.CONFIRMED,
+        customerName: fillerTwo.name,
+        customerEmail: fillerTwo.email,
+      },
+    ],
+  });
+
+  const waitlistEntry = await prisma.waitlistEntry.create({
+    data: {
+      clientId,
+      studioSessionId: session.id,
+      status: WaitlistStatus.ACTIVE,
+      position: 1,
+      joinedAt: new Date(),
+    },
+  });
+
+  return { waitlistEntry, session };
 }
 
 describe("dashboard-service integration", () => {
@@ -457,6 +559,55 @@ describe("dashboard-service integration", () => {
     expect(home.nextUpcomingBooking).not.toBeNull();
     expect(home.recentBookings.length).toBeGreaterThan(0);
     expect(home.creditsLeft).toBe(9);
+  });
+
+  it("returns active waitlist entries in dashboard bookings data", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Waitlist Dashboard",
+        firstName: "Waitlist",
+        lastName: "Dashboard",
+        email: `waitlist.dashboard.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    const { waitlistEntry, session } = await createCollectiveWaitlistFixture(client.id);
+
+    const bookings = await getDashboardBookingsData(client.id);
+
+    expect(bookings.waitlist).toHaveLength(1);
+    expect(bookings.waitlist[0]?.waitlistEntryId).toBe(waitlistEntry.id);
+    expect(bookings.waitlist[0]?.serviceTitle).toBe(session.title);
+    expect(bookings.waitlist[0]?.location).toBe(session.location);
+  });
+
+  it("cancels waitlist entry from dashboard service path", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Waitlist Cancel",
+        firstName: "Waitlist",
+        lastName: "Cancel",
+        email: `waitlist.cancel.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    const { waitlistEntry } = await createCollectiveWaitlistFixture(client.id);
+
+    await cancelClientWaitlistEntry({
+      clientId: client.id,
+      waitlistEntryId: waitlistEntry.id,
+    });
+
+    const updatedEntry = await prisma.waitlistEntry.findUnique({
+      where: { id: waitlistEntry.id },
+      select: { status: true },
+    });
+    expect(updatedEntry?.status).toBe(WaitlistStatus.CANCELLED);
+
+    const bookings = await getDashboardBookingsData(client.id);
+    expect(bookings.waitlist).toHaveLength(0);
   });
 
   it("keeps dashboard home credits aligned with membership usable credits", async () => {

@@ -20,7 +20,7 @@ import {
   SubscriptionStatus,
   Weekday,
 } from "@prisma/client";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { hash } from "bcryptjs";
 import { randomUUID } from "node:crypto";
 
@@ -34,6 +34,8 @@ import {
 } from "@/lib/auth/user-identity-service";
 import { normalizeBookingCancellationWindowHours } from "@/lib/booking/cancellation-policy";
 import { assertLearningImagePath } from "@/lib/learning/image-paths";
+import { sendWaitlistPromotionNotification } from "@/lib/public-booking/waitlist-notification-service";
+import { promoteWaitlistAfterCancellationWithinTx } from "@/lib/public-booking/waitlist-service";
 
 export type AdminDashboardData = {
   upcomingSessions: Array<{
@@ -2627,7 +2629,7 @@ export async function removeSessionAttendeeByManager(input: {
 
   const bookingClientId = booking.clientId;
 
-  return prisma.$transaction(async (tx) => {
+  const promotionResult = await prisma.$transaction(async (tx) => {
     let restoredCredit = false;
 
     if (booking.selectedEntitlementId && !booking.creditRefundedAt) {
@@ -2692,12 +2694,40 @@ export async function removeSessionAttendeeByManager(input: {
       },
     });
 
+    const promotionResult = await promoteWaitlistAfterCancellationWithinTx(tx, {
+      actorUserId: actorUser.id,
+      now,
+      studioSessionId: input.studioSessionId,
+      triggerSource: "SESSION_MANAGER_BOOKING_CANCELLATION",
+    });
+
     return {
       bookingId: booking.id,
       restoredCredit,
       alreadyCancelled: false,
+      waitlistNotifications: promotionResult.notifications,
     };
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+  await Promise.all(
+    promotionResult.waitlistNotifications.map(async (promotion) => {
+      try {
+        await sendWaitlistPromotionNotification(promotion);
+      } catch (error) {
+        console.error("[admin-service] waitlist promotion notification failed", {
+          waitlistEntryId: promotion.waitlistEntryId,
+          bookingId: promotion.bookingId,
+          error,
+        });
+      }
+    }),
+  );
+
+  return {
+    bookingId: promotionResult.bookingId,
+    restoredCredit: promotionResult.restoredCredit,
+    alreadyCancelled: promotionResult.alreadyCancelled,
+  };
 }
 
 export async function getAdminPlansData(): Promise<AdminPlanItem[]> {

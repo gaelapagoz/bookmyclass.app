@@ -1,4 +1,4 @@
-import { StudioSessionStatus } from "@prisma/client";
+import { StudioSessionStatus, WaitlistStatus } from "@prisma/client";
 import { prisma } from "../db";
 import { createPerfTrace, type PerfTrace } from "../monitoring/perf-trace";
 import { createInMemoryTtlCache } from "../cache/in-memory-ttl-cache";
@@ -34,7 +34,10 @@ export type SessionSlot = {
   endTime: string;
   id: string;
   isAvailable: boolean;
+  isWaitlistAvailable: boolean;
+  isWaitlistSupported: boolean;
   startTime: string;
+  waitlistSpotsLeft: number;
 };
 
 type SessionWithBookings = {
@@ -42,8 +45,14 @@ type SessionWithBookings = {
   endsAt: Date;
   id: string;
   startsAt: Date;
+  classType: {
+    category: {
+      slug: string;
+    };
+  };
   _count: {
     bookings: number;
+    waitlistEntries: number;
   };
 };
 
@@ -82,6 +91,11 @@ function getShortDescription(description: string | null): string {
 function toSlot(session: SessionWithBookings): SessionSlot {
   const usedSpots = session._count.bookings;
   const availableSpots = Math.max(0, session.capacity - usedSpots);
+  const categorySlug = session.classType.category.slug.toLowerCase();
+  const isWaitlistSupported = !categorySlug.includes("private") && !categorySlug.includes("workshop");
+  const waitlistLimit = isWaitlistSupported ? Math.floor(session.capacity / 2) : 0;
+  const waitlistSpotsLeft = Math.max(0, waitlistLimit - session._count.waitlistEntries);
+  const isWaitlistAvailable = availableSpots <= 0 && isWaitlistSupported && waitlistSpotsLeft > 0;
 
   return {
     id: session.id,
@@ -91,6 +105,9 @@ function toSlot(session: SessionWithBookings): SessionSlot {
     capacity: session.capacity,
     availableSpots,
     isAvailable: availableSpots > 0,
+    isWaitlistSupported,
+    waitlistSpotsLeft,
+    isWaitlistAvailable,
   };
 }
 
@@ -285,10 +302,24 @@ async function getServiceMonthAvailabilityRaw(params: { monthKey: string; slug: 
           startsAt: true,
           endsAt: true,
           capacity: true,
+          classType: {
+            select: {
+              category: {
+                select: {
+                  slug: true,
+                },
+              },
+            },
+          },
           _count: {
             select: {
               bookings: {
                 where: bookingDraftActiveBookingFilter(),
+              },
+              waitlistEntries: {
+                where: {
+                  status: WaitlistStatus.ACTIVE,
+                },
               },
             },
           },
@@ -370,10 +401,24 @@ async function getServiceSlotsByDateRaw(params: { dateKey: string; slug: string 
           startsAt: true,
           endsAt: true,
           capacity: true,
+          classType: {
+            select: {
+              category: {
+                select: {
+                  slug: true,
+                },
+              },
+            },
+          },
           _count: {
             select: {
               bookings: {
                 where: bookingDraftActiveBookingFilter(),
+              },
+              waitlistEntries: {
+                where: {
+                  status: WaitlistStatus.ACTIVE,
+                },
               },
             },
           },
@@ -437,10 +482,24 @@ async function getNextAvailabilityRaw(params: { fromDateKey: string; slug: strin
           startsAt: true,
           endsAt: true,
           capacity: true,
+          classType: {
+            select: {
+              category: {
+                select: {
+                  slug: true,
+                },
+              },
+            },
+          },
           _count: {
             select: {
               bookings: {
                 where: bookingDraftActiveBookingFilter(),
+              },
+              waitlistEntries: {
+                where: {
+                  status: WaitlistStatus.ACTIVE,
+                },
               },
             },
           },

@@ -126,3 +126,34 @@ export async function prepareCheckInWindowBookingForTest(
     sessionTitle: payload.sessionTitle as string,
   };
 }
+
+export async function prepareWaitlistSessionForTest(
+  request: APIRequestContext,
+  input: { clientEmail: string; serviceSlug: string },
+): Promise<{ dateKey: string; endTime: string; serviceSlug: string; sessionId: string; startTime: string }> {
+  const response = await request.post("/api/test/e2e/bookings/prepare-waitlist-session", {
+    headers: testHeaders(),
+    data: input,
+  });
+  expect(response.ok()).toBeTruthy();
+  const payload = (await response.json()) as {
+    sessionId?: string;
+    serviceSlug?: string;
+    dateKey?: string;
+    startTime?: string;
+    endTime?: string;
+  };
+  expect(payload.sessionId).toBeTruthy();
+  expect(payload.serviceSlug).toBeTruthy();
+  expect(payload.dateKey).toBeTruthy();
+  expect(payload.startTime).toBeTruthy();
+  expect(payload.endTime).toBeTruthy();
+
+  return {
+    sessionId: payload.sessionId as string,
+    serviceSlug: payload.serviceSlug as string,
+    dateKey: payload.dateKey as string,
+    startTime: payload.startTime as string,
+    endTime: payload.endTime as string,
+  };
+}

@@ -21,7 +21,7 @@ Purpose: describe the current application architecture from repository evidence.
 - Admin operations for catalog, sessions, users, subscriptions, learning, marketing, inbox.
 
 ## Known Non-Goals / Not Fully Active
-- Waitlist auto-promotion and no-show operations are modeled but not confirmed as fully active runtime flows.
+- Waitlist auto-promotion is active for collective classes; no-show runtime operations remain modeled but not fully active.
 - Teacher workflow coverage/enforcement is not fully confirmed.
 
 ## Canonical References

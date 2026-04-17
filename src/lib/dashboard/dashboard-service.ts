@@ -6,9 +6,16 @@ import {
   Prisma,
   SubscriptionStatus,
   StudioSessionStatus,
+  WaitlistStatus,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requestEmailChange, UserIdentityError } from "@/lib/auth/user-identity-service";
+import { sendWaitlistPromotionNotification } from "@/lib/public-booking/waitlist-notification-service";
+import {
+  cancelSessionWaitlistEntry,
+  promoteWaitlistAfterCancellationWithinTx,
+  WaitlistServiceError,
+} from "@/lib/public-booking/waitlist-service";
 import {
   getLatestStripeCustomerIdForUser,
   getOwnedOneTimeProducts,
@@ -28,6 +35,9 @@ type DashboardServiceErrorCode =
   | "BOOKING_NOT_CANCELLABLE"
   | "BOOKING_TOO_LATE_TO_CANCEL"
   | "BOOKING_ALREADY_CHECKED_IN"
+  | "WAITLIST_ENTRY_NOT_FOUND"
+  | "WAITLIST_ENTRY_NOT_OWNED"
+  | "WAITLIST_ENTRY_NOT_ACTIVE"
   | "EMAIL_ALREADY_IN_USE"
   | "INVALID_PROFILE_INPUT"
   | "EMAIL_CHANGE_REQUIRES_PASSWORD"
@@ -68,6 +78,15 @@ export type DashboardHomeData = {
   recentBookings: DashboardBookingItem[];
 };
 
+export type DashboardWaitlistItem = {
+  waitlistEntryId: string;
+  serviceTitle: string;
+  startsAt: string;
+  endsAt: string;
+  location: string | null;
+  joinedAt: string;
+};
+
 export type DashboardProfileData = {
   firstName: string;
   lastName: string;
@@ -80,6 +99,7 @@ export type DashboardBookingsData = {
   upcoming: DashboardBookingItem[];
   past: DashboardBookingItem[];
   cancelled: DashboardBookingItem[];
+  waitlist: DashboardWaitlistItem[];
 };
 
 export type DashboardMembershipData = {
@@ -120,6 +140,36 @@ function buildBookingCreditLedgerIdempotencyKey(input: {
   bookingId: string;
 }): string {
   return ["dashboard-booking", input.type, input.clientId, input.entitlementId, input.bookingId].join(":");
+}
+
+function isRetryableSerializationError(error: unknown): boolean {
+  if (
+    error instanceof Prisma.PrismaClientKnownRequestError
+    && error.code === "P2034"
+  ) {
+    return true;
+  }
+
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("write conflict")
+    || message.includes("deadlock")
+    || message.includes("could not serialize access")
+  );
+}
+
+function getRetryDelayMs(attempt: number): number {
+  const baseDelayMs = 20 * 2 ** attempt;
+  const jitterMs = Math.floor(Math.random() * 20);
+  return Math.min(200, baseDelayMs + jitterMs);
+}
+
+async function delay(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function toBookingItem(input: {
@@ -445,23 +495,49 @@ export async function updateDashboardProfile(
 export async function getDashboardBookingsData(clientId: string): Promise<DashboardBookingsData> {
   const now = new Date();
   const cancellationCutoffHours = await getCancellationCutoffHours();
-  const bookings = await prisma.booking.findMany({
-    where: { clientId },
-    orderBy: [{ studioSession: { startsAt: "desc" } }, { bookedAt: "desc" }],
-    select: {
-      id: true,
-      status: true,
-      studioSession: {
-        select: {
-          title: true,
-          startsAt: true,
-          endsAt: true,
-          location: true,
-          status: true,
+  const [bookings, waitlistEntries] = await Promise.all([
+    prisma.booking.findMany({
+      where: { clientId },
+      orderBy: [{ studioSession: { startsAt: "desc" } }, { bookedAt: "desc" }],
+      select: {
+        id: true,
+        status: true,
+        studioSession: {
+          select: {
+            title: true,
+            startsAt: true,
+            endsAt: true,
+            location: true,
+            status: true,
+          },
         },
       },
-    },
-  });
+    }),
+    prisma.waitlistEntry.findMany({
+      where: {
+        clientId,
+        status: WaitlistStatus.ACTIVE,
+        studioSession: {
+          startsAt: { gt: now },
+          status: StudioSessionStatus.SCHEDULED,
+          isPublished: true,
+        },
+      },
+      orderBy: [{ studioSession: { startsAt: "asc" } }, { joinedAt: "asc" }],
+      select: {
+        id: true,
+        joinedAt: true,
+        studioSession: {
+          select: {
+            title: true,
+            startsAt: true,
+            endsAt: true,
+            location: true,
+          },
+        },
+      },
+    }),
+  ]);
 
   const mapped = await Promise.all(bookings.map((booking) =>
     toBookingItem({ booking, clientId, now, cancellationCutoffHours }),
@@ -478,7 +554,44 @@ export async function getDashboardBookingsData(clientId: string): Promise<Dashbo
       new Date(booking.startsAt) <= now,
   );
 
-  return { upcoming, past, cancelled };
+  const waitlist = waitlistEntries.map((entry) => ({
+    waitlistEntryId: entry.id,
+    serviceTitle: entry.studioSession.title,
+    startsAt: entry.studioSession.startsAt.toISOString(),
+    endsAt: entry.studioSession.endsAt.toISOString(),
+    location: entry.studioSession.location,
+    joinedAt: entry.joinedAt.toISOString(),
+  }));
+
+  return { upcoming, past, cancelled, waitlist };
+}
+
+export async function cancelClientWaitlistEntry(input: {
+  clientId: string;
+  waitlistEntryId: string;
+}): Promise<void> {
+  try {
+    await cancelSessionWaitlistEntry({
+      clientId: input.clientId,
+      waitlistEntryId: input.waitlistEntryId,
+    });
+  } catch (error) {
+    if (error instanceof WaitlistServiceError) {
+      if (error.code === "WAITLIST_ENTRY_NOT_FOUND") {
+        throw new DashboardServiceError("WAITLIST_ENTRY_NOT_FOUND", error.message);
+      }
+
+      if (error.code === "WAITLIST_ENTRY_NOT_OWNED") {
+        throw new DashboardServiceError("WAITLIST_ENTRY_NOT_OWNED", error.message);
+      }
+
+      if (error.code === "WAITLIST_ENTRY_NOT_ACTIVE") {
+        throw new DashboardServiceError("WAITLIST_ENTRY_NOT_ACTIVE", error.message);
+      }
+    }
+
+    throw error;
+  }
 }
 
 export async function cancelClientBooking(input: {
@@ -492,6 +605,7 @@ export async function cancelClientBooking(input: {
     select: {
       id: true,
       clientId: true,
+      studioSessionId: true,
       status: true,
       selectedEntitlementId: true,
       creditRefundedAt: true,
@@ -543,8 +657,26 @@ export async function cancelClientBooking(input: {
 
   const eligibleUntil = cancellation.cancellationEligibleUntilAt;
 
-  await prisma.$transaction(async (tx) => {
-    let refunded = false;
+  const MAX_TRANSACTION_RETRIES = 4;
+  let promotionResult:
+    | {
+        notifications: Array<{
+          bookingId: string;
+          clientEmail: string;
+          clientName: string;
+          location: string | null;
+          sessionEndsAt: Date;
+          sessionStartsAt: Date;
+          sessionTitle: string;
+          waitlistEntryId: string;
+        }>;
+      }
+    | null = null;
+
+  for (let attempt = 0; attempt <= MAX_TRANSACTION_RETRIES; attempt += 1) {
+    try {
+      promotionResult = await prisma.$transaction(async (tx) => {
+        let refunded = false;
 
     if (booking.selectedEntitlementId && !booking.creditRefundedAt) {
       const selectedEntitlement = await tx.clientEntitlement.findUnique({
@@ -609,7 +741,40 @@ export async function cancelClientBooking(input: {
         creditRefundedAt: refunded ? now : booking.creditRefundedAt,
       },
     });
-  });
+        return promoteWaitlistAfterCancellationWithinTx(tx, {
+          actorUserId: input.clientId,
+          now,
+          studioSessionId: booking.studioSessionId,
+          triggerSource: "DASHBOARD_BOOKING_CANCELLATION",
+        });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      break;
+    } catch (error) {
+      if (attempt < MAX_TRANSACTION_RETRIES && isRetryableSerializationError(error)) {
+        await delay(getRetryDelayMs(attempt));
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  if (!promotionResult) {
+    throw new Error("BOOKING_CANCELLATION_TRANSACTION_FAILED");
+  }
+
+  await Promise.all(
+    promotionResult.notifications.map(async (promotion) => {
+      try {
+        await sendWaitlistPromotionNotification(promotion);
+      } catch (error) {
+        console.error("[dashboard-service] waitlist promotion notification failed", {
+          waitlistEntryId: promotion.waitlistEntryId,
+          bookingId: promotion.bookingId,
+          error,
+        });
+      }
+    }),
+  );
 }
 
 export async function getDashboardMembershipData(

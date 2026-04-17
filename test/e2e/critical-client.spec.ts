@@ -9,6 +9,7 @@ import {
   getPasswordResetTokenForTest,
   prepareCheckInWindowBookingForTest,
   prepareCancellationWindowBookingForTest,
+  prepareWaitlistSessionForTest,
   verifyTestEmail,
 } from "./support/e2e-api";
 import {
@@ -177,6 +178,39 @@ test.describe("critical client flows", () => {
     const reasonText = page.locator(`#${reasonId}`);
     await expect(reasonText).toBeVisible();
     await expect(reasonText).toContainText(/less than 24 hour/i);
+  });
+
+  // @covers customer-waitlist-join-cancel
+  test("client joins and cancels waitlist from dashboard", async ({ page }) => {
+    await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_WITH_CREDITS.email);
+    const prepared = await prepareWaitlistSessionForTest(page.request, {
+      clientEmail: SEEDED_CLIENT_WITH_CREDITS.email,
+      serviceSlug: SEEDED_SERVICE_SLUG,
+    });
+
+    await signInClient(page, SEEDED_CLIENT_WITH_CREDITS);
+    await page.goto(`/book-a-class/${prepared.serviceSlug}`);
+
+    const selectPreparedDateButton = page.getByRole("button", { name: `Select ${prepared.dateKey}` });
+    if ((await selectPreparedDateButton.count()) === 0) {
+      await page.getByRole("button", { name: "Show next month" }).click();
+    }
+    await page.getByRole("button", { name: `Select ${prepared.dateKey}` }).click();
+
+    const preparedSlotCard = page.getByTestId(`service-slot-${prepared.sessionId}`);
+    await expect(preparedSlotCard).toBeVisible();
+    await preparedSlotCard.getByRole("button", { name: /Join waitlist/i }).click();
+
+    await expect(page.getByText("You have been added to the waitlist.")).toBeVisible();
+
+    await page.goto("/dashboard/bookings");
+    const waitlistCard = page.getByTestId(/dashboard-waitlist-/).first();
+    await expect(waitlistCard).toBeVisible();
+    await expect(waitlistCard).toContainText("WAITLIST");
+    await expect(page.getByText(/position/i)).toHaveCount(0);
+
+    await waitlistCard.getByRole("button", { name: "Cancel waitlist" }).click();
+    await expect(page.getByText("Waitlist entry cancelled.")).toBeVisible();
   });
 
   test("dashboard self check-in succeeds within window", async ({ page }) => {

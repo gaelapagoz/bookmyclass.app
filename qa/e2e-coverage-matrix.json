@@ -24,6 +24,7 @@
     { "id": "customer-subscription-success-return-flow", "area": "customer", "risk": "critical", "title": "subscription success return flow" },
     { "id": "customer-cancel-booking-before-cutoff", "area": "customer", "risk": "critical", "title": "cancel booking before cutoff" },
     { "id": "customer-cancel-booking-after-cutoff", "area": "customer", "risk": "critical", "title": "cancel booking after cutoff" },
+    { "id": "customer-waitlist-join-cancel", "area": "customer", "risk": "high", "title": "join and cancel waitlist from dashboard" },
     { "id": "customer-forgot-password", "area": "customer", "risk": "high", "title": "forgot password" },
     { "id": "customer-reset-password", "area": "customer", "risk": "high", "title": "reset password" },
     { "id": "customer-dashboard-profile-page", "area": "customer", "risk": "medium", "title": "dashboard profile page" },

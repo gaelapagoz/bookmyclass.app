@@ -69,6 +69,10 @@ async function createAvailabilityFixture() {
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 6, 19, 0, 0, 0),
   );
   const secondSessionEnd = new Date(secondSessionStart.getTime() + 60 * 60 * 1000);
+  const thirdSessionStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 7, 8, 0, 0, 0),
+  );
+  const thirdSessionEnd = new Date(thirdSessionStart.getTime() + 60 * 60 * 1000);
 
   const firstSession = await prisma.studioSession.create({
     data: {
@@ -101,6 +105,21 @@ async function createAvailabilityFixture() {
     },
   });
 
+  const thirdSession = await prisma.studioSession.create({
+    data: {
+      classTemplateId: template.id,
+      recurringRuleId: recurringRule.id,
+      classTypeId: service.id,
+      teacherId: teacher.id,
+      title: "Vinyasa Sunrise",
+      startsAt: thirdSessionStart,
+      endsAt: thirdSessionEnd,
+      capacity: 4,
+      isPublished: true,
+      status: StudioSessionStatus.SCHEDULED,
+    },
+  });
+
   const clientOne = await createClient(prisma);
   await prisma.booking.create({
     data: {
@@ -123,10 +142,25 @@ async function createAvailabilityFixture() {
     },
   });
 
+  const fullClients = [];
+  for (let index = 0; index < 4; index += 1) {
+    fullClients.push(await createClient(prisma));
+  }
+  await prisma.booking.createMany({
+    data: fullClients.map((client) => ({
+      clientId: client.id,
+      studioSessionId: thirdSession.id,
+      status: BookingStatus.CONFIRMED,
+      customerEmail: client.email,
+      customerName: client.name,
+    })),
+  });
+
   return {
     serviceSlug: service.slug,
     firstDateKey: getStudioDateKey(firstSessionStart),
     secondDateKey: getStudioDateKey(secondSessionStart),
+    thirdDateKey: getStudioDateKey(thirdSessionStart),
     monthKey: getStudioMonthKey(firstSessionStart),
   };
 }
@@ -215,6 +249,48 @@ describe("service availability api", () => {
 
     expect(emptyResponse.status).toBe(200);
     expect(emptyBody.slots).toEqual([]);
+  });
+
+  it("includes waitlist slot metadata for full classes", async () => {
+    const fixture = await createAvailabilityFixture();
+
+    const fullNoWaitlistResponse = await getServiceSlots(
+      new Request(`http://localhost/api/services/${fixture.serviceSlug}/slots?date=${fixture.secondDateKey}`),
+      { params: Promise.resolve({ slug: fixture.serviceSlug }) },
+    );
+    const fullNoWaitlistBody = (await fullNoWaitlistResponse.json()) as {
+      slots: Array<{
+        isAvailable: boolean;
+        isWaitlistAvailable: boolean;
+        isWaitlistSupported: boolean;
+        waitlistSpotsLeft: number;
+      }>;
+    };
+
+    expect(fullNoWaitlistResponse.status).toBe(200);
+    expect(fullNoWaitlistBody.slots[0]?.isAvailable).toBe(false);
+    expect(fullNoWaitlistBody.slots[0]?.isWaitlistSupported).toBe(true);
+    expect(fullNoWaitlistBody.slots[0]?.isWaitlistAvailable).toBe(false);
+    expect(fullNoWaitlistBody.slots[0]?.waitlistSpotsLeft).toBe(0);
+
+    const fullWaitlistAvailableResponse = await getServiceSlots(
+      new Request(`http://localhost/api/services/${fixture.serviceSlug}/slots?date=${fixture.thirdDateKey}`),
+      { params: Promise.resolve({ slug: fixture.serviceSlug }) },
+    );
+    const fullWaitlistAvailableBody = (await fullWaitlistAvailableResponse.json()) as {
+      slots: Array<{
+        isAvailable: boolean;
+        isWaitlistAvailable: boolean;
+        isWaitlistSupported: boolean;
+        waitlistSpotsLeft: number;
+      }>;
+    };
+
+    expect(fullWaitlistAvailableResponse.status).toBe(200);
+    expect(fullWaitlistAvailableBody.slots[0]?.isAvailable).toBe(false);
+    expect(fullWaitlistAvailableBody.slots[0]?.isWaitlistSupported).toBe(true);
+    expect(fullWaitlistAvailableBody.slots[0]?.isWaitlistAvailable).toBe(true);
+    expect(fullWaitlistAvailableBody.slots[0]?.waitlistSpotsLeft).toBe(2);
   });
 
   it("returns next available slot from a given date", async () => {

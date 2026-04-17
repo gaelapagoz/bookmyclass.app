@@ -3,8 +3,10 @@ import { revalidatePath } from "next/cache";
 import * as Sentry from "@sentry/nextjs";
 import { requireAuth } from "@/lib/auth/require-auth";
 import {
+  cancelClientWaitlistEntry,
   cancelClientBooking,
   DashboardBookingItem,
+  DashboardWaitlistItem,
   DashboardServiceError,
   getDashboardBookingsData,
 } from "@/lib/dashboard/dashboard-service";
@@ -15,6 +17,8 @@ import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 type SearchParams = Promise<{
   error?: string;
   cancelled?: string;
+  waitlist_cancelled?: string;
+  waitlist_error?: string;
   checked_in?: string;
 }>;
 
@@ -90,6 +94,33 @@ function renderBookingCard(booking: DashboardBookingItem, showCancel: boolean) {
           </p>
         )}
       </div>
+    </li>
+  );
+}
+
+function renderWaitlistCard(entry: DashboardWaitlistItem) {
+  return (
+    <li
+      key={entry.waitlistEntryId}
+      data-testid={`dashboard-waitlist-${entry.waitlistEntryId}`}
+      className="rounded-md border border-[#ebe1d8] bg-[#fffaf3] p-3"
+    >
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <p className="font-medium text-[#6f2b2b]">{entry.serviceTitle}</p>
+        <p className="text-xs uppercase tracking-wide text-[#8a5959]">WAITLIST</p>
+      </div>
+      <p className="mt-1 text-sm text-[#5f4040]">{formatDateTime(entry.startsAt)}</p>
+      {entry.location ? <p className="text-sm text-[#5f4040]">{entry.location}</p> : null}
+      <form action={cancelWaitlistAction} className="mt-3">
+        <input type="hidden" name="waitlistEntryId" value={entry.waitlistEntryId} />
+        <button
+          type="submit"
+          data-testid={`dashboard-waitlist-cancel-${entry.waitlistEntryId}`}
+          className="rounded-md border border-[#7b2d2d] px-3 py-1 text-sm text-[#7b2d2d]"
+        >
+          Cancel waitlist
+        </button>
+      </form>
     </li>
   );
 }
@@ -192,9 +223,61 @@ async function checkInBookingAction(formData: FormData) {
   );
 }
 
-function getMessage(params: { cancelled?: string; checked_in?: string; error?: string }) {
+async function cancelWaitlistAction(formData: FormData) {
+  "use server";
+
+  return Sentry.withServerActionInstrumentation(
+    "booking.cancelWaitlistAction",
+    { recordResponse: false },
+    async () => {
+      await assertSameOriginServerAction();
+
+      const session = await requireAuth();
+      const waitlistEntryId = String(formData.get("waitlistEntryId") ?? "");
+      if (!waitlistEntryId) {
+        redirect("/dashboard/bookings?waitlist_error=invalid_request");
+      }
+
+      try {
+        await cancelClientWaitlistEntry({
+          waitlistEntryId,
+          clientId: session.user.id,
+        });
+      } catch (error) {
+        Sentry.captureException(error);
+        if (error instanceof DashboardServiceError) {
+          if (
+            error.code === "WAITLIST_ENTRY_NOT_FOUND"
+            || error.code === "WAITLIST_ENTRY_NOT_OWNED"
+            || error.code === "WAITLIST_ENTRY_NOT_ACTIVE"
+          ) {
+            redirect("/dashboard/bookings?waitlist_error=not_cancellable");
+          }
+        }
+
+        redirect("/dashboard/bookings?waitlist_error=cancel_failed");
+      }
+
+      revalidatePath("/dashboard");
+      revalidatePath("/dashboard/bookings");
+      redirect("/dashboard/bookings?waitlist_cancelled=1");
+    },
+  );
+}
+
+function getMessage(params: {
+  cancelled?: string;
+  checked_in?: string;
+  error?: string;
+  waitlist_cancelled?: string;
+  waitlist_error?: string;
+}) {
   if (params.cancelled === "1") {
     return { type: "success" as const, text: "Booking cancelled." };
+  }
+
+  if (params.waitlist_cancelled === "1") {
+    return { type: "success" as const, text: "Waitlist entry cancelled." };
   }
 
   if (params.checked_in === "1") {
@@ -232,6 +315,14 @@ function getMessage(params: { cancelled?: string; checked_in?: string; error?: s
     return { type: "error" as const, text: "Attendance has already been finalized for this booking." };
   }
 
+  if (params.waitlist_error === "not_cancellable") {
+    return { type: "error" as const, text: "This waitlist entry cannot be cancelled." };
+  }
+
+  if (params.waitlist_error) {
+    return { type: "error" as const, text: "Could not cancel waitlist entry." };
+  }
+
   if (params.error) {
     return { type: "error" as const, text: "Could not cancel booking." };
   }
@@ -264,7 +355,18 @@ export default async function DashboardBookingsPage({
         </p>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
+        <section>
+          <h2 className="mb-2 text-lg font-semibold text-[#6f2b2b]">Waitlist</h2>
+          {data.waitlist.length === 0 ? (
+            <p className="text-sm text-[#5f4040]">No active waitlist entries.</p>
+          ) : (
+            <ul className="space-y-2">
+              {data.waitlist.map((entry) => renderWaitlistCard(entry))}
+            </ul>
+          )}
+        </section>
+
         <section>
           <h2 className="mb-2 text-lg font-semibold text-[#6f2b2b]">Upcoming</h2>
           {data.upcoming.length === 0 ? (
