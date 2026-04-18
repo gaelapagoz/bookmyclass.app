@@ -1232,7 +1232,7 @@
               </div>
               <div class="contact-field-group">
                 <label for="contact-message">How can we help?</label>
-                <textarea id="contact-message" class="contact-field" name="message" rows="4" maxlength="4000" required></textarea>
+                <textarea id="contact-message" class="contact-field" name="message" rows="4" maxlength="4000" minlength="10" required></textarea>
               </div>
               <input
                 class="contact-field--hp"
@@ -1294,17 +1294,28 @@
       var defaultStatus = "";
       var successStatus = "Thanks. If your request is valid, we will contact you soon.";
       var errorStatus = "Your request could not be sent right now. Please try again shortly.";
+      var validationStatus = "Please complete all required fields with a valid email and at least 10 characters in the message.";
+
+      function isValidEmail(value) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+      }
 
       form.addEventListener("submit", function (event) {
         event.preventDefault();
 
         var formData = new FormData(form);
         var payload = {
-          name: String(formData.get("name") || ""),
-          email: String(formData.get("email") || ""),
-          message: String(formData.get("message") || ""),
-          honeypot: String(formData.get("company") || ""),
+          name: String(formData.get("name") || "").trim(),
+          email: String(formData.get("email") || "").trim(),
+          message: String(formData.get("message") || "").trim(),
+          honeypot: String(formData.get("company") || "").trim(),
         };
+
+        if (!payload.name || !payload.email || !payload.message || payload.message.length < 10 || !isValidEmail(payload.email)) {
+          statusNode.textContent = validationStatus;
+          statusNode.setAttribute("data-state", "error");
+          return;
+        }
 
         statusNode.textContent = defaultStatus;
         statusNode.removeAttribute("data-state");

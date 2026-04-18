@@ -37,6 +37,7 @@ function headingClassName(size: "lg" | "md" = "lg") {
 }
 
 const serifHeadingClassName = "font-brand-serif";
+const heroMinHeightClassName = "min-h-[560px] sm:min-h-[620px] md:min-h-[78svh]";
 
 export default async function HomePage({
   searchParams,
@@ -82,16 +83,17 @@ export default async function HomePage({
 
   return (
     <div className="bg-[#f7f3ee] text-[#5a4b47]">
-      <section className="relative min-h-[78vh] overflow-hidden">
+      <section className={`relative overflow-hidden ${heroMinHeightClassName}`}>
         <Image
           src="/images/yoga-split-main.jpg"
           alt="Woman practicing front split in a calm natural setting"
           fill
           priority
+          sizes="100vw"
           className="object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-[#1f1414]/70 via-[#1f1414]/45 to-[#1f1414]/10" />
-        <div className="relative mx-auto flex min-h-[78vh] w-full max-w-6xl items-center px-6 py-20 md:px-10">
+        <div className={`relative mx-auto flex w-full max-w-6xl items-center px-6 py-20 md:px-10 ${heroMinHeightClassName}`}>
           <div className="max-w-2xl">
             <p className="mb-4 inline-flex rounded-full border border-[#e7d7cc]/70 bg-[#f5ece5]/20 px-4 py-1 text-xs tracking-[0.2em] text-[#f7efe8]">
               Brussels
@@ -238,7 +240,13 @@ export default async function HomePage({
       <section className="mx-auto w-full max-w-6xl px-6 pb-20 md:px-10">
         <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-2">
           <div className="relative min-h-[320px] overflow-hidden rounded-3xl border border-[#eadfd7]">
-            <Image src="/images/yoga-split-main.jpg" alt="Studio atmosphere" fill className="object-cover" />
+            <Image
+              src="/images/yoga-split-main.jpg"
+              alt="Studio atmosphere"
+              fill
+              sizes="(min-width: 1024px) 50vw, 100vw"
+              className="object-cover"
+            />
           </div>
           <article className="rounded-3xl border border-[#eadfd7] bg-[#fffdfa] p-8 shadow-[0_18px_35px_-30px_rgba(47,25,25,0.45)] md:p-10">
             <h2 className={`${headingClassName("md")} ${serifHeadingClassName}`}>
