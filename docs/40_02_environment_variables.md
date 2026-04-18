@@ -14,6 +14,9 @@ Purpose: define environment-variable expectations by runtime context using repos
 - Provider send path uses:
   - `RESEND_API_KEY`
   - `EMAIL_FROM`
+- Homesite contact form send path also requires:
+  - `CONTACT_FORM_TO_EMAIL`
+  - Expected configured value: `gaelapagoz@gmail.com`
 - In production, sender policy is enforced in code: sender must use verified `@bookmyclass.app` domain when provider delivery is used.
 
 ## Test / E2E Runtime

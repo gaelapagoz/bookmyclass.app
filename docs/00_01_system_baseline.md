@@ -83,7 +83,8 @@ Evidence label legend used in this file:
   - Evidence status: Confirmed from repo (`src/auth.ts`, `src/lib/auth/*`, `src/app/(public)/sign-*.tsx`, `src/app/(public)/verify-email/page.tsx`, `src/app/(public)/forgot-password/page.tsx`, `src/app/(public)/reset-password/page.tsx`).
 - Contact/support/public flows:
   - Public contact form persists unified client messages with spam/rate-limit checks; admin inbox supports review/status updates.
-  - Evidence status: Confirmed from repo (`src/app/(public)/page.tsx`, `src/lib/client-messages/client-message-service.ts`, `src/app/admin/(private)/inbox/page.tsx`).
+  - Homesite static contact form posts to `/api/contact-form` and sends email through Resend without writing to admin inbox.
+  - Evidence status: Confirmed from repo (`src/app/(public)/page.tsx`, `src/lib/client-messages/client-message-service.ts`, `src/app/admin/(private)/inbox/page.tsx`, `homesite/index.html`, `src/app/api/contact-form/route.ts`, `src/lib/contact-form/contact-form-service.ts`).
 - Capability status summary:
   - Confirmed: booking draft/payment/checkout, subscription checkout, admin operations, auth flows, contact/inbox, attendance self check-in (dashboard + kiosk), staff attendance finalization.
   - Confirmed: admin and teacher session calendar surfaces include active waitlist count visibility (read-only, no manual controls).
@@ -450,7 +451,7 @@ Evidence label legend used in this file:
   - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
   - Evidence status: Confirmed from repo (`src/lib/payments/stripe.ts`).
 - Email:
-  - `RESEND_API_KEY`, `EMAIL_FROM`.
+  - `RESEND_API_KEY`, `EMAIL_FROM`, `CONTACT_FORM_TO_EMAIL` (homesite contact form recipient).
   - Evidence status: Confirmed from repo.
   - Marketing tracking:
   - `MARKETING_TRACKING_SECRET` (fallback chain includes `NEXTAUTH_SECRET`, then default constant).
@@ -467,7 +468,8 @@ Evidence label legend used in this file:
   - Required for app boot: `DATABASE_URL`.
   - Practically required for auth sessions: `AUTH_SECRET`.
   - Required for Stripe flows: `APP_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
-  - Required for live provider email delivery (non-test runtimes): `RESEND_API_KEY`, `EMAIL_FROM`.
+- Required for live provider email delivery (non-test runtimes): `RESEND_API_KEY`, `EMAIL_FROM`.
+- Required for homesite contact-form email delivery: `CONTACT_FORM_TO_EMAIL`.
   - Test/e2e runtimes can use deterministic provider bypass (`NODE_ENV=test` or `E2E_TEST_MODE=1`) and do not require real Resend delivery configuration.
   - Optional feature envs: Sentry + seed extras.
   - Evidence status: Confirmed from repo + Inferred from code paths.

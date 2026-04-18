@@ -19,6 +19,7 @@ Purpose: document current email delivery integration and test/e2e behavior.
 - Signup/email verification identity flows.
 - Password reset flows.
 - Marketing campaign sends/tests.
+- Homesite contact form API flow (`POST /api/contact-form`) sends to `CONTACT_FORM_TO_EMAIL`.
 
 ## Canonical References
 - `src/lib/email/resend-delivery.ts`
