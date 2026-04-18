@@ -2,6 +2,7 @@ import { BookingStatus, Role, StudioSessionStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { assertE2ETestRequest } from "@/lib/e2e/e2e-test-guard";
+import { clearPublicCatalogueAvailabilityCaches } from "@/lib/public-catalogue/availability-service";
 import { getStudioDateKey, getStudioTimeLabel } from "@/lib/public-catalogue/timezone";
 
 const payloadSchema = z.object({
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
       title: {
         startsWith: PREPARED_TITLE_PREFIX,
       },
-      startsAt: { gt: now },
+      endsAt: { lt: now },
     },
     select: { id: true },
   });
@@ -199,6 +200,7 @@ export async function POST(request: Request) {
       customerEmail: user.email,
     })),
   });
+  clearPublicCatalogueAvailabilityCaches();
 
   return Response.json({
     sessionId: session.id,

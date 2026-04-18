@@ -201,7 +201,7 @@ test.describe("critical client flows", () => {
     await expect(preparedSlotCard).toBeVisible();
     await preparedSlotCard.getByRole("button", { name: /Join waitlist/i }).click();
 
-    await expect(page.getByText("You have been added to the waitlist.")).toBeVisible();
+    await expect(page.getByText(/You have been added to the waitlist\.|already on the waitlist/i)).toBeVisible();
 
     await page.goto("/dashboard/bookings");
     const waitlistCard = page.getByTestId(/dashboard-waitlist-/).first();

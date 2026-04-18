@@ -75,6 +75,14 @@ const nextAvailabilityCache = createInMemoryTtlCache<Awaited<ReturnType<typeof g
   defaultTtlMs: AVAILABILITY_RESPONSE_CACHE_TTL_MS,
 });
 
+export function clearPublicCatalogueAvailabilityCaches() {
+  serviceIdBySlugCache.clear();
+  serviceDetailBySlugCache.clear();
+  monthAvailabilityCache.clear();
+  slotsByDateCache.clear();
+  nextAvailabilityCache.clear();
+}
+
 function getShortDescription(description: string | null): string {
   if (!description) {
     return "Details coming soon.";

@@ -1,7 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { signInAdmin, signInClient } from "./support/auth";
 import { cleanSeededClientBookingsForTest, prepareWaitlistSessionForTest } from "./support/e2e-api";
-import { E2E_PASSWORD, SEEDED_ADMIN, SEEDED_CLIENT_WITH_CREDITS, SEEDED_SERVICE_SLUG } from "./support/constants";
+import {
+  E2E_PASSWORD,
+  SEEDED_ADMIN,
+  SEEDED_CLIENT_NO_CREDITS,
+  SEEDED_CLIENT_WITH_CREDITS,
+  SEEDED_SERVICE_SLUG,
+} from "./support/constants";
 
 function toDateInput(date: Date): string {
   const year = date.getFullYear();
@@ -155,13 +161,13 @@ test("admin can manually add an eligible client from session edit roster", async
 
 // @covers admin-waitlist-count-visibility
 test("admin calendar shows waitlist count without manual waitlist controls", async ({ page }) => {
-  await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_WITH_CREDITS.email);
+  await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_NO_CREDITS.email);
   const prepared = await prepareWaitlistSessionForTest(page.request, {
-    clientEmail: SEEDED_CLIENT_WITH_CREDITS.email,
+    clientEmail: SEEDED_CLIENT_NO_CREDITS.email,
     serviceSlug: SEEDED_SERVICE_SLUG,
   });
 
-  await signInClient(page, SEEDED_CLIENT_WITH_CREDITS);
+  await signInClient(page, SEEDED_CLIENT_NO_CREDITS);
   await page.goto(`/book-a-class/${prepared.serviceSlug}`);
   const selectPreparedDateButton = page.getByRole("button", { name: `Select ${prepared.dateKey}` });
   if ((await selectPreparedDateButton.count()) === 0) {
