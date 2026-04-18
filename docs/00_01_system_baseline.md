@@ -336,18 +336,20 @@ Evidence label legend used in this file:
 - Migration/restart strategy (documented):
   - `prisma migrate deploy`, `prisma generate`, `npm run build`, `pm2 restart ... --update-env`.
   - Evidence status: Confirmed from deployment/config artifacts (`docs/50_02_bookmyclass_server_setup_updated.md`).
-- SSL/domain/routing (documented):
-  - nginx proxy to `127.0.0.1:3000`, certbot for `bookmyclass.app` and `www`.
-  - Evidence status: Confirmed from deployment/config artifacts; Operator-stated / external to repo for current live-state (`docs/50_02_bookmyclass_server_setup_updated.md`).
+- SSL/domain/routing (verified live on April 18, 2026):
+  - `bookmyclass.app` and `www.bookmyclass.app` serve static homesite from nginx.
+  - `bookmyclass.app/api/contact-form` proxies to `127.0.0.1:3000/api/contact-form`.
+  - `demo.bookmyclass.app` proxies to `127.0.0.1:3000`.
+  - Evidence status: Verified live + confirmed from deployment/config artifacts.
 - Monitoring/backup ops model (documented):
   - Uptime Kuma + Healthchecks + Netdata + local health scripts + backup scripts/heartbeat.
   - Evidence status: Confirmed from deployment/config artifacts; Operator-stated / external to repo for current live-state (`docs/50_06_monitoring_alerting_setup.md`, `docs/50_07_monitoring_netdata_setup.md`, `docs/50_09_monitoring_system_guide.md`, `docs/50_04_db_backup_local_setup.md`, `docs/50_05_backblaze_b2_backup_setup.md`, `scripts/verify-production-readiness.sh`).
 
 ### 11.3 Not verifiable from repo
-- Which documented production setup steps are currently active on live hosts.
-- Exact current production host topology and running container/process state.
-- Exact production cron table and rotation/secrets state.
-- Evidence status: Not verifiable from repository.
+- Which documented production setup steps are currently active on live hosts (without live host access).
+- Cloudflare dashboard-side tunnel/public-hostname configuration and permissions model.
+- Exact production secret rotation history/state.
+- Evidence status: Not verifiable from repository alone.
 
 ## 12. Production inventory
 - Next.js app runtime (Node/PM2):
@@ -638,13 +640,8 @@ Rule:
   - `scripts/verify-production-readiness.sh`
 
 ## Appendix D: Missing operator-supplied facts
-- Confirm canonical production server IP/hostname (docs conflict).
-- Confirm whether production is single-host or multi-host.
-- Confirm current live DNS/domain inventory (`bookmyclass.app`, `www`, monitor/checks domains) and ownership.
-- Confirm exact live DB container name, DB name, user naming, credential rotation policy.
-- Confirm actual running cron entries on production host (backup, healthcheck, other jobs).
+- Confirm Cloudflare dashboard/API ownership path for remote-managed tunnel ingress updates.
 - Confirm whether documented Backblaze B2 upload is active in production.
-- Confirm live Uptime Kuma / Healthchecks configuration and alert channels.
+- Confirm live Healthchecks configuration and alert channels.
 - Confirm Sentry project/environment values in production.
-- Confirm PM2 process list and systemd auto-start unit currently active.
 - Confirm exact manual deploy runbook currently used (including rollback steps).

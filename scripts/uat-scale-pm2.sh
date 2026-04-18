@@ -25,7 +25,21 @@ mkdir -p "$evidence_dir"
 
 pm2 jlist > "$evidence_dir/pm2-before.json"
 
-pm2 scale "$APP_NAME" "$TARGET_WORKERS" | tee "$evidence_dir/pm2-scale.log"
+set +e
+scale_output="$(pm2 scale "$APP_NAME" "$TARGET_WORKERS" 2>&1)"
+scale_exit_code=$?
+set -e
+printf '%s\n' "$scale_output" | tee "$evidence_dir/pm2-scale.log"
+
+if [[ "$scale_exit_code" -ne 0 ]]; then
+  if grep -q "Nothing to do" "$evidence_dir/pm2-scale.log"; then
+    echo "pm2 scale reported no change required (already at target workers)." | tee -a "$evidence_dir/pm2-scale.log"
+  else
+    echo "pm2 scale failed with exit code $scale_exit_code" >&2
+    exit "$scale_exit_code"
+  fi
+fi
+
 sleep 2
 pm2 jlist > "$evidence_dir/pm2-after.json"
 pm2 status | tee "$evidence_dir/pm2-status.txt"
@@ -39,11 +53,14 @@ const rows = JSON.parse(fs.readFileSync(path, "utf8"));
 const appRows = rows.filter((r) => r.name === app);
 const online = appRows.filter((r) => r.pm2_env && r.pm2_env.status === "online").length;
 const modes = [...new Set(appRows.map((r) => (r.pm2_env && r.pm2_env.exec_mode) || "unknown"))];
+const statuses = appRows.map((r) => (r.pm2_env && r.pm2_env.status) || "unknown");
 console.log(`APP=${app}`);
 console.log(`TARGET=${target}`);
 console.log(`ONLINE=${online}`);
 console.log(`MODES=${modes.join(",")}`);
+console.log(`STATUSES=${statuses.join(",")}`);
 if (online !== target) process.exit(2);
+if (target > 1 && !modes.includes("cluster_mode")) process.exit(3);
 ' "$evidence_dir/pm2-after.json" "$APP_NAME" "$TARGET_WORKERS" | tee "$evidence_dir/pm2-verify.txt"
 
 curl -sS -o /dev/null -w "url=${LOCAL_HEALTH_URL} code=%{http_code} total=%{time_total}s\n" "$LOCAL_HEALTH_URL" \

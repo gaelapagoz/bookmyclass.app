@@ -91,6 +91,7 @@ Rules:
 - Uses separate production SSH secrets/variables
 - Uses `environment: production` on deploy job for approval protection
 - Runs small post-deploy production smoke checks
+- Production smoke checks are split-topology aware (`bookmyclass.app`, `www.bookmyclass.app`, `demo.bookmyclass.app`, `demo.bookmyclass.app/api/health`)
 - Uploads deploy/smoke artifacts on failure
 
 Required production secrets:
@@ -185,6 +186,10 @@ pm2 restart bookmyclass-app --update-env
 ### 1. Health Check (MANDATORY)
 
 curl -i https://<ENV_DOMAIN>/api/health
+
+Production split topology note:
+- Marketing host health: `https://bookmyclass.app/`
+- App health endpoint: `https://demo.bookmyclass.app/api/health`
 
 Expected:
 - HTTP 200

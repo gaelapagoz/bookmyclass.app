@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { ContactFormServiceError, submitHomesiteContactForm } from "@/lib/contact-form/contact-form-service";
 import { rejectIfNotSameOrigin } from "@/lib/security/same-origin";
 
@@ -28,8 +29,24 @@ export async function POST(request: Request) {
       if (error.code === "HONEYPOT_REJECTED") {
         return Response.json({ ok: true, message: GENERIC_MESSAGE }, { status: 200 });
       }
+
+      Sentry.captureException(new Error(`[homesite-contact-form] ${error.code}`), {
+        level: "error",
+        tags: {
+          area: "homesite-contact-form",
+          error_code: error.code,
+        },
+      });
+      return Response.json({ ok: false, message: GENERIC_MESSAGE }, { status: 500 });
     }
 
+    Sentry.captureException(error, {
+      level: "error",
+      tags: {
+        area: "homesite-contact-form",
+        error_code: "UNEXPECTED",
+      },
+    });
     return Response.json({ ok: false, message: GENERIC_MESSAGE }, { status: 500 });
   }
 }

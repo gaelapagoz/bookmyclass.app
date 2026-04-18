@@ -104,7 +104,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: deploy_prod
     env:
-      BASE_URL: ${{ secrets.PROD_BASE_URL }}
+      BASE_URL: https://bookmyclass.app
+      MARKETING_BASE_URL: https://bookmyclass.app
+      WWW_BASE_URL: https://www.bookmyclass.app
+      DEMO_BASE_URL: https://demo.bookmyclass.app
 
     steps:
       - name: Check out repository

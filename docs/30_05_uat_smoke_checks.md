@@ -1,8 +1,8 @@
-# UAT Smoke Checks
+# Release Smoke Checks
 
 ## Purpose
 
-This smoke layer validates that a freshly deployed UAT tag is reachable and serving core public endpoints before heavier UAT validation runs.
+This smoke layer validates release reachability after deployment.
 
 It is intentionally:
 - fast
@@ -12,13 +12,21 @@ It is intentionally:
 
 ## Coverage
 
-The smoke script checks:
-1. `GET /api/health` returns `200`
-2. `GET /` returns `200` and contains a stable homepage marker
-3. `GET /sign-in` returns `200`
-4. `GET /book-a-class` returns `200`
-5. `GET /subscription` returns `200`
-6. `GET /api/categories` returns `200` as a public catalogue endpoint
+The smoke script supports two topologies:
+
+1. UAT app-host topology (default, `BASE_URL=https://uat.bookmyclass.app`)
+  - `GET /api/health` returns `200`
+  - `GET /` returns `200` with homepage marker
+  - `GET /sign-in` returns `200`
+  - `GET /book-a-class` returns `200`
+  - `GET /subscription` returns `200`
+  - `GET /api/categories` returns `200`
+
+2. Production split-host topology (`BASE_URL=https://bookmyclass.app`)
+  - `https://bookmyclass.app/` returns `200` with homesite marker
+  - `https://www.bookmyclass.app/` returns `200` with homesite marker
+  - `https://demo.bookmyclass.app/` returns `200` with app marker
+  - `https://demo.bookmyclass.app/api/health` returns `200` with `{"ok":true...}`
 
 Script location:
 - `scripts/uat-smoke-check.ts`
@@ -30,11 +38,17 @@ NPM command:
 
 - `BASE_URL` (optional): defaults to `https://uat.bookmyclass.app`
 - `UAT_SMOKE_TIMEOUT_MS` (optional): defaults to `8000`
+- `MARKETING_BASE_URL` (optional, split mode)
+- `WWW_BASE_URL` (optional, split mode)
+- `DEMO_BASE_URL` (optional, split mode)
 
 Example:
 
 ```bash
 BASE_URL=https://uat.bookmyclass.app npm run test:uat:smoke
+
+# production split topology smoke
+BASE_URL=https://bookmyclass.app npm run test:uat:smoke
 ```
 
 ## Release sequence in GitHub Actions

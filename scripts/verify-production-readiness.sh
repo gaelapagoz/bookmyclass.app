@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-HEALTH_URL="https://bookmyclass.app/api/health"
+HEALTH_URL="${HEALTH_URL:-https://demo.bookmyclass.app/api/health}"
 
 confirm_kuma=false
 confirm_backup_heartbeat=false
