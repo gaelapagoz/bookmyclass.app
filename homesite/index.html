@@ -764,6 +764,18 @@
       outline-offset: 1px;
     }
 
+    .contact-field[aria-invalid="true"] {
+      border-color: #ff9fa8;
+      box-shadow: 0 0 0 1px rgba(255, 159, 168, 0.35);
+    }
+
+    .contact-field-error {
+      margin-top: 0.45rem;
+      font-size: 0.82rem;
+      color: #ffd3d3;
+      min-height: 1rem;
+    }
+
     .contact-field--hp {
       position: absolute;
       left: -9999px;
@@ -1233,6 +1245,7 @@
               <div class="contact-field-group">
                 <label for="contact-message">How can we help?</label>
                 <textarea id="contact-message" class="contact-field" name="message" rows="4" maxlength="4000" minlength="10" required></textarea>
+                <p id="contact-message-error" class="contact-field-error" role="alert" aria-live="polite"></p>
               </div>
               <input
                 class="contact-field--hp"
@@ -1286,8 +1299,10 @@
       var form = document.getElementById("homesite-contact-form");
       var submitButton = document.getElementById("homesite-contact-submit");
       var statusNode = document.getElementById("homesite-contact-status");
+      var messageField = document.getElementById("contact-message");
+      var messageErrorNode = document.getElementById("contact-message-error");
 
-      if (!form || !submitButton || !statusNode) {
+      if (!form || !submitButton || !statusNode || !messageField || !messageErrorNode) {
         return;
       }
 
@@ -1295,10 +1310,28 @@
       var successStatus = "Thanks. If your request is valid, we will contact you soon.";
       var errorStatus = "Your request could not be sent right now. Please try again shortly.";
       var validationStatus = "Please complete all required fields with a valid email and at least 10 characters in the message.";
+      var messageTooShortStatus = "Please enter at least 10 characters in your message.";
 
       function isValidEmail(value) {
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
       }
+
+      function setMessageValidationError(errorText) {
+        if (errorText) {
+          messageField.setAttribute("aria-invalid", "true");
+          messageErrorNode.textContent = errorText;
+          return;
+        }
+
+        messageField.removeAttribute("aria-invalid");
+        messageErrorNode.textContent = "";
+      }
+
+      messageField.addEventListener("input", function () {
+        if (String(messageField.value || "").trim().length >= 10) {
+          setMessageValidationError("");
+        }
+      });
 
       form.addEventListener("submit", function (event) {
         event.preventDefault();
@@ -1311,7 +1344,16 @@
           honeypot: String(formData.get("company") || "").trim(),
         };
 
-        if (!payload.name || !payload.email || !payload.message || payload.message.length < 10 || !isValidEmail(payload.email)) {
+        if (!payload.message || payload.message.length < 10) {
+          setMessageValidationError(messageTooShortStatus);
+          statusNode.textContent = defaultStatus;
+          statusNode.removeAttribute("data-state");
+          return;
+        }
+
+        setMessageValidationError("");
+
+        if (!payload.name || !payload.email || !isValidEmail(payload.email)) {
           statusNode.textContent = validationStatus;
           statusNode.setAttribute("data-state", "error");
           return;
