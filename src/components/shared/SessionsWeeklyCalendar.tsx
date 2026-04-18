@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { type StudioSessionStatus } from "@prisma/client";
+import { getSessionWaitlistLabel } from "@/components/shared/session-waitlist-label";
 
 export type SessionCalendarItem = {
   id: string;
@@ -10,6 +11,7 @@ export type SessionCalendarItem = {
   endsAt: string;
   capacity: number;
   bookedCount: number;
+  waitlistCount: number;
   status: StudioSessionStatus;
   isPublished: boolean;
   location: string | null;
@@ -119,56 +121,59 @@ export function SessionsWeeklyCalendar({
                   className="min-h-[94px] border-r border-[#edf2f7] p-1.5 last:border-r-0"
                 >
                   <div className="space-y-1.5">
-                    {slotSessions.map((session) => (
-                      <div
-                        key={session.id}
-                        className="rounded-md border border-[#bfd1e7] bg-[#eff5fb] px-2 py-1.5 text-xs text-[#1e293b]"
-                      >
-                        {session.href ? (
-                          <Link href={session.href} className="block hover:bg-[#e2edf9]">
-                            <p className="font-semibold leading-tight">
-                              {session.className} - {session.title}
-                            </p>
-                            <p className="mt-1 text-[11px] text-[#334155]">
-                              {formatTime(session.startsAt)} -{" "}
-                              {formatTime(session.endsAt)}
-                            </p>
-                            <p className="text-[11px] text-[#334155]">
-                              Teacher: {session.teacherName}
-                            </p>
-                            <p className="text-[11px] text-[#334155]">
-                              {session.bookedCount}/{session.capacity} booked
-                            </p>
-                            {session.location ? (
-                              <p className="truncate text-[11px] text-[#475569]">
-                                {session.location}
+                    {slotSessions.map((session) => {
+                      const waitlistLabel = getSessionWaitlistLabel(session.waitlistCount);
+
+                      return (
+                        <div key={session.id} className="rounded-md border border-[#bfd1e7] bg-[#eff5fb] px-2 py-1.5 text-xs text-[#1e293b]">
+                          {session.href ? (
+                            <Link href={session.href} className="block hover:bg-[#e2edf9]">
+                              <p className="font-semibold leading-tight">
+                                {session.className} - {session.title}
                               </p>
-                            ) : null}
-                          </Link>
-                        ) : (
-                          <>
-                            <p className="font-semibold leading-tight">
-                              {session.className} - {session.title}
-                            </p>
-                            <p className="mt-1 text-[11px] text-[#334155]">
-                              {formatTime(session.startsAt)} -{" "}
-                              {formatTime(session.endsAt)}
-                            </p>
-                            <p className="text-[11px] text-[#334155]">
-                              Teacher: {session.teacherName}
-                            </p>
-                            <p className="text-[11px] text-[#334155]">
-                              {session.bookedCount}/{session.capacity} booked
-                            </p>
-                            {session.location ? (
-                              <p className="truncate text-[11px] text-[#475569]">
-                                {session.location}
+                              <p className="mt-1 text-[11px] text-[#334155]">
+                                {formatTime(session.startsAt)} -{" "}
+                                {formatTime(session.endsAt)}
                               </p>
-                            ) : null}
-                          </>
-                        )}
-                      </div>
-                    ))}
+                              <p className="text-[11px] text-[#334155]">
+                                Teacher: {session.teacherName}
+                              </p>
+                              <p className="text-[11px] text-[#334155]">
+                                {session.bookedCount}/{session.capacity} booked
+                              </p>
+                              {waitlistLabel ? <p className="text-[11px] text-[#334155]">{waitlistLabel}</p> : null}
+                              {session.location ? (
+                                <p className="truncate text-[11px] text-[#475569]">
+                                  {session.location}
+                                </p>
+                              ) : null}
+                            </Link>
+                          ) : (
+                            <>
+                              <p className="font-semibold leading-tight">
+                                {session.className} - {session.title}
+                              </p>
+                              <p className="mt-1 text-[11px] text-[#334155]">
+                                {formatTime(session.startsAt)} -{" "}
+                                {formatTime(session.endsAt)}
+                              </p>
+                              <p className="text-[11px] text-[#334155]">
+                                Teacher: {session.teacherName}
+                              </p>
+                              <p className="text-[11px] text-[#334155]">
+                                {session.bookedCount}/{session.capacity} booked
+                              </p>
+                              {waitlistLabel ? <p className="text-[11px] text-[#334155]">{waitlistLabel}</p> : null}
+                              {session.location ? (
+                                <p className="truncate text-[11px] text-[#475569]">
+                                  {session.location}
+                                </p>
+                              ) : null}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );

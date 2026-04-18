@@ -8,6 +8,7 @@ import {
   ProductType,
   Role,
   StudioSessionStatus,
+  SubscriptionStatus,
 } from "@prisma/client";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -145,6 +146,57 @@ async function seedTeacherSessionFixture() {
   return { teacherA, teacherB, client, sessionA, sessionB, entitlement };
 }
 
+async function grantTeacherCollectiveUnlimitedSubscription(input: { clientId: string }) {
+  const now = new Date();
+  const product = await prisma.product.create({
+    data: {
+      name: `Teacher Unlimited ${Date.now()}`,
+      slug: `teacher-unlimited-${Date.now()}`,
+      productType: ProductType.UNLIMITED_MEMBERSHIP,
+      isActive: true,
+      isArchived: false,
+      sortOrder: 10,
+      entitlementRules: {
+        create: {
+          entitlementType: EntitlementType.UNLIMITED_ACCESS,
+          entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+          isActive: true,
+        },
+      },
+    },
+  });
+
+  const price = await prisma.price.create({
+    data: {
+      productId: product.id,
+      lookupKey: `teacher-unlimited-price-${Date.now()}`,
+      name: "Teacher Unlimited Monthly",
+      priceType: "RECURRING",
+      currencyCode: "EUR",
+      unitAmountMinor: 10900,
+      billingInterval: "MONTH",
+      billingIntervalCount: 1,
+      isActive: true,
+      isArchived: false,
+    },
+  });
+
+  await prisma.subscriptionContract.create({
+    data: {
+      clientId: input.clientId,
+      productId: product.id,
+      priceId: price.id,
+      status: SubscriptionStatus.ACTIVE,
+      startsAt: now,
+      currentPeriodStart: now,
+      currentPeriodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+      cancelAtPeriodEnd: false,
+      provider: "STRIPE",
+      providerSubscriptionReference: `teacher_sub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    },
+  });
+}
+
 describe("teacher service", () => {
   beforeEach(async () => {
     await resetDb();
@@ -156,6 +208,7 @@ describe("teacher service", () => {
 
     expect(sessions).toHaveLength(1);
     expect(sessions[0]?.id).toBe(sessionA.id);
+    expect(sessions[0]?.waitlistCount).toBe(0);
   });
 
   it("allows reading own profile and updating only own teacher profile", async () => {
@@ -238,5 +291,34 @@ describe("teacher service", () => {
         bookingId: added.bookingId,
       }),
     ).rejects.toThrow("TEACHER_SESSION_FORBIDDEN");
+  });
+
+  it("requires eligible access for teacher add and allows qualifying subscription access", async () => {
+    const { teacherA, client, sessionA } = await seedTeacherSessionFixture();
+
+    await prisma.creditLedgerEntry.deleteMany({
+      where: {
+        clientId: client.id,
+      },
+    });
+
+    await expect(
+      addTeacherSessionAttendee({
+        teacherUserId: teacherA.id,
+        studioSessionId: sessionA.id,
+        clientId: client.id,
+      }),
+    ).rejects.toThrow("SESSION_ELIGIBILITY_REQUIRED");
+
+    await grantTeacherCollectiveUnlimitedSubscription({ clientId: client.id });
+
+    const added = await addTeacherSessionAttendee({
+      teacherUserId: teacherA.id,
+      studioSessionId: sessionA.id,
+      clientId: client.id,
+    });
+
+    expect(added.status).toBe("CONFIRMED");
+    expect(added.usedCreditEntitlementId).toBeNull();
   });
 });

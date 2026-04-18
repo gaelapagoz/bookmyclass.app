@@ -86,6 +86,17 @@ describe("teacher actions", () => {
     );
   });
 
+  it("maps eligibility requirement error for teacher attendee add", async () => {
+    vi.mocked(requireTeacherSession).mockResolvedValue(teacherSession() as never);
+    vi.mocked(addTeacherSessionAttendee).mockRejectedValue(new Error("SESSION_ELIGIBILITY_REQUIRED"));
+    const formData = new FormData();
+    formData.set("clientId", "client-1");
+
+    await expect(addTeacherSessionAttendeeAction("session-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/teacher/sessions/session-1?error=You%20can%20only%20add%20clients%20with%20eligible%20credit%20or%20qualifying%20subscription.",
+    );
+  });
+
   it("maps password service validation errors in teacher password flow", async () => {
     vi.mocked(requireTeacherSession).mockResolvedValue(teacherSession() as never);
     vi.mocked(changeAuthenticatedUserPassword).mockRejectedValue(

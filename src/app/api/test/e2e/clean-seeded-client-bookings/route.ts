@@ -27,12 +27,12 @@ export async function POST(request: NextRequest) {
   });
 
   if (!client) {
-    return Response.json({ error: "Client not found" }, { status: 404 });
+    return Response.json({ success: true, deletedBookings: 0 });
   }
 
-  await prisma.booking.deleteMany({
+  const deleted = await prisma.booking.deleteMany({
     where: { clientId: client.id },
   });
 
-  return Response.json({ success: true });
+  return Response.json({ success: true, deletedBookings: deleted.count });
 }

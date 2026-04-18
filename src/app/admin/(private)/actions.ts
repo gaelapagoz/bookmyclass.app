@@ -562,11 +562,8 @@ function getAdminActionErrorMessage(error: unknown): string {
   if (code === "SESSION_FULL") {
     return "This session is already full.";
   }
-  if (code === "SESSION_OVERRIDE_NOTE_REQUIRED") {
-    return "A note is required when adding without available credits.";
-  }
-  if (code === "TEACHER_CREDIT_OVERRIDE_FORBIDDEN") {
-    return "Teachers cannot add attendees without available credits.";
+  if (code === "SESSION_ELIGIBILITY_REQUIRED") {
+    return "Client must have an eligible credit or qualifying subscription for this class.";
   }
   if (code === "TEACHER_SESSION_FORBIDDEN") {
     return "You can only manage attendees for sessions assigned to you.";

@@ -6,7 +6,7 @@ import {
   createUnassignedTeacherSessionForTest,
   prepareCheckInWindowBookingForTest,
 } from "./support/e2e-api";
-import { E2E_PASSWORD, SEEDED_ADMIN, SEEDED_CLIENT_WITH_CREDITS, SEEDED_TEACHER } from "./support/constants";
+import { E2E_PASSWORD, SEEDED_ADMIN, SEEDED_CLIENT_NO_CREDITS, SEEDED_CLIENT_WITH_CREDITS, SEEDED_TEACHER } from "./support/constants";
 
 test.describe("teacher flow", () => {
   test.describe.configure({ mode: "serial" });
@@ -42,6 +42,30 @@ test.describe("teacher flow", () => {
 
     await expect(page.getByText("Attendee added.")).toBeVisible();
     await expect(page.getByText("E2E Client Credits").first()).toBeVisible();
+  });
+
+  // @covers teacher-manual-attendee-add-eligibility-enforced
+  test("teacher cannot add client without eligible credit or qualifying subscription", async ({ page }) => {
+    await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_NO_CREDITS.email);
+    await signInTeacher(page, SEEDED_TEACHER);
+
+    await page.goto("/teacher/sessions");
+    const sessionLink = page.getByRole("link", { name: /E2E Flow Class - E2E Session/ }).first();
+    if ((await sessionLink.count()) === 0) {
+      await page.getByRole("link", { name: "Next week" }).click();
+    }
+    await expect(sessionLink).toBeVisible();
+    await sessionLink.click();
+
+    const clientOptionValue = await page
+      .getByRole("option", { name: /client\.nocredits\.e2e@bookmyclass\.local/i })
+      .getAttribute("value");
+    expect(clientOptionValue).toBeTruthy();
+    await page.getByRole("combobox", { name: "Client" }).selectOption(clientOptionValue as string);
+    await page.getByRole("button", { name: "Add client" }).click();
+
+    await expect(page.getByText("You can only add clients with eligible credit or qualifying subscription.")).toBeVisible();
+    await expect(page.getByText("Attendee added.")).toHaveCount(0);
   });
 
   test("teacher can check in a client from kiosk for a selected session", async ({ page }) => {

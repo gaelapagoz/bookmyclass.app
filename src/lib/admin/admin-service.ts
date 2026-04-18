@@ -18,6 +18,7 @@ import {
   Role,
   StudioSessionStatus,
   SubscriptionStatus,
+  WaitlistStatus,
   Weekday,
 } from "@prisma/client";
 import { Prisma } from "@prisma/client";
@@ -36,6 +37,7 @@ import { normalizeBookingCancellationWindowHours } from "@/lib/booking/cancellat
 import { assertLearningImagePath } from "@/lib/learning/image-paths";
 import { sendWaitlistPromotionNotification } from "@/lib/public-booking/waitlist-notification-service";
 import { promoteWaitlistAfterCancellationWithinTx } from "@/lib/public-booking/waitlist-service";
+import { resolveWaitlistPromotionCoverage } from "@/lib/public-booking/waitlist-service";
 
 export type AdminDashboardData = {
   upcomingSessions: Array<{
@@ -184,6 +186,7 @@ export type AdminSessionItem = {
   endsAt: string;
   capacity: number;
   bookedCount: number;
+  waitlistCount: number;
   status: StudioSessionStatus;
   isPublished: boolean;
   location: string | null;
@@ -223,6 +226,8 @@ export type AdminSessionClientOption = {
   email: string;
   availableCredits: number;
   hasAvailableCredits: boolean;
+  hasEligibleAccess: boolean;
+  eligibilityLabel: string;
 };
 
 export type AdminPlanItem = {
@@ -1822,6 +1827,14 @@ export async function getAdminSessionsData(input?: {
           id: true,
         },
       },
+      waitlistEntries: {
+        where: {
+          status: WaitlistStatus.ACTIVE,
+        },
+        select: {
+          id: true,
+        },
+      },
     },
   });
 
@@ -1835,6 +1848,7 @@ export async function getAdminSessionsData(input?: {
     location: item.location,
     capacity: item.capacity,
     bookedCount: item.bookings.length,
+    waitlistCount: item.waitlistEntries.length,
     status: item.status,
     isPublished: item.isPublished,
   }));
@@ -1967,6 +1981,8 @@ export async function getAdminSessionOptions(sessionId?: string): Promise<{
         ...client,
         availableCredits: 0,
         hasAvailableCredits: false,
+        hasEligibleAccess: false,
+        eligibilityLabel: "No eligible credit or subscription",
       })),
     };
   }
@@ -1994,6 +2010,8 @@ export async function getAdminSessionOptions(sessionId?: string): Promise<{
         ...client,
         availableCredits: 0,
         hasAvailableCredits: false,
+        hasEligibleAccess: false,
+        eligibilityLabel: "No eligible credit or subscription",
       })),
     };
   }
@@ -2003,16 +2021,26 @@ export async function getAdminSessionOptions(sessionId?: string): Promise<{
     clientIds: clients.map((client) => client.id),
     requiredScope,
   });
+  const eligibleAccessByClientId = await getClientEligibleAccessByScope({
+    clientIds: clients.map((client) => client.id),
+    requiredScope,
+  });
 
   return {
     templates,
     teachers,
     clients: clients.map((client) => {
       const availableCredits = availableCreditsByClientId.get(client.id) ?? 0;
+      const eligibleAccess = eligibleAccessByClientId.get(client.id) ?? {
+        hasEligibleAccess: false,
+        eligibilityLabel: "No eligible credit or subscription",
+      };
       return {
         ...client,
         availableCredits,
         hasAvailableCredits: availableCredits > 0,
+        hasEligibleAccess: eligibleAccess.hasEligibleAccess,
+        eligibilityLabel: eligibleAccess.eligibilityLabel,
       };
     }),
   };
@@ -2231,84 +2259,6 @@ type SessionManagerActor = {
   role: Role;
 };
 
-async function getNextConsumableCreditEntitlementForScope(input: {
-  clientId: string;
-  requiredScope: EntitlementScope;
-}): Promise<{ entitlementId: string } | null> {
-  const now = new Date();
-  const entitlements = await prisma.clientEntitlement.findMany({
-    where: {
-      clientId: input.clientId,
-      status: ClientEntitlementStatus.ACTIVE,
-      entitlementType: {
-        in: [EntitlementType.CREDIT_PACK, EntitlementType.SINGLE_USE],
-      },
-      entitlementScope: {
-        in: [input.requiredScope, EntitlementScope.ALL_CLASSES],
-      },
-      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-    },
-    select: {
-      id: true,
-      createdAt: true,
-      expiresAt: true,
-    },
-  });
-
-  if (entitlements.length === 0) {
-    return null;
-  }
-
-  const balances = await prisma.creditLedgerEntry.groupBy({
-    by: ["entitlementId"],
-    where: {
-      clientId: input.clientId,
-      entitlementId: {
-        in: entitlements.map((entitlement) => entitlement.id),
-      },
-    },
-    _sum: {
-      amount: true,
-    },
-  });
-
-  const balanceByEntitlementId = new Map(
-    balances.map((row) => [row.entitlementId, row._sum.amount ?? 0]),
-  );
-
-  const eligible = entitlements
-    .map((entitlement) => ({
-      entitlementId: entitlement.id,
-      createdAt: entitlement.createdAt,
-      expiresAt: entitlement.expiresAt,
-      balance: balanceByEntitlementId.get(entitlement.id) ?? 0,
-    }))
-    .filter((entitlement) => entitlement.balance > 0);
-
-  if (eligible.length === 0) {
-    return null;
-  }
-
-  eligible.sort((a, b) => {
-    const aExpiry = a.expiresAt ? a.expiresAt.getTime() : Number.POSITIVE_INFINITY;
-    const bExpiry = b.expiresAt ? b.expiresAt.getTime() : Number.POSITIVE_INFINITY;
-    if (aExpiry !== bExpiry) {
-      return aExpiry - bExpiry;
-    }
-
-    const createdAtDelta = a.createdAt.getTime() - b.createdAt.getTime();
-    if (createdAtDelta !== 0) {
-      return createdAtDelta;
-    }
-
-    return a.entitlementId.localeCompare(b.entitlementId);
-  });
-
-  return {
-    entitlementId: eligible[0]!.entitlementId,
-  };
-}
-
 async function getClientAvailableCreditsByScope(input: {
   clientIds: string[];
   requiredScope: EntitlementScope;
@@ -2378,6 +2328,107 @@ async function getClientAvailableCreditsByScope(input: {
   }
 
   return creditsByClientId;
+}
+
+async function getClientEligibleAccessByScope(input: {
+  clientIds: string[];
+  requiredScope: EntitlementScope;
+}): Promise<Map<string, { hasEligibleAccess: boolean; eligibilityLabel: string }>> {
+  const result = new Map<string, { hasEligibleAccess: boolean; eligibilityLabel: string }>();
+  if (input.clientIds.length === 0) {
+    return result;
+  }
+
+  const availableCreditsByClientId = await getClientAvailableCreditsByScope(input);
+  const now = new Date();
+
+  const [unlimitedEntitlements, activeUnlimitedSubscriptions] = await prisma.$transaction([
+    prisma.clientEntitlement.findMany({
+      where: {
+        clientId: {
+          in: input.clientIds,
+        },
+        status: ClientEntitlementStatus.ACTIVE,
+        entitlementType: EntitlementType.UNLIMITED_ACCESS,
+        entitlementScope: {
+          in: [input.requiredScope, EntitlementScope.ALL_CLASSES],
+        },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      select: {
+        clientId: true,
+      },
+    }),
+    prisma.subscriptionContract.findMany({
+      where: {
+        clientId: {
+          in: input.clientIds,
+        },
+        status: SubscriptionStatus.ACTIVE,
+        startsAt: {
+          lte: now,
+        },
+        currentPeriodStart: {
+          lte: now,
+        },
+        currentPeriodEnd: {
+          gt: now,
+        },
+        OR: [{ endedAt: null }, { endedAt: { gt: now } }],
+        product: {
+          entitlementRules: {
+            some: {
+              isActive: true,
+              entitlementType: EntitlementType.UNLIMITED_ACCESS,
+              entitlementScope: {
+                in: [input.requiredScope, EntitlementScope.ALL_CLASSES],
+              },
+            },
+          },
+        },
+      },
+      select: {
+        clientId: true,
+      },
+    }),
+  ]);
+
+  const unlimitedEntitlementClientIds = new Set(unlimitedEntitlements.map((entry) => entry.clientId));
+  const activeUnlimitedSubscriptionClientIds = new Set(activeUnlimitedSubscriptions.map((entry) => entry.clientId));
+
+  for (const clientId of input.clientIds) {
+    const availableCredits = availableCreditsByClientId.get(clientId) ?? 0;
+    if (availableCredits > 0) {
+      result.set(clientId, {
+        hasEligibleAccess: true,
+        eligibilityLabel: `${availableCredits} credits available`,
+      });
+      continue;
+    }
+
+    if (unlimitedEntitlementClientIds.has(clientId)) {
+      result.set(clientId, {
+        hasEligibleAccess: true,
+        eligibilityLabel: "Active unlimited entitlement",
+      });
+      continue;
+    }
+
+    if (activeUnlimitedSubscriptionClientIds.has(clientId)) {
+      result.set(clientId, {
+        hasEligibleAccess: true,
+        eligibilityLabel: "Active qualifying subscription",
+      });
+      continue;
+    }
+
+    result.set(clientId, {
+      hasEligibleAccess: false,
+      eligibilityLabel: "No eligible credit or subscription",
+    });
+  }
+
+  return result;
 }
 
 export async function addSessionAttendeeByManager(input: {
@@ -2485,18 +2536,12 @@ export async function addSessionAttendeeByManager(input: {
   }
 
   const requiredScope = toEntitlementScopeFromCategorySlug(session.classType.category.slug);
-  const entitlement = await getNextConsumableCreditEntitlementForScope({
+  const coverage = await resolveWaitlistPromotionCoverage(prisma, {
     clientId: clientUser.id,
     requiredScope,
   });
-  const overrideWithoutCredits = !entitlement;
-
-  if (overrideWithoutCredits && actorUser.role === Role.TEACHER) {
-    throw new Error("TEACHER_CREDIT_OVERRIDE_FORBIDDEN");
-  }
-
-  if (overrideWithoutCredits && !normalizedNote) {
-    throw new Error("SESSION_OVERRIDE_NOTE_REQUIRED");
+  if (!coverage.eligible) {
+    throw new Error("SESSION_ELIGIBILITY_REQUIRED");
   }
 
   return prisma.$transaction(async (tx) => {
@@ -2506,8 +2551,8 @@ export async function addSessionAttendeeByManager(input: {
         studioSessionId: session.id,
         status: BookingStatus.CONFIRMED,
         bookingIntent: BookingIntent.USE_PLAN,
-        paymentSelection: entitlement ? BookingPaymentSelection.EXISTING_PLAN : null,
-        selectedEntitlementId: entitlement?.entitlementId ?? null,
+        paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
+        selectedEntitlementId: coverage.selectedEntitlementId,
         draftAmountMinor: 0,
         draftCurrencyCode: "EUR",
         bookedAt: now,
@@ -2520,11 +2565,11 @@ export async function addSessionAttendeeByManager(input: {
       },
     });
 
-    if (entitlement) {
+    if (coverage.consumeEntitlementId) {
       await tx.creditLedgerEntry.create({
         data: {
           clientId: clientUser.id,
-          entitlementId: entitlement.entitlementId,
+          entitlementId: coverage.consumeEntitlementId,
           bookingId: createdBooking.id,
           entryType: CreditLedgerEntryType.CONSUME,
           amount: -1,
@@ -2538,13 +2583,15 @@ export async function addSessionAttendeeByManager(input: {
     await tx.auditLog.create({
       data: {
         actorId: actorUser.id,
-        actionType: overrideWithoutCredits ? "SESSION_ATTENDEE_ADD_OVERRIDE" : "SESSION_ATTENDEE_ADD",
+        actionType: "SESSION_ATTENDEE_ADD",
         entityType: "Booking",
         entityId: createdBooking.id,
         metadata: {
           sessionId: session.id,
           clientId: clientUser.id,
-          usedCreditEntitlementId: entitlement?.entitlementId ?? null,
+          usedCreditEntitlementId: coverage.consumeEntitlementId,
+          selectedEntitlementId: coverage.selectedEntitlementId,
+          coverageReason: coverage.reason,
           note: normalizedNote || null,
         },
       },
@@ -2553,8 +2600,8 @@ export async function addSessionAttendeeByManager(input: {
     return {
       bookingId: createdBooking.id,
       status: createdBooking.status,
-      usedCreditEntitlementId: entitlement?.entitlementId ?? null,
-      overrideApplied: overrideWithoutCredits,
+      usedCreditEntitlementId: coverage.consumeEntitlementId,
+      overrideApplied: false,
     };
   });
 }

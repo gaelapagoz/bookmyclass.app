@@ -19,6 +19,8 @@ Purpose: describe the current application architecture from repository evidence.
 - Subscription checkout + billing portal.
 - Dashboard booking/subscription/profile paths.
 - Admin operations for catalog, sessions, users, subscriptions, learning, marketing, inbox.
+- Admin-only `Automations` placeholder page exists at `/admin/automations` (informational only, no configuration engine).
+- Manual session roster operations remain service-enforced: admin can add/remove attendees and teacher can manage only assigned sessions; both require eligible credit or qualifying subscription.
 
 ## Known Non-Goals / Not Fully Active
 - Waitlist auto-promotion is active for collective classes; no-show runtime operations remain modeled but not fully active.

@@ -66,6 +66,7 @@ describe("teacher sessions calendar page", () => {
         endsAt: new Date(sessionDate.getTime() + 3600000).toISOString(), // 1 hour later
         capacity: 20,
         bookedCount: 15,
+        waitlistCount: 3,
         status: "SCHEDULED" as const,
         isPublished: true,
         location: "Studio A",
@@ -82,6 +83,35 @@ describe("teacher sessions calendar page", () => {
 
     expect(screen.getByText("Vinyasa Yoga - Morning Yoga")).toBeInTheDocument();
     expect(screen.getByText(/15\/20 booked/)).toBeInTheDocument();
+    expect(screen.getByText("Waitlist: 3")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /join waitlist/i })).not.toBeInTheDocument();
+  });
+
+  it("hides waitlist count label when count is zero", async () => {
+    vi.mocked(getTeacherAssignedSessions).mockResolvedValue([
+      {
+        id: "session-2",
+        title: "Evening Flow",
+        className: "Yoga",
+        teacherName: "Ana Ionescu",
+        startsAt: new Date("2026-04-15T17:00:00.000Z").toISOString(),
+        endsAt: new Date("2026-04-15T18:00:00.000Z").toISOString(),
+        capacity: 16,
+        bookedCount: 8,
+        waitlistCount: 0,
+        status: "SCHEDULED" as const,
+        isPublished: true,
+        location: "Studio B",
+      },
+    ]);
+
+    render(
+      await TeacherSessionsPage({
+        searchParams: Promise.resolve({}),
+      }),
+    );
+
+    expect(screen.queryByText("Waitlist: 0")).not.toBeInTheDocument();
   });
 
   it("calls getTeacherAssignedSessions with correct parameters", async () => {

@@ -496,7 +496,7 @@ describe("admin actions", () => {
     });
   });
 
-  it("maps teacher add-without-credit restriction to actionable message", async () => {
+  it("maps manager eligibility restriction to actionable message", async () => {
     vi.mocked(auth).mockResolvedValue({
       ...createAdminSession("ADMIN"),
       user: {
@@ -506,7 +506,7 @@ describe("admin actions", () => {
       },
     });
     vi.mocked(addSessionAttendeeByManager).mockRejectedValue(
-      new Error("TEACHER_CREDIT_OVERRIDE_FORBIDDEN"),
+      new Error("SESSION_ELIGIBILITY_REQUIRED"),
     );
 
     const formData = new FormData();
@@ -514,7 +514,7 @@ describe("admin actions", () => {
     formData.set("note", "override");
 
     await expect(addSessionAttendeeAction("session-1", formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/sessions/session-1/edit?error=Teachers%20cannot%20add%20attendees%20without%20available%20credits.",
+      "NEXT_REDIRECT:/admin/sessions/session-1/edit?error=Client%20must%20have%20an%20eligible%20credit%20or%20qualifying%20subscription%20for%20this%20class.",
     );
   });
 

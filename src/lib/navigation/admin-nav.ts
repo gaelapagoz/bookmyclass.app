@@ -75,4 +75,5 @@ export const adminNavConfig: AdminNavItem[] = [
     matchPrefixes: ["/admin/learning-programs", "/admin/learning-videos"],
   },
   { type: "link", href: "/admin/manage-site", label: "Manage Site" },
+  { type: "link", href: "/admin/automations", label: "Automations" },
 ];

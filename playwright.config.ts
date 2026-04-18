@@ -14,7 +14,8 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "dotenv -e .env.e2e -- npm run build && dotenv -e .env.e2e -- npm run start",
+    command:
+      "dotenv -e .env.e2e -- npm run db:e2e:setup && dotenv -e .env.e2e -- npm run build && dotenv -e .env.e2e -- npm run start",
     url: process.env.APP_URL ?? "http://127.0.0.1:3000",
     reuseExistingServer: false,
     timeout: 240_000,

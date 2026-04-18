@@ -91,6 +91,7 @@ import AdminOrdersPage from "../../src/app/admin/(private)/orders/page";
 import AdminOnlineLearningPage from "../../src/app/admin/(private)/online-learning/page";
 import AdminInboxPage from "../../src/app/admin/(private)/inbox/page";
 import AdminManageSitePage from "../../src/app/admin/(private)/manage-site/page";
+import AdminAutomationsPage from "../../src/app/admin/(private)/automations/page";
 import AdminMarketingSegmentsPage from "../../src/app/admin/(private)/marketing/segments/page";
 describe("Admin pages branching", () => {
   beforeEach(() => {
@@ -364,6 +365,50 @@ describe("Admin pages branching", () => {
     );
 
     expect(screen.getByText("Unable to load calendar right now.")).toBeInTheDocument();
+  });
+
+  it("renders waitlist count in admin sessions calendar cards without management controls", async () => {
+    vi.mocked(getAdminSessionsData).mockResolvedValue([
+      {
+        id: "session-1",
+        title: "Waitlist Session",
+        className: "Pilates",
+        teacherName: "Teacher One",
+        startsAt: new Date("2026-04-14T08:00:00.000Z").toISOString(),
+        endsAt: new Date("2026-04-14T09:00:00.000Z").toISOString(),
+        location: "Studio A",
+        capacity: 12,
+        bookedCount: 12,
+        waitlistCount: 2,
+        status: "SCHEDULED",
+        isPublished: true,
+      },
+      {
+        id: "session-2",
+        title: "No Waitlist Session",
+        className: "Pilates",
+        teacherName: "Teacher One",
+        startsAt: new Date("2026-04-15T10:00:00.000Z").toISOString(),
+        endsAt: new Date("2026-04-15T11:00:00.000Z").toISOString(),
+        location: "Studio B",
+        capacity: 12,
+        bookedCount: 8,
+        waitlistCount: 0,
+        status: "SCHEDULED",
+        isPublished: true,
+      },
+    ]);
+
+    render(
+      await AdminSessionsPage({
+        searchParams: Promise.resolve({ week: "2026-04-13" }),
+      }),
+    );
+
+    expect(screen.getByText("Waitlist: 2")).toBeInTheDocument();
+    expect(screen.queryByText("Waitlist: 0")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /join waitlist/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /cancel waitlist/i })).not.toBeInTheDocument();
   });
 
   it("renders plans data with clear pricing/billing columns", async () => {
@@ -794,6 +839,15 @@ describe("Admin pages branching", () => {
     expect(screen.getAllByRole("option", { name: "Functional Strength" }).length).toBeGreaterThan(0);
     expect(screen.queryByPlaceholderText("Functional Strength")).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("24")).toBeInTheDocument();
+  });
+
+  it("renders automations placeholder page copy", async () => {
+    render(await AdminAutomationsPage());
+
+    expect(screen.getByRole("heading", { name: "Automations" })).toBeInTheDocument();
+    expect(screen.getByText("Configure automation features from this area in a future release.")).toBeInTheDocument();
+    expect(screen.getByText("Operational automations are not yet configurable from the admin UI.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /save/i })).not.toBeInTheDocument();
   });
 
   it("renders online learning data from shared service", async () => {

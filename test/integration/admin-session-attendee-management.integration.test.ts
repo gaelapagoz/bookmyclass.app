@@ -8,8 +8,11 @@ import {
   CreditLedgerEntryType,
   EntitlementScope,
   EntitlementType,
+  ProductType,
   Role,
   StudioSessionStatus,
+  SubscriptionStatus,
+  WaitlistStatus,
 } from "@prisma/client";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -118,6 +121,57 @@ async function grantCollectiveCredits(input: { clientId: string; amount: number 
   });
 
   return entitlement;
+}
+
+async function grantCollectiveUnlimitedSubscription(input: { clientId: string }) {
+  const now = new Date();
+  const product = await prisma.product.create({
+    data: {
+      name: `Unlimited ${Date.now()}`,
+      slug: `unlimited-${Date.now()}`,
+      productType: ProductType.UNLIMITED_MEMBERSHIP,
+      isActive: true,
+      isArchived: false,
+      sortOrder: 1,
+      entitlementRules: {
+        create: {
+          entitlementType: EntitlementType.UNLIMITED_ACCESS,
+          entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+          isActive: true,
+        },
+      },
+    },
+  });
+
+  const price = await prisma.price.create({
+    data: {
+      productId: product.id,
+      lookupKey: `unlimited-price-${Date.now()}`,
+      name: "Unlimited Monthly",
+      priceType: "RECURRING",
+      currencyCode: "EUR",
+      unitAmountMinor: 9900,
+      billingInterval: "MONTH",
+      billingIntervalCount: 1,
+      isActive: true,
+      isArchived: false,
+    },
+  });
+
+  await prisma.subscriptionContract.create({
+    data: {
+      clientId: input.clientId,
+      productId: product.id,
+      priceId: price.id,
+      status: SubscriptionStatus.ACTIVE,
+      startsAt: now,
+      currentPeriodStart: now,
+      currentPeriodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+      cancelAtPeriodEnd: false,
+      provider: "STRIPE",
+      providerSubscriptionReference: `sub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    },
+  });
 }
 
 describe("admin session attendee management service", () => {
@@ -315,7 +369,7 @@ describe("admin session attendee management service", () => {
     expect(consume?.amount).toBe(-1);
   });
 
-  it("ADMIN and MASTER_ADMIN can add without credits only with note", async () => {
+  it("ADMIN and MASTER_ADMIN cannot add attendee without eligible credit or qualifying subscription", async () => {
     const { session } = await createSessionFixture();
     const [clientOne, clientTwo, admin, masterAdmin] = await Promise.all([
       prisma.user.create({
@@ -357,30 +411,62 @@ describe("admin session attendee management service", () => {
           role: Role.ADMIN,
         },
       }),
-    ).rejects.toThrow("SESSION_OVERRIDE_NOTE_REQUIRED");
+    ).rejects.toThrow("SESSION_ELIGIBILITY_REQUIRED");
 
-    const adminResult = await addSessionAttendeeByManager({
+    await expect(
+      addSessionAttendeeByManager({
+        studioSessionId: session.id,
+        clientId: clientTwo.id,
+        note: "Manual override",
+        actor: {
+          userId: masterAdmin.id,
+          role: Role.MASTER_ADMIN,
+        },
+      }),
+    ).rejects.toThrow("SESSION_ELIGIBILITY_REQUIRED");
+  });
+
+  it("allows add attendee with active qualifying subscription without consuming credit", async () => {
+    const { session } = await createSessionFixture();
+    const [client, admin] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Client Unlimited",
+          email: `client.unlimited.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Admin Unlimited",
+          email: `admin.unlimited.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+    ]);
+
+    await grantCollectiveUnlimitedSubscription({ clientId: client.id });
+
+    const result = await addSessionAttendeeByManager({
       studioSessionId: session.id,
-      clientId: clientOne.id,
-      note: "Guest pass",
+      clientId: client.id,
       actor: {
         userId: admin.id,
         role: Role.ADMIN,
       },
     });
 
-    const masterResult = await addSessionAttendeeByManager({
-      studioSessionId: session.id,
-      clientId: clientTwo.id,
-      note: "Manual override",
-      actor: {
-        userId: masterAdmin.id,
-        role: Role.MASTER_ADMIN,
+    expect(result.status).toBe(BookingStatus.CONFIRMED);
+    expect(result.usedCreditEntitlementId).toBeNull();
+    expect(result.overrideApplied).toBe(false);
+
+    const consumedEntries = await prisma.creditLedgerEntry.count({
+      where: {
+        bookingId: result.bookingId,
+        entryType: CreditLedgerEntryType.CONSUME,
       },
     });
-
-    expect(adminResult.overrideApplied).toBe(true);
-    expect(masterResult.overrideApplied).toBe(true);
+    expect(consumedEntries).toBe(0);
   });
 
   it("TEACHER cannot add attendee without available credits", async () => {
@@ -405,7 +491,130 @@ describe("admin session attendee management service", () => {
           role: Role.TEACHER,
         },
       }),
-    ).rejects.toThrow("TEACHER_CREDIT_OVERRIDE_FORBIDDEN");
+    ).rejects.toThrow("SESSION_ELIGIBILITY_REQUIRED");
+  });
+
+  it("returns existing active booking instead of creating duplicate booking", async () => {
+    const { session } = await createSessionFixture();
+    const [client, admin] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Client Duplicate",
+          email: `client.duplicate.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Admin Duplicate",
+          email: `admin.duplicate.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+    ]);
+
+    await grantCollectiveCredits({ clientId: client.id, amount: 3 });
+
+    const first = await addSessionAttendeeByManager({
+      studioSessionId: session.id,
+      clientId: client.id,
+      actor: {
+        userId: admin.id,
+        role: Role.ADMIN,
+      },
+    });
+    const second = await addSessionAttendeeByManager({
+      studioSessionId: session.id,
+      clientId: client.id,
+      actor: {
+        userId: admin.id,
+        role: Role.ADMIN,
+      },
+    });
+
+    expect(second.bookingId).toBe(first.bookingId);
+
+    const bookings = await prisma.booking.count({
+      where: {
+        studioSessionId: session.id,
+        clientId: client.id,
+        status: {
+          in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
+        },
+      },
+    });
+    expect(bookings).toBe(1);
+  });
+
+  it("blocks manager add when session is already full", async () => {
+    const { session } = await createSessionFixture();
+    const [admin, clientA, clientB, clientC] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Admin Full",
+          email: `admin.full.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Client Full A",
+          email: `client.full.a.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Client Full B",
+          email: `client.full.b.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Client Full C",
+          email: `client.full.c.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+    ]);
+
+    await prisma.studioSession.update({
+      where: { id: session.id },
+      data: { capacity: 2 },
+    });
+
+    await grantCollectiveCredits({ clientId: clientA.id, amount: 1 });
+    await grantCollectiveCredits({ clientId: clientB.id, amount: 1 });
+    await grantCollectiveCredits({ clientId: clientC.id, amount: 1 });
+
+    await addSessionAttendeeByManager({
+      studioSessionId: session.id,
+      clientId: clientA.id,
+      actor: {
+        userId: admin.id,
+        role: Role.ADMIN,
+      },
+    });
+    await addSessionAttendeeByManager({
+      studioSessionId: session.id,
+      clientId: clientB.id,
+      actor: {
+        userId: admin.id,
+        role: Role.ADMIN,
+      },
+    });
+
+    await expect(
+      addSessionAttendeeByManager({
+        studioSessionId: session.id,
+        clientId: clientC.id,
+        actor: {
+          userId: admin.id,
+          role: Role.ADMIN,
+        },
+      }),
+    ).rejects.toThrow("SESSION_FULL");
   });
 
   it("TEACHER cannot add attendee on unassigned session", async () => {
@@ -485,6 +694,91 @@ describe("admin session attendee management service", () => {
     expect(afterRemoval?.attendees.some((attendee) => attendee.bookingId === addResult.bookingId)).toBe(false);
   });
 
+  it("manager cancellation triggers waitlist auto-promotion when a seat opens", async () => {
+    const { session } = await createSessionFixture();
+    const [admin, bookedClient, waitlistedClient] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Admin Promote",
+          email: `admin.promote.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Booked Client",
+          email: `booked.client.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Waitlisted Client",
+          email: `waitlisted.client.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+    ]);
+
+    await prisma.studioSession.update({
+      where: { id: session.id },
+      data: { capacity: 1 },
+    });
+
+    await grantCollectiveCredits({ clientId: bookedClient.id, amount: 1 });
+    await grantCollectiveCredits({ clientId: waitlistedClient.id, amount: 1 });
+
+    const confirmed = await addSessionAttendeeByManager({
+      studioSessionId: session.id,
+      clientId: bookedClient.id,
+      actor: {
+        userId: admin.id,
+        role: Role.ADMIN,
+      },
+    });
+
+    await prisma.waitlistEntry.create({
+      data: {
+        clientId: waitlistedClient.id,
+        studioSessionId: session.id,
+        status: WaitlistStatus.ACTIVE,
+        position: 1,
+      },
+    });
+
+    await removeSessionAttendeeByManager({
+      studioSessionId: session.id,
+      bookingId: confirmed.bookingId,
+      actor: {
+        userId: admin.id,
+        role: Role.ADMIN,
+      },
+    });
+
+    const promotedBooking = await prisma.booking.findFirst({
+      where: {
+        studioSessionId: session.id,
+        clientId: waitlistedClient.id,
+        status: BookingStatus.CONFIRMED,
+      },
+      select: {
+        id: true,
+      },
+    });
+    const waitlistEntry = await prisma.waitlistEntry.findFirst({
+      where: {
+        studioSessionId: session.id,
+        clientId: waitlistedClient.id,
+      },
+      select: {
+        status: true,
+      },
+    });
+
+    expect(promotedBooking?.id).toBeTruthy();
+    expect(waitlistEntry?.status).toBe(WaitlistStatus.PROMOTED);
+  });
+
   it("returns selectable clients with credit visibility for the session scope", async () => {
     const { session } = await createSessionFixture();
     const [clientWithCredits, clientWithoutCredits] = await Promise.all([
@@ -512,8 +806,10 @@ describe("admin session attendee management service", () => {
 
     expect(withCredits?.hasAvailableCredits).toBe(true);
     expect(withCredits?.availableCredits).toBe(2);
+    expect(withCredits?.hasEligibleAccess).toBe(true);
     expect(withoutCredits?.hasAvailableCredits).toBe(false);
     expect(withoutCredits?.availableCredits).toBe(0);
+    expect(withoutCredits?.hasEligibleAccess).toBe(false);
   });
 
   it("applies staff attendance transitions and blocks finalized rewrites", async () => {

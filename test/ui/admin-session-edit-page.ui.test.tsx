@@ -74,6 +74,8 @@ describe("admin session edit page", () => {
           email: "client2@example.test",
           availableCredits: 3,
           hasAvailableCredits: true,
+          hasEligibleAccess: true,
+          eligibilityLabel: "3 credits available",
         },
         {
           id: "client-3",
@@ -81,6 +83,8 @@ describe("admin session edit page", () => {
           email: "client3@example.test",
           availableCredits: 0,
           hasAvailableCredits: false,
+          hasEligibleAccess: false,
+          eligibilityLabel: "No eligible credit or subscription",
         },
       ],
     });
@@ -104,7 +108,7 @@ describe("admin session edit page", () => {
     expect(screen.getByRole("button", { name: "Undo check-in" })).toBeInTheDocument();
 
     expect(screen.getByRole("option", { name: /Client Two .*3 credits available/i })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /Client Three .*No credits available/i })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Client Three .*No eligible credit or subscription/i })).toBeInTheDocument();
 
     const publishedRow = screen.getByTestId("published-row");
     const actionRow = screen.getByTestId("session-update-actions");

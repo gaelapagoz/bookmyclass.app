@@ -125,6 +125,27 @@ export async function POST(request: Request) {
 
   const startsAt = new Date(now.getTime() + 72 * 60 * 60 * 1000);
   startsAt.setUTCMinutes(0, 0, 0);
+
+  // Avoid unique collisions on (classTemplateId, startsAt) with existing seeded sessions.
+  let offsetHours = 0;
+  while (offsetHours < 48) {
+    const candidateStartsAt = new Date(startsAt.getTime() + offsetHours * 60 * 60 * 1000);
+    const collision = await prisma.studioSession.findFirst({
+      where: {
+        classTemplateId: referenceSession.classTemplateId,
+        startsAt: candidateStartsAt,
+      },
+      select: { id: true },
+    });
+
+    if (!collision) {
+      startsAt.setTime(candidateStartsAt.getTime());
+      break;
+    }
+
+    offsetHours += 1;
+  }
+
   const endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
 
   const session = await prisma.studioSession.create({

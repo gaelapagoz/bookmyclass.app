@@ -97,8 +97,8 @@ function mapTeacherActionError(error: unknown): string {
   if (code === "SESSION_FULL") {
     return "This session is already full.";
   }
-  if (code === "TEACHER_CREDIT_OVERRIDE_FORBIDDEN") {
-    return "You can only add clients with eligible credits.";
+  if (code === "SESSION_ELIGIBILITY_REQUIRED") {
+    return "You can only add clients with eligible credit or qualifying subscription.";
   }
   if (code === "SESSION_ATTENDEE_NOT_FOUND") {
     return "Attendee booking not found for this session.";

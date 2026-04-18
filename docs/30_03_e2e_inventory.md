@@ -37,6 +37,8 @@ This inventory defines the production-launch Playwright scope for release-blocki
 5. Update calendar session.
 6. Kiosk access for staff check-in oversight.
 7. Attendance finalization from session detail.
+8. Calendar shows active waitlist count when present (read-only, no manual waitlist controls).
+9. Manual attendee add from session detail requires eligible credit or qualifying subscription.
 
 ### Teacher
 
@@ -44,6 +46,8 @@ This inventory defines the production-launch Playwright scope for release-blocki
 2. Kiosk exit requires password re-entry.
 3. Kiosk check-in blocked outside window.
 4. Private class sessions excluded from kiosk self check-in flow.
+5. Session calendar shows active waitlist count when present (read-only).
+6. Session roster add is allowed only on assigned sessions and still enforces eligible credit or qualifying subscription.
 
 ## Extended (active + stable only)
 

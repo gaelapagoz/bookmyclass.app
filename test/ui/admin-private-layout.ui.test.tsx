@@ -121,6 +121,13 @@ describe("/admin private layout", () => {
     expect(screen.getByRole("button", { name: "Marketing+" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Online Learning" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Manage Site" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Automations" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Manage Site" }).compareDocumentPosition(screen.getByRole("link", { name: "Automations" })),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      screen.getByRole("link", { name: "Automations" }).compareDocumentPosition(screen.getByRole("link", { name: "Launch Kiosk" })),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByText("Admin Content")).toBeInTheDocument();
     expect(screen.queryByText("Book a Class")).not.toBeInTheDocument();
   });

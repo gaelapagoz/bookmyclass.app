@@ -74,7 +74,10 @@ Evidence label legend used in this file:
   - Evidence status: Confirmed from repo (`src/app/api/subscription/*`, `src/lib/subscription/*`, `src/lib/public-booking/checkout-service.ts`).
 - Admin capabilities:
   - Server actions for classes/sessions/plans/users/subscriptions/learning/marketing/inbox/agenda.
-  - Evidence status: Confirmed from repo (`src/app/admin/(private)/actions.ts`, `src/lib/admin/admin-service.ts`, `src/lib/marketing/*`).
+  - Admin calendar session cards show active waitlist counts for operational visibility (read-only).
+  - Admin session detail supports manual attendee add/remove with server-side eligibility enforcement (eligible credit or qualifying subscription required).
+  - Admin sidebar includes an `Automations` placeholder page at `/admin/automations`; operational automations are not yet configurable from UI.
+  - Evidence status: Confirmed from repo (`src/app/admin/(private)/actions.ts`, `src/lib/admin/admin-service.ts`, `src/lib/navigation/admin-nav.ts`, `src/app/admin/(private)/automations/page.tsx`, `src/lib/marketing/*`).
 - Authentication/account flows:
   - Credentials auth, pending registration + verification, verification resend, password reset, profile update, password change, email change verification.
   - Evidence status: Confirmed from repo (`src/auth.ts`, `src/lib/auth/*`, `src/app/(public)/sign-*.tsx`, `src/app/(public)/verify-email/page.tsx`, `src/app/(public)/forgot-password/page.tsx`, `src/app/(public)/reset-password/page.tsx`).
@@ -83,8 +86,11 @@ Evidence label legend used in this file:
   - Evidence status: Confirmed from repo (`src/app/(public)/page.tsx`, `src/lib/client-messages/client-message-service.ts`, `src/app/admin/(private)/inbox/page.tsx`).
 - Capability status summary:
   - Confirmed: booking draft/payment/checkout, subscription checkout, admin operations, auth flows, contact/inbox, attendance self check-in (dashboard + kiosk), staff attendance finalization.
+  - Confirmed: admin and teacher session calendar surfaces include active waitlist count visibility (read-only, no manual controls).
+  - Confirmed: teacher own-session roster management is enforced server-side; teacher add/remove is restricted to assigned sessions and still requires eligible credit or qualifying subscription.
   - Inferred: teacher operational workflows (UI placeholder suggests planned expansion).
   - Confirmed: waitlist join/cancel + auto-promotion workflow for collective classes.
+  - Confirmed: waitlist feature scope for current release includes runtime eligibility-aware promotion, client join/cancel UX, and admin/teacher visibility; no manual waitlist controls are exposed.
   - Evidence status: Confirmed/Inferred/Missing based on `src` usage.
 
 ## 3. Roles and access model
@@ -640,7 +646,3 @@ Rule:
 - Confirm Sentry project/environment values in production.
 - Confirm PM2 process list and systemd auto-start unit currently active.
 - Confirm exact manual deploy runbook currently used (including rollback steps).
-
-
-
-

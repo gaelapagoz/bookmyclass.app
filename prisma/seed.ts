@@ -35,13 +35,38 @@ if (!databaseUrl) {
   throw new Error("DATABASE_URL is not set.");
 }
 
-const scheduleWindowStart = new Date();
-scheduleWindowStart.setUTCHours(0, 0, 0, 0);
-scheduleWindowStart.setUTCDate(scheduleWindowStart.getUTCDate() + 1);
+const SEED_CLIENT_COUNT = 150;
+const SEED_PAST_DAYS = 120;
+const SEED_FUTURE_DAYS = 14;
+const SEED_RANDOM_SEED = 20260418;
 
-const scheduleWindowEnd = new Date(scheduleWindowStart);
-scheduleWindowEnd.setUTCMonth(scheduleWindowEnd.getUTCMonth() + 3);
-scheduleWindowEnd.setUTCHours(23, 59, 59, 999);
+const HEAVY_CLIENT_RATIO = 0.2;
+const MODERATE_CLIENT_RATIO = 0.35;
+const LIGHT_CLIENT_RATIO = 0.25;
+const RETURNING_CLIENT_RATIO = 0.1;
+
+const FUTURE_OCCUPANCY_LOW_RATIO = 0.5;
+const FUTURE_OCCUPANCY_MEDIUM_RATIO = 0.3;
+const FUTURE_OCCUPANCY_HIGH_RATIO = 0.14;
+const FUTURE_OCCUPANCY_NEAR_FULL_RATIO = 0.05;
+const FUTURE_OCCUPANCY_FULL_RATIO = 0.01;
+
+const COLLECTIVE_SESSION_CAPACITY = 15;
+
+const seedDayUtc = new Date();
+seedDayUtc.setUTCHours(0, 0, 0, 0);
+const pastWindowStartUtc = new Date(seedDayUtc);
+pastWindowStartUtc.setUTCDate(pastWindowStartUtc.getUTCDate() - SEED_PAST_DAYS);
+pastWindowStartUtc.setUTCHours(0, 0, 0, 0);
+const pastWindowEndUtc = new Date(seedDayUtc);
+pastWindowEndUtc.setUTCDate(pastWindowEndUtc.getUTCDate() - 1);
+pastWindowEndUtc.setUTCHours(23, 59, 59, 999);
+const futureWindowStartUtc = new Date(seedDayUtc);
+futureWindowStartUtc.setUTCDate(futureWindowStartUtc.getUTCDate() + 1);
+futureWindowStartUtc.setUTCHours(0, 0, 0, 0);
+const futureWindowEndUtc = new Date(seedDayUtc);
+futureWindowEndUtc.setUTCDate(futureWindowEndUtc.getUTCDate() + SEED_FUTURE_DAYS);
+futureWindowEndUtc.setUTCHours(23, 59, 59, 999);
 
 const SCHEDULE_BLACKOUT_DATES = new Set<string>();
 const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9]+$/;
@@ -119,6 +144,51 @@ type LearningCourseSeedInput = {
   videoUrl?: string;
   priority: number;
 };
+
+type SeededRng = {
+  next: () => number;
+  int: (minInclusive: number, maxInclusive: number) => number;
+  pick: <T>(items: readonly T[]) => T;
+  shuffle: <T>(items: readonly T[]) => T[];
+};
+
+function createSeededRng(seed: number): SeededRng {
+  let state = seed >>> 0;
+
+  const next = () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+
+  const int = (minInclusive: number, maxInclusive: number) => {
+    const min = Math.ceil(minInclusive);
+    const max = Math.floor(maxInclusive);
+    if (max < min) {
+      return min;
+    }
+    return min + Math.floor(next() * (max - min + 1));
+  };
+
+  const pick = <T>(items: readonly T[]) => {
+    if (items.length === 0) {
+      throw new Error("Seed RNG pick requires a non-empty array.");
+    }
+    return items[int(0, items.length - 1)]!;
+  };
+
+  const shuffle = <T>(items: readonly T[]) => {
+    const copy = [...items];
+    for (let i = copy.length - 1; i > 0; i -= 1) {
+      const j = int(0, i);
+      const current = copy[i]!;
+      copy[i] = copy[j]!;
+      copy[j] = current;
+    }
+    return copy;
+  };
+
+  return { next, int, pick, shuffle };
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -798,10 +868,9 @@ async function seedMarketingDemoData(input: { createdById: string }) {
 }
 
 async function seedUsers() {
-  const masterPasswordHash = await hash("MasterAdmin123!", 12);
-  const adminPasswordHash = await hash("Admin123!", 12);
-  const teacherPasswordHash = await hash("Teacher123!", 12);
-  const clientPasswordHash = await hash("Client123!", 12);
+  const rng = createSeededRng(SEED_RANDOM_SEED + 11);
+  const sharedPasswordHash = await hash("qwerty123456", 12);
+  const sharedEmailVerifiedAt = new Date("2026-01-01T00:00:00.000Z");
 
   const masterAdmin = await prisma.user.create({
     data: {
@@ -810,7 +879,9 @@ async function seedUsers() {
       lastName: "Admin",
       email: "masteradmin@yogapilatesfitness.local",
       role: Role.MASTER_ADMIN,
-      passwordHash: masterPasswordHash,
+      passwordHash: sharedPasswordHash,
+      emailVerified: sharedEmailVerifiedAt,
+      emailVerifiedAt: sharedEmailVerifiedAt,
       isActive: true,
       isInactive: false,
       lastLoginAt: new Date("2026-03-20T08:00:00.000Z"),
@@ -824,7 +895,9 @@ async function seedUsers() {
       lastName: "User",
       email: "admin@yogapilatesfitness.local",
       role: Role.ADMIN,
-      passwordHash: adminPasswordHash,
+      passwordHash: sharedPasswordHash,
+      emailVerified: sharedEmailVerifiedAt,
+      emailVerifiedAt: sharedEmailVerifiedAt,
       isActive: true,
       isInactive: false,
       lastLoginAt: new Date("2026-03-19T11:00:00.000Z"),
@@ -838,7 +911,9 @@ async function seedUsers() {
       lastName: "Ionescu",
       email: "ana.ionescu@yogapilatesfitness.local",
       role: Role.TEACHER,
-      passwordHash: teacherPasswordHash,
+      passwordHash: sharedPasswordHash,
+      emailVerified: sharedEmailVerifiedAt,
+      emailVerifiedAt: sharedEmailVerifiedAt,
       image: "/images/instructors/ana_instructor_bio.jpg",
       isActive: true,
       isInactive: false,
@@ -862,7 +937,9 @@ async function seedUsers() {
       lastName: "Moreau",
       email: "elena.moreau@yogapilatesfitness.local",
       role: Role.TEACHER,
-      passwordHash: teacherPasswordHash,
+      passwordHash: sharedPasswordHash,
+      emailVerified: sharedEmailVerifiedAt,
+      emailVerifiedAt: sharedEmailVerifiedAt,
       image: "/images/instructors/elena_instructor_bio.jpg",
       isActive: true,
       isInactive: false,
@@ -886,7 +963,9 @@ async function seedUsers() {
       lastName: "Van den Berg",
       email: "sofia.vandenberg@yogapilatesfitness.local",
       role: Role.TEACHER,
-      passwordHash: teacherPasswordHash,
+      passwordHash: sharedPasswordHash,
+      emailVerified: sharedEmailVerifiedAt,
+      emailVerifiedAt: sharedEmailVerifiedAt,
       image: "/images/instructors/sofia_instructor_bio.jpg",
       isActive: true,
       isInactive: false,
@@ -910,8 +989,9 @@ async function seedUsers() {
       lastName: "User",
       email: "client@yogapilatesfitness.local",
       role: Role.CLIENT,
-      passwordHash: clientPasswordHash,
-      emailVerified: new Date("2026-01-01T00:00:00.000Z"),
+      passwordHash: sharedPasswordHash,
+      emailVerified: sharedEmailVerifiedAt,
+      emailVerifiedAt: sharedEmailVerifiedAt,
       isActive: true,
       isInactive: false,
       lastLoginAt: new Date("2026-03-10T18:45:00.000Z"),
@@ -924,7 +1004,142 @@ async function seedUsers() {
     },
   });
 
-  return { masterAdmin, admin, teachers: { ana, elena, sofia }, client };
+  const firstNames = [
+    "Lucas",
+    "Emma",
+    "Noah",
+    "Olivia",
+    "Liam",
+    "Mila",
+    "Ethan",
+    "Sofia",
+    "Ava",
+    "Mason",
+    "Ella",
+    "Lena",
+    "Leo",
+    "Chloe",
+    "Nora",
+    "Aiden",
+    "Aria",
+    "Zoe",
+    "Mia",
+    "Luca",
+    "Amelia",
+    "Theo",
+    "Camille",
+    "Jules",
+    "Nina",
+    "Ines",
+    "Amir",
+    "Hana",
+    "Mateo",
+    "Lea",
+    "Sam",
+    "Marta",
+    "Yara",
+    "Elise",
+    "Maya",
+    "Iris",
+    "Dalia",
+    "Anouk",
+    "Lina",
+    "Sarah",
+  ] as const;
+  const lastNames = [
+    "De Smet",
+    "Peeters",
+    "Dubois",
+    "Martin",
+    "Lefevre",
+    "Dupont",
+    "Lambert",
+    "Moreau",
+    "Leroy",
+    "Legrand",
+    "Simon",
+    "Michel",
+    "Garcia",
+    "Bernard",
+    "Van den Broeck",
+    "Vermeulen",
+    "Rousseau",
+    "Masson",
+    "Bakker",
+    "Jacobs",
+    "Remy",
+    "Charpentier",
+    "Dumont",
+    "Vidal",
+    "Perez",
+    "Kowalski",
+    "Novak",
+    "Fernandez",
+    "Costa",
+    "Meyer",
+  ] as const;
+
+  const slugifyNamePart = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ".")
+      .replace(/^\.+|\.+$/g, "");
+
+  const candidateNames: Array<{ firstName: string; lastName: string }> = [];
+  for (const firstName of firstNames) {
+    for (const lastName of lastNames) {
+      candidateNames.push({ firstName, lastName });
+    }
+  }
+
+  const extraClientsNeeded = SEED_CLIENT_COUNT - 1;
+  if (extraClientsNeeded < 0) {
+    throw new Error(`SEED_CLIENT_COUNT must be at least 1, received ${SEED_CLIENT_COUNT}.`);
+  }
+  if (candidateNames.length < extraClientsNeeded) {
+    throw new Error("Insufficient deterministic name pool for requested client seed count.");
+  }
+
+  const selectedCandidates = rng.shuffle(candidateNames).slice(0, extraClientsNeeded);
+  for (let index = 0; index < selectedCandidates.length; index += 1) {
+    const candidate = selectedCandidates[index]!;
+    const fullName = `${candidate.firstName} ${candidate.lastName}`;
+    const email = `${slugifyNamePart(candidate.firstName)}.${slugifyNamePart(candidate.lastName)}.${String(index + 1).padStart(3, "0")}@yogapilatesfitness.local`;
+    const verifiedAt = new Date(sharedEmailVerifiedAt);
+    verifiedAt.setUTCDate(verifiedAt.getUTCDate() + (index % 30));
+    const lastLoginAt = new Date(seedDayUtc);
+    lastLoginAt.setUTCDate(lastLoginAt.getUTCDate() - rng.int(0, 45));
+    lastLoginAt.setUTCHours(rng.int(7, 21), rng.int(0, 59), 0, 0);
+
+    await prisma.user.create({
+      data: {
+        name: fullName,
+        firstName: candidate.firstName,
+        lastName: candidate.lastName,
+        email,
+        role: Role.CLIENT,
+        passwordHash: sharedPasswordHash,
+        emailVerified: verifiedAt,
+        emailVerifiedAt: verifiedAt,
+        isActive: true,
+        isInactive: false,
+        lastLoginAt,
+        clientProfile: {
+          create: {
+            phone: `+3201${String(index + 1).padStart(8, "0")}`,
+            notes: "Seeded deterministic demo client profile.",
+          },
+        },
+      },
+    });
+  }
+
+  return {
+    masterAdmin,
+    admin,
+    teachers: { ana, elena, sofia },
+    client,
+  };
 }
 
 async function seedBookingPolicy() {
@@ -1424,6 +1639,81 @@ async function upsertStudioSession(input: {
 }
 
 async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaId: string }) {
+  const rng = createSeededRng(SEED_RANDOM_SEED + 97);
+
+  type UsageTier = "HEAVY" | "MODERATE" | "LIGHT" | "RETURNING" | "INACTIVE";
+  type OwnershipState =
+    | "NO_PURCHASE"
+    | "EXPIRED_ONLY"
+    | "ACTIVE_DROP_IN"
+    | "ACTIVE_5_PACK"
+    | "ACTIVE_10_PACK"
+    | "ACTIVE_MONTHLY"
+    | "PRIVATE_ONLY";
+  type CollectiveSessionSeed = {
+    id: string;
+    startsAt: Date;
+    capacity: number;
+    classTypeId: string;
+    isFuture: boolean;
+    occupancyTarget: number;
+  };
+  type SeedEntitlementState = {
+    id: string;
+    orderId: string;
+    priceId: string;
+    clientId: string;
+    entitlementScope: EntitlementScope;
+    activatedAt: Date;
+    expiresAt: Date | null;
+    unlimitedAccess: boolean;
+    creditsRemaining: number;
+  };
+  type PurchaseLookupKey =
+    | "collective-drop-in-eur-once-v1"
+    | "qa-collective-5-pack-eur-once-v1"
+    | "collective-10-pack-eur-once-v1"
+    | "monthly-unlimited-collective-eur-monthly-v1"
+    | "qa-private-5-pack-eur-once-v1";
+
+  const ownershipCounts: Record<OwnershipState, number> = {
+    NO_PURCHASE: 24,
+    EXPIRED_ONLY: 24,
+    ACTIVE_DROP_IN: 15,
+    ACTIVE_5_PACK: 27,
+    ACTIVE_10_PACK: 24,
+    ACTIVE_MONTHLY: 30,
+    PRIVATE_ONLY: 6,
+  };
+  const usageRatios: Record<UsageTier, number> = {
+    HEAVY: HEAVY_CLIENT_RATIO,
+    MODERATE: MODERATE_CLIENT_RATIO,
+    LIGHT: LIGHT_CLIENT_RATIO,
+    RETURNING: RETURNING_CLIENT_RATIO,
+    INACTIVE: 1 - HEAVY_CLIENT_RATIO - MODERATE_CLIENT_RATIO - LIGHT_CLIENT_RATIO - RETURNING_CLIENT_RATIO,
+  };
+
+  const addDaysUtc = (value: Date, days: number) => {
+    const next = new Date(value);
+    next.setUTCDate(next.getUTCDate() + days);
+    return next;
+  };
+  const addMonthsUtc = (value: Date, months: number) => {
+    const next = new Date(value);
+    next.setUTCMonth(next.getUTCMonth() + months);
+    return next;
+  };
+  const startOfUtcDay = (value: Date) => {
+    const date = new Date(value);
+    date.setUTCHours(0, 0, 0, 0);
+    return date;
+  };
+  const endOfUtcDay = (value: Date) => {
+    const date = new Date(value);
+    date.setUTCHours(23, 59, 59, 999);
+    return date;
+  };
+
   const yogaCategory = await upsertClassCategory({
     slug: "yoga-collective-classes",
     name: "Yoga Collective Classes",
@@ -1456,7 +1746,7 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     description: "Breath-led flowing yoga for strength and mobility.",
     imageUrl: "/images/classes/vinyasa-yoga.jpg",
     defaultDurationMinutes: 30,
-    defaultCapacity: 10,
+    defaultCapacity: COLLECTIVE_SESSION_CAPACITY,
     pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
     sortOrder: 10,
   });
@@ -1467,7 +1757,7 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     description: "High-energy yoga sequencing with progressive options.",
     imageUrl: "/images/classes/rocket-yoga.jpg",
     defaultDurationMinutes: 30,
-    defaultCapacity: 10,
+    defaultCapacity: COLLECTIVE_SESSION_CAPACITY,
     pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
     sortOrder: 20,
   });
@@ -1478,7 +1768,7 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     description: "Slower paced foundational yoga and alignment practice.",
     imageUrl: "/images/classes/hatha-yoga.jpg",
     defaultDurationMinutes: 30,
-    defaultCapacity: 10,
+    defaultCapacity: COLLECTIVE_SESSION_CAPACITY,
     pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
     sortOrder: 30,
   });
@@ -1489,7 +1779,7 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     description: "Core-driven pilates session suitable for all levels.",
     imageUrl: "/images/classes/mat-pilates.jpg",
     defaultDurationMinutes: 30,
-    defaultCapacity: 10,
+    defaultCapacity: COLLECTIVE_SESSION_CAPACITY,
     pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
     sortOrder: 10,
   });
@@ -1500,7 +1790,7 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     description: "Small group reformer fundamentals for technique and control.",
     imageUrl: "/images/classes/reformer-foundations.jpg",
     defaultDurationMinutes: 30,
-    defaultCapacity: 10,
+    defaultCapacity: COLLECTIVE_SESSION_CAPACITY,
     pricingMode: ServicePricingMode.PLAN_ONLY,
     sortOrder: 20,
   });
@@ -1511,7 +1801,7 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     description: "Strength and conditioning with athletic movement patterns.",
     imageUrl: "/images/classes/functional-strength.jpg",
     defaultDurationMinutes: 30,
-    defaultCapacity: 10,
+    defaultCapacity: COLLECTIVE_SESSION_CAPACITY,
     pricingMode: ServicePricingMode.SINGLE_OR_PLAN,
     sortOrder: 10,
   });
@@ -1522,7 +1812,7 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     description: "Private 1:1 or duo coaching on the reformer.",
     imageUrl: "/images/classes/private-reformer-coaching.jpg",
     defaultDurationMinutes: 30,
-    defaultCapacity: 10,
+    defaultCapacity: 1,
     pricingMode: ServicePricingMode.PLAN_ONLY,
     sortOrder: 10,
   });
@@ -1534,7 +1824,7 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     title: "Vinyasa Flow Brussels",
     description: "A full-spectrum vinyasa class with warm-up, flow and cooldown.",
     location: "Ixelles Studio A",
-    defaultCapacity: 10,
+    defaultCapacity: COLLECTIVE_SESSION_CAPACITY,
     defaultDurationMinutes: 30,
   });
   const rocketTemplate = await upsertClassTemplate({
@@ -1544,7 +1834,7 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     title: "Rocket Yoga Power Sequence",
     description: "Progressive rocket yoga with core and inversion prep.",
     location: "Ixelles Studio B",
-    defaultCapacity: 10,
+    defaultCapacity: COLLECTIVE_SESSION_CAPACITY,
     defaultDurationMinutes: 30,
   });
   const hathaTemplate = await upsertClassTemplate({
@@ -1554,7 +1844,7 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     title: "Hatha Reset Weekend",
     description: "Grounding hatha class focused on breath and posture quality.",
     location: "Ixelles Studio A",
-    defaultCapacity: 10,
+    defaultCapacity: COLLECTIVE_SESSION_CAPACITY,
     defaultDurationMinutes: 30,
   });
   const matPilatesTemplate = await upsertClassTemplate({
@@ -1564,7 +1854,7 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     title: "Mat Pilates Core Lab",
     description: "Core and glute-focused mat pilates with progression options.",
     location: "Etterbeek Studio C",
-    defaultCapacity: 10,
+    defaultCapacity: COLLECTIVE_SESSION_CAPACITY,
     defaultDurationMinutes: 30,
   });
   const reformerTemplate = await upsertClassTemplate({
@@ -1574,7 +1864,7 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     title: "Reformer Foundations Small Group",
     description: "Technique-first reformer foundations for beginners.",
     location: "Ixelles Reformer Room",
-    defaultCapacity: 10,
+    defaultCapacity: COLLECTIVE_SESSION_CAPACITY,
     defaultDurationMinutes: 30,
   });
   const functionalTemplate = await upsertClassTemplate({
@@ -1584,17 +1874,17 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
     title: "Functional Strength Express",
     description: "High-focus functional strength class with mobility warm-up.",
     location: "Etterbeek Performance Room",
-    defaultCapacity: 10,
+    defaultCapacity: COLLECTIVE_SESSION_CAPACITY,
     defaultDurationMinutes: 30,
   });
-  const privateReformerTemplate = await upsertClassTemplate({
+  await upsertClassTemplate({
     slug: "private-reformer-coaching-slot",
     classTypeId: privateReformerCoaching.id,
     defaultTeacherId: teachers.anaId,
     title: "Private Reformer Coaching",
     description: "Private coaching slot tailored to goals and mobility.",
     location: "Ixelles Private Studio",
-    defaultCapacity: 10,
+    defaultCapacity: 1,
     defaultDurationMinutes: 30,
   });
 
@@ -1609,79 +1899,687 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
       name: true,
       email: true,
     },
+    orderBy: { email: "asc" },
   });
-
-  if (clients.length === 0) {
-    throw new Error("Scheduling seed requires at least one CLIENT user.");
+  if (clients.length !== SEED_CLIENT_COUNT) {
+    throw new Error(`Scheduling seed requires exactly ${SEED_CLIENT_COUNT} active clients, got ${clients.length}.`);
   }
 
-  const rotation = [
+  const collectiveRotation = [
     { template: vinyasaTemplate, classTypeId: vinyasaYoga.id, teacherId: teachers.anaId },
     { template: rocketTemplate, classTypeId: rocketYoga.id, teacherId: teachers.sofiaId },
     { template: hathaTemplate, classTypeId: hathaYoga.id, teacherId: teachers.anaId },
     { template: matPilatesTemplate, classTypeId: matPilates.id, teacherId: teachers.elenaId },
     { template: reformerTemplate, classTypeId: reformerFoundations.id, teacherId: teachers.elenaId },
     { template: functionalTemplate, classTypeId: functionalStrength.id, teacherId: teachers.sofiaId },
-    { template: privateReformerTemplate, classTypeId: privateReformerCoaching.id, teacherId: teachers.anaId },
   ] as const;
 
-  const SLOT_DURATION_MINUTES = 30;
-  const SLOT_START_HOUR = 8;
-  const SLOT_END_HOUR = 20;
-  const slotsPerDay = (SLOT_END_HOUR - SLOT_START_HOUR) * 2;
+  const collectiveSessions: CollectiveSessionSeed[] = [];
+  const pastSessionTimePool = [
+    { hour: 7, minute: 0 },
+    { hour: 8, minute: 30 },
+    { hour: 12, minute: 0 },
+    { hour: 16, minute: 30 },
+    { hour: 18, minute: 0 },
+    { hour: 19, minute: 30 },
+  ] as const;
+  const pastWeekOffsets = [1, 3, 5] as const;
 
-  const dayCursor = new Date(scheduleWindowStart);
-  let dayIndex = 0;
-  while (dayCursor <= scheduleWindowEnd) {
-    const dayStart = new Date(dayCursor);
-    dayStart.setUTCHours(0, 0, 0, 0);
+  const weekCursor = startOfUtcDay(pastWindowStartUtc);
+  const dayOfWeek = weekCursor.getUTCDay();
+  weekCursor.setUTCDate(weekCursor.getUTCDate() + (dayOfWeek === 0 ? -6 : 1 - dayOfWeek));
 
-    for (let slotIndex = 0; slotIndex < slotsPerDay; slotIndex += 1) {
-      const hour = SLOT_START_HOUR + Math.floor(slotIndex / 2);
-      const minute = slotIndex % 2 === 0 ? 0 : 30;
-      const startsAt = new Date(dayStart);
-      startsAt.setUTCHours(hour, minute, 0, 0);
+  let pastWeekIndex = 0;
+  while (weekCursor <= pastWindowEndUtc) {
+    for (let slotInWeek = 0; slotInWeek < 3; slotInWeek += 1) {
+      const startsAt = addDaysUtc(weekCursor, pastWeekOffsets[slotInWeek]!);
+      const sessionTime = pastSessionTimePool[(pastWeekIndex * 3 + slotInWeek) % pastSessionTimePool.length]!;
+      startsAt.setUTCHours(sessionTime.hour, sessionTime.minute, 0, 0);
+      if (startsAt < pastWindowStartUtc || startsAt > pastWindowEndUtc) {
+        continue;
+      }
 
-      const sessionDefinition = rotation[(dayIndex * slotsPerDay + slotIndex) % rotation.length]!;
+      const def = collectiveRotation[(pastWeekIndex * 3 + slotInWeek) % collectiveRotation.length]!;
       const session = await upsertStudioSession({
-        classTemplateId: sessionDefinition.template.id,
-        classTypeId: sessionDefinition.classTypeId,
-        teacherId: sessionDefinition.teacherId,
-        title: sessionDefinition.template.title,
-        description: sessionDefinition.template.description ?? undefined,
-        location: sessionDefinition.template.location ?? undefined,
+        classTemplateId: def.template.id,
+        classTypeId: def.classTypeId,
+        teacherId: def.teacherId,
+        title: def.template.title,
+        description: def.template.description ?? undefined,
+        location: def.template.location ?? undefined,
         startsAt,
-        endsAt: new Date(startsAt.getTime() + SLOT_DURATION_MINUTES * 60 * 1000),
-        capacity: 10,
+        endsAt: new Date(startsAt.getTime() + 30 * 60 * 1000),
+        capacity: COLLECTIVE_SESSION_CAPACITY,
       });
+      await prisma.studioSession.update({
+        where: { id: session.id },
+        data: { status: StudioSessionStatus.COMPLETED },
+      });
+      const occupancyScore = rng.next();
+      const occupancyTarget =
+        occupancyScore < 0.25 ? rng.int(2, 5) : occupancyScore < 0.75 ? rng.int(6, 11) : rng.int(12, 14);
+      collectiveSessions.push({
+        id: session.id,
+        startsAt,
+        capacity: COLLECTIVE_SESSION_CAPACITY,
+        classTypeId: def.classTypeId,
+        isFuture: false,
+        occupancyTarget,
+      });
+    }
+    weekCursor.setUTCDate(weekCursor.getUTCDate() + 7);
+    pastWeekIndex += 1;
+  }
 
-      const randomizedClients = [...clients].sort(() => Math.random() - 0.5);
-      const bookingsToCreate = Math.min(Math.floor(Math.random() * 7), randomizedClients.length);
-      const selectedClients = randomizedClients.slice(0, bookingsToCreate);
+  const futureSlotsPerDay = 24;
+  const futureSlotStartHour = 8;
+  for (let dayOffset = 0; dayOffset < SEED_FUTURE_DAYS; dayOffset += 1) {
+    const dayStart = addDaysUtc(futureWindowStartUtc, dayOffset);
+    dayStart.setUTCHours(0, 0, 0, 0);
+    for (let slotIndex = 0; slotIndex < futureSlotsPerDay; slotIndex += 1) {
+      const startsAt = new Date(dayStart);
+      startsAt.setUTCHours(
+        futureSlotStartHour + Math.floor(slotIndex / 2),
+        slotIndex % 2 === 0 ? 0 : 30,
+        0,
+        0,
+      );
+      const def = collectiveRotation[(dayOffset * futureSlotsPerDay + slotIndex) % collectiveRotation.length]!;
+      const occupancyScore = rng.next();
+      let occupancyTarget = 0;
+      if (occupancyScore < FUTURE_OCCUPANCY_LOW_RATIO) {
+        occupancyTarget = rng.int(1, 4);
+      } else if (occupancyScore < FUTURE_OCCUPANCY_LOW_RATIO + FUTURE_OCCUPANCY_MEDIUM_RATIO) {
+        occupancyTarget = rng.int(5, 9);
+      } else if (occupancyScore < FUTURE_OCCUPANCY_LOW_RATIO + FUTURE_OCCUPANCY_MEDIUM_RATIO + FUTURE_OCCUPANCY_HIGH_RATIO) {
+        occupancyTarget = rng.int(10, 12);
+      } else if (
+        occupancyScore <
+        FUTURE_OCCUPANCY_LOW_RATIO +
+          FUTURE_OCCUPANCY_MEDIUM_RATIO +
+          FUTURE_OCCUPANCY_HIGH_RATIO +
+          FUTURE_OCCUPANCY_NEAR_FULL_RATIO
+      ) {
+        occupancyTarget = rng.int(13, 14);
+      } else {
+        occupancyTarget = COLLECTIVE_SESSION_CAPACITY;
+      }
 
-      for (const client of selectedClients) {
-        const bookedAt = new Date(startsAt.getTime() - 24 * 60 * 60 * 1000);
-        await prisma.booking.create({
+      const session = await upsertStudioSession({
+        classTemplateId: def.template.id,
+        classTypeId: def.classTypeId,
+        teacherId: def.teacherId,
+        title: def.template.title,
+        description: def.template.description ?? undefined,
+        location: def.template.location ?? undefined,
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 30 * 60 * 1000),
+        capacity: COLLECTIVE_SESSION_CAPACITY,
+      });
+      collectiveSessions.push({
+        id: session.id,
+        startsAt,
+        capacity: COLLECTIVE_SESSION_CAPACITY,
+        classTypeId: def.classTypeId,
+        isFuture: true,
+        occupancyTarget,
+      });
+    }
+  }
+
+  const catalogPrices = await prisma.price.findMany({
+    where: {
+      lookupKey: {
+        in: [
+          "collective-drop-in-eur-once-v1",
+          "qa-collective-5-pack-eur-once-v1",
+          "collective-10-pack-eur-once-v1",
+          "monthly-unlimited-collective-eur-monthly-v1",
+          "qa-private-5-pack-eur-once-v1",
+        ],
+      },
+      isActive: true,
+      isArchived: false,
+    },
+    include: { product: true },
+  });
+  const priceByLookup = new Map(catalogPrices.map((price) => [price.lookupKey, price]));
+  const entitlementRules = await prisma.entitlementRule.findMany({
+    where: { productId: { in: catalogPrices.map((price) => price.productId) }, isActive: true },
+  });
+  const entitlementRuleByProductId = new Map(entitlementRules.map((rule) => [rule.productId, rule]));
+  const requiredLookupKeys: PurchaseLookupKey[] = [
+    "collective-drop-in-eur-once-v1",
+    "qa-collective-5-pack-eur-once-v1",
+    "collective-10-pack-eur-once-v1",
+    "monthly-unlimited-collective-eur-monthly-v1",
+    "qa-private-5-pack-eur-once-v1",
+  ];
+  for (const lookupKey of requiredLookupKeys) {
+    if (!priceByLookup.get(lookupKey)) {
+      throw new Error(`Scheduling seed missing required catalog price ${lookupKey}.`);
+    }
+  }
+
+  const ownershipOrder: OwnershipState[] = [
+    "NO_PURCHASE",
+    "EXPIRED_ONLY",
+    "ACTIVE_DROP_IN",
+    "ACTIVE_5_PACK",
+    "ACTIVE_10_PACK",
+    "ACTIVE_MONTHLY",
+    "PRIVATE_ONLY",
+  ];
+  const ownershipPool: OwnershipState[] = [];
+  for (const state of ownershipOrder) {
+    for (let index = 0; index < ownershipCounts[state]; index += 1) {
+      ownershipPool.push(state);
+    }
+  }
+  if (ownershipPool.length !== clients.length) {
+    throw new Error(`Ownership pool mismatch: ${ownershipPool.length} != ${clients.length}`);
+  }
+  const ownershipPlan = rng.shuffle(clients).map((client, index) => ({
+    client,
+    ownershipState: ownershipPool[index]!,
+  }));
+
+  const usageTiers: UsageTier[] = ["HEAVY", "MODERATE", "LIGHT", "RETURNING", "INACTIVE"];
+  const usagePool: UsageTier[] = [];
+  for (const tier of usageTiers) {
+    const count = Math.floor(clients.length * usageRatios[tier]);
+    for (let index = 0; index < count; index += 1) {
+      usagePool.push(tier);
+    }
+  }
+  while (usagePool.length < clients.length) {
+    usagePool.push("LIGHT");
+  }
+  const usageByClientId = new Map<string, UsageTier>();
+  const usageAssignmentOrder = rng.shuffle(ownershipPlan);
+  for (let index = 0; index < clients.length; index += 1) {
+    usageByClientId.set(usageAssignmentOrder[index]!.client.id, usagePool[index]!);
+  }
+
+  const entitlementsByClient = new Map<string, SeedEntitlementState[]>();
+  let createdOrdersCount = 0;
+  let createdPaymentsCount = 0;
+  let createdEntitlementsCount = 0;
+  let createdSubscriptionContractsCount = 0;
+  let createdCreditLedgerEntriesCount = 0;
+
+  const pushEntitlement = (state: SeedEntitlementState) => {
+    const current = entitlementsByClient.get(state.clientId) ?? [];
+    current.push(state);
+    current.sort((a, b) => a.activatedAt.getTime() - b.activatedAt.getTime());
+    entitlementsByClient.set(state.clientId, current);
+  };
+
+  const createCommercialPurchase = async (input: {
+    clientId: string;
+    lookupKey: PurchaseLookupKey;
+    purchasedAt: Date;
+  }) => {
+    const price = priceByLookup.get(input.lookupKey);
+    if (!price) {
+      throw new Error(`Missing price for ${input.lookupKey}.`);
+    }
+    const rule = entitlementRuleByProductId.get(price.productId);
+    if (!rule) {
+      throw new Error(`Missing entitlement rule for product ${price.productId}.`);
+    }
+    const totalAmountMinor = price.unitAmountMinor;
+    const order = await prisma.order.create({
+      data: {
+        clientId: input.clientId,
+        subtotalAmountMinor: totalAmountMinor,
+        discountAmountMinor: 0,
+        totalAmountMinor,
+        currencyCode: price.currencyCode,
+        status: OrderStatus.PAID,
+        placedAt: input.purchasedAt,
+        notes: `seed-commercial-${input.lookupKey}`,
+      },
+    });
+    createdOrdersCount += 1;
+
+    await prisma.orderItem.create({
+      data: {
+        orderId: order.id,
+        productId: price.productId,
+        priceId: price.id,
+        quantity: 1,
+        productNameSnapshot: price.product.name,
+        priceNameSnapshot: price.name,
+        unitAmountMinor: totalAmountMinor,
+        lineSubtotalAmountMinor: totalAmountMinor,
+        lineDiscountAmountMinor: 0,
+        lineTotalAmountMinor: totalAmountMinor,
+        currencyCode: price.currencyCode,
+      },
+    });
+
+    await prisma.payment.create({
+      data: {
+        orderId: order.id,
+        status: PaymentStatus.SUCCEEDED,
+        method: PaymentMethod.CARD,
+        provider: PaymentProvider.STRIPE,
+        providerReference: `seed-payment-${order.id}`,
+        stripeCheckoutSessionId: `cs_test_seed_${order.id.slice(0, 20)}`,
+        stripeCustomerId: `cus_seed_${input.clientId.slice(0, 12)}`,
+        stripeCheckoutMode:
+          price.priceType === PriceType.RECURRING ? StripeCheckoutMode.SUBSCRIPTION : StripeCheckoutMode.PAYMENT,
+        amountMinor: totalAmountMinor,
+        currencyCode: price.currencyCode,
+        authorizedAt: input.purchasedAt,
+        capturedAt: input.purchasedAt,
+        createdAt: input.purchasedAt,
+      },
+    });
+    createdPaymentsCount += 1;
+
+    let expiresAt: Date | null = null;
+    let subscriptionContractId: string | null = null;
+    if (price.priceType === PriceType.RECURRING) {
+      const intervalCount = price.billingIntervalCount ?? 1;
+      expiresAt =
+        price.billingInterval === BillingInterval.MONTH
+          ? addMonthsUtc(input.purchasedAt, intervalCount)
+          : addDaysUtc(input.purchasedAt, 30 * intervalCount);
+      const contractStatus = expiresAt > seedDayUtc ? SubscriptionStatus.ACTIVE : SubscriptionStatus.EXPIRED;
+      const contract = await prisma.subscriptionContract.create({
+        data: {
+          clientId: input.clientId,
+          productId: price.productId,
+          priceId: price.id,
+          status: contractStatus,
+          startsAt: input.purchasedAt,
+          currentPeriodStart: input.purchasedAt,
+          currentPeriodEnd: expiresAt,
+          cancelAtPeriodEnd: contractStatus === SubscriptionStatus.EXPIRED,
+          endedAt: contractStatus === SubscriptionStatus.EXPIRED ? expiresAt : null,
+          provider: PaymentProvider.STRIPE,
+          providerSubscriptionReference: `sub_seed_${order.id.slice(0, 20)}`,
+        },
+      });
+      subscriptionContractId = contract.id;
+      createdSubscriptionContractsCount += 1;
+    } else if (rule.validForDays && rule.validForDays > 0) {
+      expiresAt = addDaysUtc(input.purchasedAt, rule.validForDays);
+    }
+
+    const entitlementStatus =
+      expiresAt && expiresAt <= endOfUtcDay(seedDayUtc)
+        ? ClientEntitlementStatus.EXPIRED
+        : ClientEntitlementStatus.ACTIVE;
+    const entitlement = await prisma.clientEntitlement.create({
+      data: {
+        clientId: input.clientId,
+        productId: price.productId,
+        orderId: order.id,
+        subscriptionContractId,
+        entitlementType: rule.entitlementType,
+        entitlementScope: rule.entitlementScope,
+        status: entitlementStatus,
+        activatedAt: input.purchasedAt,
+        expiresAt,
+      },
+    });
+    createdEntitlementsCount += 1;
+
+    let creditsGranted = 0;
+    if (rule.entitlementType === EntitlementType.SINGLE_USE) {
+      creditsGranted = 1;
+    } else if (rule.entitlementType === EntitlementType.CREDIT_PACK) {
+      creditsGranted = rule.quantity ?? 0;
+    }
+    if (creditsGranted > 0) {
+      await prisma.creditLedgerEntry.create({
+        data: {
+          clientId: input.clientId,
+          entryType: CreditLedgerEntryType.GRANT,
+          amount: creditsGranted,
+          happenedAt: input.purchasedAt,
+          entitlementId: entitlement.id,
+          orderId: order.id,
+          notes: `Seed entitlement grant (${input.lookupKey})`,
+        },
+      });
+      createdCreditLedgerEntriesCount += 1;
+    }
+
+    pushEntitlement({
+      id: entitlement.id,
+      orderId: order.id,
+      priceId: price.id,
+      clientId: input.clientId,
+      entitlementScope: rule.entitlementScope,
+      activatedAt: input.purchasedAt,
+      expiresAt,
+      unlimitedAccess: rule.entitlementType === EntitlementType.UNLIMITED_ACCESS,
+      creditsRemaining: creditsGranted,
+    });
+  };
+
+  const purchaseDaysAgo = (minDays: number, maxDays: number) => rng.int(minDays, maxDays);
+  for (const entry of ownershipPlan) {
+    const clientId = entry.client.id;
+    switch (entry.ownershipState) {
+      case "NO_PURCHASE":
+        break;
+      case "EXPIRED_ONLY":
+        await createCommercialPurchase({
+          clientId,
+          lookupKey: "qa-collective-5-pack-eur-once-v1",
+          purchasedAt: addDaysUtc(seedDayUtc, -purchaseDaysAgo(95, 118)),
+        });
+        if (rng.next() < 0.35) {
+          await createCommercialPurchase({
+            clientId,
+            lookupKey: "collective-drop-in-eur-once-v1",
+            purchasedAt: addDaysUtc(seedDayUtc, -purchaseDaysAgo(35, 80)),
+          });
+        }
+        break;
+      case "ACTIVE_DROP_IN":
+        await createCommercialPurchase({
+          clientId,
+          lookupKey: "collective-drop-in-eur-once-v1",
+          purchasedAt: addDaysUtc(seedDayUtc, -purchaseDaysAgo(2, 21)),
+        });
+        if (rng.next() < 0.4) {
+          await createCommercialPurchase({
+            clientId,
+            lookupKey: "collective-drop-in-eur-once-v1",
+            purchasedAt: addDaysUtc(seedDayUtc, -purchaseDaysAgo(35, 90)),
+          });
+        }
+        break;
+      case "ACTIVE_5_PACK":
+        await createCommercialPurchase({
+          clientId,
+          lookupKey: "qa-collective-5-pack-eur-once-v1",
+          purchasedAt: addDaysUtc(seedDayUtc, -purchaseDaysAgo(1, 50)),
+        });
+        if (rng.next() < 0.55) {
+          await createCommercialPurchase({
+            clientId,
+            lookupKey: "qa-collective-5-pack-eur-once-v1",
+            purchasedAt: addDaysUtc(seedDayUtc, -purchaseDaysAgo(55, 115)),
+          });
+        }
+        break;
+      case "ACTIVE_10_PACK":
+        await createCommercialPurchase({
+          clientId,
+          lookupKey: "collective-10-pack-eur-once-v1",
+          purchasedAt: addDaysUtc(seedDayUtc, -purchaseDaysAgo(1, 70)),
+        });
+        if (rng.next() < 0.4) {
+          await createCommercialPurchase({
+            clientId,
+            lookupKey: "qa-collective-5-pack-eur-once-v1",
+            purchasedAt: addDaysUtc(seedDayUtc, -purchaseDaysAgo(75, 118)),
+          });
+        }
+        break;
+      case "ACTIVE_MONTHLY":
+        await createCommercialPurchase({
+          clientId,
+          lookupKey: "monthly-unlimited-collective-eur-monthly-v1",
+          purchasedAt: addDaysUtc(seedDayUtc, -purchaseDaysAgo(2, 22)),
+        });
+        if (rng.next() < 0.7) {
+          await createCommercialPurchase({
+            clientId,
+            lookupKey: "monthly-unlimited-collective-eur-monthly-v1",
+            purchasedAt: addDaysUtc(seedDayUtc, -purchaseDaysAgo(35, 55)),
+          });
+        }
+        if (rng.next() < 0.35) {
+          await createCommercialPurchase({
+            clientId,
+            lookupKey: "qa-collective-5-pack-eur-once-v1",
+            purchasedAt: addDaysUtc(seedDayUtc, -purchaseDaysAgo(60, 110)),
+          });
+        }
+        break;
+      case "PRIVATE_ONLY":
+        await createCommercialPurchase({
+          clientId,
+          lookupKey: "qa-private-5-pack-eur-once-v1",
+          purchasedAt: addDaysUtc(seedDayUtc, -purchaseDaysAgo(10, 90)),
+        });
+        break;
+    }
+  }
+
+  const bookedPairs = new Set<string>();
+  let createdPastBookingsCount = 0;
+  let createdFutureBookingsCount = 0;
+  const tierWeight: Record<UsageTier, number> = {
+    HEAVY: 8,
+    MODERATE: 5,
+    LIGHT: 3,
+    RETURNING: 2,
+    INACTIVE: 0.2,
+  };
+  const recentlyActiveWindowStart = addDaysUtc(seedDayUtc, -21);
+
+  const pickEntitlementForSession = (clientId: string, sessionStartsAt: Date) => {
+    const entries = entitlementsByClient.get(clientId) ?? [];
+    return entries.find((entry) => {
+      if (entry.entitlementScope !== EntitlementScope.COLLECTIVE_CLASSES) {
+        return false;
+      }
+      if (sessionStartsAt < entry.activatedAt) {
+        return false;
+      }
+      if (entry.expiresAt && sessionStartsAt > entry.expiresAt) {
+        return false;
+      }
+      return entry.unlimitedAccess || entry.creditsRemaining > 0;
+    });
+  };
+
+  const ownershipStateByClientId = new Map(ownershipPlan.map((entry) => [entry.client.id, entry.ownershipState]));
+  const chooseCandidatesForSession = (session: CollectiveSessionSeed) => {
+    const candidates: Array<{ client: (typeof clients)[number]; weight: number }> = [];
+    for (const client of clients) {
+      const pairKey = `${client.id}::${session.id}`;
+      if (bookedPairs.has(pairKey)) {
+        continue;
+      }
+      const entitlement = pickEntitlementForSession(client.id, session.startsAt);
+      if (!entitlement) {
+        continue;
+      }
+      const usageTier = usageByClientId.get(client.id) ?? "LIGHT";
+      if (usageTier === "INACTIVE" && session.startsAt >= addDaysUtc(seedDayUtc, -30)) {
+        continue;
+      }
+      if (usageTier === "RETURNING" && session.startsAt > recentlyActiveWindowStart && session.startsAt < seedDayUtc) {
+        continue;
+      }
+      if (ownershipStateByClientId.get(client.id) === "ACTIVE_DROP_IN" && session.isFuture && rng.next() < 0.85) {
+        continue;
+      }
+      candidates.push({ client, weight: tierWeight[usageTier] ?? 1 });
+    }
+    return candidates;
+  };
+
+  const weightedPick = <T>(items: Array<{ value: T; weight: number }>) => {
+    if (items.length === 0) {
+      return null;
+    }
+    const totalWeight = items.reduce((sum, item) => sum + item.weight, 0);
+    if (totalWeight <= 0) {
+      return null;
+    }
+    const target = rng.next() * totalWeight;
+    let cursor = 0;
+    for (const item of items) {
+      cursor += item.weight;
+      if (target <= cursor) {
+        return item.value;
+      }
+    }
+    return items[items.length - 1]!.value;
+  };
+
+  const createBookingFromEntitlement = async (input: {
+    client: (typeof clients)[number];
+    session: CollectiveSessionSeed;
+    entitlement: SeedEntitlementState;
+    status: BookingStatus;
+    cancelledAt?: Date;
+  }) => {
+    const pairKey = `${input.client.id}::${input.session.id}`;
+    if (bookedPairs.has(pairKey)) {
+      return false;
+    }
+    const bookedAt = addDaysUtc(input.session.startsAt, -rng.int(1, 8));
+    const cancellationEligibleUntilAt = addDaysUtc(input.session.startsAt, -1);
+    cancellationEligibleUntilAt.setUTCHours(input.session.startsAt.getUTCHours(), input.session.startsAt.getUTCMinutes(), 0, 0);
+    const booking = await prisma.booking.create({
+      data: {
+        clientId: input.client.id,
+        studioSessionId: input.session.id,
+        orderId: input.entitlement.orderId,
+        status: input.status,
+        bookingIntent: BookingIntent.USE_PLAN,
+        paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
+        selectedEntitlementId: input.entitlement.id,
+        selectedPriceId: input.entitlement.priceId,
+        bookedAt,
+        customerName: input.client.name,
+        customerEmail: input.client.email,
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+        consentAcceptedAt: bookedAt,
+        cancellationEligibleUntilAt,
+        cancelledAt: input.cancelledAt ?? null,
+        creditRefundedAt: input.status === BookingStatus.CANCELLED ? input.cancelledAt ?? bookedAt : null,
+      },
+    });
+    bookedPairs.add(pairKey);
+
+    if (!input.entitlement.unlimitedAccess) {
+      input.entitlement.creditsRemaining -= 1;
+      await prisma.creditLedgerEntry.create({
+        data: {
+          clientId: input.client.id,
+          entryType: CreditLedgerEntryType.CONSUME,
+          amount: -1,
+          happenedAt: bookedAt,
+          entitlementId: input.entitlement.id,
+          bookingId: booking.id,
+          orderId: input.entitlement.orderId,
+          notes: "Seed booking credit consumption",
+        },
+      });
+      createdCreditLedgerEntriesCount += 1;
+      if (input.status === BookingStatus.CANCELLED) {
+        input.entitlement.creditsRemaining += 1;
+        await prisma.creditLedgerEntry.create({
           data: {
-            clientId: client.id,
-            studioSessionId: session.id,
-            status: BookingStatus.CONFIRMED,
-            bookingIntent: BookingIntent.SINGLE_BOOKING,
-            paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
-            bookedAt,
-            customerName: client.name,
-            customerEmail: client.email,
-            consentTermsAccepted: true,
-            consentPrivacyAccepted: true,
-            consentAcceptedAt: bookedAt,
+            clientId: input.client.id,
+            entryType: CreditLedgerEntryType.RESTORE,
+            amount: 1,
+            happenedAt: input.cancelledAt ?? bookedAt,
+            entitlementId: input.entitlement.id,
+            bookingId: booking.id,
+            orderId: input.entitlement.orderId,
+            notes: "Seed cancellation credit restore",
           },
         });
+        createdCreditLedgerEntriesCount += 1;
       }
     }
 
-    dayCursor.setUTCDate(dayCursor.getUTCDate() + 1);
-    dayIndex += 1;
+    if (input.session.isFuture) {
+      createdFutureBookingsCount += 1;
+    } else {
+      createdPastBookingsCount += 1;
+    }
+    return true;
+  };
+
+  collectiveSessions.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+  for (const session of collectiveSessions) {
+    const sessionCandidates = chooseCandidatesForSession(session);
+    let createdForSession = 0;
+    let guard = 0;
+    while (createdForSession < session.occupancyTarget && guard < 700) {
+      guard += 1;
+      const selectedClient = weightedPick(
+        sessionCandidates.map((candidate) => ({ value: candidate.client, weight: candidate.weight })),
+      );
+      if (!selectedClient) {
+        break;
+      }
+      const entitlement = pickEntitlementForSession(selectedClient.id, session.startsAt);
+      if (!entitlement) {
+        continue;
+      }
+
+      let status: BookingStatus = session.isFuture ? BookingStatus.CONFIRMED : BookingStatus.COMPLETED;
+      let cancelledAt: Date | undefined;
+      if (!session.isFuture) {
+        const statusScore = rng.next();
+        if (statusScore < 0.08) {
+          status = BookingStatus.CANCELLED;
+          cancelledAt = addDaysUtc(session.startsAt, -2);
+        } else if (statusScore < 0.18) {
+          status = BookingStatus.NO_SHOW;
+        }
+      }
+
+      const created = await createBookingFromEntitlement({
+        client: selectedClient,
+        session,
+        entitlement,
+        status,
+        cancelledAt,
+      });
+      if (!created) {
+        continue;
+      }
+      createdForSession += 1;
+    }
   }
+
+  const countByOwnership = (state: OwnershipState) =>
+    ownershipPlan.filter((entry) => entry.ownershipState === state).length;
+  const pastSessionsCount = collectiveSessions.filter((session) => !session.isFuture).length;
+  const futureSessions = collectiveSessions.filter((session) => session.isFuture);
+
+  return {
+    clientsSeeded: clients.length,
+    pastSessionsCount,
+    futureSessionsCount: futureSessions.length,
+    collectiveSessionCapacity: COLLECTIVE_SESSION_CAPACITY,
+    ordersCreatedCount: createdOrdersCount,
+    paymentsCreatedCount: createdPaymentsCount,
+    entitlementsCreatedCount: createdEntitlementsCount,
+    subscriptionContractsCreatedCount: createdSubscriptionContractsCount,
+    creditLedgerEntriesCreatedCount: createdCreditLedgerEntriesCount,
+    pastBookingsCount: createdPastBookingsCount,
+    futureBookingsCount: createdFutureBookingsCount,
+    nearFullFutureSessionsCount: futureSessions.filter((session) => session.occupancyTarget >= 13).length,
+    fullFutureSessionsCount: futureSessions.filter((session) => session.occupancyTarget >= COLLECTIVE_SESSION_CAPACITY).length,
+    ownershipDistribution: {
+      noPurchase: countByOwnership("NO_PURCHASE"),
+      expiredOnly: countByOwnership("EXPIRED_ONLY"),
+      activeDropIn: countByOwnership("ACTIVE_DROP_IN"),
+      active5Pack: countByOwnership("ACTIVE_5_PACK"),
+      active10Pack: countByOwnership("ACTIVE_10_PACK"),
+      activeMonthly: countByOwnership("ACTIVE_MONTHLY"),
+      privateOnly: countByOwnership("PRIVATE_ONLY"),
+    },
+  };
 }
 
 async function seedLearningFromJson() {
@@ -1927,8 +2825,8 @@ async function seedLearningFromJson() {
 async function seedDashboardInsightsTraffic(seedClient: { id: string }) {
   const DASHBOARD_TREND_MARKER = "seed-demo-trend";
   const DASHBOARD_TREND_CUSTOMER_EMAIL = "seed-demo-trend@yogapilatesfitness.local";
-  const teacherPasswordHash = await hash("Teacher123!", 12);
-  const clientPasswordHash = await hash("Client123!", 12);
+  const teacherPasswordHash = await hash("qwerty123456", 12);
+  const clientPasswordHash = await hash("qwerty123456", 12);
   const now = new Date();
 
   const staffByName = new Map<string, { id: string }>();
@@ -3018,69 +3916,317 @@ async function seedDashboardInsightsTraffic(seedClient: { id: string }) {
   }
 }
 
-async function verifyCleanSeed(clientEmail: string) {
-  const [userCount, productCount, futureSessionCount, cancelledSessionCount] = await prisma.$transaction([
-    prisma.user.count(),
-    prisma.product.count({ where: { isActive: true, isArchived: false } }),
-    prisma.studioSession.count({
-      where: { status: StudioSessionStatus.SCHEDULED, startsAt: { gte: new Date() } },
-    }),
-    prisma.studioSession.count({ where: { status: StudioSessionStatus.CANCELLED } }),
-  ]);
+async function verifyCleanSeed(
+  clientEmail: string,
+  schedulingSummary: Awaited<ReturnType<typeof seedScheduling>>,
+) {
+  const [totalClients, verifiedActiveClientsWithProfile, totalAdminsAndMasterAdmins, totalTeachers] =
+    await prisma.$transaction([
+      prisma.user.count({ where: { role: Role.CLIENT } }),
+      prisma.user.count({
+        where: {
+          role: Role.CLIENT,
+          emailVerified: { not: null },
+          isActive: true,
+          isInactive: false,
+          clientProfile: { isNot: null },
+        },
+      }),
+      prisma.user.count({ where: { role: { in: [Role.ADMIN, Role.MASTER_ADMIN] } } }),
+      prisma.user.count({ where: { role: Role.TEACHER } }),
+    ]);
 
-  if (userCount < 6) {
-    throw new Error(`Seed verification failed: expected at least 6 users, got ${userCount}.`);
+  if (totalClients !== SEED_CLIENT_COUNT) {
+    throw new Error(`Seed verification failed: expected ${SEED_CLIENT_COUNT} clients, got ${totalClients}.`);
   }
+  if (verifiedActiveClientsWithProfile !== SEED_CLIENT_COUNT) {
+    throw new Error(
+      `Seed verification failed: expected ${SEED_CLIENT_COUNT} verified active clients with profiles, got ${verifiedActiveClientsWithProfile}.`,
+    );
+  }
+  if (totalAdminsAndMasterAdmins !== 2) {
+    throw new Error(`Seed verification failed: expected 2 admin/master-admin users, got ${totalAdminsAndMasterAdmins}.`);
+  }
+  if (totalTeachers !== 3) {
+    throw new Error(`Seed verification failed: expected 3 teachers, got ${totalTeachers}.`);
+  }
+
+  const [productCount, collectivePastSessionsCount, collectiveFutureSessionsCount, collectiveCapacityMismatchCount] =
+    await prisma.$transaction([
+      prisma.product.count({ where: { isActive: true, isArchived: false } }),
+      prisma.studioSession.count({
+        where: {
+          startsAt: { gte: pastWindowStartUtc, lte: pastWindowEndUtc },
+          classType: { category: { slug: { not: "private-reformer-coach" } } },
+        },
+      }),
+      prisma.studioSession.count({
+        where: {
+          startsAt: { gte: futureWindowStartUtc, lte: futureWindowEndUtc },
+          classType: { category: { slug: { not: "private-reformer-coach" } } },
+        },
+      }),
+      prisma.studioSession.count({
+        where: {
+          startsAt: { gte: pastWindowStartUtc, lte: futureWindowEndUtc },
+          classType: { category: { slug: { not: "private-reformer-coach" } } },
+          capacity: { not: COLLECTIVE_SESSION_CAPACITY },
+        },
+      }),
+    ]);
 
   if (productCount !== 6) {
     throw new Error(`Seed verification failed: expected 6 active products, got ${productCount}.`);
   }
-
-  if (futureSessionCount < 2000) {
+  if (collectivePastSessionsCount !== schedulingSummary.pastSessionsCount) {
     throw new Error(
-      `Seed verification failed: expected at least 2000 future sessions, got ${futureSessionCount}.`,
+      `Seed verification failed: past collective session count mismatch (expected ${schedulingSummary.pastSessionsCount}, got ${collectivePastSessionsCount}).`,
+    );
+  }
+  if (collectiveFutureSessionsCount !== schedulingSummary.futureSessionsCount) {
+    throw new Error(
+      `Seed verification failed: future collective session count mismatch (expected ${schedulingSummary.futureSessionsCount}, got ${collectiveFutureSessionsCount}).`,
+    );
+  }
+  if (collectiveCapacityMismatchCount !== 0) {
+    throw new Error(`Seed verification failed: found ${collectiveCapacityMismatchCount} collective sessions with non-15 capacity.`);
+  }
+
+  const prices = await prisma.price.findMany({
+    where: {
+      lookupKey: {
+        in: [
+          "collective-drop-in-eur-once-v1",
+          "qa-collective-5-pack-eur-once-v1",
+          "collective-10-pack-eur-once-v1",
+          "monthly-unlimited-collective-eur-monthly-v1",
+          "qa-private-5-pack-eur-once-v1",
+        ],
+      },
+    },
+    select: { lookupKey: true, productId: true },
+  });
+  const productIdByLookupKey = new Map(prices.map((price) => [price.lookupKey, price.productId]));
+  const collectiveDropInProductId = productIdByLookupKey.get("collective-drop-in-eur-once-v1");
+  const collective5PackProductId = productIdByLookupKey.get("qa-collective-5-pack-eur-once-v1");
+  const collective10PackProductId = productIdByLookupKey.get("collective-10-pack-eur-once-v1");
+  const collectiveMonthlyProductId = productIdByLookupKey.get("monthly-unlimited-collective-eur-monthly-v1");
+  if (
+    !collectiveDropInProductId ||
+    !collective5PackProductId ||
+    !collective10PackProductId ||
+    !collectiveMonthlyProductId
+  ) {
+    throw new Error("Seed verification failed: missing required catalog product IDs for collective ownership checks.");
+  }
+
+  const [
+    activeCollectiveDropInClients,
+    activeCollective5PackClients,
+    activeCollective10PackClients,
+    activeMonthlyClients,
+    expiredCollectiveHistoryClients,
+    activeCollectiveOwnershipClients,
+  ] = await prisma.$transaction([
+    prisma.clientEntitlement.findMany({
+      where: {
+        productId: collectiveDropInProductId,
+        status: ClientEntitlementStatus.ACTIVE,
+      },
+      distinct: ["clientId"],
+      select: { clientId: true },
+    }),
+    prisma.clientEntitlement.findMany({
+      where: {
+        productId: collective5PackProductId,
+        status: ClientEntitlementStatus.ACTIVE,
+      },
+      distinct: ["clientId"],
+      select: { clientId: true },
+    }),
+    prisma.clientEntitlement.findMany({
+      where: {
+        productId: collective10PackProductId,
+        status: ClientEntitlementStatus.ACTIVE,
+      },
+      distinct: ["clientId"],
+      select: { clientId: true },
+    }),
+    prisma.clientEntitlement.findMany({
+      where: {
+        productId: collectiveMonthlyProductId,
+        status: ClientEntitlementStatus.ACTIVE,
+      },
+      distinct: ["clientId"],
+      select: { clientId: true },
+    }),
+    prisma.clientEntitlement.findMany({
+      where: {
+        entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+        status: ClientEntitlementStatus.EXPIRED,
+      },
+      distinct: ["clientId"],
+      select: { clientId: true },
+    }),
+    prisma.clientEntitlement.findMany({
+      where: {
+        entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+        status: ClientEntitlementStatus.ACTIVE,
+      },
+      distinct: ["clientId"],
+      select: { clientId: true },
+    }),
+  ]);
+
+  const allPrivateEntitlementClients = await prisma.clientEntitlement.findMany({
+    where: { entitlementScope: EntitlementScope.PRIVATE_CLASSES },
+    distinct: ["clientId"],
+    select: { clientId: true },
+  });
+  const allCollectiveEntitlementClients = await prisma.clientEntitlement.findMany({
+    where: { entitlementScope: EntitlementScope.COLLECTIVE_CLASSES },
+    distinct: ["clientId"],
+    select: { clientId: true },
+  });
+  const collectiveClientIdSet = new Set(allCollectiveEntitlementClients.map((entry) => entry.clientId));
+  const privateOnlyClientsCount = allPrivateEntitlementClients.filter(
+    (entry) => !collectiveClientIdSet.has(entry.clientId),
+  ).length;
+  const noActiveOwnershipCount = SEED_CLIENT_COUNT - activeCollectiveOwnershipClients.length;
+
+  if (activeCollectiveDropInClients.length === 0) {
+    throw new Error("Seed verification failed: expected active collective drop-in ownership.");
+  }
+  if (activeCollective5PackClients.length === 0) {
+    throw new Error("Seed verification failed: expected active collective 5-pack ownership.");
+  }
+  if (activeCollective10PackClients.length === 0) {
+    throw new Error("Seed verification failed: expected active collective 10-pack ownership.");
+  }
+  if (activeMonthlyClients.length === 0) {
+    throw new Error("Seed verification failed: expected active monthly collective ownership.");
+  }
+  if (expiredCollectiveHistoryClients.length === 0) {
+    throw new Error("Seed verification failed: expected expired collective history clients.");
+  }
+  if (noActiveOwnershipCount <= 0) {
+    throw new Error("Seed verification failed: expected some clients with no active collective ownership.");
+  }
+  if (privateOnlyClientsCount <= 0) {
+    throw new Error("Seed verification failed: expected private-only ownership clients.");
+  }
+
+  const [ordersCount, paymentsCount, entitlementsCount, subscriptionContractsCount, creditLedgerEntriesCount] =
+    await prisma.$transaction([
+      prisma.order.count(),
+      prisma.payment.count({ where: { status: PaymentStatus.SUCCEEDED } }),
+      prisma.clientEntitlement.count(),
+      prisma.subscriptionContract.count(),
+      prisma.creditLedgerEntry.count(),
+    ]);
+  if (ordersCount !== schedulingSummary.ordersCreatedCount) {
+    throw new Error(
+      `Seed verification failed: order count mismatch (expected ${schedulingSummary.ordersCreatedCount}, got ${ordersCount}).`,
+    );
+  }
+  if (paymentsCount !== schedulingSummary.paymentsCreatedCount) {
+    throw new Error(
+      `Seed verification failed: payment count mismatch (expected ${schedulingSummary.paymentsCreatedCount}, got ${paymentsCount}).`,
+    );
+  }
+  if (entitlementsCount !== schedulingSummary.entitlementsCreatedCount) {
+    throw new Error(
+      `Seed verification failed: entitlement count mismatch (expected ${schedulingSummary.entitlementsCreatedCount}, got ${entitlementsCount}).`,
+    );
+  }
+  if (subscriptionContractsCount !== schedulingSummary.subscriptionContractsCreatedCount) {
+    throw new Error(
+      `Seed verification failed: subscription contract count mismatch (expected ${schedulingSummary.subscriptionContractsCreatedCount}, got ${subscriptionContractsCount}).`,
+    );
+  }
+  if (creditLedgerEntriesCount !== schedulingSummary.creditLedgerEntriesCreatedCount) {
+    throw new Error(
+      `Seed verification failed: credit ledger count mismatch (expected ${schedulingSummary.creditLedgerEntriesCreatedCount}, got ${creditLedgerEntriesCount}).`,
     );
   }
 
-  if (cancelledSessionCount !== 0) {
-    throw new Error(`Seed verification failed: expected 0 cancelled sessions, got ${cancelledSessionCount}.`);
+  const [pastBookingsCount, futureBookingsCount] = await prisma.$transaction([
+    prisma.booking.count({
+      where: { studioSession: { startsAt: { gte: pastWindowStartUtc, lte: pastWindowEndUtc } } },
+    }),
+    prisma.booking.count({
+      where: { studioSession: { startsAt: { gte: futureWindowStartUtc, lte: futureWindowEndUtc } } },
+    }),
+  ]);
+  if (pastBookingsCount !== schedulingSummary.pastBookingsCount) {
+    throw new Error(
+      `Seed verification failed: past booking count mismatch (expected ${schedulingSummary.pastBookingsCount}, got ${pastBookingsCount}).`,
+    );
+  }
+  if (futureBookingsCount !== schedulingSummary.futureBookingsCount) {
+    throw new Error(
+      `Seed verification failed: future booking count mismatch (expected ${schedulingSummary.futureBookingsCount}, got ${futureBookingsCount}).`,
+    );
+  }
+
+  const duplicateActiveBookings = await prisma.$queryRaw<Array<{ duplicate_count: bigint }>>`
+    SELECT COUNT(*)::bigint AS duplicate_count
+    FROM (
+      SELECT "clientId", "studioSessionId", COUNT(*) AS row_count
+      FROM "Booking"
+      WHERE "clientId" IS NOT NULL
+        AND status IN ('CONFIRMED', 'COMPLETED', 'NO_SHOW')
+      GROUP BY "clientId", "studioSessionId"
+      HAVING COUNT(*) > 1
+    ) duplicates
+  `;
+  const duplicateCount = Number(duplicateActiveBookings[0]?.duplicate_count ?? 0n);
+  if (duplicateCount > 0) {
+    throw new Error(`Seed verification failed: found ${duplicateCount} duplicate active bookings.`);
+  }
+
+  const futureSessionIds = (
+    await prisma.studioSession.findMany({
+      where: {
+        startsAt: { gte: futureWindowStartUtc, lte: futureWindowEndUtc },
+        classType: { category: { slug: { not: "private-reformer-coach" } } },
+      },
+      select: { id: true, capacity: true },
+    })
+  ).map((session) => ({ id: session.id, capacity: session.capacity }));
+  const bookingsByFutureSession = await prisma.booking.groupBy({
+    by: ["studioSessionId"],
+    where: {
+      studioSessionId: { in: futureSessionIds.map((session) => session.id) },
+      status: { in: [BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.NO_SHOW] },
+    },
+    _count: { _all: true },
+  });
+  const bookingCountBySessionId = new Map(bookingsByFutureSession.map((entry) => [entry.studioSessionId, entry._count._all]));
+  const fullFutureSessions = futureSessionIds.filter(
+    (session) => (bookingCountBySessionId.get(session.id) ?? 0) >= session.capacity,
+  ).length;
+  const nearFullFutureSessions = futureSessionIds.filter(
+    (session) => (bookingCountBySessionId.get(session.id) ?? 0) >= 13,
+  ).length;
+  if (fullFutureSessions >= futureSessionIds.length) {
+    throw new Error("Seed verification failed: all future collective sessions are full.");
+  }
+  if (nearFullFutureSessions < 5) {
+    throw new Error(`Seed verification failed: expected at least 5 near-full future sessions, got ${nearFullFutureSessions}.`);
+  }
+
+  const waitlistEntriesCount = await prisma.waitlistEntry.count();
+  if (waitlistEntriesCount !== 0) {
+    throw new Error(`Seed verification failed: expected 0 waitlist entries in baseline seed, got ${waitlistEntriesCount}.`);
   }
 
   const client = await prisma.user.findUnique({
     where: { email: clientEmail },
-    select: {
-      id: true,
-      clientBookings: true,
-      subscriptionContracts: true,
-      clientEntitlements: true,
-      creditLedgerEntries: true,
-      clientLoyaltyLedgerEntries: true,
-      orders: true,
-    },
+    select: { id: true },
   });
-
   if (!client) {
     throw new Error("Seed verification failed: QA client missing.");
-  }
-
-  const [totalBookings, last30Bookings] = await prisma.$transaction([
-    prisma.booking.count(),
-    prisma.booking.count({
-      where: {
-        status: { in: COUNTED_BOOKING_STATUSES },
-        bookedAt: { gte: daysAgo(30) },
-      },
-    }),
-  ]);
-
-  if (totalBookings < 200) {
-    throw new Error(`Seed verification failed: expected at least 200 bookings, got ${totalBookings}.`);
-  }
-
-  if (last30Bookings < 50) {
-    throw new Error(
-      `Seed verification failed: expected at least 50 counted bookings in last 30 days, got ${last30Bookings}.`,
-    );
   }
 }
 
@@ -3091,15 +4237,17 @@ async function main() {
   await seedBookingPolicy();
   await seedCatalog(stripePriceIdByLookupKey);
   await seedMarketingDemoData({ createdById: users.admin.id });
-  await seedScheduling({
+  const schedulingSummary = await seedScheduling({
     anaId: users.teachers.ana.id,
     elenaId: users.teachers.elena.id,
     sofiaId: users.teachers.sofia.id,
   });
   await seedLearningFromJson();
-  await verifyCleanSeed(users.client.email);
+  await verifyCleanSeed(users.client.email, schedulingSummary);
 
-  console.info("Seed completed with 3-month 30-minute class scheduling.");
+  console.info(
+    `[seed] completed: clients=${schedulingSummary.clientsSeeded}, pastSessions=${schedulingSummary.pastSessionsCount}, futureSessions=${schedulingSummary.futureSessionsCount}, pastBookings=${schedulingSummary.pastBookingsCount}, futureBookings=${schedulingSummary.futureBookingsCount}, orders=${schedulingSummary.ordersCreatedCount}, payments=${schedulingSummary.paymentsCreatedCount}, entitlements=${schedulingSummary.entitlementsCreatedCount}, subscriptionContracts=${schedulingSummary.subscriptionContractsCreatedCount}, nearFullFutureSessions=${schedulingSummary.nearFullFutureSessionsCount}, fullFutureSessions=${schedulingSummary.fullFutureSessionsCount}.`,
+  );
 }
 
 main()

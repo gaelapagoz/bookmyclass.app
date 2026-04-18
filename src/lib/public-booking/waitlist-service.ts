@@ -121,10 +121,22 @@ async function getNextWaitlistPosition(tx: DbClient, studioSessionId: string): P
   return (maxPosition._max.position ?? 0) + 1;
 }
 
-async function resolvePromotionCoverage(tx: DbClient, input: {
+export type WaitlistPromotionCoverage = {
+  eligible: boolean;
+  consumeEntitlementId: string | null;
+  selectedEntitlementId: string | null;
+  reason:
+    | "active_subscription_unlimited"
+    | "active_unlimited_entitlement"
+    | "credit_entitlement_available"
+    | "no_eligible_entitlement"
+    | "insufficient_credits";
+};
+
+export async function resolveWaitlistPromotionCoverage(tx: DbClient, input: {
   clientId: string;
   requiredScope: EntitlementScope;
-}) {
+}): Promise<WaitlistPromotionCoverage> {
   const now = new Date();
 
   const activeSubscription = await tx.subscriptionContract.findFirst({
@@ -405,7 +417,7 @@ async function processWaitlistPromotionsForSession(tx: DbClient, input: {
       continue;
     }
 
-    const coverage = await resolvePromotionCoverage(tx, {
+    const coverage = await resolveWaitlistPromotionCoverage(tx, {
       clientId: candidate.clientId,
       requiredScope,
     });
@@ -844,4 +856,3 @@ export async function promoteWaitlistAfterCancellationWithinTx(tx: DbClient, inp
 }): Promise<PromotionResult> {
   return processWaitlistPromotionsForSession(tx, input);
 }
-

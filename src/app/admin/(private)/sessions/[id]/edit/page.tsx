@@ -237,14 +237,13 @@ export default async function AdminSessionEditPage({
               <option value="">Select a client</option>
               {options.clients.map((client) => (
                 <option key={client.id} value={client.id}>
-                  {client.name} ({client.email}) -{" "}
-                  {client.hasAvailableCredits ? `${client.availableCredits} credits available` : "No credits available"}
+                  {client.name} ({client.email}) - {client.eligibilityLabel}
                 </option>
               ))}
             </select>
           </label>
           <label className="block text-sm text-[#334155]">
-            Note (required when no credits are available)
+            Note (optional)
             <textarea
               name="note"
               rows={2}

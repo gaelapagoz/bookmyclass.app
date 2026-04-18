@@ -125,8 +125,7 @@ export default async function TeacherSessionRosterPage({
               <option value="">Select a client</option>
               {clients.map((client) => (
                 <option key={client.id} value={client.id}>
-                  {client.name} ({client.email}) -{" "}
-                  {client.hasAvailableCredits ? `${client.availableCredits} credits available` : "No eligible credits"}
+                  {client.name} ({client.email}) - {client.eligibilityLabel}
                 </option>
               ))}
             </select>
