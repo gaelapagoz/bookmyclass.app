@@ -46,4 +46,15 @@ describe("public homepage schedule", () => {
     const weeklyGrid = document.querySelector("#agenda .grid.grid-cols-1.gap-4.md\\:grid-cols-2.lg\\:grid-cols-7");
     expect(weeklyGrid).not.toBeNull();
   });
+
+  it("renders a stable hero container and full-width hero image sizing contract", async () => {
+    render(await HomePage({ searchParams: Promise.resolve({}) }));
+
+    const heroSection = screen.getByTestId("public-home-hero");
+    expect(heroSection.className).toContain("min-h-[560px]");
+    expect(heroSection.className).toContain("md:min-h-[78vh]");
+
+    const heroImage = screen.getByAltText("Woman practicing front split in a calm natural setting");
+    expect(heroImage).toHaveAttribute("sizes", "100vw");
+  });
 });

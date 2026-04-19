@@ -37,7 +37,7 @@ function headingClassName(size: "lg" | "md" = "lg") {
 }
 
 const serifHeadingClassName = "font-brand-serif";
-const heroMinHeightClassName = "min-h-[560px] sm:min-h-[620px] md:min-h-[78svh]";
+const heroMinHeightClassName = "min-h-[560px] sm:min-h-[620px] md:min-h-[78vh]";
 
 export default async function HomePage({
   searchParams,
@@ -83,7 +83,7 @@ export default async function HomePage({
 
   return (
     <div className="bg-[#f7f3ee] text-[#5a4b47]">
-      <section className={`relative overflow-hidden ${heroMinHeightClassName}`}>
+      <section data-testid="public-home-hero" className={`relative overflow-hidden ${heroMinHeightClassName}`}>
         <Image
           src="/images/yoga-split-main.jpg"
           alt="Woman practicing front split in a calm natural setting"

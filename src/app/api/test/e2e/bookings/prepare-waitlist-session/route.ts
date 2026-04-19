@@ -125,7 +125,8 @@ export async function POST(request: Request) {
   }
 
   const startsAt = new Date(now.getTime() + 72 * 60 * 60 * 1000);
-  startsAt.setUTCMinutes(0, 0, 0);
+  // Keep prepared sessions inside the admin calendar rendered window (06:00-21:59).
+  startsAt.setUTCHours(10, 0, 0, 0);
 
   // Avoid unique collisions on (classTemplateId, startsAt) with existing seeded sessions.
   let offsetHours = 0;
