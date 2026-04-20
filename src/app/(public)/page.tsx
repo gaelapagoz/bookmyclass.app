@@ -38,6 +38,7 @@ function headingClassName(size: "lg" | "md" = "lg") {
 
 const serifHeadingClassName = "font-brand-serif";
 const heroMinHeightClassName = "min-h-[560px] sm:min-h-[620px] md:min-h-[78vh]";
+const heroSectionClassName = `relative isolate w-full overflow-hidden ${heroMinHeightClassName}`;
 
 export default async function HomePage({
   searchParams,
@@ -83,16 +84,18 @@ export default async function HomePage({
 
   return (
     <div className="bg-[#f7f3ee] text-[#5a4b47]">
-      <section data-testid="public-home-hero" className={`relative overflow-hidden ${heroMinHeightClassName}`}>
-        <Image
-          src="/images/yoga-split-main.jpg"
-          alt="Woman practicing front split in a calm natural setting"
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#1f1414]/70 via-[#1f1414]/45 to-[#1f1414]/10" />
+      <section data-testid="public-home-hero" className={heroSectionClassName}>
+        <div className="absolute inset-0 -z-20">
+          <Image
+            src="/images/yoga-split-main.jpg"
+            alt="Woman practicing front split in a calm natural setting"
+            fill
+            priority
+            sizes="100vw"
+            className="h-full w-full object-cover object-center"
+          />
+        </div>
+        <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#1f1414]/70 via-[#1f1414]/45 to-[#1f1414]/10" />
         <div className={`relative mx-auto flex w-full max-w-6xl items-center px-6 py-20 md:px-10 ${heroMinHeightClassName}`}>
           <div className="max-w-2xl">
             <p className="mb-4 inline-flex rounded-full border border-[#e7d7cc]/70 bg-[#f5ece5]/20 px-4 py-1 text-xs tracking-[0.2em] text-[#f7efe8]">

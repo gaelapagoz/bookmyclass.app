@@ -51,10 +51,15 @@ describe("public homepage schedule", () => {
     render(await HomePage({ searchParams: Promise.resolve({}) }));
 
     const heroSection = screen.getByTestId("public-home-hero");
+    expect(heroSection.className).toContain("w-full");
+    expect(heroSection.className).toContain("isolate");
     expect(heroSection.className).toContain("min-h-[560px]");
     expect(heroSection.className).toContain("md:min-h-[78vh]");
 
     const heroImage = screen.getByAltText("Woman practicing front split in a calm natural setting");
     expect(heroImage).toHaveAttribute("sizes", "100vw");
+    expect(heroImage.className).toContain("h-full");
+    expect(heroImage.className).toContain("w-full");
+    expect(heroImage.className).toContain("object-cover");
   });
 });
