@@ -1,6 +1,7 @@
 import {
   BookingPaymentSelection,
   BookingStatus,
+  CheckoutSource,
   ClientEntitlementStatus,
   CreditLedgerEntryType,
   EntitlementType,
@@ -12,6 +13,10 @@ import {
   SubscriptionStatus,
 } from "@prisma/client";
 import type Stripe from "stripe";
+import {
+  CART_CHECKOUT_SOURCE,
+  isActiveSubscriptionForCartConstraint,
+} from "@/lib/cart/cart-contract";
 import { prisma } from "../db";
 import { getStripeClient } from "../payments/stripe";
 
@@ -19,6 +24,18 @@ type CatalogCheckoutMetadata = {
   userId: string;
   productId: string;
   priceId: string;
+};
+
+export type CheckoutReconciliationState = "PENDING" | "CONFIRMED" | "FAILED";
+
+type GenericCheckoutMetadata = {
+  userId: string | null;
+  productId: string | null;
+  priceId: string | null;
+  selectedPriceId: string | null;
+  paymentId: string | null;
+  orderId: string | null;
+  source: string | null;
 };
 
 function logInfo(message: string, context?: Record<string, unknown>) {
@@ -49,6 +66,47 @@ function parseCatalogCheckoutMetadata(
   }
 
   return { userId, productId, priceId };
+}
+
+function parseGenericCheckoutMetadata(
+  metadata: Stripe.Metadata | null | undefined,
+): GenericCheckoutMetadata {
+  return {
+    userId: getStringMetadataValue(metadata, "userId"),
+    productId: getStringMetadataValue(metadata, "productId"),
+    priceId: getStringMetadataValue(metadata, "priceId"),
+    selectedPriceId: getStringMetadataValue(metadata, "selectedPriceId"),
+    paymentId: getStringMetadataValue(metadata, "paymentId"),
+    orderId: getStringMetadataValue(metadata, "orderId"),
+    source: getStringMetadataValue(metadata, "source"),
+  };
+}
+
+function normalizeCheckoutSource(source: string | null): CheckoutSource | null {
+  if (source === "booking-flow") {
+    return CheckoutSource.BOOKING_FLOW;
+  }
+
+  if (source === "subscription-catalog") {
+    return CheckoutSource.SUBSCRIPTION_CATALOG;
+  }
+
+  if (source === CART_CHECKOUT_SOURCE) {
+    return CheckoutSource.CART_CHECKOUT_V1;
+  }
+
+  return null;
+}
+
+function resolveCheckoutSource(input: {
+  localCheckoutSource: CheckoutSource | null | undefined;
+  metadataSource: string | null;
+}): CheckoutSource | null {
+  if (input.localCheckoutSource) {
+    return input.localCheckoutSource;
+  }
+
+  return normalizeCheckoutSource(input.metadataSource);
 }
 
 function mapStripeSubscriptionStatus(status: Stripe.Subscription.Status): SubscriptionStatus {
@@ -82,6 +140,7 @@ function buildCreditLedgerIdempotencyKey(input: {
   entitlementId: string;
   orderId: string | null;
   bookingId: string | null;
+  linePriceId?: string | null;
 }): string {
   return [
     "stripe-fulfillment",
@@ -90,6 +149,7 @@ function buildCreditLedgerIdempotencyKey(input: {
     input.entitlementId,
     input.orderId ?? "no-order",
     input.bookingId ?? "no-booking",
+    input.linePriceId ?? "no-line-price",
   ].join(":");
 }
 
@@ -99,6 +159,7 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
   selectedPriceId: string;
   bookingId?: string | null;
   consumeCreditForBooking: boolean;
+  purchaseQuantity?: number;
 }) {
   const price = await prisma.price.findUnique({
     where: { id: input.selectedPriceId },
@@ -189,6 +250,7 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
       });
 
   if (typeof rule.quantity === "number" && rule.quantity > 0) {
+    const purchaseQuantity = Math.max(1, input.purchaseQuantity ?? 1);
     await prisma.creditLedgerEntry.createMany({
       data: {
         clientId: input.clientId,
@@ -196,13 +258,14 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
         orderId: input.orderId,
         bookingId: input.bookingId ?? null,
         entryType: CreditLedgerEntryType.GRANT,
-        amount: rule.quantity,
+        amount: rule.quantity * purchaseQuantity,
         idempotencyKey: buildCreditLedgerIdempotencyKey({
           type: "GRANT",
           clientId: input.clientId,
           entitlementId: entitlement.id,
           orderId: input.orderId,
           bookingId: input.bookingId ?? null,
+          linePriceId: input.selectedPriceId,
         }),
         notes: "Credits granted from successful Stripe product purchase.",
       },
@@ -229,6 +292,7 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
           entitlementId: entitlement.id,
           orderId: input.orderId,
           bookingId: input.bookingId,
+          linePriceId: input.selectedPriceId,
         }),
         notes: "Credit consumed for booking confirmed by Stripe purchase.",
       },
@@ -253,6 +317,7 @@ async function ensureOwnershipForSuccessfulPricePurchase(input: {
   orderId: string | null;
   selectedPriceId: string;
   consumeCreditForBooking: boolean;
+  purchaseQuantity?: number;
 }) {
   const bookingId = input.bookingId ?? null;
   if (bookingId && input.enforceBookingSelectionMatch) {
@@ -293,6 +358,7 @@ async function ensureOwnershipForSuccessfulPricePurchase(input: {
     orderId: input.orderId,
     selectedPriceId: input.selectedPriceId,
     consumeCreditForBooking: input.consumeCreditForBooking,
+    purchaseQuantity: input.purchaseQuantity,
   });
 
   if (entitlementId) {
@@ -308,6 +374,8 @@ async function ensureOwnershipForSuccessfulPricePurchase(input: {
 async function upsertSubscriptionContract(input: {
   stripeSubscription: Stripe.Subscription;
   metadata: CatalogCheckoutMetadata | null;
+  checkoutSource?: CheckoutSource | null;
+  userIdHint?: string | null;
 }) {
   const { stripeSubscription, metadata } = input;
   const stripeSubscriptionId = stripeSubscription.id;
@@ -339,7 +407,7 @@ async function upsertSubscriptionContract(input: {
     select: { clientId: true },
   });
 
-  const resolvedUserId = metadata?.userId ?? existingContract?.clientId ?? null;
+  const resolvedUserId = metadata?.userId ?? input.userIdHint ?? existingContract?.clientId ?? null;
   if (!resolvedUserId) {
     return;
   }
@@ -354,6 +422,47 @@ async function upsertSubscriptionContract(input: {
   const endedAt = stripeSubscription.ended_at
     ? fromUnixSeconds(stripeSubscription.ended_at, currentPeriodEnd)
     : null;
+  const nextStatus = mapStripeSubscriptionStatus(stripeSubscription.status);
+
+  if (
+    input.checkoutSource === CheckoutSource.CART_CHECKOUT_V1 &&
+    nextStatus === SubscriptionStatus.ACTIVE
+  ) {
+    const activeContracts = await prisma.subscriptionContract.findMany({
+      where: { clientId: resolvedUserId },
+      select: {
+        id: true,
+        status: true,
+        currentPeriodEnd: true,
+        endedAt: true,
+        provider: true,
+        providerSubscriptionReference: true,
+      },
+    });
+
+    const hasOtherActiveContract = activeContracts.some((contract) => {
+      if (
+        contract.provider === PaymentProvider.STRIPE &&
+        contract.providerSubscriptionReference === stripeSubscriptionId
+      ) {
+        return false;
+      }
+
+      return isActiveSubscriptionForCartConstraint({
+        status: contract.status,
+        currentPeriodEnd: contract.currentPeriodEnd,
+        endedAt: contract.endedAt,
+      });
+    });
+
+    if (hasOtherActiveContract) {
+      logWarn("cart subscription ownership skipped: active subscription already exists", {
+        clientId: resolvedUserId,
+        stripeSubscriptionId,
+      });
+      return;
+    }
+  }
 
   await prisma.subscriptionContract.upsert({
     where: {
@@ -363,7 +472,7 @@ async function upsertSubscriptionContract(input: {
       },
     },
     update: {
-      status: mapStripeSubscriptionStatus(stripeSubscription.status),
+      status: nextStatus,
       currentPeriodStart,
       currentPeriodEnd,
       cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
@@ -376,7 +485,7 @@ async function upsertSubscriptionContract(input: {
       clientId: resolvedUserId,
       productId: resolvedProductId,
       priceId: resolvedPriceId,
-      status: mapStripeSubscriptionStatus(stripeSubscription.status),
+      status: nextStatus,
       startsAt,
       currentPeriodStart,
       currentPeriodEnd,
@@ -431,6 +540,48 @@ async function upsertSyntheticSubscriptionContractForE2ETests(input: {
       providerSubscriptionReference,
     },
   });
+}
+
+async function ensureCartOrderOwnershipFromPersistedItems(input: {
+  orderId: string;
+  clientId: string;
+}) {
+  const order = await prisma.order.findUnique({
+    where: { id: input.orderId },
+    select: {
+      id: true,
+      clientId: true,
+      items: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          productId: true,
+          priceId: true,
+          quantity: true,
+          price: {
+            select: { priceType: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (!order || order.clientId !== input.clientId) {
+    return;
+  }
+
+  for (const item of order.items) {
+    if (item.price.priceType !== PriceType.ONE_TIME) {
+      continue;
+    }
+
+    await ensureOwnershipForSuccessfulPricePurchase({
+      clientId: input.clientId,
+      orderId: order.id,
+      selectedPriceId: item.priceId,
+      consumeCreditForBooking: false,
+      purchaseQuantity: item.quantity,
+    });
+  }
 }
 
 async function ensureCatalogPaymentForCompletedSession(input: {
@@ -518,6 +669,7 @@ async function ensureCatalogPaymentForCompletedSession(input: {
         status: true,
         bookingId: true,
         orderId: true,
+        checkoutSource: true,
         booking: {
           select: {
             id: true,
@@ -586,11 +738,10 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     return;
   }
 
-  const paymentIdFromMetadata = getStringMetadataValue(session.metadata, "paymentId");
+  const genericMetadata = parseGenericCheckoutMetadata(session.metadata);
+  const paymentIdFromMetadata = genericMetadata.paymentId;
   const bookingIdFromMetadata = getStringMetadataValue(session.metadata, "bookingId");
-  const selectedPriceIdFromMetadata =
-    getStringMetadataValue(session.metadata, "selectedPriceId") ??
-    getStringMetadataValue(session.metadata, "priceId");
+  const selectedPriceIdFromMetadata = genericMetadata.selectedPriceId ?? genericMetadata.priceId;
   const catalogMetadata = parseCatalogCheckoutMetadata(session.metadata);
   const paymentIntentId =
     typeof session.payment_intent === "string"
@@ -607,6 +758,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
           status: true,
           bookingId: true,
           orderId: true,
+          checkoutSource: true,
           booking: {
             select: {
               id: true,
@@ -625,6 +777,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
           status: true,
           bookingId: true,
           orderId: true,
+          checkoutSource: true,
           booking: {
             select: {
               id: true,
@@ -648,6 +801,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
         status: true,
         bookingId: true,
         orderId: true,
+        checkoutSource: true,
         booking: {
           select: {
             id: true,
@@ -659,6 +813,18 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
         },
       },
     });
+  }
+
+  const metadataSource = genericMetadata.source;
+  const metadataCheckoutSource = normalizeCheckoutSource(metadataSource);
+
+  if (!payment && metadataCheckoutSource === CheckoutSource.CART_CHECKOUT_V1) {
+    logWarn("cart-source checkout completion has no local payment; skipping metadata reconstruction", {
+      checkoutSessionId: session.id,
+      paymentIdFromMetadata,
+      paymentIntentId,
+    });
+    return;
   }
 
   if (!payment && catalogMetadata) {
@@ -680,6 +846,10 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   const booking = payment.booking;
   const orderId = payment.orderId ?? booking?.orderId ?? null;
+  const checkoutSource = resolveCheckoutSource({
+    localCheckoutSource: payment.checkoutSource,
+    metadataSource,
+  });
 
   await prisma.$transaction(async (tx) => {
     if (payment.status !== PaymentStatus.SUCCEEDED) {
@@ -693,6 +863,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
           stripeCheckoutSessionId: session.id,
           stripeCheckoutMode: session.mode === "subscription" ? "SUBSCRIPTION" : "PAYMENT",
           stripeCustomerId,
+          ...(checkoutSource ? { checkoutSource } : {}),
         },
       });
     } else if (stripeCustomerId) {
@@ -701,7 +872,13 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
         data: {
           stripeCustomerId,
           stripeCheckoutSessionId: session.id,
+          ...(checkoutSource ? { checkoutSource } : {}),
         },
+      });
+    } else if (checkoutSource) {
+      await tx.payment.update({
+        where: { id: payment.id },
+        data: { checkoutSource },
       });
     }
 
@@ -713,7 +890,27 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     }
   });
 
-  if (booking && booking.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE) {
+  if (checkoutSource === CheckoutSource.CART_CHECKOUT_V1) {
+    if (orderId) {
+      const resolvedClientId =
+        booking?.clientId ??
+        catalogMetadata?.userId ??
+        (
+          await prisma.order.findUnique({
+            where: { id: orderId },
+            select: { clientId: true },
+          })
+        )?.clientId ??
+        null;
+
+      if (resolvedClientId) {
+        await ensureCartOrderOwnershipFromPersistedItems({
+          orderId,
+          clientId: resolvedClientId,
+        });
+      }
+    }
+  } else if (booking && booking.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE) {
     if (booking.clientId && selectedPriceIdFromMetadata) {
       await ensureOwnershipForSuccessfulPricePurchase({
         clientId: booking.clientId,
@@ -738,9 +935,31 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       typeof session.subscription === "string" ? session.subscription : session.subscription?.id ?? null;
     if (stripeSubscriptionId) {
       const stripeSubscription = await getStripeClient().subscriptions.retrieve(stripeSubscriptionId);
+      let resolvedMetadata = catalogMetadata;
+      if (!resolvedMetadata && orderId) {
+        const orderItem = await prisma.orderItem.findFirst({
+          where: { orderId },
+          orderBy: { createdAt: "asc" },
+          select: {
+            productId: true,
+            priceId: true,
+            order: {
+              select: { clientId: true },
+            },
+          },
+        });
+        if (orderItem) {
+          resolvedMetadata = {
+            userId: orderItem.order.clientId,
+            productId: orderItem.productId,
+            priceId: orderItem.priceId,
+          };
+        }
+      }
       await upsertSubscriptionContract({
         stripeSubscription,
-        metadata: catalogMetadata,
+        metadata: resolvedMetadata,
+        checkoutSource,
       });
     } else if (process.env.E2E_TEST_MODE === "1") {
       const resolvedPriceId = selectedPriceIdFromMetadata ?? null;
@@ -777,9 +996,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
 async function handleSubscriptionContractChange(stripeSubscription: Stripe.Subscription) {
   const metadata = parseCatalogCheckoutMetadata(stripeSubscription.metadata);
+  const genericMetadata = parseGenericCheckoutMetadata(stripeSubscription.metadata);
   await upsertSubscriptionContract({
     stripeSubscription,
     metadata,
+    checkoutSource: normalizeCheckoutSource(genericMetadata.source),
+    userIdHint: genericMetadata.userId,
   });
 }
 
@@ -849,6 +1071,72 @@ export async function reconcileCatalogCheckoutSessionAfterReturn(input: {
 }) {
   logInfo("catalog manual reconciliation requested", input);
 
+  const localPayment = await prisma.payment.findFirst({
+    where: {
+      provider: PaymentProvider.STRIPE,
+      OR: [
+        { stripeCheckoutSessionId: input.checkoutSessionId },
+        { providerReference: input.checkoutSessionId },
+      ],
+    },
+    select: {
+      id: true,
+      status: true,
+      checkoutSource: true,
+      booking: {
+        select: {
+          clientId: true,
+        },
+      },
+      order: {
+        select: {
+          status: true,
+          clientId: true,
+          items: {
+            orderBy: { createdAt: "asc" },
+            take: 1,
+            select: { productId: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (localPayment) {
+    const localClientId = localPayment.order?.clientId ?? localPayment.booking?.clientId ?? null;
+    if (localClientId && localClientId !== input.userId) {
+      logWarn("catalog manual reconciliation aborted: local payment belongs to different user", {
+        checkoutSessionId: input.checkoutSessionId,
+        requestedUserId: input.userId,
+        paymentId: localPayment.id,
+      });
+      return;
+    }
+
+    if (input.productId) {
+      const localProductId = localPayment.order?.items[0]?.productId ?? null;
+      if (localProductId && localProductId !== input.productId) {
+        logWarn("catalog manual reconciliation aborted: local order product mismatch", {
+          checkoutSessionId: input.checkoutSessionId,
+          requestedProductId: input.productId,
+          localProductId,
+        });
+        return;
+      }
+    }
+
+    if (
+      localPayment.status === PaymentStatus.SUCCEEDED &&
+      localPayment.order?.status === OrderStatus.PAID
+    ) {
+      return;
+    }
+
+    const stripeSession = await getStripeClient().checkout.sessions.retrieve(input.checkoutSessionId);
+    await handleCheckoutCompleted(stripeSession);
+    return;
+  }
+
   const stripeSession = await getStripeClient().checkout.sessions.retrieve(input.checkoutSessionId);
   const metadata = parseCatalogCheckoutMetadata(stripeSession.metadata);
 
@@ -878,6 +1166,79 @@ export async function reconcileCatalogCheckoutSessionAfterReturn(input: {
   }
 
   await handleCheckoutCompleted(stripeSession);
+}
+
+export async function getCheckoutSessionReconciliationState(input: {
+  checkoutSessionId: string;
+  userId: string;
+}): Promise<{
+  reconciliationState: CheckoutReconciliationState;
+  paymentStatus: PaymentStatus | null;
+  orderStatus: OrderStatus | null;
+}> {
+  const payment = await prisma.payment.findFirst({
+    where: {
+      provider: PaymentProvider.STRIPE,
+      AND: [
+        {
+          OR: [
+            { stripeCheckoutSessionId: input.checkoutSessionId },
+            { providerReference: input.checkoutSessionId },
+          ],
+        },
+        {
+          OR: [
+            { order: { clientId: input.userId } },
+            { booking: { clientId: input.userId } },
+          ],
+        },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      status: true,
+      order: {
+        select: { status: true },
+      },
+    },
+  });
+
+  if (!payment) {
+    return {
+      reconciliationState: "PENDING",
+      paymentStatus: null,
+      orderStatus: null,
+    };
+  }
+
+  const paymentStatus = payment.status;
+  const orderStatus = payment.order?.status ?? null;
+
+  if (paymentStatus === PaymentStatus.SUCCEEDED && orderStatus === OrderStatus.PAID) {
+    return {
+      reconciliationState: "CONFIRMED",
+      paymentStatus,
+      orderStatus,
+    };
+  }
+
+  if (
+    paymentStatus === PaymentStatus.FAILED ||
+    orderStatus === OrderStatus.CANCELLED ||
+    orderStatus === OrderStatus.REFUNDED
+  ) {
+    return {
+      reconciliationState: "FAILED",
+      paymentStatus,
+      orderStatus,
+    };
+  }
+
+  return {
+    reconciliationState: "PENDING",
+    paymentStatus,
+    orderStatus,
+  };
 }
 
 async function handleCheckoutExpired(session: Stripe.Checkout.Session) {

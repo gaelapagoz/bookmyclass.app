@@ -52,6 +52,15 @@ export async function createStripeCheckoutSession(
   return getStripeClient().checkout.sessions.create(input);
 }
 
+export async function createStripeCheckoutSessionWithIdempotency(input: {
+  params: Stripe.Checkout.SessionCreateParams;
+  idempotencyKey: string;
+}): Promise<Stripe.Checkout.Session> {
+  return getStripeClient().checkout.sessions.create(input.params, {
+    idempotencyKey: input.idempotencyKey,
+  });
+}
+
 export async function createStripeBillingPortalSession(input: {
   customer: string;
   returnUrl: string;

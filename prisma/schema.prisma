@@ -154,6 +154,12 @@ enum PaymentProvider {
   OTHER
 }
 
+enum CheckoutSource {
+  BOOKING_FLOW
+  SUBSCRIPTION_CATALOG
+  CART_CHECKOUT_V1
+}
+
 enum StripeCheckoutMode {
   PAYMENT
   SUBSCRIPTION
@@ -754,6 +760,7 @@ model Payment {
   stripeCheckoutSessionId String?   @unique
   stripeCustomerId  String?
   stripeCheckoutMode StripeCheckoutMode?
+  checkoutSource    CheckoutSource?
   amountMinor       Int
   currencyCode      String
   authorizedAt      DateTime?
@@ -769,6 +776,35 @@ model Payment {
   @@index([orderId, status, createdAt])
   @@index([bookingId, status, createdAt])
   @@index([provider, providerReference])
+  @@index([checkoutSource, createdAt])
+}
+
+model CartCheckoutIdempotency {
+  id              String                       @id @default(cuid())
+  userId          String
+  idempotencyKey  String
+  cartHash        String
+  state           CartCheckoutIdempotencyState
+  orderId         String?
+  paymentId       String?
+  stripeRequestPayload Json?
+  responseStatus  Int?
+  responseCode    String?
+  responseMessage String?
+  responseBody    Json?
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+}
+
+enum CartCheckoutIdempotencyState {
+  IN_PROGRESS
+  SUCCEEDED
+  FAILED_BEFORE_WRITE
+  FAILED_AFTER_WRITE_PRE_STRIPE
+  FAILED_STRIPE_UNCERTAIN
 }
 
 model SubscriptionContract {

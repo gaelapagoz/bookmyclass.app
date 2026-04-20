@@ -2,6 +2,7 @@ import "./helpers/setup-env";
 import {
   BookingPaymentSelection,
   BookingStatus,
+  CheckoutSource,
   ClientEntitlementStatus,
   CreditLedgerEntryType,
   EntitlementScope,
@@ -44,7 +45,11 @@ vi.mock("../../src/lib/payments/stripe", () => ({
 }));
 
 import { POST as handleStripeWebhook } from "../../src/app/api/stripe/webhook/route";
-import { reconcileCheckoutSessionAfterReturn } from "../../src/lib/public-booking/stripe-webhook-service";
+import {
+  getCheckoutSessionReconciliationState,
+  reconcileCatalogCheckoutSessionAfterReturn,
+  reconcileCheckoutSessionAfterReturn,
+} from "../../src/lib/public-booking/stripe-webhook-service";
 
 async function createWebhookFixture(input: {
   paymentSelection: BookingPaymentSelection;
@@ -443,6 +448,429 @@ async function createRecurringCatalogCheckoutFixture() {
   });
 
   return { client, product, price, order, payment };
+}
+
+async function createCartCheckoutMultiLineFixture() {
+  const client = await prisma.user.create({
+    data: {
+      name: "Cart Multi Client",
+      email: `client.cart.multi.${Date.now()}@example.test`,
+      role: Role.CLIENT,
+    },
+  });
+
+  const firstProduct = await prisma.product.create({
+    data: {
+      name: "Cart Pack A",
+      slug: `cart-pack-a-${Date.now()}`,
+      productType: ProductType.CLASS_PACK,
+      isActive: true,
+      isArchived: false,
+      sortOrder: 1,
+    },
+  });
+  const secondProduct = await prisma.product.create({
+    data: {
+      name: "Cart Pack B",
+      slug: `cart-pack-b-${Date.now()}`,
+      productType: ProductType.CLASS_PACK,
+      isActive: true,
+      isArchived: false,
+      sortOrder: 2,
+    },
+  });
+
+  const firstPrice = await prisma.price.create({
+    data: {
+      productId: firstProduct.id,
+      lookupKey: `cart-pack-a-price-${Date.now()}`,
+      name: "Pack A",
+      priceType: PriceType.ONE_TIME,
+      currencyCode: "EUR",
+      unitAmountMinor: 5000,
+      isActive: true,
+      isArchived: false,
+    },
+  });
+  const secondPrice = await prisma.price.create({
+    data: {
+      productId: secondProduct.id,
+      lookupKey: `cart-pack-b-price-${Date.now()}`,
+      name: "Pack B",
+      priceType: PriceType.ONE_TIME,
+      currencyCode: "EUR",
+      unitAmountMinor: 3000,
+      isActive: true,
+      isArchived: false,
+    },
+  });
+
+  await prisma.entitlementRule.create({
+    data: {
+      productId: firstProduct.id,
+      entitlementType: EntitlementType.CREDIT_PACK,
+      entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+      quantity: 5,
+      isActive: true,
+    },
+  });
+  await prisma.entitlementRule.create({
+    data: {
+      productId: secondProduct.id,
+      entitlementType: EntitlementType.CREDIT_PACK,
+      entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+      quantity: 3,
+      isActive: true,
+    },
+  });
+
+  const order = await prisma.order.create({
+    data: {
+      clientId: client.id,
+      subtotalAmountMinor: 11000,
+      discountAmountMinor: 0,
+      totalAmountMinor: 11000,
+      currencyCode: "EUR",
+      status: OrderStatus.PLACED,
+      notes: "Cart multi-line fixture",
+      items: {
+        create: [
+          {
+            productId: firstProduct.id,
+            priceId: firstPrice.id,
+            quantity: 1,
+            productNameSnapshot: firstProduct.name,
+            priceNameSnapshot: firstPrice.name,
+            unitAmountMinor: firstPrice.unitAmountMinor,
+            lineSubtotalAmountMinor: firstPrice.unitAmountMinor,
+            lineDiscountAmountMinor: 0,
+            lineTotalAmountMinor: firstPrice.unitAmountMinor,
+            currencyCode: "EUR",
+          },
+          {
+            productId: secondProduct.id,
+            priceId: secondPrice.id,
+            quantity: 2,
+            productNameSnapshot: secondProduct.name,
+            priceNameSnapshot: secondPrice.name,
+            unitAmountMinor: secondPrice.unitAmountMinor,
+            lineSubtotalAmountMinor: secondPrice.unitAmountMinor * 2,
+            lineDiscountAmountMinor: 0,
+            lineTotalAmountMinor: secondPrice.unitAmountMinor * 2,
+            currencyCode: "EUR",
+          },
+        ],
+      },
+    },
+    select: { id: true },
+  });
+
+  const checkoutSessionId = `cs_cart_multi_${Date.now()}`;
+  const payment = await prisma.payment.create({
+    data: {
+      orderId: order.id,
+      status: PaymentStatus.PENDING,
+      method: PaymentMethod.CARD,
+      provider: PaymentProvider.STRIPE,
+      providerReference: checkoutSessionId,
+      stripeCheckoutSessionId: checkoutSessionId,
+      checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+      amountMinor: 11000,
+      currencyCode: "EUR",
+    },
+  });
+
+  return { client, order, payment, firstProduct, secondProduct, firstPrice, secondPrice, checkoutSessionId };
+}
+
+async function createCartCheckoutSameProductMultiLineFixture() {
+  const client = await prisma.user.create({
+    data: {
+      name: "Cart Same Product Client",
+      email: `client.cart.same-product.${Date.now()}@example.test`,
+      role: Role.CLIENT,
+    },
+  });
+
+  const product = await prisma.product.create({
+    data: {
+      name: "Cart Same Product Pack",
+      slug: `cart-same-product-${Date.now()}`,
+      productType: ProductType.CLASS_PACK,
+      isActive: true,
+      isArchived: false,
+      sortOrder: 1,
+    },
+  });
+
+  const firstPrice = await prisma.price.create({
+    data: {
+      productId: product.id,
+      lookupKey: `cart-same-product-price-a-${Date.now()}`,
+      name: "Pack A",
+      priceType: PriceType.ONE_TIME,
+      currencyCode: "EUR",
+      unitAmountMinor: 5000,
+      isActive: true,
+      isArchived: false,
+    },
+  });
+  const secondPrice = await prisma.price.create({
+    data: {
+      productId: product.id,
+      lookupKey: `cart-same-product-price-b-${Date.now()}`,
+      name: "Pack B",
+      priceType: PriceType.ONE_TIME,
+      currencyCode: "EUR",
+      unitAmountMinor: 7000,
+      isActive: true,
+      isArchived: false,
+    },
+  });
+
+  await prisma.entitlementRule.create({
+    data: {
+      productId: product.id,
+      entitlementType: EntitlementType.CREDIT_PACK,
+      entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+      quantity: 5,
+      isActive: true,
+    },
+  });
+
+  const order = await prisma.order.create({
+    data: {
+      clientId: client.id,
+      subtotalAmountMinor: firstPrice.unitAmountMinor + secondPrice.unitAmountMinor * 2,
+      discountAmountMinor: 0,
+      totalAmountMinor: firstPrice.unitAmountMinor + secondPrice.unitAmountMinor * 2,
+      currencyCode: "EUR",
+      status: OrderStatus.PLACED,
+      notes: "Cart same-product multi-line fixture",
+      items: {
+        create: [
+          {
+            productId: product.id,
+            priceId: firstPrice.id,
+            quantity: 1,
+            productNameSnapshot: product.name,
+            priceNameSnapshot: firstPrice.name,
+            unitAmountMinor: firstPrice.unitAmountMinor,
+            lineSubtotalAmountMinor: firstPrice.unitAmountMinor,
+            lineDiscountAmountMinor: 0,
+            lineTotalAmountMinor: firstPrice.unitAmountMinor,
+            currencyCode: "EUR",
+          },
+          {
+            productId: product.id,
+            priceId: secondPrice.id,
+            quantity: 2,
+            productNameSnapshot: product.name,
+            priceNameSnapshot: secondPrice.name,
+            unitAmountMinor: secondPrice.unitAmountMinor,
+            lineSubtotalAmountMinor: secondPrice.unitAmountMinor * 2,
+            lineDiscountAmountMinor: 0,
+            lineTotalAmountMinor: secondPrice.unitAmountMinor * 2,
+            currencyCode: "EUR",
+          },
+        ],
+      },
+    },
+    select: { id: true },
+  });
+
+  const checkoutSessionId = `cs_cart_same_product_${Date.now()}`;
+  const payment = await prisma.payment.create({
+    data: {
+      orderId: order.id,
+      status: PaymentStatus.PENDING,
+      method: PaymentMethod.CARD,
+      provider: PaymentProvider.STRIPE,
+      providerReference: checkoutSessionId,
+      stripeCheckoutSessionId: checkoutSessionId,
+      checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+      amountMinor: firstPrice.unitAmountMinor + secondPrice.unitAmountMinor * 2,
+      currencyCode: "EUR",
+    },
+  });
+
+  return { client, product, order, payment, firstPrice, secondPrice, checkoutSessionId };
+}
+
+async function createCartRecurringCheckoutFixture() {
+  const client = await prisma.user.create({
+    data: {
+      name: "Cart Recurring Client",
+      email: `client.cart.recurring.${Date.now()}@example.test`,
+      role: Role.CLIENT,
+    },
+  });
+
+  const product = await prisma.product.create({
+    data: {
+      name: "Cart Recurring Product",
+      slug: `cart-recurring-${Date.now()}`,
+      productType: ProductType.UNLIMITED_MEMBERSHIP,
+      isActive: true,
+      isArchived: false,
+      sortOrder: 1,
+    },
+  });
+
+  const price = await prisma.price.create({
+    data: {
+      productId: product.id,
+      lookupKey: `cart-recurring-price-${Date.now()}`,
+      name: "Cart Recurring Price",
+      priceType: PriceType.RECURRING,
+      billingInterval: "MONTH",
+      billingIntervalCount: 1,
+      currencyCode: "EUR",
+      unitAmountMinor: 12900,
+      stripePriceId: `price_cart_recurring_${Date.now()}`,
+      isActive: true,
+      isArchived: false,
+    },
+  });
+
+  const order = await prisma.order.create({
+    data: {
+      clientId: client.id,
+      subtotalAmountMinor: price.unitAmountMinor,
+      discountAmountMinor: 0,
+      totalAmountMinor: price.unitAmountMinor,
+      currencyCode: "EUR",
+      status: OrderStatus.PLACED,
+      notes: "Cart recurring fixture",
+      items: {
+        create: {
+          productId: product.id,
+          priceId: price.id,
+          quantity: 1,
+          productNameSnapshot: product.name,
+          priceNameSnapshot: price.name,
+          unitAmountMinor: price.unitAmountMinor,
+          lineSubtotalAmountMinor: price.unitAmountMinor,
+          lineDiscountAmountMinor: 0,
+          lineTotalAmountMinor: price.unitAmountMinor,
+          currencyCode: "EUR",
+        },
+      },
+    },
+    select: { id: true },
+  });
+
+  const checkoutSessionId = `cs_cart_recurring_${Date.now()}`;
+  const payment = await prisma.payment.create({
+    data: {
+      orderId: order.id,
+      status: PaymentStatus.PENDING,
+      method: PaymentMethod.CARD,
+      provider: PaymentProvider.STRIPE,
+      providerReference: checkoutSessionId,
+      stripeCheckoutSessionId: checkoutSessionId,
+      checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+      amountMinor: price.unitAmountMinor,
+      currencyCode: "EUR",
+    },
+  });
+
+  return { client, product, price, order, payment, checkoutSessionId };
+}
+
+async function createBookingOnlyPaymentFixture() {
+  const category = await createClassCategory(prisma, {
+    name: "Booking-only Category",
+    slug: `booking-only-cat-${Date.now()}`,
+    sortOrder: 1,
+    isActive: true,
+  });
+  const classType = await createClassType(prisma, {
+    categoryId: category.id,
+    name: "Booking-only Class",
+    slug: `booking-only-class-${Date.now()}`,
+    sortOrder: 1,
+    isActive: true,
+    isVisible: true,
+  });
+  const teacher = await prisma.user.create({
+    data: {
+      name: "Booking-only Teacher",
+      email: `teacher.booking-only.${Date.now()}@example.test`,
+      role: Role.TEACHER,
+    },
+  });
+  const template = await prisma.classTemplate.create({
+    data: {
+      classTypeId: classType.id,
+      defaultTeacherId: teacher.id,
+      title: "Booking-only Template",
+      slug: `booking-only-template-${Date.now()}`,
+      defaultCapacity: 10,
+      defaultDurationMinutes: 60,
+      isActive: true,
+      isPublished: true,
+    },
+  });
+  const startsAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  const session = await prisma.studioSession.create({
+    data: {
+      classTemplateId: template.id,
+      classTypeId: classType.id,
+      teacherId: teacher.id,
+      title: "Booking-only Session",
+      startsAt,
+      endsAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
+      capacity: 10,
+      status: StudioSessionStatus.SCHEDULED,
+      isPublished: true,
+    },
+  });
+
+  const owner = await prisma.user.create({
+    data: {
+      name: "Booking Owner",
+      email: `booking.owner.${Date.now()}@example.test`,
+      role: Role.CLIENT,
+    },
+  });
+  const otherUser = await prisma.user.create({
+    data: {
+      name: "Booking Other User",
+      email: `booking.other.${Date.now()}@example.test`,
+      role: Role.CLIENT,
+    },
+  });
+
+  const booking = await prisma.booking.create({
+    data: {
+      studioSessionId: session.id,
+      clientId: owner.id,
+      status: BookingStatus.PENDING,
+      customerName: owner.name,
+      customerEmail: owner.email,
+      customerPhone: "+32000000000",
+      consentTermsAccepted: true,
+      consentPrivacyAccepted: true,
+      consentAcceptedAt: new Date(),
+    },
+  });
+
+  const checkoutSessionId = `cs_booking_only_${Date.now()}`;
+  const payment = await prisma.payment.create({
+    data: {
+      bookingId: booking.id,
+      status: PaymentStatus.PENDING,
+      method: PaymentMethod.CARD,
+      provider: PaymentProvider.STRIPE,
+      providerReference: checkoutSessionId,
+      stripeCheckoutSessionId: checkoutSessionId,
+      amountMinor: 2200,
+      currencyCode: "EUR",
+    },
+  });
+
+  return { owner, otherUser, booking, payment, checkoutSessionId };
 }
 describe("POST /api/stripe/webhook", () => {
   beforeEach(async () => {
@@ -1413,6 +1841,506 @@ describe("POST /api/stripe/webhook", () => {
     });
 
     expect(balance._sum.amount).toBe(10);
+  });
+
+  it("finalizes cart-source multi-line checkout from persisted local order items", async () => {
+    const fixture = await createCartCheckoutMultiLineFixture();
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: fixture.checkoutSessionId,
+          payment_status: "paid",
+          mode: "payment",
+          metadata: {
+            source: "subscription-catalog",
+            paymentId: fixture.payment.id,
+            orderId: fixture.order.id,
+            userId: fixture.client.id,
+            productId: "wrong_product_id",
+            priceId: "wrong_price_id",
+            selectedPriceId: "wrong_price_id",
+          },
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const payment = await prisma.payment.findUnique({
+      where: { id: fixture.payment.id },
+      select: { status: true, checkoutSource: true },
+    });
+    const order = await prisma.order.findUnique({
+      where: { id: fixture.order.id },
+      select: { status: true },
+    });
+    expect(payment?.status).toBe(PaymentStatus.SUCCEEDED);
+    expect(payment?.checkoutSource).toBe(CheckoutSource.CART_CHECKOUT_V1);
+    expect(order?.status).toBe(OrderStatus.PAID);
+
+    const firstEntitlement = await prisma.clientEntitlement.findFirst({
+      where: { clientId: fixture.client.id, productId: fixture.firstProduct.id, orderId: fixture.order.id },
+    });
+    const secondEntitlement = await prisma.clientEntitlement.findFirst({
+      where: { clientId: fixture.client.id, productId: fixture.secondProduct.id, orderId: fixture.order.id },
+    });
+    expect(firstEntitlement).toBeTruthy();
+    expect(secondEntitlement).toBeTruthy();
+
+    const firstBalance = await prisma.creditLedgerEntry.aggregate({
+      where: { clientId: fixture.client.id, entitlementId: firstEntitlement?.id },
+      _sum: { amount: true },
+    });
+    const secondBalance = await prisma.creditLedgerEntry.aggregate({
+      where: { clientId: fixture.client.id, entitlementId: secondEntitlement?.id },
+      _sum: { amount: true },
+    });
+    expect(firstBalance._sum.amount).toBe(5);
+    expect(secondBalance._sum.amount).toBe(6);
+  });
+
+  it("keeps cart-source fulfillment idempotent on replayed checkout.session.completed events", async () => {
+    const fixture = await createCartCheckoutMultiLineFixture();
+
+    const event = {
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: fixture.checkoutSessionId,
+          payment_status: "paid",
+          mode: "payment",
+          metadata: {
+            source: "subscription-catalog",
+            paymentId: fixture.payment.id,
+            orderId: fixture.order.id,
+            userId: fixture.client.id,
+            productId: "wrong_product_id",
+            priceId: "wrong_price_id",
+            selectedPriceId: "wrong_price_id",
+          },
+        },
+      },
+    };
+
+    verifyStripeWebhookEventMock.mockReturnValueOnce(event);
+    verifyStripeWebhookEventMock.mockReturnValueOnce(event);
+
+    const first = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    const second = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+
+    const entitlements = await prisma.clientEntitlement.findMany({
+      where: { clientId: fixture.client.id, orderId: fixture.order.id },
+    });
+    expect(entitlements).toHaveLength(2);
+
+    const grantEntries = await prisma.creditLedgerEntry.findMany({
+      where: { clientId: fixture.client.id, entryType: CreditLedgerEntryType.GRANT },
+    });
+    expect(grantEntries).toHaveLength(2);
+  });
+
+  it("uses local payment/order for cart manual reconciliation even without catalog metadata", async () => {
+    const fixture = await createCartCheckoutMultiLineFixture();
+
+    retrieveCheckoutSessionMock.mockResolvedValue({
+      id: fixture.checkoutSessionId,
+      payment_status: "paid",
+      mode: "payment",
+      payment_intent: "pi_cart_manual_reconcile",
+      customer: "cus_cart_manual_reconcile",
+      metadata: {
+        source: "CART_CHECKOUT_V1",
+        paymentId: fixture.payment.id,
+        orderId: fixture.order.id,
+        userId: fixture.client.id,
+      },
+    });
+
+    await reconcileCatalogCheckoutSessionAfterReturn({
+      checkoutSessionId: fixture.checkoutSessionId,
+      userId: fixture.client.id,
+    });
+
+    const payment = await prisma.payment.findUnique({
+      where: { id: fixture.payment.id },
+      select: { status: true, checkoutSource: true },
+    });
+    const order = await prisma.order.findUnique({
+      where: { id: fixture.order.id },
+      select: { status: true },
+    });
+    expect(payment?.status).toBe(PaymentStatus.SUCCEEDED);
+    expect(payment?.checkoutSource).toBe(CheckoutSource.CART_CHECKOUT_V1);
+    expect(order?.status).toBe(OrderStatus.PAID);
+  });
+
+  it("marks cart-source payment/order failed on checkout.session.expired", async () => {
+    const fixture = await createCartCheckoutMultiLineFixture();
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.expired",
+      data: {
+        object: {
+          id: fixture.checkoutSessionId,
+          metadata: { source: "CART_CHECKOUT_V1" },
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(response.status).toBe(200);
+
+    const payment = await prisma.payment.findUnique({
+      where: { id: fixture.payment.id },
+      select: { status: true },
+    });
+    const order = await prisma.order.findUnique({
+      where: { id: fixture.order.id },
+      select: { status: true },
+    });
+    expect(payment?.status).toBe(PaymentStatus.FAILED);
+    expect(order?.status).toBe(OrderStatus.CANCELLED);
+  });
+
+  it("publishes reconciliation state for checkout session", async () => {
+    const fixture = await createCartCheckoutMultiLineFixture();
+
+    const pendingState = await getCheckoutSessionReconciliationState({
+      checkoutSessionId: fixture.checkoutSessionId,
+      userId: fixture.client.id,
+    });
+    expect(pendingState.reconciliationState).toBe("PENDING");
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: fixture.checkoutSessionId,
+          payment_status: "paid",
+          mode: "payment",
+          metadata: {
+            source: "CART_CHECKOUT_V1",
+            paymentId: fixture.payment.id,
+            orderId: fixture.order.id,
+            userId: fixture.client.id,
+          },
+        },
+      },
+    });
+    await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+
+    const confirmedState = await getCheckoutSessionReconciliationState({
+      checkoutSessionId: fixture.checkoutSessionId,
+      userId: fixture.client.id,
+    });
+    expect(confirmedState.reconciliationState).toBe("CONFIRMED");
+    expect(confirmedState.paymentStatus).toBe(PaymentStatus.SUCCEEDED);
+    expect(confirmedState.orderStatus).toBe(OrderStatus.PAID);
+  });
+
+  it("does not reconstruct cart-source checkout from metadata when no local payment/order exists", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "No Local Cart User",
+        email: `no.local.cart.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+    const product = await prisma.product.create({
+      data: {
+        name: "No Local Cart Product",
+        slug: `no-local-cart-product-${Date.now()}`,
+        productType: ProductType.CLASS_PACK,
+        isActive: true,
+        isArchived: false,
+        sortOrder: 1,
+      },
+    });
+    const price = await prisma.price.create({
+      data: {
+        productId: product.id,
+        lookupKey: `no-local-cart-price-${Date.now()}`,
+        name: "No Local Cart Price",
+        priceType: PriceType.ONE_TIME,
+        currencyCode: "EUR",
+        unitAmountMinor: 5000,
+        isActive: true,
+        isArchived: false,
+      },
+    });
+
+    const beforeOrderCount = await prisma.order.count({ where: { clientId: client.id } });
+    const beforePaymentCount = await prisma.payment.count({
+      where: { order: { clientId: client.id } },
+    });
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: `cs_no_local_cart_${Date.now()}`,
+          payment_status: "paid",
+          mode: "payment",
+          metadata: {
+            source: "CART_CHECKOUT_V1",
+            userId: client.id,
+            productId: product.id,
+            priceId: price.id,
+            selectedPriceId: price.id,
+          },
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(response.status).toBe(200);
+
+    const afterOrderCount = await prisma.order.count({ where: { clientId: client.id } });
+    const afterPaymentCount = await prisma.payment.count({
+      where: { order: { clientId: client.id } },
+    });
+    expect(afterOrderCount).toBe(beforeOrderCount);
+    expect(afterPaymentCount).toBe(beforePaymentCount);
+  });
+
+  it("rejects manual catalog reconciliation for booking-only local payment owned by another user", async () => {
+    const fixture = await createBookingOnlyPaymentFixture();
+
+    retrieveCheckoutSessionMock.mockResolvedValue({
+      id: fixture.checkoutSessionId,
+      payment_status: "paid",
+      mode: "payment",
+      payment_intent: "pi_booking_only_manual",
+      customer: "cus_booking_only_manual",
+      metadata: {
+        source: "CART_CHECKOUT_V1",
+        paymentId: fixture.payment.id,
+        bookingId: fixture.booking.id,
+        userId: fixture.owner.id,
+      },
+    });
+
+    await reconcileCatalogCheckoutSessionAfterReturn({
+      checkoutSessionId: fixture.checkoutSessionId,
+      userId: fixture.otherUser.id,
+    });
+
+    const payment = await prisma.payment.findUnique({
+      where: { id: fixture.payment.id },
+      select: { status: true },
+    });
+    expect(payment?.status).toBe(PaymentStatus.PENDING);
+    expect(retrieveCheckoutSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("enforces active-subscription guard for cart-source recurring webhook completion", async () => {
+    const fixture = await createCartRecurringCheckoutFixture();
+
+    await prisma.subscriptionContract.create({
+      data: {
+        clientId: fixture.client.id,
+        productId: fixture.product.id,
+        priceId: fixture.price.id,
+        status: "ACTIVE",
+        startsAt: new Date(Date.now() - 60 * 1000),
+        currentPeriodStart: new Date(Date.now() - 60 * 1000),
+        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        cancelAtPeriodEnd: false,
+        provider: PaymentProvider.STRIPE,
+        providerSubscriptionReference: `sub_existing_cart_guard_${Date.now()}`,
+      },
+    });
+
+    retrieveSubscriptionMock.mockResolvedValue({
+      id: "sub_cart_guard_new",
+      status: "active",
+      start_date: Math.floor(Date.now() / 1000) - 60,
+      cancel_at_period_end: false,
+      canceled_at: null,
+      ended_at: null,
+      items: {
+        data: [
+          {
+            current_period_start: Math.floor(Date.now() / 1000) - 60,
+            current_period_end: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+            price: { id: fixture.price.stripePriceId },
+          },
+        ],
+      },
+    });
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: fixture.checkoutSessionId,
+          payment_status: "paid",
+          mode: "subscription",
+          subscription: "sub_cart_guard_new",
+          metadata: {
+            source: "CART_CHECKOUT_V1",
+            paymentId: fixture.payment.id,
+            orderId: fixture.order.id,
+            userId: fixture.client.id,
+          },
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(response.status).toBe(200);
+
+    const contracts = await prisma.subscriptionContract.findMany({
+      where: { clientId: fixture.client.id },
+    });
+    expect(contracts).toHaveLength(1);
+    expect(contracts[0]?.providerSubscriptionReference).not.toBe("sub_cart_guard_new");
+  });
+
+  it("grants same-product multi-line cart credits correctly and remains replay-idempotent", async () => {
+    const fixture = await createCartCheckoutSameProductMultiLineFixture();
+
+    const event = {
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: fixture.checkoutSessionId,
+          payment_status: "paid",
+          mode: "payment",
+          metadata: {
+            source: "CART_CHECKOUT_V1",
+            paymentId: fixture.payment.id,
+            orderId: fixture.order.id,
+            userId: fixture.client.id,
+          },
+        },
+      },
+    };
+
+    verifyStripeWebhookEventMock.mockReturnValueOnce(event);
+    verifyStripeWebhookEventMock.mockReturnValueOnce(event);
+
+    const first = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    const second = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+
+    const entitlement = await prisma.clientEntitlement.findFirst({
+      where: {
+        clientId: fixture.client.id,
+        productId: fixture.product.id,
+        orderId: fixture.order.id,
+      },
+    });
+    expect(entitlement).toBeTruthy();
+
+    const grants = await prisma.creditLedgerEntry.findMany({
+      where: {
+        clientId: fixture.client.id,
+        entitlementId: entitlement?.id,
+        entryType: CreditLedgerEntryType.GRANT,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(grants).toHaveLength(2);
+
+    const balance = await prisma.creditLedgerEntry.aggregate({
+      where: {
+        clientId: fixture.client.id,
+        entitlementId: entitlement?.id,
+      },
+      _sum: { amount: true },
+    });
+    expect(balance._sum.amount).toBe(15);
+  });
+
+  it("returns FAILED reconciliation state after cart-source checkout expiration", async () => {
+    const fixture = await createCartCheckoutMultiLineFixture();
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.expired",
+      data: {
+        object: {
+          id: fixture.checkoutSessionId,
+          metadata: { source: "CART_CHECKOUT_V1" },
+        },
+      },
+    });
+    await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+
+    const failedState = await getCheckoutSessionReconciliationState({
+      checkoutSessionId: fixture.checkoutSessionId,
+      userId: fixture.client.id,
+    });
+    expect(failedState.reconciliationState).toBe("FAILED");
+    expect(failedState.paymentStatus).toBe(PaymentStatus.FAILED);
+    expect(failedState.orderStatus).toBe(OrderStatus.CANCELLED);
   });
 
 });

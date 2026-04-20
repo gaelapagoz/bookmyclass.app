@@ -104,6 +104,38 @@ describe("route protection", () => {
     expect(redirectMock).not.toHaveBeenCalled();
   });
 
+  it("unverified staff users are not forced to verify email", async () => {
+    const roles: Array<"TEACHER" | "ADMIN" | "MASTER_ADMIN"> = ["TEACHER", "ADMIN", "MASTER_ADMIN"];
+
+    for (const role of roles) {
+      const user = await prisma.user.create({
+        data: {
+          name: `Unverified ${role}`,
+          firstName: "Unverified",
+          lastName: role,
+          email: `unverified.${role.toLowerCase()}.${Date.now()}@example.test`,
+          role,
+          emailVerified: null,
+        },
+      });
+
+      vi.mocked(auth).mockResolvedValue({
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        },
+        expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      });
+
+      const session = await requireAuth();
+      expect(session.user?.email).toBe(user.email);
+    }
+
+    expect(redirectMock).not.toHaveBeenCalled();
+  });
+
   it("non-teacher authenticated user cannot access /teacher", async () => {
     const user = await prisma.user.create({
       data: {

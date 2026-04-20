@@ -1,0 +1,472 @@
+/* @vitest-environment jsdom */
+
+import "@testing-library/jest-dom/vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { PriceType, ProductType } from "@prisma/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CartPageClient } from "../../src/components/cart/CartPageClient";
+import {
+  CART_STORAGE_KEY,
+  generateCartCheckoutIdempotencyKey,
+} from "../../src/lib/cart/cart-client";
+import { CART_CHECKOUT_IDEMPOTENCY_KEY_REGEX } from "../../src/lib/cart/cart-contract";
+
+vi.mock("../../src/components/book-a-class/service-detail/SignInModal", () => ({
+  SignInModal: ({ onClose }: { onClose: () => void }) => (
+    <div role="dialog" aria-label="Sign in modal">
+      <p>Sign In</p>
+      <button type="button" onClick={onClose}>
+        Close
+      </button>
+    </div>
+  ),
+}));
+
+function seedCart(lines: Array<{
+  productId: string;
+  priceId: string;
+  productName: string;
+  priceName: string;
+  priceType: PriceType;
+  quantity: number;
+  unitAmountMinor: number;
+}>) {
+  window.localStorage.setItem(
+    CART_STORAGE_KEY,
+    JSON.stringify({
+      version: 1,
+      lines: lines.map((line) => ({
+        ...line,
+        productDescription: null,
+        productType: ProductType.CLASS_PACK,
+        currencyCode: "EUR",
+        billingInterval: line.priceType === PriceType.RECURRING ? "MONTH" : null,
+        billingIntervalCount: line.priceType === PriceType.RECURRING ? 1 : null,
+      })),
+    }),
+  );
+}
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+  window.localStorage.clear();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("Cart page", () => {
+  it("supports quantity controls for one-time products, remove action, subtotal, and disabled checkout when invalid", async () => {
+    seedCart([
+      {
+        productId: "prod_one",
+        priceId: "price_one",
+        productName: "One-time Pack",
+        priceName: "Pack Price",
+        priceType: PriceType.ONE_TIME,
+        quantity: 1,
+        unitAmountMinor: 2500,
+      },
+    ]);
+
+    render(<CartPageClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText("One-time Pack")).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByText(/25\.00/)).toHaveLength(2);
+    await userEvent.click(screen.getByRole("button", { name: /increase quantity/i }));
+    expect(screen.getAllByText(/50\.00/)).toHaveLength(2);
+
+    await userEvent.click(screen.getByRole("button", { name: /decrease quantity/i }));
+    expect(screen.getAllByText(/25\.00/)).toHaveLength(2);
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(screen.getAllByText("Your cart is empty.")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Checkout" })).toBeDisabled();
+
+    seedCart([
+      {
+        productId: "prod_recurring_controls",
+        priceId: "price_recurring_controls",
+        productName: "Recurring Plan",
+        priceName: "Recurring",
+        priceType: PriceType.RECURRING,
+        quantity: 1,
+        unitAmountMinor: 9900,
+      },
+    ]);
+    window.dispatchEvent(new Event("cart:updated"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Recurring Plan")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /increase quantity for recurring plan/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /decrease quantity for recurring plan/i })).toBeDisabled();
+
+    seedCart([
+      {
+        productId: "prod_rec",
+        priceId: "price_rec",
+        productName: "Recurring Plan",
+        priceName: "Recurring",
+        priceType: PriceType.RECURRING,
+        quantity: 1,
+        unitAmountMinor: 9900,
+      },
+      {
+        productId: "prod_ot",
+        priceId: "price_ot",
+        productName: "One-time Pack",
+        priceName: "One-time",
+        priceType: PriceType.ONE_TIME,
+        quantity: 1,
+        unitAmountMinor: 2500,
+      },
+    ]);
+    window.dispatchEvent(new Event("cart:updated"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("You cannot mix recurring and one-time products in the same checkout."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Checkout" })).toBeDisabled();
+  });
+
+  it("opens sign-in modal when checkout is unauthenticated", async () => {
+    seedCart([
+      {
+        productId: "prod_one",
+        priceId: "price_one",
+        productName: "One-time Pack",
+        priceName: "Pack Price",
+        priceType: PriceType.ONE_TIME,
+        quantity: 1,
+        unitAmountMinor: 2500,
+      },
+    ]);
+
+    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          code: "AUTH_REQUIRED",
+          message: "Authentication required.",
+        }),
+        { status: 401, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    render(<CartPageClient />);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Checkout" })).toBeEnabled();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Checkout" }));
+    expect(screen.getByRole("dialog", { name: "Sign in modal" })).toBeInTheDocument();
+  });
+
+  it("shows verify-email action on EMAIL_VERIFICATION_REQUIRED", async () => {
+    seedCart([
+      {
+        productId: "prod_one",
+        priceId: "price_one",
+        productName: "One-time Pack",
+        priceName: "Pack Price",
+        priceType: PriceType.ONE_TIME,
+        quantity: 1,
+        unitAmountMinor: 2500,
+      },
+    ]);
+
+    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          code: "EMAIL_VERIFICATION_REQUIRED",
+          message: "Your account must be active and email-verified before checkout.",
+        }),
+        { status: 403, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    render(<CartPageClient />);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Checkout" })).toBeEnabled();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Checkout" }));
+    const verifyLink = await screen.findByRole("link", { name: "Verify your email" });
+    expect(verifyLink).toHaveAttribute("href", expect.stringContaining("/verify-email?callbackUrl="));
+  });
+
+  it("retries in-progress checkout and redirects when session becomes available", async () => {
+    seedCart([
+      {
+        productId: "prod_one_redirect",
+        priceId: "price_one_redirect",
+        productName: "One-time Pack",
+        priceName: "Pack Price",
+        priceType: PriceType.ONE_TIME,
+        quantity: 1,
+        unitAmountMinor: 2500,
+      },
+    ]);
+
+    const fetchSpy = vi.spyOn(global, "fetch");
+    fetchSpy
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: "IDEMPOTENCY_IN_PROGRESS",
+            message: "Checkout request is being processed.",
+          }),
+          { status: 202, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: "CHECKOUT_SESSION_CREATED",
+            checkoutUrl: "https://checkout.stripe.test/session_123",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+
+    render(<CartPageClient />);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Checkout" })).toBeEnabled();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Checkout" }));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+
+    const firstKey = (fetchSpy.mock.calls[0]?.[1]?.headers as Record<string, string>)?.["Idempotency-Key"];
+    const secondKey = (fetchSpy.mock.calls[1]?.[1]?.headers as Record<string, string>)?.["Idempotency-Key"];
+    expect(firstKey).toBe(secondKey);
+    expect(screen.queryByText("Checkout request is being processed.")).not.toBeInTheDocument();
+  });
+
+  it("generates unique fallback idempotency keys and uses distinct keys for distinct submissions", async () => {
+    const originalCrypto = globalThis.crypto;
+    Object.defineProperty(globalThis, "crypto", {
+      configurable: true,
+      value: {},
+    });
+
+    try {
+      const keyOne = generateCartCheckoutIdempotencyKey();
+      const keyTwo = generateCartCheckoutIdempotencyKey();
+      expect(keyOne).toMatch(CART_CHECKOUT_IDEMPOTENCY_KEY_REGEX);
+      expect(keyTwo).toMatch(CART_CHECKOUT_IDEMPOTENCY_KEY_REGEX);
+      expect(keyOne).not.toBe(keyTwo);
+
+      seedCart([
+        {
+          productId: "prod_one_checkout",
+          priceId: "price_one_checkout",
+          productName: "One-time Pack",
+          priceName: "Pack Price",
+          priceType: PriceType.ONE_TIME,
+          quantity: 1,
+          unitAmountMinor: 2500,
+        },
+      ]);
+
+      const seenKeys: string[] = [];
+      vi.spyOn(global, "fetch").mockImplementation(async (_input, init) => {
+        const headers = init?.headers as Record<string, string> | undefined;
+        const key = headers?.["Idempotency-Key"];
+        if (typeof key === "string") {
+          seenKeys.push(key);
+        }
+        return new Response(
+          JSON.stringify({
+            code: "CHECKOUT_CREATE_FAILED",
+            message: "Could not start checkout.",
+          }),
+          { status: 500, headers: { "content-type": "application/json" } },
+        );
+      });
+
+      render(<CartPageClient />);
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Checkout" })).toBeEnabled();
+      });
+
+      await userEvent.click(screen.getByRole("button", { name: "Checkout" }));
+
+      await userEvent.click(screen.getByRole("button", { name: /increase quantity/i }));
+      await userEvent.click(screen.getByRole("button", { name: "Checkout" }));
+
+      expect(seenKeys).toHaveLength(2);
+      expect(seenKeys[0]).toMatch(CART_CHECKOUT_IDEMPOTENCY_KEY_REGEX);
+      expect(seenKeys[1]).toMatch(CART_CHECKOUT_IDEMPOTENCY_KEY_REGEX);
+      expect(seenKeys[0]).not.toBe(seenKeys[1]);
+    } finally {
+      Object.defineProperty(globalThis, "crypto", {
+        configurable: true,
+        value: originalCrypto,
+      });
+    }
+  });
+
+  it("shows state-aware message for long unresolved FAILED_STRIPE_UNCERTAIN responses", async () => {
+    seedCart([
+      {
+        productId: "prod_uncertain",
+        priceId: "price_uncertain",
+        productName: "One-time Pack",
+        priceName: "Pack Price",
+        priceType: PriceType.ONE_TIME,
+        quantity: 1,
+        unitAmountMinor: 2500,
+      },
+    ]);
+
+    vi.spyOn(global, "fetch").mockImplementation(async () =>
+      new Response(
+        JSON.stringify({
+          code: "IDEMPOTENCY_IN_PROGRESS",
+          message: "Checkout request is being processed.",
+          retryAfterMs: 1,
+          idempotency: {
+            state: "FAILED_STRIPE_UNCERTAIN",
+          },
+        }),
+        { status: 202, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    render(<CartPageClient />);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Checkout" })).toBeEnabled();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Checkout" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Checkout confirmation is delayed with our payment provider. Please wait a moment and try checkout again.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("uses a fresh idempotency key on a new explicit click after exhausted FAILED_STRIPE_UNCERTAIN retries", async () => {
+    seedCart([
+      {
+        productId: "prod_uncertain_fresh_click",
+        priceId: "price_uncertain_fresh_click",
+        productName: "One-time Pack",
+        priceName: "Pack Price",
+        priceType: PriceType.ONE_TIME,
+        quantity: 1,
+        unitAmountMinor: 2500,
+      },
+    ]);
+
+    const seenKeys: string[] = [];
+    vi.spyOn(global, "fetch").mockImplementation(async (_input, init) => {
+      const headers = init?.headers as Record<string, string> | undefined;
+      const key = headers?.["Idempotency-Key"];
+      if (typeof key === "string") {
+        seenKeys.push(key);
+      }
+      return new Response(
+        JSON.stringify({
+          code: "IDEMPOTENCY_IN_PROGRESS",
+          message: "Checkout request is being processed.",
+          retryAfterMs: 1,
+          idempotency: { state: "FAILED_STRIPE_UNCERTAIN" },
+        }),
+        { status: 202, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    render(<CartPageClient />);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Checkout" })).toBeEnabled();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Checkout" }));
+    await waitFor(() => {
+      expect(screen.getByText(/Checkout confirmation is delayed/i)).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Checkout" }));
+
+    await waitFor(() => {
+      expect(seenKeys.length).toBeGreaterThanOrEqual(8);
+    });
+
+    const firstAttemptKeys = seenKeys.slice(0, 4);
+    const secondAttemptKeys = seenKeys.slice(4, 8);
+    expect(firstAttemptKeys.length).toBe(4);
+    expect(secondAttemptKeys.length).toBe(4);
+    expect(new Set(firstAttemptKeys).size).toBe(1);
+    expect(new Set(secondAttemptKeys).size).toBe(1);
+    expect(firstAttemptKeys[0]).not.toBe(secondAttemptKeys[0]);
+  });
+
+  it("uses a fresh idempotency key after terminal checkout failure on a new click", async () => {
+    seedCart([
+      {
+        productId: "prod_terminal_retry",
+        priceId: "price_terminal_retry",
+        productName: "One-time Pack",
+        priceName: "Pack Price",
+        priceType: PriceType.ONE_TIME,
+        quantity: 1,
+        unitAmountMinor: 2500,
+      },
+    ]);
+
+    const seenKeys: string[] = [];
+    vi.spyOn(global, "fetch").mockImplementation(async (_input, init) => {
+      const headers = init?.headers as Record<string, string> | undefined;
+      const key = headers?.["Idempotency-Key"];
+      if (typeof key === "string") {
+        seenKeys.push(key);
+      }
+
+      return new Response(
+        JSON.stringify({
+          code: "CHECKOUT_CREATE_FAILED",
+          message: "Checkout could not be confirmed yet. Please retry shortly.",
+          idempotency: {
+            state: "FAILED_STRIPE_UNCERTAIN",
+            replayed: false,
+          },
+        }),
+        { status: 500, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    render(<CartPageClient />);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Checkout" })).toBeEnabled();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Checkout" }));
+    await waitFor(() => {
+      expect(screen.getByText("Checkout could not be confirmed yet. Please retry shortly.")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Checkout" }));
+
+    await waitFor(() => {
+      expect(seenKeys).toHaveLength(2);
+    });
+    expect(seenKeys[0]).toMatch(CART_CHECKOUT_IDEMPOTENCY_KEY_REGEX);
+    expect(seenKeys[1]).toMatch(CART_CHECKOUT_IDEMPOTENCY_KEY_REGEX);
+    expect(seenKeys[0]).not.toBe(seenKeys[1]);
+  });
+});

@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getClientCartItemCount, subscribeToClientCart } from "@/lib/cart/cart-client";
 import { siteConfig } from "@/lib/site-config";
 import {
   getHeaderAccountNavigation,
@@ -36,6 +37,8 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isDesktopAboutOpen, setIsDesktopAboutOpen] = useState(false);
+  const [isCartHydrated, setIsCartHydrated] = useState(false);
+  const [cartItemCount, setCartItemCount] = useState(0);
 
   const desktopAboutRef = useRef<HTMLDivElement | null>(null);
 
@@ -76,6 +79,31 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
   }, [isDesktopAboutOpen]);
 
   const aboutItem = primaryItems.find((item): item is HeaderNavDisclosure => item.type === "disclosure") ?? null;
+
+  useEffect(() => {
+    const sync = () => {
+      setCartItemCount(getClientCartItemCount());
+    };
+
+    sync();
+    setIsCartHydrated(true);
+    return subscribeToClientCart(sync);
+  }, []);
+
+  const renderCartBadge = (href: string) => {
+    if (href !== "/cart" || !isCartHydrated || cartItemCount <= 0) {
+      return null;
+    }
+
+    return (
+      <span
+        data-testid="cart-badge"
+        className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#7b2d2d] px-1.5 text-[10px] font-semibold leading-5 text-[#f4eee8]"
+      >
+        {cartItemCount}
+      </span>
+    );
+  };
 
   return (
     <header className="border-b border-[#d8cec6] bg-[#f2ede7]">
@@ -166,8 +194,9 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
 
               return (
                 <div key={item.href} className="flex items-center gap-4">
-                  <Link href={item.href} className={linkClass(isActivePath(pathname, item.href))}>
-                    {item.label}
+                  <Link href={item.href} className={`${linkClass(isActivePath(pathname, item.href))} inline-flex items-center gap-2`}>
+                    <span>{item.label}</span>
+                    {renderCartBadge(item.href)}
                   </Link>
                   {index < primaryItems.length - 1 ? <span className="text-[#b68585]">|</span> : null}
                 </div>
@@ -188,8 +217,13 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
               }
 
               return (
-                <Link key={item.href} href={item.href} className={linkClass(isActivePath(pathname, item.href))}>
-                  {item.label}
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`${linkClass(isActivePath(pathname, item.href))} inline-flex items-center gap-2`}
+                >
+                  <span>{item.label}</span>
+                  {renderCartBadge(item.href)}
                 </Link>
               );
             })}
@@ -242,10 +276,11 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={linkClass(isActivePath(pathname, item.href))}
+                    className={`${linkClass(isActivePath(pathname, item.href))} inline-flex items-center gap-2`}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
-                    {item.label}
+                    <span>{item.label}</span>
+                    {renderCartBadge(item.href)}
                   </Link>
                 );
               })}
@@ -267,10 +302,11 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={linkClass(isActivePath(pathname, item.href))}
+                    className={`${linkClass(isActivePath(pathname, item.href))} inline-flex items-center gap-2`}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
-                    {item.label}
+                    <span>{item.label}</span>
+                    {renderCartBadge(item.href)}
                   </Link>
                 );
               })}

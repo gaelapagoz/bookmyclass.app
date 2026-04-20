@@ -48,12 +48,14 @@ export function getHeaderAccountNavigation(params: {
 }): HeaderAccountNavItem[] {
   if (params.isAuthenticated) {
     return [
+      { href: "/cart", label: "Cart", type: "link" },
       { href: "/dashboard", label: "Dashboard", type: "link" },
       { id: "logout", label: "Log Out", type: "action" },
     ];
   }
 
   return [
+    { href: "/cart", label: "Cart", type: "link" },
     { href: "/sign-in", label: "Sign In", type: "link" },
     { href: "/sign-up", label: "Sign Up", type: "link" },
   ];

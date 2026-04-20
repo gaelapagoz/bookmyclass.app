@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth/require-auth", () => ({
   requireTeacherSession: vi.fn(async () => ({
@@ -21,6 +21,15 @@ import { getTeacherAssignedSessions } from "@/lib/teacher/teacher-service";
 import TeacherSessionsPage from "../../src/app/teacher/sessions/page";
 
 describe("teacher sessions calendar page", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("renders calendar view with week navigation", async () => {
     vi.mocked(getTeacherAssignedSessions).mockResolvedValue([]);
 
@@ -81,7 +90,11 @@ describe("teacher sessions calendar page", () => {
       }),
     );
 
-    expect(screen.getByText("Vinyasa Yoga - Morning Yoga")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: /vinyasa yoga\s*-\s*morning yoga/i,
+      }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/15\/20 booked/)).toBeInTheDocument();
     expect(screen.getByText("Waitlist: 3")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /join waitlist/i })).not.toBeInTheDocument();

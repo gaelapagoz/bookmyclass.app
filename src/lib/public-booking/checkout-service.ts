@@ -592,3 +592,13 @@ export async function createCheckoutSessionForCatalogProduct(input: {
     orderId: orderAndPayment.orderId,
   };
 }
+
+export async function createCheckoutSessionForCart(input: {
+  userId: string;
+  idempotencyKey: string;
+  lines: Array<{ productId: string; priceId: string; quantity: number }>;
+  clientCartVersion: string;
+}) {
+  const { startCartCheckout } = await import("@/lib/cart/cart-checkout-service");
+  return startCartCheckout(input);
+}

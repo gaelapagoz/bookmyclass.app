@@ -103,14 +103,18 @@ export async function requireVerifiedUser(options?: {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { email: true, emailVerified: true, activationStatus: true },
+    select: { email: true, emailVerified: true, activationStatus: true, role: true },
   });
 
   if (!user) {
     redirect(withCallback(staleSessionPath, callbackUrl));
   }
 
-  if (user.activationStatus !== UserActivationStatus.ACTIVE || !user.emailVerified) {
+  if (user.activationStatus !== UserActivationStatus.ACTIVE) {
+    redirect(withCallback(staleSessionPath, callbackUrl));
+  }
+
+  if (user.role === "CLIENT" && !user.emailVerified) {
     redirect(`${verifyEmailPath}?blocked=1&email=${encodeURIComponent(user.email)}`);
   }
 
