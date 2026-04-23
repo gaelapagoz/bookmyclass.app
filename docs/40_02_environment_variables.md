@@ -30,6 +30,11 @@ Purpose: define environment-variable expectations by runtime context using repos
 ## Seed/Test Helpers
 - `.env.test.example` defines integration-test baseline.
 - Seed currently expects Stripe price IDs for seeded catalog mapping.
+- `STRIPE_PRICE_ID_*` mappings are seed/bootstrap-only inputs and are not read by runtime checkout paths.
+
+## Runtime Boundary
+- Runtime checkout (`booking`, `subscription`, `cart`) resolves Stripe price references from DB `Price.stripePriceId` only.
+- Runtime must not rely on env-based Stripe price lookup mappings.
 
 ## Canonical References
 - `docs/00_01_system_baseline.md`

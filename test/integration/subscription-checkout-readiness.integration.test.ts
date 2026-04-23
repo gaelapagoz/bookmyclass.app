@@ -1,9 +1,22 @@
 import "./helpers/setup-env";
 
-import { BillingInterval, PriceType, ProductType, Role, StripeSyncStatus, UserActivationStatus } from "@prisma/client";
+import {
+  BillingInterval,
+  CheckoutSource,
+  OrderStatus,
+  PaymentMethod,
+  PaymentProvider,
+  PaymentStatus,
+  PriceType,
+  ProductType,
+  Role,
+  StripeSyncStatus,
+  UserActivationStatus,
+} from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const createStripeCheckoutSessionMock = vi.fn();
+const retrieveStripeCheckoutSessionMock = vi.fn();
 
 vi.mock("../../src/lib/payments/stripe", () => ({
   getStripeServerEnv: () => ({
@@ -19,7 +32,15 @@ vi.mock("../../src/lib/payments/stripe", () => ({
     publishableKey: "pk_test_123",
     secretKey: "sk_test_123",
   }),
-  createStripeCheckoutSession: (...args: unknown[]) => createStripeCheckoutSessionMock(...args),
+  createStripeCheckoutSessionWithIdempotency: (...args: unknown[]) =>
+    createStripeCheckoutSessionMock(...args),
+  getStripeClient: () => ({
+    checkout: {
+      sessions: {
+        retrieve: (...args: unknown[]) => retrieveStripeCheckoutSessionMock(...args),
+      },
+    },
+  }),
 }));
 
 import { createCheckoutSessionForCatalogProduct } from "../../src/lib/public-booking/checkout-service";
@@ -32,10 +53,15 @@ describe("subscription catalog readiness and checkout", () => {
   beforeEach(async () => {
     await resetDb();
     createStripeCheckoutSessionMock.mockReset();
+    retrieveStripeCheckoutSessionMock.mockReset();
     createStripeCheckoutSessionMock.mockResolvedValue({
       id: "cs_test_subscription_123",
       url: "https://checkout.stripe.com/pay/cs_test_subscription_123",
     });
+    retrieveStripeCheckoutSessionMock.mockImplementation(async (id: string) => ({
+      id,
+      url: "https://checkout.stripe.com/pay/cs_test_subscription_123",
+    }));
   });
 
   async function createClient() {
@@ -119,6 +145,11 @@ describe("subscription catalog readiness and checkout", () => {
     });
 
     expect(result.checkoutUrl).toContain("checkout.stripe.com");
+    const stripeArgs = createStripeCheckoutSessionMock.mock.calls[0]?.[0] as
+      | { params?: { line_items?: Array<{ price?: string; quantity?: number }> } }
+      | undefined;
+    expect(stripeArgs?.params?.line_items?.[0]?.price).toBe(ready.price.stripePriceId);
+    expect(stripeArgs?.params?.line_items?.[0]?.quantity).toBe(1);
 
     const payment = await prisma.payment.findUnique({ where: { id: result.paymentId } });
     expect(payment?.providerReference).toBe("cs_test_subscription_123");
@@ -136,6 +167,153 @@ describe("subscription catalog readiness and checkout", () => {
         cancelUrl: `http://localhost:3000/subscription/cancel?productId=${notReady.product.id}`,
       }),
     ).rejects.toMatchObject({ code: "CHECKOUT_NOT_CONFIGURED" });
+  });
+
+  it("reuses pending payment/order under concurrent duplicate submits", async () => {
+    const client = await createClient();
+    const ready = await createProduct({ name: "Ready Race Plan", stripePriceId: "price_ready_race_1" });
+
+    const [first, second] = await Promise.all([
+      createCheckoutSessionForCatalogProduct({
+        userId: client.id,
+        productId: ready.product.id,
+        successUrl: `http://localhost:3000/subscription/success?productId=${ready.product.id}`,
+        cancelUrl: `http://localhost:3000/subscription/cancel?productId=${ready.product.id}`,
+      }),
+      createCheckoutSessionForCatalogProduct({
+        userId: client.id,
+        productId: ready.product.id,
+        successUrl: `http://localhost:3000/subscription/success?productId=${ready.product.id}`,
+        cancelUrl: `http://localhost:3000/subscription/cancel?productId=${ready.product.id}`,
+      }),
+    ]);
+
+    expect(first.checkoutSessionId).toBeTruthy();
+    expect(second.checkoutSessionId).toBeTruthy();
+
+    const orderCount = await prisma.order.count({
+      where: {
+        clientId: client.id,
+        items: {
+          some: {
+            productId: ready.product.id,
+            priceId: ready.price.id,
+          },
+        },
+      },
+    });
+    const paymentCount = await prisma.payment.count({
+      where: {
+        order: {
+          clientId: client.id,
+          items: {
+            some: {
+              productId: ready.product.id,
+              priceId: ready.price.id,
+            },
+          },
+        },
+        provider: PaymentProvider.STRIPE,
+        status: PaymentStatus.PENDING,
+      },
+    });
+    expect(orderCount).toBe(1);
+    expect(paymentCount).toBe(1);
+  });
+
+  it("does not reuse cart pending payment for subscription checkout", async () => {
+    const client = await createClient();
+    const ready = await createProduct({ name: "Ready Isolation Plan", stripePriceId: "price_ready_iso_1" });
+
+    const cartOrder = await prisma.order.create({
+      data: {
+        clientId: client.id,
+        subtotalAmountMinor: ready.price.unitAmountMinor,
+        discountAmountMinor: 0,
+        totalAmountMinor: ready.price.unitAmountMinor,
+        currencyCode: ready.price.currencyCode,
+        status: OrderStatus.PLACED,
+        notes: "cart pending order",
+        items: {
+          create: {
+            productId: ready.product.id,
+            priceId: ready.price.id,
+            quantity: 1,
+            productNameSnapshot: ready.product.name,
+            priceNameSnapshot: ready.price.name,
+            unitAmountMinor: ready.price.unitAmountMinor,
+            lineSubtotalAmountMinor: ready.price.unitAmountMinor,
+            lineDiscountAmountMinor: 0,
+            lineTotalAmountMinor: ready.price.unitAmountMinor,
+            currencyCode: ready.price.currencyCode,
+          },
+        },
+      },
+    });
+    const cartPayment = await prisma.payment.create({
+      data: {
+        orderId: cartOrder.id,
+        status: PaymentStatus.PENDING,
+        method: PaymentMethod.CARD,
+        provider: PaymentProvider.STRIPE,
+        checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+        amountMinor: ready.price.unitAmountMinor,
+        currencyCode: ready.price.currencyCode,
+      },
+    });
+
+    const result = await createCheckoutSessionForCatalogProduct({
+      userId: client.id,
+      productId: ready.product.id,
+      successUrl: `http://localhost:3000/subscription/success?productId=${ready.product.id}`,
+      cancelUrl: `http://localhost:3000/subscription/cancel?productId=${ready.product.id}`,
+    });
+
+    expect(result.paymentId).not.toBe(cartPayment.id);
+
+    const refreshedCartPayment = await prisma.payment.findUnique({
+      where: { id: cartPayment.id },
+      select: { orderId: true, checkoutSource: true, amountMinor: true },
+    });
+    expect(refreshedCartPayment?.orderId).toBe(cartOrder.id);
+    expect(refreshedCartPayment?.checkoutSource).toBe(CheckoutSource.CART_CHECKOUT_V1);
+    expect(refreshedCartPayment?.amountMinor).toBe(ready.price.unitAmountMinor);
+  });
+
+  it("reuses synthetic E2E subscription session without Stripe retrieval on retry", async () => {
+    const previousE2EMode = process.env.E2E_TEST_MODE;
+    process.env.E2E_TEST_MODE = "1";
+
+    try {
+      const client = await createClient();
+      const ready = await createProduct({ name: "Ready E2E Reuse Plan", stripePriceId: "price_ready_e2e_reuse_1" });
+
+      const first = await createCheckoutSessionForCatalogProduct({
+        userId: client.id,
+        productId: ready.product.id,
+        successUrl: `http://localhost:3000/subscription/success?productId=${ready.product.id}`,
+        cancelUrl: `http://localhost:3000/subscription/cancel?productId=${ready.product.id}`,
+      });
+
+      const second = await createCheckoutSessionForCatalogProduct({
+        userId: client.id,
+        productId: ready.product.id,
+        successUrl: `http://localhost:3000/subscription/success?productId=${ready.product.id}`,
+        cancelUrl: `http://localhost:3000/subscription/cancel?productId=${ready.product.id}`,
+      });
+
+      expect(first.checkoutSessionId).toContain("cs_e2e_");
+      expect(second.checkoutSessionId).toBe(first.checkoutSessionId);
+      expect(second.checkoutUrl).toContain("/subscription/success?session_id=");
+      expect(createStripeCheckoutSessionMock).not.toHaveBeenCalled();
+      expect(retrieveStripeCheckoutSessionMock).not.toHaveBeenCalled();
+    } finally {
+      if (previousE2EMode === undefined) {
+        delete process.env.E2E_TEST_MODE;
+      } else {
+        process.env.E2E_TEST_MODE = previousE2EMode;
+      }
+    }
   });
 
   it("rejects checkout when price has stripePriceId but sync is not SYNCED", async () => {

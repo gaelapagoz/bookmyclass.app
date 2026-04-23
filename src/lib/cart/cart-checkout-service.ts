@@ -21,6 +21,7 @@ import {
   createStripeCheckoutSessionWithIdempotency,
   getStripeServerEnv,
 } from "@/lib/payments/stripe";
+import { isCatalogPriceCheckoutReady } from "@/lib/catalog/checkout-readiness";
 
 const RETRY_AFTER_MS = 1500;
 const STALE_IN_PROGRESS_MS = 30_000;
@@ -484,10 +485,64 @@ async function acquireIdempotencyRecord(input: {
 async function resolvePriceStripeMap(priceIds: string[]) {
   const prices = await prisma.price.findMany({
     where: { id: { in: priceIds } },
-    select: { id: true, stripePriceId: true },
+    select: {
+      id: true,
+      isActive: true,
+      isArchived: true,
+      priceType: true,
+      currencyCode: true,
+      unitAmountMinor: true,
+      billingInterval: true,
+      billingIntervalCount: true,
+      stripePriceId: true,
+      stripeSyncStatus: true,
+      product: {
+        select: {
+          isActive: true,
+          isArchived: true,
+        },
+      },
+    },
   });
 
-  return new Map(prices.map((price) => [price.id, price.stripePriceId]));
+  return new Map(
+    prices.map((price) => [
+      price.id,
+      !price.isActive ||
+      price.isArchived ||
+      !price.product.isActive ||
+      price.product.isArchived ||
+      !isCatalogPriceCheckoutReady(price)
+        ? null
+        : price.stripePriceId,
+    ]),
+  );
+}
+
+async function assertCartCheckoutStillEligibleBeforeSession(input: {
+  userId: string;
+  orderId: string;
+  paymentId: string;
+}) {
+  if (!(await isEligibleCheckoutClient(input.userId))) {
+    throw new Error("Checkout actor is no longer eligible.");
+  }
+
+  const payment = await prisma.payment.findUnique({
+    where: { id: input.paymentId },
+    select: {
+      orderId: true,
+      order: {
+        select: {
+          clientId: true,
+        },
+      },
+    },
+  });
+
+  if (!payment || payment.orderId !== input.orderId || payment.order?.clientId !== input.userId) {
+    throw new Error("Cart checkout ownership validation failed.");
+  }
 }
 
 async function resolveOrCreateOrderPayment(input: {
@@ -954,6 +1009,11 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
 
   try {
     const env = getStripeServerEnv();
+    await assertCartCheckoutStillEligibleBeforeSession({
+      userId: input.userId,
+      orderId: orderPayment.orderId,
+      paymentId: orderPayment.paymentId,
+    });
     const metadata = {
       source: CART_CHECKOUT_SOURCE,
       orderId: orderPayment.orderId,

@@ -1,18 +1,25 @@
 import {
   BookingPaymentSelection,
   BookingStatus,
+  CheckoutSource,
   OrderStatus,
   PaymentMethod,
   PaymentProvider,
   PaymentStatus,
   PriceType,
   Role,
+  StudioSessionStatus,
   UserActivationStatus,
 } from "@prisma/client";
 import { prisma } from "../db";
-import { createStripeCheckoutSession, getStripeServerEnv } from "../payments/stripe";
+import {
+  createStripeCheckoutSessionWithIdempotency,
+  getStripeClient,
+  getStripeServerEnv,
+} from "../payments/stripe";
 import { getSubscriptionCheckoutItemByProductId } from "../subscription/subscription-products";
 import { hasActiveRecurringSubscriptionForProduct } from "../subscription/ownership";
+import { isCatalogPriceCheckoutReady } from "../catalog/checkout-readiness";
 
 type CheckoutErrorCode =
   | "BOOKING_NOT_FOUND"
@@ -88,6 +95,33 @@ async function assertClientCheckoutEligibility(input: {
   }
 
   return input.userId;
+}
+
+function buildStripeIdempotencyKey(parts: string[]): string {
+  return parts.join(":").slice(0, 255);
+}
+
+function isE2ETestModeEnabled(): boolean {
+  return process.env.E2E_TEST_MODE === "1";
+}
+
+function buildBookingSyntheticCheckoutUrl(input: {
+  appUrl: string;
+  bookingId: string;
+  serviceSlug: string;
+  checkoutSessionId: string;
+}): string {
+  return (
+    `${input.appUrl}/book-a-class/${input.serviceSlug}/payment/success` +
+    `?bookingId=${encodeURIComponent(input.bookingId)}&session_id=${encodeURIComponent(input.checkoutSessionId)}`
+  );
+}
+
+function buildSubscriptionSyntheticCheckoutUrl(input: {
+  appUrl: string;
+  checkoutSessionId: string;
+}): string {
+  return `${input.appUrl}/subscription/success?session_id=${encodeURIComponent(input.checkoutSessionId)}`;
 }
 
 type ReadyCheckoutDraftBooking = {
@@ -180,98 +214,108 @@ export async function createCheckoutSessionForBooking(input: {
     userId,
     buildAuthError: (message) => new CheckoutError("AUTH_REQUIRED", message),
   });
-  const booking = await prisma.booking.findUnique({
-    where: { id: bookingId },
-    select: {
-      id: true,
-      status: true,
-      clientId: true,
-      paymentSelection: true,
-      selectedPriceId: true,
-      draftAmountMinor: true,
-      draftCurrencyCode: true,
-      orderId: true,
-      selectedPrice: {
-        select: {
-          id: true,
-          name: true,
-          priceType: true,
-          stripePriceId: true,
-          unitAmountMinor: true,
-          product: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-        },
-      },
-      studioSession: {
-        select: {
-          classType: {
-            select: {
-              slug: true,
-              name: true,
-            },
-          },
-        },
-      },
-      payments: {
-        where: {
-          provider: PaymentProvider.STRIPE,
-          status: PaymentStatus.PENDING,
-        },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, orderId: true },
-        take: 1,
-      },
-    },
-  });
-
-  const normalizedBooking = booking
-    ? {
-        id: booking.id,
-        status: booking.status,
-        clientId: booking.clientId,
-        paymentSelection: booking.paymentSelection,
-        selectedPriceId: booking.selectedPriceId,
-        draftAmountMinor: booking.draftAmountMinor,
-        draftCurrencyCode: booking.draftCurrencyCode,
-        serviceSlug: booking.studioSession.classType.slug,
-      }
-    : null;
-
-  const readyCheckout = requireBookingCheckoutReady({ booking: normalizedBooking, userId: checkoutUserId });
-  if (!booking?.selectedPrice || !booking.clientId) {
-    throw new CheckoutError("INVALID_SELECTION", "Selected price is missing.");
-  }
-  const selectedPrice = booking.selectedPrice;
-  const isRecurringPlanPurchase =
-    readyCheckout.booking.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE &&
-    selectedPrice.priceType === PriceType.RECURRING;
-  if (isRecurringPlanPurchase && !selectedPrice.stripePriceId) {
-    throw new CheckoutError(
-      "INVALID_SELECTION",
-      "Selected recurring plan is not checkout-ready.",
-    );
-  }
-  if (isRecurringPlanPurchase) {
-    const alreadySubscribed = await hasActiveRecurringSubscriptionForProduct({
-      userId: readyCheckout.userId,
-      productId: selectedPrice.product.id,
-    });
-    if (alreadySubscribed) {
-      throw new CheckoutError(
-        "ALREADY_SUBSCRIBED",
-        "You already have an active recurring subscription for this plan.",
-      );
-    }
-  }
-
   const env = getStripeServerEnv();
-  const serviceLabel = booking.studioSession.classType.name;
-  const orderAndPayment = await prisma.$transaction(async (tx) => {
-    const readyBooking = readyCheckout.booking;
+  const sessionContext = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Booking" WHERE id = ${bookingId} FOR UPDATE`;
+
+    const booking = await tx.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        id: true,
+        status: true,
+        clientId: true,
+        paymentSelection: true,
+        selectedPriceId: true,
+        draftAmountMinor: true,
+        draftCurrencyCode: true,
+        orderId: true,
+        selectedPrice: {
+          select: {
+            id: true,
+            name: true,
+            priceType: true,
+            currencyCode: true,
+            stripePriceId: true,
+            stripeSyncStatus: true,
+            unitAmountMinor: true,
+            billingInterval: true,
+            billingIntervalCount: true,
+            isActive: true,
+            isArchived: true,
+            product: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        studioSession: {
+          select: {
+            status: true,
+            isPublished: true,
+            startsAt: true,
+            classType: {
+              select: {
+                slug: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const normalizedBooking = booking
+      ? {
+          id: booking.id,
+          status: booking.status,
+          clientId: booking.clientId,
+          paymentSelection: booking.paymentSelection,
+          selectedPriceId: booking.selectedPriceId,
+          draftAmountMinor: booking.draftAmountMinor,
+          draftCurrencyCode: booking.draftCurrencyCode,
+          serviceSlug: booking.studioSession.classType.slug,
+        }
+      : null;
+
+    const readyCheckout = requireBookingCheckoutReady({ booking: normalizedBooking, userId: checkoutUserId });
+    if (!booking?.selectedPrice || !booking.clientId) {
+      throw new CheckoutError("INVALID_SELECTION", "Selected price is missing.");
+    }
+    if (
+      booking.studioSession.status !== StudioSessionStatus.SCHEDULED ||
+      !booking.studioSession.isPublished ||
+      booking.studioSession.startsAt <= new Date()
+    ) {
+      throw new CheckoutError("INVALID_SELECTION", "Selected session is no longer bookable.");
+    }
+
+    const selectedPrice = booking.selectedPrice;
+    if (
+      !selectedPrice.isActive ||
+      selectedPrice.isArchived ||
+      !isCatalogPriceCheckoutReady(selectedPrice)
+    ) {
+      throw new CheckoutError("INVALID_SELECTION", "Selected price is no longer checkout-ready.");
+    }
+
+    const isRecurringPlanPurchase =
+      readyCheckout.booking.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE &&
+      selectedPrice.priceType === PriceType.RECURRING;
+
+    if (isRecurringPlanPurchase) {
+      const alreadySubscribed = await hasActiveRecurringSubscriptionForProduct({
+        userId: readyCheckout.userId,
+        productId: selectedPrice.product.id,
+      });
+      if (alreadySubscribed) {
+        throw new CheckoutError(
+          "ALREADY_SUBSCRIBED",
+          "You already have an active recurring subscription for this plan.",
+        );
+      }
+    }
+
     let orderId = booking.orderId;
     if (orderId) {
       const existingOrder = await tx.order.findUnique({
@@ -283,17 +327,20 @@ export async function createCheckoutSessionForBooking(input: {
       }
     }
 
+    const chargeAmountMinor = selectedPrice.unitAmountMinor;
+    const chargeCurrencyCode = selectedPrice.currencyCode;
+
     if (!orderId) {
       const order = await tx.order.create({
         data: {
-          clientId: readyBooking.clientId,
-          subtotalAmountMinor: readyBooking.draftAmountMinor,
+          clientId: readyCheckout.booking.clientId,
+          subtotalAmountMinor: chargeAmountMinor,
           discountAmountMinor: 0,
-          totalAmountMinor: readyBooking.draftAmountMinor,
-          currencyCode: readyBooking.draftCurrencyCode,
+          totalAmountMinor: chargeAmountMinor,
+          currencyCode: chargeCurrencyCode,
           status: OrderStatus.PLACED,
           notes:
-            readyBooking.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE
+            readyCheckout.booking.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE
               ? "Plan purchase order created from booking checkout."
               : "Single-session order created from booking checkout.",
         },
@@ -309,151 +356,216 @@ export async function createCheckoutSessionForBooking(input: {
           quantity: 1,
           productNameSnapshot: selectedPrice.product.name,
           priceNameSnapshot: selectedPrice.name,
-          unitAmountMinor: selectedPrice.unitAmountMinor,
-          lineSubtotalAmountMinor: readyBooking.draftAmountMinor,
+          unitAmountMinor: chargeAmountMinor,
+          lineSubtotalAmountMinor: chargeAmountMinor,
           lineDiscountAmountMinor: 0,
-          lineTotalAmountMinor: readyBooking.draftAmountMinor,
-          currencyCode: readyBooking.draftCurrencyCode,
+          lineTotalAmountMinor: chargeAmountMinor,
+          currencyCode: chargeCurrencyCode,
         },
       });
 
       await tx.booking.update({
         where: { id: booking.id },
-        data: { orderId },
-      });
-    }
-
-    const existingPendingPayment = booking.payments[0] ?? null;
-    if (existingPendingPayment) {
-      const updated = await tx.payment.update({
-        where: { id: existingPendingPayment.id },
         data: {
-          orderId: existingPendingPayment.orderId ?? orderId,
-          amountMinor: readyCheckout.booking.draftAmountMinor,
-          currencyCode: readyCheckout.booking.draftCurrencyCode,
+          orderId,
+          draftAmountMinor: chargeAmountMinor,
+          draftCurrencyCode: chargeCurrencyCode,
         },
-        select: { id: true, orderId: true },
       });
-
-      return {
-        paymentId: updated.id,
-        orderId: updated.orderId ?? orderId,
-      };
+    } else {
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          subtotalAmountMinor: chargeAmountMinor,
+          totalAmountMinor: chargeAmountMinor,
+          currencyCode: chargeCurrencyCode,
+        },
+      });
+      await tx.orderItem.updateMany({
+        where: { orderId, productId: selectedPrice.product.id, priceId: selectedPrice.id },
+        data: {
+          unitAmountMinor: chargeAmountMinor,
+          lineSubtotalAmountMinor: chargeAmountMinor,
+          lineTotalAmountMinor: chargeAmountMinor,
+          currencyCode: chargeCurrencyCode,
+        },
+      });
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: {
+          draftAmountMinor: chargeAmountMinor,
+          draftCurrencyCode: chargeCurrencyCode,
+        },
+      });
     }
 
-    const createdPayment = await tx.payment.create({
-      data: {
+    const existingPendingPayment = await tx.payment.findFirst({
+      where: {
         bookingId,
-        orderId,
-        status: PaymentStatus.PENDING,
-        method: PaymentMethod.CARD,
         provider: PaymentProvider.STRIPE,
-        amountMinor: readyCheckout.booking.draftAmountMinor,
-        currencyCode: readyCheckout.booking.draftCurrencyCode,
+        status: PaymentStatus.PENDING,
       },
+      orderBy: { createdAt: "desc" },
       select: { id: true, orderId: true },
     });
 
+    const payment = existingPendingPayment
+      ? await tx.payment.update({
+          where: { id: existingPendingPayment.id },
+          data: {
+            orderId: existingPendingPayment.orderId ?? orderId,
+            amountMinor: chargeAmountMinor,
+            currencyCode: chargeCurrencyCode,
+          },
+          select: { id: true, orderId: true, stripeCheckoutSessionId: true },
+        })
+      : await tx.payment.create({
+          data: {
+            bookingId,
+            orderId,
+            status: PaymentStatus.PENDING,
+            method: PaymentMethod.CARD,
+            provider: PaymentProvider.STRIPE,
+            checkoutSource: CheckoutSource.BOOKING_FLOW,
+            amountMinor: chargeAmountMinor,
+            currencyCode: chargeCurrencyCode,
+          },
+          select: { id: true, orderId: true, stripeCheckoutSessionId: true },
+        });
+
     return {
-      paymentId: createdPayment.id,
-      orderId: createdPayment.orderId ?? orderId,
+      bookingId: readyCheckout.booking.id,
+      serviceSlug: readyCheckout.booking.serviceSlug,
+      paymentSelection: readyCheckout.booking.paymentSelection,
+      userId: readyCheckout.userId,
+      selectedPrice,
+      isRecurringPlanPurchase,
+      orderId: payment.orderId ?? orderId,
+      paymentId: payment.id,
+      existingCheckoutSessionId: payment.stripeCheckoutSessionId,
     };
   });
 
   const metadata = {
-    bookingId: readyCheckout.booking.id,
-    paymentId: orderAndPayment.paymentId,
-    orderId: orderAndPayment.orderId ?? "",
-    paymentSelection: readyCheckout.booking.paymentSelection,
-    selectedPriceId: readyCheckout.booking.selectedPriceId,
-    serviceSlug: readyCheckout.booking.serviceSlug,
-    userId: readyCheckout.userId,
-    productId: selectedPrice.product.id,
-    priceId: selectedPrice.id,
+    bookingId: sessionContext.bookingId,
+    paymentId: sessionContext.paymentId,
+    orderId: sessionContext.orderId ?? "",
+    paymentSelection: sessionContext.paymentSelection,
+    selectedPriceId: sessionContext.selectedPrice.id,
+    serviceSlug: sessionContext.serviceSlug,
+    userId: sessionContext.userId,
+    productId: sessionContext.selectedPrice.product.id,
+    priceId: sessionContext.selectedPrice.id,
     source: "booking-flow",
   };
 
-  if (process.env.E2E_TEST_MODE === "1") {
-    const syntheticCheckoutSessionId = `cs_e2e_${Date.now()}_${orderAndPayment.paymentId.slice(-8)}`;
-    const checkoutUrl =
-      `${env.appUrl}/book-a-class/${readyCheckout.booking.serviceSlug}/payment/success` +
-      `?bookingId=${encodeURIComponent(readyCheckout.booking.id)}&session_id=${encodeURIComponent(syntheticCheckoutSessionId)}`;
+  const stripeIdempotencyKey = buildStripeIdempotencyKey([
+    "booking-checkout",
+    sessionContext.paymentId,
+  ]);
+
+  if (sessionContext.existingCheckoutSessionId) {
+    if (isE2ETestModeEnabled()) {
+      return {
+        checkoutSessionId: sessionContext.existingCheckoutSessionId,
+        checkoutUrl: buildBookingSyntheticCheckoutUrl({
+          appUrl: env.appUrl,
+          bookingId: sessionContext.bookingId,
+          serviceSlug: sessionContext.serviceSlug,
+          checkoutSessionId: sessionContext.existingCheckoutSessionId,
+        }),
+        paymentId: sessionContext.paymentId,
+      };
+    }
+
+    const existingSession = await getStripeClient().checkout.sessions.retrieve(
+      sessionContext.existingCheckoutSessionId,
+    );
+    if (!existingSession.url) {
+      throw new Error("Existing Stripe checkout session is missing a checkout URL.");
+    }
+    return {
+      checkoutSessionId: existingSession.id,
+      checkoutUrl: existingSession.url,
+      paymentId: sessionContext.paymentId,
+    };
+  }
+
+  if (isE2ETestModeEnabled()) {
+    const syntheticCheckoutSessionId = `cs_e2e_${Date.now()}_${sessionContext.paymentId.slice(-8)}`;
+    const checkoutUrl = buildBookingSyntheticCheckoutUrl({
+      appUrl: env.appUrl,
+      bookingId: sessionContext.bookingId,
+      serviceSlug: sessionContext.serviceSlug,
+      checkoutSessionId: syntheticCheckoutSessionId,
+    });
 
     await prisma.payment.update({
-      where: { id: orderAndPayment.paymentId },
+      where: { id: sessionContext.paymentId },
       data: {
         providerReference: syntheticCheckoutSessionId,
         stripeCheckoutSessionId: syntheticCheckoutSessionId,
-        stripeCheckoutMode: isRecurringPlanPurchase ? "SUBSCRIPTION" : "PAYMENT",
+        stripeCheckoutMode: sessionContext.isRecurringPlanPurchase ? "SUBSCRIPTION" : "PAYMENT",
       },
     });
 
     return {
       checkoutSessionId: syntheticCheckoutSessionId,
       checkoutUrl,
-      paymentId: orderAndPayment.paymentId,
+      paymentId: sessionContext.paymentId,
     };
   }
 
-  const checkoutSession = await createStripeCheckoutSession(
-    isRecurringPlanPurchase
+  const checkoutSession = await createStripeCheckoutSessionWithIdempotency({
+    idempotencyKey: stripeIdempotencyKey,
+    params: sessionContext.isRecurringPlanPurchase
       ? {
           mode: "subscription",
           line_items: [
             {
-              price: selectedPrice.stripePriceId!,
+              price: sessionContext.selectedPrice.stripePriceId!,
               quantity: 1,
             },
           ],
           metadata,
-          client_reference_id: readyCheckout.userId,
+          client_reference_id: sessionContext.userId,
           subscription_data: {
             metadata,
           },
-          success_url: `${env.appUrl}/book-a-class/${readyCheckout.booking.serviceSlug}/payment/success?bookingId=${readyCheckout.booking.id}&session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${env.appUrl}/book-a-class/${readyCheckout.booking.serviceSlug}/payment/cancel?bookingId=${readyCheckout.booking.id}`,
+          success_url: `${env.appUrl}/book-a-class/${sessionContext.serviceSlug}/payment/success?bookingId=${sessionContext.bookingId}&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${env.appUrl}/book-a-class/${sessionContext.serviceSlug}/payment/cancel?bookingId=${sessionContext.bookingId}`,
         }
       : {
           mode: "payment",
           line_items: [
             {
+              price: sessionContext.selectedPrice.stripePriceId!,
               quantity: 1,
-              price_data: {
-                currency: readyCheckout.booking.draftCurrencyCode.toLowerCase(),
-                unit_amount: readyCheckout.booking.draftAmountMinor,
-                product_data: {
-                  name: serviceLabel,
-                  description:
-                    readyCheckout.booking.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE
-                      ? "Plan purchase for booking flow"
-                      : "Single-session booking payment",
-                },
-              },
             },
           ],
           metadata,
-          success_url: `${env.appUrl}/book-a-class/${readyCheckout.booking.serviceSlug}/payment/success?bookingId=${readyCheckout.booking.id}&session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${env.appUrl}/book-a-class/${readyCheckout.booking.serviceSlug}/payment/cancel?bookingId=${readyCheckout.booking.id}`,
+          success_url: `${env.appUrl}/book-a-class/${sessionContext.serviceSlug}/payment/success?bookingId=${sessionContext.bookingId}&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${env.appUrl}/book-a-class/${sessionContext.serviceSlug}/payment/cancel?bookingId=${sessionContext.bookingId}`,
         },
-  );
+  });
 
   if (!checkoutSession.url) {
     throw new Error("Stripe did not return a checkout URL.");
   }
 
   await prisma.payment.update({
-    where: { id: orderAndPayment.paymentId },
+    where: { id: sessionContext.paymentId },
     data: {
       providerReference: checkoutSession.id,
       stripeCheckoutSessionId: checkoutSession.id,
-      stripeCheckoutMode: isRecurringPlanPurchase ? "SUBSCRIPTION" : "PAYMENT",
+      stripeCheckoutMode: sessionContext.isRecurringPlanPurchase ? "SUBSCRIPTION" : "PAYMENT",
     },
   });
 
   return {
     checkoutSessionId: checkoutSession.id,
     checkoutUrl: checkoutSession.url,
-    paymentId: orderAndPayment.paymentId,
+    paymentId: sessionContext.paymentId,
   };
 }
 
@@ -507,55 +619,145 @@ export async function createCheckoutSessionForCatalogProduct(input: {
     throw new CatalogCheckoutError("CHECKOUT_NOT_CONFIGURED", "Invalid checkout redirect configuration.");
   }
 
-  const createdOrder = await prisma.order.create({
-    data: {
-      clientId: userId,
-      subtotalAmountMinor: product.amountMinor,
-      discountAmountMinor: 0,
-      totalAmountMinor: product.amountMinor,
-      currencyCode: product.currencyCode,
-      status: OrderStatus.PLACED,
-      notes: "Product catalog order created from /subscription checkout.",
-      items: {
-        create: {
+  const orderAndPayment = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+
+    const latestPrice = await tx.price.findFirst({
+      where: {
+        id: product.priceId,
+        productId: product.productId,
+        isActive: true,
+        isArchived: false,
+        product: {
+          isActive: true,
+          isArchived: false,
+        },
+      },
+      select: {
+        id: true,
+        unitAmountMinor: true,
+        currencyCode: true,
+        priceType: true,
+        billingInterval: true,
+        billingIntervalCount: true,
+        stripePriceId: true,
+        stripeSyncStatus: true,
+      },
+    });
+    if (!latestPrice || !isCatalogPriceCheckoutReady(latestPrice)) {
+      throw new CatalogCheckoutError(
+        "CHECKOUT_NOT_CONFIGURED",
+        "Checkout is unavailable until Stripe pricing is configured.",
+      );
+    }
+
+    const existingPending = await tx.payment.findFirst({
+      where: {
+        provider: PaymentProvider.STRIPE,
+        status: PaymentStatus.PENDING,
+        checkoutSource: CheckoutSource.SUBSCRIPTION_CATALOG,
+        order: {
+          clientId: userId,
+          status: OrderStatus.PLACED,
+          items: {
+            some: {
+              productId: product.productId,
+              priceId: product.priceId,
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        orderId: true,
+        stripeCheckoutSessionId: true,
+      },
+    });
+
+    if (existingPending?.orderId) {
+      await tx.payment.update({
+        where: { id: existingPending.id },
+        data: {
+          amountMinor: latestPrice.unitAmountMinor,
+          currencyCode: latestPrice.currencyCode,
+        },
+      });
+      await tx.order.update({
+        where: { id: existingPending.orderId },
+        data: {
+          subtotalAmountMinor: latestPrice.unitAmountMinor,
+          totalAmountMinor: latestPrice.unitAmountMinor,
+          currencyCode: latestPrice.currencyCode,
+        },
+      });
+      await tx.orderItem.updateMany({
+        where: {
+          orderId: existingPending.orderId,
           productId: product.productId,
           priceId: product.priceId,
-          quantity: 1,
-          productNameSnapshot: product.name,
-          priceNameSnapshot: product.priceName,
-          unitAmountMinor: product.amountMinor,
-          lineSubtotalAmountMinor: product.amountMinor,
-          lineDiscountAmountMinor: 0,
-          lineTotalAmountMinor: product.amountMinor,
-          currencyCode: product.currencyCode,
+        },
+        data: {
+          unitAmountMinor: latestPrice.unitAmountMinor,
+          lineSubtotalAmountMinor: latestPrice.unitAmountMinor,
+          lineTotalAmountMinor: latestPrice.unitAmountMinor,
+          currencyCode: latestPrice.currencyCode,
+        },
+      });
+      return {
+        orderId: existingPending.orderId,
+        paymentId: existingPending.id,
+        existingCheckoutSessionId: existingPending.stripeCheckoutSessionId,
+      };
+    }
+
+    const createdOrder = await tx.order.create({
+      data: {
+        clientId: userId,
+        subtotalAmountMinor: latestPrice.unitAmountMinor,
+        discountAmountMinor: 0,
+        totalAmountMinor: latestPrice.unitAmountMinor,
+        currencyCode: latestPrice.currencyCode,
+        status: OrderStatus.PLACED,
+        notes: "Product catalog order created from /subscription checkout.",
+        items: {
+          create: {
+            productId: product.productId,
+            priceId: product.priceId,
+            quantity: 1,
+            productNameSnapshot: product.name,
+            priceNameSnapshot: product.priceName,
+            unitAmountMinor: latestPrice.unitAmountMinor,
+            lineSubtotalAmountMinor: latestPrice.unitAmountMinor,
+            lineDiscountAmountMinor: 0,
+            lineTotalAmountMinor: latestPrice.unitAmountMinor,
+            currencyCode: latestPrice.currencyCode,
+          },
         },
       },
-      payments: {
-        create: {
-          status: PaymentStatus.PENDING,
-          method: PaymentMethod.CARD,
-          provider: PaymentProvider.STRIPE,
-          amountMinor: product.amountMinor,
-          currencyCode: product.currencyCode,
-        },
+      select: {
+        id: true,
       },
-    },
-    select: {
-      id: true,
-      payments: {
-        select: { id: true },
-        take: 1,
+    });
+    const createdPayment = await tx.payment.create({
+      data: {
+        orderId: createdOrder.id,
+        status: PaymentStatus.PENDING,
+        method: PaymentMethod.CARD,
+        provider: PaymentProvider.STRIPE,
+        checkoutSource: CheckoutSource.SUBSCRIPTION_CATALOG,
+        amountMinor: latestPrice.unitAmountMinor,
+        currencyCode: latestPrice.currencyCode,
       },
-    },
+      select: { id: true, stripeCheckoutSessionId: true },
+    });
+
+    return {
+      orderId: createdOrder.id,
+      paymentId: createdPayment.id,
+      existingCheckoutSessionId: createdPayment.stripeCheckoutSessionId,
+    };
   });
-  const paymentId = createdOrder.payments[0]?.id;
-  if (!paymentId) {
-    throw new Error("Could not create pending payment for catalog checkout.");
-  }
-  const orderAndPayment = {
-    orderId: createdOrder.id,
-    paymentId,
-  };
 
   const metadata = {
     userId,
@@ -566,8 +768,39 @@ export async function createCheckoutSessionForCatalogProduct(input: {
     paymentId: orderAndPayment.paymentId,
     source: "subscription-catalog",
   };
+  const stripeIdempotencyKey = buildStripeIdempotencyKey([
+    "subscription-checkout",
+    orderAndPayment.paymentId,
+  ]);
 
-  if (process.env.E2E_TEST_MODE === "1") {
+  if (orderAndPayment.existingCheckoutSessionId) {
+    if (isE2ETestModeEnabled()) {
+      return {
+        checkoutSessionId: orderAndPayment.existingCheckoutSessionId,
+        checkoutUrl: buildSubscriptionSyntheticCheckoutUrl({
+          appUrl: env.appUrl,
+          checkoutSessionId: orderAndPayment.existingCheckoutSessionId,
+        }),
+        paymentId: orderAndPayment.paymentId,
+        orderId: orderAndPayment.orderId,
+      };
+    }
+
+    const existingSession = await getStripeClient().checkout.sessions.retrieve(
+      orderAndPayment.existingCheckoutSessionId,
+    );
+    if (!existingSession.url) {
+      throw new Error("Existing Stripe checkout session is missing a checkout URL.");
+    }
+    return {
+      checkoutSessionId: existingSession.id,
+      checkoutUrl: existingSession.url,
+      paymentId: orderAndPayment.paymentId,
+      orderId: orderAndPayment.orderId,
+    };
+  }
+
+  if (isE2ETestModeEnabled()) {
     const syntheticCheckoutSessionId = `cs_e2e_${Date.now()}_${orderAndPayment.paymentId.slice(-8)}`;
     await prisma.payment.update({
       where: { id: orderAndPayment.paymentId },
@@ -580,30 +813,36 @@ export async function createCheckoutSessionForCatalogProduct(input: {
 
     return {
       checkoutSessionId: syntheticCheckoutSessionId,
-      checkoutUrl: `${env.appUrl}/subscription/success?session_id=${encodeURIComponent(syntheticCheckoutSessionId)}`,
+      checkoutUrl: buildSubscriptionSyntheticCheckoutUrl({
+        appUrl: env.appUrl,
+        checkoutSessionId: syntheticCheckoutSessionId,
+      }),
       paymentId: orderAndPayment.paymentId,
       orderId: orderAndPayment.orderId,
     };
   }
 
-  const checkoutSession = await createStripeCheckoutSession({
-    mode: product.priceType === PriceType.RECURRING ? "subscription" : "payment",
-    line_items: [
-      {
-        price: stripePriceId,
-        quantity: 1,
-      },
-    ],
-    metadata,
-    client_reference_id: userId,
-    subscription_data:
-      product.priceType === PriceType.RECURRING
-        ? {
-            metadata,
-          }
-        : undefined,
-    success_url: successUrl,
-    cancel_url: cancelUrl,
+  const checkoutSession = await createStripeCheckoutSessionWithIdempotency({
+    idempotencyKey: stripeIdempotencyKey,
+    params: {
+      mode: product.priceType === PriceType.RECURRING ? "subscription" : "payment",
+      line_items: [
+        {
+          price: stripePriceId,
+          quantity: 1,
+        },
+      ],
+      metadata,
+      client_reference_id: userId,
+      subscription_data:
+        product.priceType === PriceType.RECURRING
+          ? {
+              metadata,
+            }
+          : undefined,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+    },
   });
 
   if (!checkoutSession.url) {

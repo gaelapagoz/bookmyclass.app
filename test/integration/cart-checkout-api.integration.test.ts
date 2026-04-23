@@ -7,6 +7,7 @@ import {
   PriceType,
   ProductType,
   Role,
+  StripeSyncStatus,
   UserActivationStatus,
 } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -107,7 +108,10 @@ async function seedCheckoutReadyCatalog(input?: { priceType?: PriceType; stripeP
     data: {
       productId: product.id,
       lookupKey: `slice-b-price-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      stripePriceId: input?.stripePriceId ?? `price_slice_b_${Date.now()}`,
+      stripePriceId:
+        input?.stripePriceId === undefined ? `price_slice_b_${Date.now()}` : input?.stripePriceId,
+      stripeSyncStatus:
+        input?.stripePriceId === null ? StripeSyncStatus.PENDING : StripeSyncStatus.SYNCED,
       name: "Slice B Price",
       priceType: input?.priceType ?? PriceType.ONE_TIME,
       currencyCode: "EUR",
@@ -418,6 +422,34 @@ describe("POST /api/cart/checkout", () => {
     expect(secondBody.idempotency.replayed).toBe(true);
   });
 
+  it("rejects cart checkout when DB stripePriceId is missing", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({ stripePriceId: null });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: client.id,
+        name: client.name,
+        email: client.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_123e4567-e89b-12d3-a456-426614174250",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({ code: "CART_VALIDATION_FAILED" });
+    expect(createStripeCheckoutSessionWithIdempotencyMock).not.toHaveBeenCalled();
+  });
+
   it("maps mixed composition to CART_COMPOSITION_NOT_ALLOWED and replays deterministically", async () => {
     const client = await seedClient({ verified: true });
     const recurring = await seedCheckoutReadyCatalog({ priceType: PriceType.RECURRING });
@@ -590,6 +622,9 @@ describe("POST /api/cart/checkout", () => {
       | { params?: Record<string, unknown> }
       | undefined;
     expect(stripeArgs?.params?.mode).toBe("payment");
+    const lineItems = stripeArgs?.params?.line_items as Array<{ price: string; quantity: number }> | undefined;
+    expect(lineItems?.[0]?.price).toBe(price.stripePriceId);
+    expect(lineItems?.[0]?.quantity).toBe(1);
     expect("subscription_data" in (stripeArgs?.params ?? {})).toBe(false);
   });
 

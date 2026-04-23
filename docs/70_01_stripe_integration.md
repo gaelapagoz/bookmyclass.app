@@ -13,6 +13,10 @@ Purpose: document the current Stripe integration boundary and behavior.
 - Billing portal session creation for existing Stripe customers.
 - Webhook-driven finalization/reconciliation for payment and subscription events.
 
+Checkout source-of-truth contract:
+- Runtime checkout for booking/subscription/cart resolves Stripe line-item prices from DB `Price.stripePriceId` only.
+- Runtime checkout does not read env Stripe price lookup mappings.
+
 ## Required Runtime Inputs
 - `APP_URL`
 - `STRIPE_SECRET_KEY`
