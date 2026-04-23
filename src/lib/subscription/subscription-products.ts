@@ -1,7 +1,8 @@
-import { BillingInterval, PriceType, ProductType, type Prisma } from "@prisma/client";
+import { BillingInterval, PriceType, ProductType, StripeSyncStatus, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { createPerfTrace } from "@/lib/monitoring/perf-trace";
 import { createInMemoryTtlCache } from "@/lib/cache/in-memory-ttl-cache";
+import { isCatalogPriceCheckoutReady } from "@/lib/catalog/checkout-readiness";
 
 export type SubscriptionCatalogItem = {
   productId: string;
@@ -49,13 +50,15 @@ function mapToCheckoutItem(product: {
     name: string;
     priceType: PriceType;
     stripePriceId: string | null;
+    stripeSyncStatus: StripeSyncStatus;
     unitAmountMinor: number;
     currencyCode: string;
     billingInterval: BillingInterval | null;
     billingIntervalCount: number | null;
   }>;
 }): SubscriptionCheckoutItem | null {
-  const productPrice = product.prices.find((price) => Boolean(price.stripePriceId)) ?? product.prices[0];
+  const productPrice =
+    product.prices.find((price) => isCatalogPriceCheckoutReady(price)) ?? product.prices[0];
   if (!productPrice) {
     return null;
   }
@@ -73,7 +76,7 @@ function mapToCheckoutItem(product: {
     billingInterval: productPrice.billingInterval,
     billingIntervalCount: productPrice.billingIntervalCount,
     stripePriceId: productPrice.stripePriceId,
-    checkoutEnabled: Boolean(productPrice.stripePriceId),
+    checkoutEnabled: isCatalogPriceCheckoutReady(productPrice),
   };
 }
 
@@ -119,6 +122,7 @@ async function getActiveSubscriptionCatalogProductsRaw(): Promise<SubscriptionCa
               name: true,
               priceType: true,
               stripePriceId: true,
+              stripeSyncStatus: true,
               unitAmountMinor: true,
               currencyCode: true,
               billingInterval: true,
@@ -193,6 +197,7 @@ async function getSubscriptionCheckoutItemByProductIdRaw(
               name: true,
               priceType: true,
               stripePriceId: true,
+              stripeSyncStatus: true,
               unitAmountMinor: true,
               currencyCode: true,
               billingInterval: true,

@@ -18,17 +18,19 @@ import {
   Role,
   StudioSessionStatus,
   SubscriptionStatus,
+  StripeSyncStatus,
   WaitlistStatus,
   Weekday,
 } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { hash } from "bcryptjs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { prisma } from "@/lib/db";
 import { generatePlanSlug } from "@/lib/admin/plan-slug";
 import { ensureEntitlementRuleForProduct } from "@/lib/admin/plan-entitlement-rules";
 import { provisionPlanOnStripe, resolveStripeProductIdFromPrice } from "@/lib/admin/plan-provisioning";
+import { isAdminRole } from "@/lib/auth/admin-access";
 import {
   applyTrustedAdminEmailChange,
   createUserFromTrustedFlow,
@@ -38,6 +40,7 @@ import { assertLearningImagePath } from "@/lib/learning/image-paths";
 import { sendWaitlistPromotionNotification } from "@/lib/public-booking/waitlist-notification-service";
 import { promoteWaitlistAfterCancellationWithinTx } from "@/lib/public-booking/waitlist-service";
 import { resolveWaitlistPromotionCoverage } from "@/lib/public-booking/waitlist-service";
+import { isCatalogPriceCheckoutReady } from "@/lib/catalog/checkout-readiness";
 
 export type AdminDashboardData = {
   upcomingSessions: Array<{
@@ -242,6 +245,16 @@ export type AdminPlanItem = {
   currentBillingInterval: BillingInterval | null;
   currentBillingIntervalCount: number | null;
   isCheckoutReady: boolean;
+};
+
+type AdminCheckoutReadinessPrice = {
+  priceType: PriceType;
+  currencyCode: string;
+  unitAmountMinor: number;
+  billingInterval: BillingInterval | null;
+  billingIntervalCount: number | null;
+  stripePriceId: string | null;
+  stripeSyncStatus: StripeSyncStatus;
 };
 
 export type AdminBookingItem = {
@@ -460,6 +473,253 @@ function splitName(fullName: string): { firstName: string; lastName: string } {
   const firstName = parts.shift() ?? "User";
   const lastName = parts.join(" ") || "Account";
   return { firstName, lastName };
+}
+
+type CatalogMutationActor = {
+  actorId: string;
+  actorRole: Role;
+};
+
+function assertCatalogMutationActor(actor: CatalogMutationActor) {
+  if (!isAdminRole(actor.actorRole)) {
+    throw new Error("ADMIN_ROLE_REQUIRED");
+  }
+}
+
+async function createCatalogAuditLog(
+  tx: Prisma.TransactionClient | typeof prisma,
+  input: {
+    actionType:
+      | "CATALOG_PRODUCT_CREATE"
+      | "CATALOG_PRODUCT_UPDATE"
+      | "CATALOG_PRODUCT_ACTIVATE"
+      | "CATALOG_PRODUCT_DEACTIVATE"
+      | "CATALOG_PRICE_STRIPE_LINK"
+      | "CATALOG_PRICE_SYNC_FAIL";
+    actorId: string | null;
+    entityType: "Product" | "Price";
+    entityId: string;
+    metadata?: Prisma.InputJsonValue;
+  },
+) {
+  await tx.auditLog.create({
+    data: {
+      actorId: input.actorId,
+      actionType: input.actionType,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      metadata: input.metadata,
+    },
+  });
+}
+
+function assertAdminPlanPriceInput(input: {
+  priceType: PriceType;
+  currencyCode: string;
+  unitAmountMinor: number;
+  billingInterval?: BillingInterval;
+  billingIntervalCount?: number;
+}) {
+  // Phase 1 invariant guard for admin catalog price writes.
+  if (!/^[A-Z]{3}$/.test(input.currencyCode)) {
+    throw new Error("INVALID_CURRENCY_CODE");
+  }
+
+  if (!Number.isInteger(input.unitAmountMinor) || input.unitAmountMinor <= 0) {
+    throw new Error("INVALID_UNIT_AMOUNT");
+  }
+
+  if (input.priceType === PriceType.RECURRING) {
+    if (!input.billingInterval) {
+      throw new Error("RECURRING_INTERVAL_REQUIRED");
+    }
+
+    if (
+      input.billingIntervalCount !== undefined &&
+      (!Number.isInteger(input.billingIntervalCount) || input.billingIntervalCount < 1)
+    ) {
+      throw new Error("INVALID_BILLING_INTERVAL_COUNT");
+    }
+
+    return;
+  }
+
+  if (input.billingInterval !== undefined || input.billingIntervalCount !== undefined) {
+    throw new Error("ONE_TIME_INTERVAL_FORBIDDEN");
+  }
+}
+
+function buildDeterministicCorrelation(prefix: "admin-create" | "admin-update", parts: string[]): string {
+  const digest = createHash("sha256")
+    .update(parts.join("|"))
+    .digest("hex")
+    .slice(0, 24);
+
+  return `${prefix}-${digest}`;
+}
+
+function buildDeterministicPriceLookupKey(input: {
+  productKey: string;
+  slug: string;
+  priceName: string;
+  correlationKey: string;
+  priceType: PriceType;
+  currencyCode: string;
+  unitAmountMinor: number;
+  billingInterval: BillingInterval | null;
+  billingIntervalCount: number | null;
+}) {
+  const digest = createHash("sha256")
+    .update(
+      [
+        input.productKey,
+        input.slug,
+        input.priceName,
+        input.correlationKey,
+        input.priceType,
+        input.currencyCode,
+        String(input.unitAmountMinor),
+        input.billingInterval ?? "none",
+        String(input.billingIntervalCount ?? 0),
+      ].join("|"),
+    )
+    .digest("hex")
+    .slice(0, 18);
+
+  return `admin-${input.slug}-${digest}`;
+}
+
+function isCheckoutReadyCatalogPrice(price: AdminCheckoutReadinessPrice | null): boolean {
+  return isCatalogPriceCheckoutReady(price);
+}
+
+export async function applyStripeProvisionResultToPrice(input: {
+  priceId: string;
+  productId: string;
+  actorId: string | null;
+  syncCorrelation: string;
+  provisionResult: Awaited<ReturnType<typeof provisionPlanOnStripe>>;
+}) {
+  const now = new Date();
+  const provisionResult = input.provisionResult;
+
+  if (provisionResult.ok) {
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.price.updateMany({
+        where: {
+          id: input.priceId,
+          stripePriceId: null,
+        },
+        data: {
+          stripePriceId: provisionResult.stripePriceId,
+          stripeSyncStatus: StripeSyncStatus.SYNCED,
+          stripeSyncLastAttempt: now,
+          stripeSyncLastSuccess: now,
+          stripeSyncErrorCode: null,
+          stripeSyncError: null,
+          stripeSyncCorrelation: input.syncCorrelation,
+        },
+      });
+
+      if (updated.count === 0) {
+        const existing = await tx.price.findUnique({
+          where: { id: input.priceId },
+          select: { stripePriceId: true },
+        });
+
+        if (!existing) {
+          throw new Error("PRICE_NOT_FOUND");
+        }
+
+        if (existing.stripePriceId && existing.stripePriceId !== provisionResult.stripePriceId) {
+          throw new Error("STRIPE_PRICE_ID_IMMUTABLE");
+        }
+
+        await tx.price.update({
+          where: { id: input.priceId },
+          data: {
+            stripeSyncStatus: StripeSyncStatus.SYNCED,
+            stripeSyncLastAttempt: now,
+            stripeSyncLastSuccess: now,
+            stripeSyncErrorCode: null,
+            stripeSyncError: null,
+            stripeSyncCorrelation: input.syncCorrelation,
+          },
+        });
+      }
+
+      await createCatalogAuditLog(tx, {
+        actorId: input.actorId,
+        actionType: "CATALOG_PRICE_STRIPE_LINK",
+        entityType: "Price",
+        entityId: input.priceId,
+        metadata: {
+          productId: input.productId,
+          stripePriceId: provisionResult.stripePriceId,
+          syncCorrelation: input.syncCorrelation,
+          ownershipScopeKey: "GLOBAL_CATALOG",
+        },
+      });
+    });
+
+    return;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.price.update({
+      where: { id: input.priceId },
+      data: {
+        stripeSyncStatus: StripeSyncStatus.FAILED,
+        stripeSyncLastAttempt: now,
+        stripeSyncErrorCode: provisionResult.stripeErrorCode ?? "STRIPE_PROVISION_FAILED",
+        stripeSyncError: provisionResult.reason,
+        stripeSyncCorrelation: input.syncCorrelation,
+      },
+    });
+
+    await createCatalogAuditLog(tx, {
+      actorId: input.actorId,
+      actionType: "CATALOG_PRICE_SYNC_FAIL",
+      entityType: "Price",
+      entityId: input.priceId,
+      metadata: {
+        productId: input.productId,
+        syncCorrelation: input.syncCorrelation,
+        stripeErrorCode: provisionResult.stripeErrorCode ?? "STRIPE_PROVISION_FAILED",
+        stripeError: provisionResult.reason,
+        ownershipScopeKey: "GLOBAL_CATALOG",
+      },
+    });
+  });
+}
+
+export async function remediatePriceStripeId(input: {
+  actor: CatalogMutationActor;
+  priceId: string;
+  stripePriceId: string;
+  reason?: string;
+}) {
+  assertCatalogMutationActor(input.actor);
+
+  await prisma.$transaction(async (tx) => {
+    const actorRecord = await tx.user.findUnique({
+      where: { id: input.actor.actorId },
+      select: { role: true },
+    });
+
+    if (!actorRecord || !isAdminRole(actorRecord.role)) {
+      throw new Error("ADMIN_ROLE_REQUIRED");
+    }
+
+    await tx.$executeRaw`
+      SELECT remediate_price_stripe_id(
+        ${input.priceId},
+        ${input.stripePriceId},
+        ${input.actor.actorId},
+        ${input.reason?.trim() || null}
+      )
+    `;
+  });
 }
 
 const WEEKDAY_TO_INDEX: Record<Weekday, number> = {
@@ -2801,6 +3061,7 @@ export async function getAdminPlansData(): Promise<AdminPlanItem[]> {
           billingInterval: true,
           billingIntervalCount: true,
           stripePriceId: true,
+          stripeSyncStatus: true,
         },
       },
     },
@@ -2820,13 +3081,13 @@ export async function getAdminPlansData(): Promise<AdminPlanItem[]> {
       currentPriceType: currentPrice?.priceType ?? null,
       currentBillingInterval: currentPrice?.billingInterval ?? null,
       currentBillingIntervalCount: currentPrice?.billingIntervalCount ?? null,
-      isCheckoutReady: Boolean(currentPrice?.stripePriceId),
+      isCheckoutReady: isCheckoutReadyCatalogPrice(currentPrice),
     };
   });
 }
 
 export async function getAdminPlanById(id: string) {
-  return prisma.product.findUnique({
+  const record = await prisma.product.findUnique({
     where: { id },
     select: {
       id: true,
@@ -2852,13 +3113,24 @@ export async function getAdminPlanById(id: string) {
           billingInterval: true,
           billingIntervalCount: true,
           stripePriceId: true,
+          stripeSyncStatus: true,
         },
       },
     },
   });
+
+  if (!record) {
+    return null;
+  }
+
+  return {
+    ...record,
+    isCheckoutReady: isCheckoutReadyCatalogPrice(record.prices[0] ?? null),
+  };
 }
 
 export async function createAdminPlan(input: {
+  actor: CatalogMutationActor;
   name: string;
   description?: string;
   productType: ProductType;
@@ -2871,52 +3143,111 @@ export async function createAdminPlan(input: {
   billingInterval?: BillingInterval;
   billingIntervalCount?: number;
 }) {
+  assertCatalogMutationActor(input.actor);
   const name = input.name.trim();
   const slugBase = generatePlanSlug(name);
   const slug = slugBase || `plan-${Date.now()}`;
   const priceName = input.priceName?.trim() || `${name} Price`;
   const normalizedDescription = toNullable(input.description);
   const normalizedCurrencyCode = input.currencyCode.trim().toUpperCase();
+  const normalizedBillingInterval = input.priceType === PriceType.RECURRING ? input.billingInterval ?? null : null;
+  const normalizedBillingIntervalCount =
+    input.priceType === PriceType.RECURRING ? input.billingIntervalCount ?? 1 : null;
+  const syncCorrelation = buildDeterministicCorrelation("admin-create", [
+    slug,
+    name,
+    normalizedDescription ?? "",
+    input.productType,
+    String(input.isActive),
+    String(input.sortOrder),
+    priceName,
+    input.priceType,
+    normalizedCurrencyCode,
+    String(input.unitAmountMinor),
+    normalizedBillingInterval ?? "none",
+    String(normalizedBillingIntervalCount ?? 0),
+  ]);
+  const syncAttemptAt = new Date();
 
-  const created = await prisma.product.create({
-    data: {
-      name,
-      slug,
-      description: normalizedDescription,
-      productType: input.productType,
-      isActive: input.isActive,
-      isArchived: false,
-      sortOrder: input.sortOrder,
-      prices: {
-        create: {
-          lookupKey: `admin-${slug}-${Date.now()}`,
-          name: priceName,
-          priceType: input.priceType,
-          currencyCode: normalizedCurrencyCode,
-          unitAmountMinor: input.unitAmountMinor,
-          billingInterval: input.priceType === PriceType.RECURRING ? input.billingInterval : null,
-          billingIntervalCount: input.priceType === PriceType.RECURRING ? input.billingIntervalCount ?? 1 : null,
-          isActive: true,
+  assertAdminPlanPriceInput({
+    priceType: input.priceType,
+    currencyCode: normalizedCurrencyCode,
+    unitAmountMinor: input.unitAmountMinor,
+    billingInterval: input.billingInterval,
+    billingIntervalCount: input.billingIntervalCount,
+  });
+
+  const created = await prisma.$transaction(
+    async (tx) => {
+      const createdProduct = await tx.product.create({
+        data: {
+          name,
+          slug,
+          description: normalizedDescription,
+          productType: input.productType,
+          isActive: input.isActive,
           isArchived: false,
+          sortOrder: input.sortOrder,
+          prices: {
+            create: {
+              lookupKey: buildDeterministicPriceLookupKey({
+                productKey: slug,
+                slug,
+                priceName,
+                correlationKey: syncCorrelation,
+                priceType: input.priceType,
+                currencyCode: normalizedCurrencyCode,
+                unitAmountMinor: input.unitAmountMinor,
+                billingInterval: normalizedBillingInterval,
+                billingIntervalCount: normalizedBillingIntervalCount,
+              }),
+              name: priceName,
+              priceType: input.priceType,
+              currencyCode: normalizedCurrencyCode,
+              unitAmountMinor: input.unitAmountMinor,
+              billingInterval: normalizedBillingInterval,
+              billingIntervalCount: normalizedBillingIntervalCount,
+              isActive: true,
+              isArchived: false,
+              stripeSyncStatus: StripeSyncStatus.PENDING,
+              stripeSyncLastAttempt: syncAttemptAt,
+              stripeSyncCorrelation: syncCorrelation,
+            },
+          },
         },
-      },
-    },
-    select: {
-      id: true,
-      prices: {
-        where: { isActive: true, isArchived: false },
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        select: { id: true },
-      },
-    },
-  });
+        select: {
+          id: true,
+          prices: {
+            where: { isActive: true, isArchived: false },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { id: true },
+          },
+        },
+      });
 
-  await ensureEntitlementRuleForProduct({
-    productId: created.id,
-    productType: input.productType,
-    prismaClient: prisma,
-  });
+      await ensureEntitlementRuleForProduct({
+        productId: createdProduct.id,
+        productType: input.productType,
+        prismaClient: tx,
+      });
+
+      await createCatalogAuditLog(tx, {
+        actorId: input.actor.actorId,
+        actionType: "CATALOG_PRODUCT_CREATE",
+        entityType: "Product",
+        entityId: createdProduct.id,
+        metadata: {
+          productType: input.productType,
+          isActive: input.isActive,
+          ownershipScopeKey: "GLOBAL_CATALOG",
+        },
+      });
+
+      return createdProduct;
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
 
   const activePriceId = created.prices[0]?.id;
   if (activePriceId) {
@@ -2928,16 +3259,18 @@ export async function createAdminPlan(input: {
       priceType: input.priceType,
       currencyCode: normalizedCurrencyCode,
       unitAmountMinor: input.unitAmountMinor,
-      billingInterval: input.priceType === PriceType.RECURRING ? input.billingInterval ?? null : null,
-      billingIntervalCount: input.priceType === PriceType.RECURRING ? input.billingIntervalCount ?? 1 : null,
+      billingInterval: normalizedBillingInterval,
+      billingIntervalCount: normalizedBillingIntervalCount,
+      syncCorrelation,
     });
 
-    if (stripeProvision.ok) {
-      await prisma.price.update({
-        where: { id: activePriceId },
-        data: { stripePriceId: stripeProvision.stripePriceId },
-      });
-    }
+    await applyStripeProvisionResultToPrice({
+      priceId: activePriceId,
+      productId: created.id,
+      actorId: input.actor.actorId,
+      syncCorrelation,
+      provisionResult: stripeProvision,
+    });
   }
 
   return prisma.product.findUnique({ where: { id: created.id } });
@@ -2946,6 +3279,7 @@ export async function createAdminPlan(input: {
 export async function updateAdminPlan(
   id: string,
   input: {
+    actor: CatalogMutationActor;
     name: string;
     description?: string;
     productType: ProductType;
@@ -2959,12 +3293,113 @@ export async function updateAdminPlan(
     billingIntervalCount?: number;
   },
 ) {
+  assertCatalogMutationActor(input.actor);
   const name = input.name.trim();
   const slugBase = generatePlanSlug(name);
   const slug = slugBase || `plan-${Date.now()}`;
   const priceName = input.priceName?.trim() || `${name} Price`;
   const normalizedDescription = toNullable(input.description);
   const normalizedCurrencyCode = input.currencyCode.trim().toUpperCase();
+  const normalizedBillingInterval = input.priceType === PriceType.RECURRING ? input.billingInterval ?? null : null;
+  const normalizedBillingIntervalCount =
+    input.priceType === PriceType.RECURRING ? input.billingIntervalCount ?? 1 : null;
+  const syncCorrelation = buildDeterministicCorrelation("admin-update", [
+    id,
+    slug,
+    name,
+    normalizedDescription ?? "",
+    input.productType,
+    String(input.isActive),
+    String(input.sortOrder),
+    priceName,
+    input.priceType,
+    normalizedCurrencyCode,
+    String(input.unitAmountMinor),
+    normalizedBillingInterval ?? "none",
+    String(normalizedBillingIntervalCount ?? 0),
+  ]);
+  const syncAttemptAt = new Date();
+
+  assertAdminPlanPriceInput({
+    priceType: input.priceType,
+    currencyCode: normalizedCurrencyCode,
+    unitAmountMinor: input.unitAmountMinor,
+    billingInterval: input.billingInterval,
+    billingIntervalCount: input.billingIntervalCount,
+  });
+
+  const currentState = await prisma.product.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      description: true,
+      productType: true,
+      isActive: true,
+      sortOrder: true,
+      prices: {
+        where: { isActive: true, isArchived: false },
+        orderBy: [{ createdAt: "desc" }],
+        take: 1,
+        select: {
+          id: true,
+          name: true,
+          priceType: true,
+          currencyCode: true,
+          unitAmountMinor: true,
+          billingInterval: true,
+          billingIntervalCount: true,
+          stripePriceId: true,
+          stripeSyncStatus: true,
+        },
+      },
+    },
+  });
+
+  if (!currentState) {
+    throw new Error("PRODUCT_NOT_FOUND");
+  }
+
+  const activePrice = currentState.prices[0];
+  const isRepeatedSubmitNoOp =
+    currentState.name === name &&
+    currentState.slug === slug &&
+    currentState.description === normalizedDescription &&
+    currentState.productType === input.productType &&
+    currentState.isActive === input.isActive &&
+    currentState.sortOrder === input.sortOrder &&
+    activePrice !== undefined &&
+    activePrice.name === priceName &&
+    activePrice.priceType === input.priceType &&
+    activePrice.currencyCode === normalizedCurrencyCode &&
+    activePrice.unitAmountMinor === input.unitAmountMinor &&
+    activePrice.billingInterval === normalizedBillingInterval &&
+    activePrice.billingIntervalCount === normalizedBillingIntervalCount &&
+    activePrice.stripePriceId !== null &&
+    activePrice.stripeSyncStatus === StripeSyncStatus.SYNCED;
+
+  if (isRepeatedSubmitNoOp) {
+    return prisma.product.findUnique({ where: { id } });
+  }
+
+  const isRetryOnSameUnsyncedPrice =
+    currentState.name === name &&
+    currentState.slug === slug &&
+    currentState.description === normalizedDescription &&
+    currentState.productType === input.productType &&
+    currentState.isActive === input.isActive &&
+    currentState.sortOrder === input.sortOrder &&
+    activePrice !== undefined &&
+    activePrice.name === priceName &&
+    activePrice.priceType === input.priceType &&
+    activePrice.currencyCode === normalizedCurrencyCode &&
+    activePrice.unitAmountMinor === input.unitAmountMinor &&
+    activePrice.billingInterval === normalizedBillingInterval &&
+    activePrice.billingIntervalCount === normalizedBillingIntervalCount &&
+    activePrice.stripePriceId === null &&
+    (activePrice.stripeSyncStatus === StripeSyncStatus.PENDING ||
+      activePrice.stripeSyncStatus === StripeSyncStatus.FAILED);
 
   const latestStripePrice = await prisma.price.findFirst({
     where: {
@@ -2979,54 +3414,118 @@ export async function updateAdminPlan(
     ? await resolveStripeProductIdFromPrice(latestStripePrice.stripePriceId)
     : null;
 
-  const result = await prisma.$transaction(async (tx) => {
-    await tx.product.update({
-      where: { id },
-      data: {
-        name,
-        slug,
-        description: normalizedDescription,
-        productType: input.productType,
-        isActive: input.isActive,
-        sortOrder: input.sortOrder,
-      },
-    });
+  const result = isRetryOnSameUnsyncedPrice
+    ? await prisma.price.update({
+        where: { id: activePrice!.id },
+        data: {
+          stripeSyncStatus: StripeSyncStatus.PENDING,
+          stripeSyncLastAttempt: syncAttemptAt,
+          stripeSyncCorrelation: syncCorrelation,
+          stripeSyncErrorCode: null,
+          stripeSyncError: null,
+        },
+        select: { id: true },
+      })
+    : await prisma.$transaction(
+        async (tx) => {
+          const wasActive = currentState.isActive;
+          await tx.product.update({
+            where: { id },
+            data: {
+              name,
+              slug,
+              description: normalizedDescription,
+              productType: input.productType,
+              isActive: input.isActive,
+              sortOrder: input.sortOrder,
+            },
+          });
 
-    await tx.price.updateMany({
-      where: {
-        productId: id,
-        isActive: true,
-        isArchived: false,
-      },
-      data: {
-        isActive: false,
-      },
-    });
+          await tx.price.updateMany({
+            where: {
+              productId: id,
+              isActive: true,
+              isArchived: false,
+            },
+            data: {
+              isActive: false,
+            },
+          });
 
-    const createdPrice = await tx.price.create({
-      data: {
-        productId: id,
-        lookupKey: `admin-${slug}-${Date.now()}`,
-        name: priceName,
-        priceType: input.priceType,
-        currencyCode: normalizedCurrencyCode,
-        unitAmountMinor: input.unitAmountMinor,
-        billingInterval: input.priceType === PriceType.RECURRING ? input.billingInterval : null,
-        billingIntervalCount: input.priceType === PriceType.RECURRING ? input.billingIntervalCount ?? 1 : null,
-        isActive: true,
-        isArchived: false,
-      },
-      select: { id: true },
-    });
+          const createdPrice = await tx.price.create({
+            data: {
+              productId: id,
+              lookupKey: buildDeterministicPriceLookupKey({
+                productKey: id,
+                slug,
+                priceName,
+                correlationKey: syncCorrelation,
+                priceType: input.priceType,
+                currencyCode: normalizedCurrencyCode,
+                unitAmountMinor: input.unitAmountMinor,
+                billingInterval: normalizedBillingInterval,
+                billingIntervalCount: normalizedBillingIntervalCount,
+              }),
+              name: priceName,
+              priceType: input.priceType,
+              currencyCode: normalizedCurrencyCode,
+              unitAmountMinor: input.unitAmountMinor,
+              billingInterval: normalizedBillingInterval,
+              billingIntervalCount: normalizedBillingIntervalCount,
+              isActive: true,
+              isArchived: false,
+              stripeSyncStatus: StripeSyncStatus.PENDING,
+              stripeSyncLastAttempt: syncAttemptAt,
+              stripeSyncCorrelation: syncCorrelation,
+            },
+            select: { id: true },
+          });
 
-    await ensureEntitlementRuleForProduct({
-      productId: id,
-      productType: input.productType,
-      prismaClient: tx,
-    });
+          await ensureEntitlementRuleForProduct({
+            productId: id,
+            productType: input.productType,
+            prismaClient: tx,
+          });
 
-    return createdPrice;
-  });
+          await createCatalogAuditLog(tx, {
+            actorId: input.actor.actorId,
+            actionType: "CATALOG_PRODUCT_UPDATE",
+            entityType: "Product",
+            entityId: id,
+            metadata: {
+              previousIsActive: wasActive,
+              nextIsActive: input.isActive,
+              productType: input.productType,
+              ownershipScopeKey: "GLOBAL_CATALOG",
+            },
+          });
+
+          if (!wasActive && input.isActive) {
+            await createCatalogAuditLog(tx, {
+              actorId: input.actor.actorId,
+              actionType: "CATALOG_PRODUCT_ACTIVATE",
+              entityType: "Product",
+              entityId: id,
+              metadata: {
+                ownershipScopeKey: "GLOBAL_CATALOG",
+              },
+            });
+          } else if (wasActive && !input.isActive) {
+            await createCatalogAuditLog(tx, {
+              actorId: input.actor.actorId,
+              actionType: "CATALOG_PRODUCT_DEACTIVATE",
+              entityType: "Product",
+              entityId: id,
+              metadata: {
+                ownershipScopeKey: "GLOBAL_CATALOG",
+              },
+            });
+          }
+
+          return createdPrice;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
 
   const stripeProvision = await provisionPlanOnStripe({
     existingStripeProductId,
@@ -3036,16 +3535,18 @@ export async function updateAdminPlan(
     priceType: input.priceType,
     currencyCode: normalizedCurrencyCode,
     unitAmountMinor: input.unitAmountMinor,
-    billingInterval: input.priceType === PriceType.RECURRING ? input.billingInterval ?? null : null,
-    billingIntervalCount: input.priceType === PriceType.RECURRING ? input.billingIntervalCount ?? 1 : null,
+    billingInterval: normalizedBillingInterval,
+    billingIntervalCount: normalizedBillingIntervalCount,
+    syncCorrelation,
   });
 
-  if (stripeProvision.ok) {
-    await prisma.price.update({
-      where: { id: result.id },
-      data: { stripePriceId: stripeProvision.stripePriceId },
-    });
-  }
+  await applyStripeProvisionResultToPrice({
+    priceId: result.id,
+    productId: id,
+    actorId: input.actor.actorId,
+    syncCorrelation,
+    provisionResult: stripeProvision,
+  });
 
   return prisma.product.findUnique({ where: { id } });
 }

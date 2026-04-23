@@ -6,12 +6,15 @@ import {
   PaymentProvider,
   PaymentStatus,
   Prisma,
+  Role,
+  UserActivationStatus,
 } from "@prisma/client";
 import {
   CART_CHECKOUT_IDEMPOTENCY_STATES,
   CART_CHECKOUT_SOURCE,
 } from "@/lib/cart/cart-contract";
 import type { CartLineInput, CartValidationResult } from "@/lib/cart/cart-types";
+import { computeCartHash } from "@/lib/cart/cart-hash";
 import { validateCart } from "@/lib/cart/cart-service";
 import { prisma } from "@/lib/db";
 import {
@@ -250,6 +253,24 @@ function createSuccessResponse(input: {
       }),
     },
   };
+}
+
+async function isEligibleCheckoutClient(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      role: true,
+      activationStatus: true,
+      emailVerified: true,
+    },
+  });
+
+  return Boolean(
+    user &&
+      user.role === Role.CLIENT &&
+      user.activationStatus === UserActivationStatus.ACTIVE &&
+      user.emailVerified,
+  );
 }
 
 function replayBodyWithReplayFlag(body: unknown): Record<string, unknown> {
@@ -738,6 +759,18 @@ export async function resolveDeterministicFailureWithIdempotency(input: {
 }
 
 export async function startCartCheckout(input: CartCheckoutStartInput): Promise<CartCheckoutResponse> {
+  const eligibleActor = await isEligibleCheckoutClient(input.userId);
+  if (!eligibleActor) {
+    return resolveDeterministicFailureWithIdempotency({
+      userId: input.userId,
+      idempotencyKey: input.idempotencyKey,
+      cartHash: `AUTH_FAILURE_V1|cartHash=${computeCartHash(input.lines)}|clientCartVersion=${input.clientCartVersion}`,
+      status: 403,
+      code: "EMAIL_VERIFICATION_REQUIRED",
+      message: "Your account must be active and email-verified before checkout.",
+    });
+  }
+
   const validation = await validateCart({
     lines: input.lines,
     clientId: input.userId,

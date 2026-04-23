@@ -22,7 +22,7 @@ export default async function AdminPlanEditPage({
   }
 
   const currentPrice = record.prices[0] ?? null;
-  const isCheckoutReady = Boolean(currentPrice?.stripePriceId);
+  const isCheckoutReady = record.isCheckoutReady;
   const { error } = await searchParams;
 
   return (

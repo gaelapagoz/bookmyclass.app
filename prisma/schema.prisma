@@ -53,6 +53,12 @@ enum BillingInterval {
   YEAR
 }
 
+enum StripeSyncStatus {
+  PENDING
+  SYNCED
+  FAILED
+}
+
 enum EntitlementType {
   SINGLE_USE
   CREDIT_PACK
@@ -396,6 +402,12 @@ model Price {
   productId             String
   lookupKey             String                 @unique
   stripePriceId         String?                @unique
+  stripeSyncStatus      StripeSyncStatus       @default(PENDING)
+  stripeSyncLastAttempt DateTime?
+  stripeSyncLastSuccess DateTime?
+  stripeSyncErrorCode   String?
+  stripeSyncError       String?
+  stripeSyncCorrelation String?
   name                  String
   priceType             PriceType
   currencyCode          String
@@ -417,6 +429,7 @@ model Price {
   @@index([productId, isActive])
   @@index([priceType, billingInterval])
   @@index([startsAt, endsAt])
+  @@index([stripeSyncStatus])
 }
 
 model EntitlementRule {

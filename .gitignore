@@ -74,3 +74,5 @@ zap-*.yaml
 # Any generic security output folders
 security-reports/
 security-output/
+
+/.roadmap

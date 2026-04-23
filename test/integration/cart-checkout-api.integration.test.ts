@@ -1,6 +1,7 @@
 import "./helpers/setup-env";
 
 import {
+  BillingInterval,
   PaymentProvider,
   PaymentStatus,
   PriceType,
@@ -111,6 +112,8 @@ async function seedCheckoutReadyCatalog(input?: { priceType?: PriceType; stripeP
       priceType: input?.priceType ?? PriceType.ONE_TIME,
       currencyCode: "EUR",
       unitAmountMinor: 2500,
+      billingInterval: input?.priceType === PriceType.RECURRING ? BillingInterval.MONTH : null,
+      billingIntervalCount: input?.priceType === PriceType.RECURRING ? 1 : null,
       isActive: true,
       isArchived: false,
     },

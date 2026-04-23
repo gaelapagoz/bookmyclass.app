@@ -1,5 +1,6 @@
 import "./helpers/setup-env";
 import {
+  BillingInterval,
   BookingStatus,
   ClientEntitlementStatus,
   CreditLedgerEntryType,
@@ -158,6 +159,8 @@ async function grantMonthlyUnlimitedSubscription(clientId: string) {
       priceType: PriceType.RECURRING,
       currencyCode: "EUR",
       unitAmountMinor: 12000,
+      billingInterval: BillingInterval.MONTH,
+      billingIntervalCount: 1,
       isActive: true,
       isArchived: false,
     },

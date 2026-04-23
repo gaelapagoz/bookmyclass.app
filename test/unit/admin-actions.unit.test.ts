@@ -220,6 +220,10 @@ describe("admin actions", () => {
     await expect(createPlanAction(formData)).rejects.toThrow("NEXT_REDIRECT:/admin/plans");
     expect(createAdminPlan).toHaveBeenCalledWith(
       expect.objectContaining({
+        actor: {
+          actorId: "user-1",
+          actorRole: "ADMIN",
+        },
         name: "Unlimited Monthly",
         priceType: "RECURRING",
         currencyCode: "EUR",
@@ -263,10 +267,84 @@ describe("admin actions", () => {
     expect(updateAdminPlan).toHaveBeenCalledWith(
       "plan-1",
       expect.objectContaining({
+        actor: {
+          actorId: "user-1",
+          actorRole: "ADMIN",
+        },
         name: "Unlimited Monthly Pro",
         priceType: "ONE_TIME",
         unitAmountMinor: 9900,
       }),
+    );
+  });
+
+  it("maps create plan service validation errors to user-facing messages", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+
+    const recurringForm = new FormData();
+    recurringForm.set("name", "Unlimited Monthly");
+    recurringForm.set("productType", "UNLIMITED_MEMBERSHIP");
+    recurringForm.set("sortOrder", "1");
+    recurringForm.set("priceName", "Monthly Membership");
+    recurringForm.set("priceType", "RECURRING");
+    recurringForm.set("currencyCode", "EUR");
+    recurringForm.set("unitAmount", "89");
+    recurringForm.set("billingInterval", "MONTH");
+    recurringForm.set("billingIntervalCount", "1");
+    recurringForm.set("isActive", "on");
+
+    vi.mocked(createAdminPlan).mockRejectedValueOnce(new Error("INVALID_CURRENCY_CODE"));
+    await expect(createPlanAction(recurringForm)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/plans/new?error=Currency%20must%20be%20a%20valid%203-letter%20ISO%20code%20(for%20example%20EUR).",
+    );
+
+    vi.mocked(createAdminPlan).mockRejectedValueOnce(new Error("INVALID_UNIT_AMOUNT"));
+    await expect(createPlanAction(recurringForm)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/plans/new?error=Price%20amount%20must%20be%20greater%20than%20zero.",
+    );
+
+    vi.mocked(createAdminPlan).mockRejectedValueOnce(new Error("RECURRING_INTERVAL_REQUIRED"));
+    await expect(createPlanAction(recurringForm)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/plans/new?error=Recurring%20prices%20require%20a%20billing%20interval.",
+    );
+
+    vi.mocked(createAdminPlan).mockRejectedValueOnce(new Error("INVALID_BILLING_INTERVAL_COUNT"));
+    await expect(createPlanAction(recurringForm)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/plans/new?error=Billing%20interval%20count%20must%20be%20a%20positive%20whole%20number.",
+    );
+
+    const oneTimeForm = new FormData();
+    oneTimeForm.set("name", "Single");
+    oneTimeForm.set("productType", "CLASS_PACK");
+    oneTimeForm.set("sortOrder", "1");
+    oneTimeForm.set("priceName", "Single Price");
+    oneTimeForm.set("priceType", "ONE_TIME");
+    oneTimeForm.set("currencyCode", "EUR");
+    oneTimeForm.set("unitAmount", "39");
+    oneTimeForm.set("isActive", "on");
+
+    vi.mocked(createAdminPlan).mockRejectedValueOnce(new Error("ONE_TIME_INTERVAL_FORBIDDEN"));
+    await expect(createPlanAction(oneTimeForm)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/plans/new?error=One-time%20prices%20cannot%20include%20recurring%20interval%20fields.",
+    );
+  });
+
+  it("maps update plan not-found error to user-facing message", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(updateAdminPlan).mockRejectedValue(new Error("PRODUCT_NOT_FOUND"));
+
+    const formData = new FormData();
+    formData.set("name", "Plan Missing");
+    formData.set("productType", "UNLIMITED_MEMBERSHIP");
+    formData.set("sortOrder", "1");
+    formData.set("priceName", "Missing Price");
+    formData.set("priceType", "ONE_TIME");
+    formData.set("currencyCode", "EUR");
+    formData.set("unitAmount", "99");
+    formData.set("isActive", "on");
+
+    await expect(updatePlanAction("plan-missing", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/plans/plan-missing/edit?error=Selected%20plan%20no%20longer%20exists.%20Refresh%20and%20try%20again.",
     );
   });
 

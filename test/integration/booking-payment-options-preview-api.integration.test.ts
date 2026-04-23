@@ -1,5 +1,6 @@
 import "./helpers/setup-env";
 import {
+  BillingInterval,
   ClientEntitlementStatus,
   CreditLedgerEntryType,
   EntitlementScope,
@@ -234,6 +235,8 @@ describe("GET /api/bookings/payment-options-preview", () => {
         priceType: PriceType.RECURRING,
         currencyCode: "EUR",
         unitAmountMinor: 9900,
+        billingInterval: BillingInterval.MONTH,
+        billingIntervalCount: 1,
         isActive: true,
         isArchived: false,
       },

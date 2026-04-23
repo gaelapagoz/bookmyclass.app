@@ -623,7 +623,7 @@ async function createCartCheckoutSameProductMultiLineFixture() {
       priceType: PriceType.ONE_TIME,
       currencyCode: "EUR",
       unitAmountMinor: 7000,
-      isActive: true,
+      isActive: false,
       isArchived: false,
     },
   });

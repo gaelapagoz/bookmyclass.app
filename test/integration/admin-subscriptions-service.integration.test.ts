@@ -1,6 +1,6 @@
 import "./helpers/setup-env";
 
-import { PaymentProvider, PriceType, ProductType, Role, SubscriptionStatus } from "@prisma/client";
+import { BillingInterval, PaymentProvider, PriceType, ProductType, Role, SubscriptionStatus } from "@prisma/client";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -43,6 +43,8 @@ describe("admin subscription service", () => {
         priceType: PriceType.RECURRING,
         currencyCode: "EUR",
         unitAmountMinor: 8900,
+        billingInterval: BillingInterval.MONTH,
+        billingIntervalCount: 1,
         isActive: true,
         isArchived: false,
       },

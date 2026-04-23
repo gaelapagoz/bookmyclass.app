@@ -13,6 +13,7 @@ import {
   PriceType,
   ProductType,
   Role,
+  StripeSyncStatus,
   StudioSessionStatus,
   SubscriptionStatus,
   UserActivationStatus,
@@ -274,6 +275,7 @@ async function main() {
         create: {
           lookupKey: "e2e-drop-in-eur-once-v1",
           stripePriceId: "price_e2e_drop_in_v1",
+          stripeSyncStatus: StripeSyncStatus.SYNCED,
           name: "E2E Drop In One-Time",
           priceType: PriceType.ONE_TIME,
           currencyCode: "EUR",
@@ -309,6 +311,7 @@ async function main() {
         create: {
           lookupKey: "e2e-5-pack-eur-once-v1",
           stripePriceId: "price_e2e_pack_5_v1",
+          stripeSyncStatus: StripeSyncStatus.SYNCED,
           name: "E2E 5-Class Pack",
           priceType: PriceType.ONE_TIME,
           currencyCode: "EUR",
@@ -345,6 +348,7 @@ async function main() {
         create: {
           lookupKey: "e2e-monthly-unlimited-eur-monthly-v1",
           stripePriceId: "price_e2e_monthly_unlimited_v1",
+          stripeSyncStatus: StripeSyncStatus.SYNCED,
           name: "E2E Monthly Unlimited",
           priceType: PriceType.RECURRING,
           currencyCode: "EUR",

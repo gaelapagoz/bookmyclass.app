@@ -1,6 +1,6 @@
-Use only the QA skill.
+Use only the qa skill.
 
-Evaluate the validation and test coverage for this implementation. We are on Slice [NAME]
+Evaluate the validation and test coverage for this implementation.
 
 Approved contract context:
 [PASTE LATEST APPROVED PLAN / CONTRACT IF NEEDED]

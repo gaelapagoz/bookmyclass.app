@@ -219,9 +219,36 @@ async function createFixture(input: {
 }
 
 describe("booking payment options api", () => {
+  let adminActor: { actorId: string; actorRole: Role };
+
+  async function createAdminTestPlan(
+    input: Omit<Parameters<typeof createAdminPlan>[0], "actor">,
+  ) {
+    return createAdminPlan({
+      ...input,
+      actor: adminActor,
+    });
+  }
+
   beforeEach(async () => {
     vi.mocked(auth).mockResolvedValue(null);
     await resetDb();
+    const admin = await prisma.user.create({
+      data: {
+        name: "Admin",
+        email: `admin.pay.${Date.now()}@example.test`,
+        role: Role.ADMIN,
+        emailVerified: new Date(),
+      },
+      select: {
+        id: true,
+        role: true,
+      },
+    });
+    adminActor = {
+      actorId: admin.id,
+      actorRole: admin.role,
+    };
   });
 
   it("single-booking intent still resolves to a payable default path when no plan exists", async () => {
@@ -375,7 +402,7 @@ describe("booking payment options api", () => {
       createActivePlanCount: 0,
     });
 
-    const adminPlan = await createAdminPlan({
+    const adminPlan = await createAdminTestPlan({
       name: "Admin Collective Pack",
       productType: ProductType.CLASS_PACK,
       isActive: true,
@@ -409,7 +436,7 @@ describe("booking payment options api", () => {
       createActivePlanCount: 0,
     });
 
-    const privatePlan = await createAdminPlan({
+    const privatePlan = await createAdminTestPlan({
       name: "Admin Private Session",
       productType: ProductType.PRIVATE_CLASS,
       isActive: true,

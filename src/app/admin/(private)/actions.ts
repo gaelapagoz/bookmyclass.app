@@ -589,6 +589,24 @@ function getAdminActionErrorMessage(error: unknown): string {
   if (code === "INVALID_CANCELLATION_CUTOFF_HOURS") {
     return "Cancellation period must be a positive whole number of hours.";
   }
+  if (code === "INVALID_CURRENCY_CODE") {
+    return "Currency must be a valid 3-letter ISO code (for example EUR).";
+  }
+  if (code === "INVALID_UNIT_AMOUNT") {
+    return "Price amount must be greater than zero.";
+  }
+  if (code === "RECURRING_INTERVAL_REQUIRED") {
+    return "Recurring prices require a billing interval.";
+  }
+  if (code === "INVALID_BILLING_INTERVAL_COUNT") {
+    return "Billing interval count must be a positive whole number.";
+  }
+  if (code === "ONE_TIME_INTERVAL_FORBIDDEN") {
+    return "One-time prices cannot include recurring interval fields.";
+  }
+  if (code === "PRODUCT_NOT_FOUND") {
+    return "Selected plan no longer exists. Refresh and try again.";
+  }
 
   return getPrismaErrorMessage(error);
 }
@@ -1134,7 +1152,7 @@ export async function updateSessionAttendanceAction(id: string, formData: FormDa
 }
 
 export async function createPlanAction(formData: FormData) {
-  await assertAdminAccess();
+  const session = await assertAdminAccess();
 
   const parsed = planSchema.safeParse({
     name: formData.get("name"),
@@ -1156,6 +1174,10 @@ export async function createPlanAction(formData: FormData) {
 
   try {
     await createAdminPlan({
+      actor: {
+        actorId: session.user.id,
+        actorRole: session.user.role,
+      },
       name: parsed.data.name,
       description: parsed.data.description,
       productType: parsed.data.productType,
@@ -1170,14 +1192,14 @@ export async function createPlanAction(formData: FormData) {
     });
   } catch (error) {
     Sentry.captureException(error);
-    redirectWithError("/admin/plans/new", getPrismaErrorMessage(error));
+    redirectWithError("/admin/plans/new", getAdminActionErrorMessage(error));
   }
 
   redirect("/admin/plans");
 }
 
 export async function updatePlanAction(id: string, formData: FormData) {
-  await assertAdminAccess();
+  const session = await assertAdminAccess();
 
   const parsed = planSchema.safeParse({
     name: formData.get("name"),
@@ -1199,6 +1221,10 @@ export async function updatePlanAction(id: string, formData: FormData) {
 
   try {
     await updateAdminPlan(id, {
+      actor: {
+        actorId: session.user.id,
+        actorRole: session.user.role,
+      },
       name: parsed.data.name,
       description: parsed.data.description,
       productType: parsed.data.productType,
@@ -1213,7 +1239,7 @@ export async function updatePlanAction(id: string, formData: FormData) {
     });
   } catch (error) {
     Sentry.captureException(error);
-    redirectWithError(`/admin/plans/${id}/edit`, getPrismaErrorMessage(error));
+    redirectWithError(`/admin/plans/${id}/edit`, getAdminActionErrorMessage(error));
   }
 
   redirect("/admin/plans");

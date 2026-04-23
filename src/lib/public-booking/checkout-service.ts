@@ -6,6 +6,8 @@ import {
   PaymentProvider,
   PaymentStatus,
   PriceType,
+  Role,
+  UserActivationStatus,
 } from "@prisma/client";
 import { prisma } from "../db";
 import { createStripeCheckoutSession, getStripeServerEnv } from "../payments/stripe";
@@ -60,6 +62,33 @@ type CheckoutDraftBooking = {
   serviceSlug: string;
   status: BookingStatus;
 };
+
+async function assertClientCheckoutEligibility(input: {
+  userId: string | null;
+  buildAuthError: (message: string) => CheckoutError | CatalogCheckoutError;
+}): Promise<string> {
+  if (!input.userId) {
+    throw input.buildAuthError("Authentication required.");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: input.userId },
+    select: {
+      role: true,
+      activationStatus: true,
+    },
+  });
+
+  if (
+    !user ||
+    user.role !== Role.CLIENT ||
+    user.activationStatus !== UserActivationStatus.ACTIVE
+  ) {
+    throw input.buildAuthError("Sign in with an active client account to continue.");
+  }
+
+  return input.userId;
+}
 
 type ReadyCheckoutDraftBooking = {
   clientId: string;
@@ -147,6 +176,10 @@ export async function createCheckoutSessionForBooking(input: {
   userId: string | null;
 }): Promise<CheckoutResult> {
   const { bookingId, userId } = input;
+  const checkoutUserId = await assertClientCheckoutEligibility({
+    userId,
+    buildAuthError: (message) => new CheckoutError("AUTH_REQUIRED", message),
+  });
   const booking = await prisma.booking.findUnique({
     where: { id: bookingId },
     select: {
@@ -208,7 +241,7 @@ export async function createCheckoutSessionForBooking(input: {
       }
     : null;
 
-  const readyCheckout = requireBookingCheckoutReady({ booking: normalizedBooking, userId });
+  const readyCheckout = requireBookingCheckoutReady({ booking: normalizedBooking, userId: checkoutUserId });
   if (!booking?.selectedPrice || !booking.clientId) {
     throw new CheckoutError("INVALID_SELECTION", "Selected price is missing.");
   }
@@ -430,10 +463,11 @@ export async function createCheckoutSessionForCatalogProduct(input: {
   successUrl: string;
   cancelUrl: string;
 }) {
-  const { userId, productId, successUrl, cancelUrl } = input;
-  if (!userId) {
-    throw new CatalogCheckoutError("AUTH_REQUIRED", "Authentication required.");
-  }
+  const { productId, successUrl, cancelUrl } = input;
+  const userId = await assertClientCheckoutEligibility({
+    userId: input.userId,
+    buildAuthError: (message) => new CatalogCheckoutError("AUTH_REQUIRED", message),
+  });
 
   const product = await getSubscriptionCheckoutItemByProductId(productId);
   if (!product) {

@@ -11,6 +11,7 @@ import {
   ProductType,
   Role,
   StudioSessionStatus,
+  UserActivationStatus,
 } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "./helpers/db";
@@ -317,6 +318,81 @@ describe("POST /api/checkout/session", () => {
     );
 
     expect(response.status).toBe(200);
+  });
+
+  it("rejects checkout when authenticated user is not a client", async () => {
+    const fixture = await createBookingWithSelection({
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+      withClient: true,
+    });
+    const admin = await prisma.user.create({
+      data: {
+        name: "Admin Checkout",
+        email: `admin.checkout.${Date.now()}@example.test`,
+        role: Role.ADMIN,
+      },
+    });
+
+    await prisma.booking.update({
+      where: { id: fixture.booking.id },
+      data: { clientId: admin.id },
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: admin.id,
+        name: admin.name,
+        email: admin.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await createCheckoutSession(
+      new Request("http://localhost/api/checkout/session", {
+        method: "POST",
+        headers: sameOriginJsonHeaders,
+        body: JSON.stringify({ bookingId: fixture.booking.id }),
+      }),
+    );
+    const body = (await response.json()) as { code?: string };
+
+    expect(response.status).toBe(401);
+    expect(body.code).toBe("AUTH_REQUIRED");
+  });
+
+  it("rejects checkout when authenticated client is inactive", async () => {
+    const fixture = await createBookingWithSelection({
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+      withClient: true,
+    });
+
+    await prisma.user.update({
+      where: { id: fixture.client!.id },
+      data: {
+        activationStatus: UserActivationStatus.DISABLED,
+      },
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: fixture.client!.id,
+        name: fixture.client!.name,
+        email: fixture.client!.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await createCheckoutSession(
+      new Request("http://localhost/api/checkout/session", {
+        method: "POST",
+        headers: sameOriginJsonHeaders,
+        body: JSON.stringify({ bookingId: fixture.booking.id }),
+      }),
+    );
+    const body = (await response.json()) as { code?: string };
+
+    expect(response.status).toBe(401);
+    expect(body.code).toBe("AUTH_REQUIRED");
   });
 
   it("rejects checkout creation for EXISTING_PLAN", async () => {

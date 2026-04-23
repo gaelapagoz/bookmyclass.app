@@ -7,6 +7,8 @@ At a high level, it combines:
 * public marketing website
 * booking engine
 * subscription and entitlement management
+* store for merchandise and gift cards
+* coupons and loyalty points
 * learning platform
 * admin backoffice
 * operational tooling
@@ -30,6 +32,8 @@ Clients can:
 * create an account and manage profile/security
 * buy subscriptions, packs, and memberships
 * book classes through entitlement-aware flows
+* buy merchandise and gift cards
+* redeem coupons, loyalty points and gift cards
 * access a personal dashboard
 * manage subscriptions through the Stripe billing portal
 * watch learning videos
@@ -55,9 +59,8 @@ Products include:
 * drop-in sessions
 * collective class packs
 * private class packs
-* workshops
-* bundles
-* marketplace items
+* merchandise items
+* gift cards
 
 The platform supports:
 
