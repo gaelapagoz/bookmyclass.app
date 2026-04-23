@@ -4,7 +4,7 @@ set -euo pipefail
 # UAT operator reset helper.
 # Destructive: requires CONFIRM_UAT_DB_RESET=YES.
 
-APP_DIR="${APP_DIR:-/var/www/bookmyclass}"
+APP_DIR="${APP_DIR:-/var/www/bookmyclass-uat}"
 APP_NAME="${APP_NAME:-bookmyclass-app-uat}"
 BASE_URL="${BASE_URL:-https://uat.bookmyclass.app}"
 TARGET_TAG="${TARGET_TAG:-}"
@@ -70,7 +70,7 @@ if [[ -n "$TARGET_TAG" ]]; then
   log "Deploying tag $TARGET_TAG before reset."
   git fetch --all --tags | tee "$evidence_dir/git-fetch.log"
   git checkout "$TARGET_TAG" | tee "$evidence_dir/git-checkout.log"
-  npm ci | tee "$evidence_dir/npm-ci.log"
+  npm ci --include=dev | tee "$evidence_dir/npm-ci.log"
   npx prisma migrate deploy | tee "$evidence_dir/prisma-migrate-deploy.log"
   npx prisma generate | tee "$evidence_dir/prisma-generate.log"
   npm run build | tee "$evidence_dir/npm-build.log"

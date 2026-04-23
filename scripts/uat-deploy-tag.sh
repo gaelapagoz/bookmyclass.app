@@ -4,7 +4,7 @@ set -euo pipefail
 TARGET_TAG="${1:-${TARGET_TAG:-}}"
 REMOTE_HOST="${REMOTE_HOST:-bookmyclass-uat}"
 REMOTE_USER="${REMOTE_USER:-deploy}"
-APP_DIR="${APP_DIR:-/var/www/bookmyclass}"
+APP_DIR="${APP_DIR:-/var/www/bookmyclass-uat}"
 APP_NAME="${APP_NAME:-bookmyclass-app-uat}"
 HOMESITE_PUBLISH_DIR="${HOMESITE_PUBLISH_DIR:-/var/www/bookmyclass-homesite}"
 BASE_URL="${BASE_URL:-https://uat.bookmyclass.app}"
@@ -46,7 +46,7 @@ if command -v rsync >/dev/null 2>&1; then
 else
   cp -a "$APP_DIR/homesite/." "$HOMESITE_PUBLISH_DIR/"
 fi
-npm ci
+npm ci --include=dev
 npx prisma migrate deploy
 npx prisma generate
 npm run build

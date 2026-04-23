@@ -19,6 +19,7 @@ import {
   Role,
   ServicePricingMode,
   StripeCheckoutMode,
+  StripeSyncStatus,
   StudioSessionStatus,
   SubscriptionStatus,
   Weekday,
@@ -1191,12 +1192,23 @@ async function upsertPrice(input: {
   billingInterval?: BillingInterval;
   billingIntervalCount?: number;
 }) {
+  const hasStripePriceId = Boolean(input.stripePriceId?.trim());
+  const stripeSyncStatus = hasStripePriceId ? StripeSyncStatus.SYNCED : StripeSyncStatus.PENDING;
+  const stripeSyncLastAttempt = hasStripePriceId ? new Date() : null;
+  const stripeSyncLastSuccess = hasStripePriceId ? new Date() : null;
+
   return prisma.price.upsert({
     where: { lookupKey: input.lookupKey },
     update: {
       productId: input.productId,
       name: input.name,
       stripePriceId: input.stripePriceId,
+      stripeSyncStatus,
+      stripeSyncLastAttempt,
+      stripeSyncLastSuccess,
+      stripeSyncErrorCode: null,
+      stripeSyncError: null,
+      stripeSyncCorrelation: null,
       priceType: input.priceType,
       currencyCode: input.currencyCode,
       unitAmountMinor: input.unitAmountMinor,
@@ -1211,6 +1223,12 @@ async function upsertPrice(input: {
       productId: input.productId,
       lookupKey: input.lookupKey,
       stripePriceId: input.stripePriceId,
+      stripeSyncStatus,
+      stripeSyncLastAttempt,
+      stripeSyncLastSuccess,
+      stripeSyncErrorCode: null,
+      stripeSyncError: null,
+      stripeSyncCorrelation: null,
       name: input.name,
       priceType: input.priceType,
       currencyCode: input.currencyCode,
@@ -1269,6 +1287,7 @@ async function assertPurchasableCatalogStripePriceIdsPersisted() {
     select: {
       lookupKey: true,
       stripePriceId: true,
+      stripeSyncStatus: true,
     },
   });
 
@@ -1290,6 +1309,16 @@ async function assertPurchasableCatalogStripePriceIdsPersisted() {
     throw new Error(
       "Seed verification failed: expected purchasable catalog prices were not created for lookup keys: " +
         missingRows.join(", "),
+    );
+  }
+
+  const nonSyncedRows = seededPrices
+    .filter((price) => price.stripeSyncStatus !== StripeSyncStatus.SYNCED)
+    .map((price) => `${price.lookupKey}:${price.stripeSyncStatus}`);
+  if (nonSyncedRows.length > 0) {
+    throw new Error(
+      "Seed verification failed: expected purchasable catalog prices to be SYNCED, got: " +
+        nonSyncedRows.join(", "),
     );
   }
 
