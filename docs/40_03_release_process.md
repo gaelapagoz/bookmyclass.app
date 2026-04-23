@@ -23,7 +23,7 @@ Purpose: define the canonical release process for this repository.
 4. Validate in UAT:
    - manual flows
    - e2e (if applicable)
-   - load testing (k6, when applicable)
+   - load testing (k6 smoke in workflow + operator ramp `t50` then `t100` when applicable)
    - security baseline testing (OWASP ZAP baseline against UAT)
 5. Promote the same validated tag to production
 

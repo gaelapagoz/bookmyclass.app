@@ -1,14 +1,18 @@
 const PROFILE_TOTAL_RATES = {
   smoke: 20,
   smoke_booking_safe: 13,
+  t50: 50,
   t100: 100,
-  t100_5m: 100,
-  t250: 250,
-  t250_5m: 250,
-  t500: 500,
-  t750: 750,
-  t1000: 1000,
-  soak1000: 1000,
+};
+
+const DEPRECATED_PROFILE_ALIASES = {
+  t100_5m: "t100",
+  t250: "t100",
+  t250_5m: "t100",
+  t500: "t100",
+  t750: "t100",
+  t1000: "t100",
+  soak1000: "t100",
 };
 
 const PROFILE_STAGE_BUILDERS = {
@@ -22,45 +26,15 @@ const PROFILE_STAGE_BUILDERS = {
     { duration: "3m", target: Math.max(1, rate) },
     { duration: "1m", target: 0 },
   ],
+  t50: (rate) => [
+    { duration: "1m", target: Math.max(1, Math.round(rate * 0.6)) },
+    { duration: "3m", target: Math.max(1, rate) },
+    { duration: "1m", target: 0 },
+  ],
   t100: (rate) => [
     { duration: "5m", target: Math.max(1, Math.round(rate * 0.6)) },
     { duration: "10m", target: Math.max(1, rate) },
     { duration: "5m", target: 0 },
-  ],
-  t100_5m: (rate) => [
-    { duration: "1m", target: Math.max(1, Math.round(rate * 0.6)) },
-    { duration: "3m", target: Math.max(1, rate) },
-    { duration: "1m", target: 0 },
-  ],
-  t250: (rate) => [
-    { duration: "5m", target: Math.max(1, Math.round(rate * 0.6)) },
-    { duration: "15m", target: Math.max(1, rate) },
-    { duration: "5m", target: 0 },
-  ],
-  t250_5m: (rate) => [
-    { duration: "1m", target: Math.max(1, Math.round(rate * 0.6)) },
-    { duration: "3m", target: Math.max(1, rate) },
-    { duration: "1m", target: 0 },
-  ],
-  t500: (rate) => [
-    { duration: "8m", target: Math.max(1, Math.round(rate * 0.6)) },
-    { duration: "20m", target: Math.max(1, rate) },
-    { duration: "7m", target: 0 },
-  ],
-  t750: (rate) => [
-    { duration: "10m", target: Math.max(1, Math.round(rate * 0.6)) },
-    { duration: "25m", target: Math.max(1, rate) },
-    { duration: "10m", target: 0 },
-  ],
-  t1000: (rate) => [
-    { duration: "12m", target: Math.max(1, Math.round(rate * 0.6)) },
-    { duration: "30m", target: Math.max(1, rate) },
-    { duration: "12m", target: 0 },
-  ],
-  soak1000: (rate) => [
-    { duration: "15m", target: Math.max(1, Math.round(rate * 0.6)) },
-    { duration: "2h", target: Math.max(1, rate) },
-    { duration: "15m", target: 0 },
   ],
 };
 
@@ -83,26 +57,32 @@ const PROFILE_SCENARIO_RATE_OVERRIDES = {
 };
 
 export function getSupportedStageProfiles() {
-  return Object.keys(PROFILE_TOTAL_RATES);
+  return [...Object.keys(PROFILE_TOTAL_RATES), ...Object.keys(DEPRECATED_PROFILE_ALIASES)];
+}
+
+function normalizeStageProfile(profileName) {
+  return DEPRECATED_PROFILE_ALIASES[profileName] || profileName;
 }
 
 export function resolveStageProfile() {
   const requested = (__ENV.STAGE_PROFILE || "smoke").trim().toLowerCase();
-  if (!PROFILE_TOTAL_RATES[requested]) {
+  const normalized = normalizeStageProfile(requested);
+  if (!PROFILE_TOTAL_RATES[normalized]) {
     throw new Error(
       `Unsupported STAGE_PROFILE='${requested}'. Supported profiles: ${getSupportedStageProfiles().join(", ")}`,
     );
   }
-  return requested;
+  return normalized;
 }
 
 export function buildScenarioRate(profileName, scenarioName) {
+  const normalizedProfileName = normalizeStageProfile(profileName);
   const profileOverrides = PROFILE_SCENARIO_RATE_OVERRIDES[profileName];
   if (profileOverrides?.[scenarioName]) {
     return profileOverrides[scenarioName];
   }
 
-  const totalRate = PROFILE_TOTAL_RATES[profileName];
+  const totalRate = PROFILE_TOTAL_RATES[normalizedProfileName];
   const weight = SCENARIO_WEIGHTS[scenarioName];
   if (!totalRate || !weight) {
     throw new Error(`Could not calculate scenario rate for profile='${profileName}', scenario='${scenarioName}'.`);
@@ -112,8 +92,9 @@ export function buildScenarioRate(profileName, scenarioName) {
 }
 
 export function buildScenarioStages(profileName, scenarioName) {
-  const rate = buildScenarioRate(profileName, scenarioName);
-  const builder = PROFILE_STAGE_BUILDERS[profileName];
+  const normalizedProfileName = normalizeStageProfile(profileName);
+  const rate = buildScenarioRate(normalizedProfileName, scenarioName);
+  const builder = PROFILE_STAGE_BUILDERS[normalizedProfileName];
   if (!builder) {
     throw new Error(`Missing stage builder for profile='${profileName}'.`);
   }

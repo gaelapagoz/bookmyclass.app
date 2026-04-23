@@ -30,12 +30,14 @@ UAT host operation scripts:
 Local k6 scripts:
 
 - `scripts/local-uat-run-smoke.sh`
+- `scripts/local-uat-run-t50.sh`
 - `scripts/local-uat-run-t100.sh`
-- `scripts/local-uat-run-t250.sh`
-- `scripts/local-uat-run-t500.sh`
-- `scripts/local-uat-run-t750.sh`
-- `scripts/local-uat-run-t1000.sh`
 - `scripts/local-uat-collect-metrics.sh`
+
+Archived local k6 scripts:
+
+- `scripts/archive/perf-legacy/*`
+- Legacy aliases/scripts are deprecated for one release tag, then removed from active usage.
 
 Local security scripts:
 
@@ -97,7 +99,7 @@ When `BOOKING_DRAFT_RATE_LIMIT_MODE` is unset, app defaults remain strict produc
 
 Mandatory rule:
 - Before each local stage, run local discovery against UAT to refresh `k6/data/services.json` and `k6/data/products.json`.
-- `scripts/local-uat-run-smoke.sh`, `scripts/local-uat-run-t100.sh`, and `scripts/local-uat-run-t250.sh` enforce this automatically before `k6 run`.
+- `scripts/local-uat-run-smoke.sh`, `scripts/local-uat-run-t50.sh`, and `scripts/local-uat-run-t100.sh` enforce this automatically before `k6 run`.
 
 ### A. Smoke
 
@@ -105,34 +107,16 @@ Mandatory rule:
 BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-smoke.sh
 ```
 
-### B. t100
+### B. t50
 
 ```bash
-BASE_URL=https://uat.bookmyclass.app STAGE_PROFILE=t100_5m bash scripts/local-uat-run-t100.sh
+BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-t50.sh
 ```
 
-### C. t250
+### C. t100
 
 ```bash
-BASE_URL=https://uat.bookmyclass.app STAGE_PROFILE=t250_5m bash scripts/local-uat-run-t250.sh
-```
-
-### D. t500
-
-```bash
-BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-t500.sh
-```
-
-### E. t750
-
-```bash
-BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-t750.sh
-```
-
-### F. t1000
-
-```bash
-BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-t1000.sh
+BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-t100.sh
 ```
 
 Each local run stores:
@@ -172,11 +156,8 @@ Summary output includes:
 Use this stage order and only continue when the previous stage is healthy:
 
 1. `smoke`
-2. `t100_5m`
-3. `t250_5m`
-4. `t500`
-5. `t750`
-6. `t1000`
+2. `t50`
+3. `t100`
 
 Gate rule:
 
@@ -257,14 +238,11 @@ TARGET_WORKERS="$(($(nproc)>16?16:$(nproc)))" bash scripts/uat-scale-pm2.sh
 # 3) local smoke
 BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-smoke.sh
 
-# 4) local t100
-BASE_URL=https://uat.bookmyclass.app STAGE_PROFILE=t100_5m bash scripts/local-uat-run-t100.sh
+# 4) local t50
+BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-t50.sh
 
-# 5) local t250
-BASE_URL=https://uat.bookmyclass.app STAGE_PROFILE=t250_5m bash scripts/local-uat-run-t250.sh
-
-# 6) local t500 (optional progression)
-BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-t500.sh
+# 5) local t100
+BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-t100.sh
 
 # 7) tag release (example)
 git checkout main

@@ -5,6 +5,7 @@ import {
   EntitlementScope,
   EntitlementType,
   PaymentProvider,
+  PriceType,
   Role,
   ServicePricingMode,
   StudioSessionStatus,
@@ -14,6 +15,13 @@ import {
 import { hash } from "bcryptjs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import {
+  DEFAULT_CREDIT_LOOKUP_KEYS,
+  DEFAULT_RECURRING_LOOKUP_KEYS,
+  parseLookupKeyCandidates,
+  selectSingleCatalogPrice,
+  selectSingleCollectiveRule,
+} from "./seed-uat-k6-catalog";
 import prisma from "../src/lib/db";
 
 const TOTAL_USERS = 1200;
@@ -174,10 +182,20 @@ function chunk<T>(items: T[], size: number): T[][] {
 }
 
 async function resolveCatalogReferences() {
+  const creditLookupKeys = parseLookupKeyCandidates(
+    process.env.K6_CREDIT_PRICE_LOOKUP_KEYS,
+    DEFAULT_CREDIT_LOOKUP_KEYS,
+  );
+  const recurringLookupKeys = parseLookupKeyCandidates(
+    process.env.K6_RECURRING_PRICE_LOOKUP_KEYS,
+    DEFAULT_RECURRING_LOOKUP_KEYS,
+  );
+  const allLookupKeys = [...new Set([...creditLookupKeys, ...recurringLookupKeys])];
+
   const prices = await prisma.price.findMany({
     where: {
       lookupKey: {
-        in: ["qa-collective-5-pack-eur-once-v1", "monthly-unlimited-collective-eur-monthly-v1"],
+        in: allLookupKeys,
       },
       isActive: true,
       isArchived: false,
@@ -191,15 +209,18 @@ async function resolveCatalogReferences() {
     },
   });
 
-  const priceByLookup = new Map(prices.map((price) => [price.lookupKey, price]));
-  const collectiveCreditPrice = priceByLookup.get("qa-collective-5-pack-eur-once-v1");
-  const collectiveRecurringPrice = priceByLookup.get("monthly-unlimited-collective-eur-monthly-v1");
-
-  if (!collectiveCreditPrice || !collectiveRecurringPrice) {
-    throw new Error(
-      "Required catalog prices were not found. Run base seed first to ensure collective products/prices exist.",
-    );
-  }
+  const collectiveCreditPrice = selectSingleCatalogPrice({
+    label: "credit",
+    candidateLookupKeys: creditLookupKeys,
+    prices,
+    expectedPriceType: PriceType.ONE_TIME,
+  });
+  const collectiveRecurringPrice = selectSingleCatalogPrice({
+    label: "recurring",
+    candidateLookupKeys: recurringLookupKeys,
+    prices,
+    expectedPriceType: PriceType.RECURRING,
+  });
 
   const rules = await prisma.entitlementRule.findMany({
     where: {
@@ -210,16 +231,20 @@ async function resolveCatalogReferences() {
     },
   });
 
-  const creditRule = rules.find(
-    (rule) =>
-      rule.productId === collectiveCreditPrice.productId &&
-      rule.entitlementScope === EntitlementScope.COLLECTIVE_CLASSES &&
-      (rule.entitlementType === EntitlementType.CREDIT_PACK || rule.entitlementType === EntitlementType.SINGLE_USE),
-  );
-
-  if (!creditRule) {
-    throw new Error("Required entitlement rules for collective access were not found in catalog.");
-  }
+  const creditRule = selectSingleCollectiveRule({
+    label: "credit",
+    productId: collectiveCreditPrice.productId,
+    rules,
+    requiredScope: EntitlementScope.COLLECTIVE_CLASSES,
+    requiredTypes: [EntitlementType.CREDIT_PACK, EntitlementType.SINGLE_USE],
+  });
+  selectSingleCollectiveRule({
+    label: "recurring",
+    productId: collectiveRecurringPrice.productId,
+    rules,
+    requiredScope: EntitlementScope.COLLECTIVE_CLASSES,
+    requiredTypes: [EntitlementType.UNLIMITED_ACCESS],
+  });
 
   return {
     collectiveCreditPrice,
@@ -308,10 +333,23 @@ async function ensureUsers(users: SeedUser[]) {
     select: {
       id: true,
       email: true,
+      isActive: true,
+      activationStatus: true,
+      emailVerified: true,
+      emailVerifiedAt: true,
     },
   });
 
   const idByEmail = new Map(dbUsers.map((entry) => [normalize(entry.email), entry.id]));
+  for (const entry of dbUsers) {
+    const isVerified = Boolean(entry.emailVerified || entry.emailVerifiedAt);
+    if (!entry.isActive || entry.activationStatus !== UserActivationStatus.ACTIVE || !isVerified) {
+      throw new Error(
+        `Seeded user state mismatch for ${entry.email}. Expected active + verified user after upsert.`,
+      );
+    }
+  }
+
   for (const user of users) {
     const userId = idByEmail.get(normalize(user.email));
     if (!userId) {

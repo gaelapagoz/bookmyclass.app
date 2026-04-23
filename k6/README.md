@@ -13,7 +13,7 @@ This suite fails fast if `BASE_URL` does not look like UAT/staging/local (`uat`,
 
 ## Files
 
-- `config/stages.js`: smoke, smoke_booking_safe, t100, t100_5m, t250, t250_5m, t500, t750, t1000, soak1000
+- `config/stages.js`: smoke, smoke_booking_safe, t50, t100
 - `config/thresholds.js`: global and scenario-level thresholds
 - `data/users.csv`: seeded test users
 - `data/services.json`: optional service/session seed values
@@ -25,7 +25,12 @@ This suite fails fast if `BASE_URL` does not look like UAT/staging/local (`uat`,
 ## Required env vars
 
 - `BASE_URL` (required)
-- `STAGE_PROFILE` (required): `smoke`, `smoke_booking_safe`, `t100`, `t100_5m`, `t250`, `t250_5m`, `t500`, `t750`, `t1000`, `soak1000`
+- `STAGE_PROFILE` (required): `smoke`, `smoke_booking_safe`, `t50`, `t100`
+
+Deprecation note:
+- Legacy high-load aliases remain temporarily for one release tag.
+- Do not use legacy aliases for new runs; use only `t50` and `t100`.
+- Archived helper scripts live under `scripts/archive/perf-legacy/`.
 
 ## Optional env vars
 
@@ -99,39 +104,9 @@ t100:
 k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t100 k6/main.js
 ```
 
-t100_5m:
+t50:
 ```bash
-k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t100_5m k6/main.js
-```
-
-t250:
-```bash
-k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t250 k6/main.js
-```
-
-t250_5m:
-```bash
-k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t250_5m k6/main.js
-```
-
-t500:
-```bash
-k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t500 k6/main.js
-```
-
-t750:
-```bash
-k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t750 k6/main.js
-```
-
-t1000:
-```bash
-k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t1000 k6/main.js
-```
-
-soak1000:
-```bash
-k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=soak1000 k6/main.js
+k6 run -e BASE_URL=https://uat.bookmyclass.app -e STAGE_PROFILE=t50 k6/main.js
 ```
 
 ## Example with explicit flow IDs
