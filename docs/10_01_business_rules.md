@@ -184,7 +184,7 @@ Required flow:
 ## 10. Refund and Credit Return Behavior
 
 ### 10.1 Refunds
-- No refunds are accepted under any circumstance
+- Monetary/payment refunds are not accepted for purchased plans or bookings
 
 This applies to:
 - Ticket packs
@@ -196,6 +196,8 @@ This applies to:
 ### 10.2 Credit Returns
 Credits are returned only when:
 - The booking is cancelled at least 24 hours before class start
+
+Credit/ticket return is not a monetary refund.
 
 Credits are not returned when:
 - Cancellation happens less than 24 hours before class start

@@ -10,6 +10,12 @@ FEATURE_FILE="$1"
 MAX_ROUNDS="${2:-${MAX_ROUNDS:-5}}"
 RUNS_DIR_BASE=".codex-workflows/runs"
 CODEX_RUNNER="${CODEX_RUNNER:-codex}"
+PROJECT_SKILLS_DIR="${PROJECT_SKILLS_DIR:-.codex/skills}"
+GLOBAL_SKILLS_DIR="${GLOBAL_SKILLS_DIR:-/c/Users/gaela/.codex/skills}"
+
+if [[ ! -d "$GLOBAL_SKILLS_DIR" && -d "C:/Users/gaela/.codex/skills" ]]; then
+  GLOBAL_SKILLS_DIR="C:/Users/gaela/.codex/skills"
+fi
 
 DEVELOPER_AGENT=".codex/agents/developer.md"
 REVIEWER_AGENT=".codex/agents/reviewer.md"
@@ -20,6 +26,149 @@ DEVELOPER_OVERLAY=".codex-workflows/developer.md"
 REVIEWER_OVERLAY=".codex-workflows/reviewer.md"
 SECURITY_REVIEWER_OVERLAY=".codex-workflows/security-reviewer.md"
 QA_OVERLAY=".codex-workflows/qa.md"
+
+extract_markdown_list_section() {
+  local file_path="$1"
+  local section_name="$2"
+  awk -v section="$section_name" '
+    BEGIN { in_section=0; found=0 }
+    /^##[[:space:]]+/ {
+      if (in_section==1) { exit }
+      title=$0
+      sub(/^##[[:space:]]+/, "", title)
+      if (title==section) {
+        in_section=1
+        found=1
+      }
+      next
+    }
+    in_section==1 {
+      if ($0 ~ /^[[:space:]]*-[[:space:]]+/) {
+        line=$0
+        sub(/^[[:space:]]*-[[:space:]]+/, "", line)
+        gsub(/[[:space:]]+$/, "", line)
+        if (length(line) > 0) {
+          print line
+        }
+        next
+      }
+      if ($0 ~ /^[[:space:]]*$/) {
+        next
+      }
+      next
+    }
+    END {
+      if (found==0) {
+        exit 3
+      }
+    }
+  ' "$file_path"
+}
+
+resolve_skill_bundle() {
+  local agent_file="$1"
+  local overlay_file="$2"
+  local -a declared_skills=()
+  local section_output=""
+  local line
+
+  if section_output="$(extract_markdown_list_section "$agent_file" "Skills" 2>/dev/null)"; then
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && declared_skills+=("$line")
+    done <<< "$section_output"
+  else
+    echo "WARNING: Agent has no ## Skills section: $agent_file" >&2
+  fi
+
+  if [[ -f "$overlay_file" ]]; then
+    if section_output="$(extract_markdown_list_section "$overlay_file" "Additional Skills" 2>/dev/null)"; then
+      while IFS= read -r line; do
+        [[ -n "$line" ]] && declared_skills+=("$line")
+      done <<< "$section_output"
+    fi
+  fi
+
+  local -a resolved_skills=()
+  local skill
+  local seen
+  local skip
+  local project_path
+  local global_path
+  local resolved_path
+  for skill in "${declared_skills[@]}"; do
+    skip=0
+    for seen in "${resolved_skills[@]}"; do
+      if [[ "$seen" == "$skill" ]]; then
+        skip=1
+        break
+      fi
+    done
+    if (( skip == 1 )); then
+      continue
+    fi
+    resolved_skills+=("$skill")
+
+    project_path="$PROJECT_SKILLS_DIR/$skill/SKILL.md"
+    global_path="$GLOBAL_SKILLS_DIR/$skill/SKILL.md"
+    if [[ -f "$project_path" ]]; then
+      resolved_path="$project_path"
+    elif [[ -f "$global_path" ]]; then
+      resolved_path="$global_path"
+    else
+      echo "ERROR: Missing required skill: $skill" >&2
+      echo "Expected project path: $project_path" >&2
+      echo "Expected global path: $global_path" >&2
+      exit 1
+    fi
+    printf "%s|%s\n" "$skill" "$resolved_path"
+  done
+}
+
+print_skill_resolution() {
+  local role="$1"
+  shift
+  local entries=("$@")
+  echo "selected_agent[$role]=${role_agents[$role]}"
+  echo "selected_overlay[$role]=${role_overlays[$role]}"
+  if (( ${#entries[@]} == 0 )); then
+    echo "loaded_skills[$role]=none"
+    return
+  fi
+  local entry
+  local skill_name
+  local skill_path
+  for entry in "${entries[@]}"; do
+    skill_name="${entry%%|*}"
+    skill_path="${entry#*|}"
+    echo "loaded_skill[$role]=$skill_name"
+    echo "skill_source[$role][$skill_name]=$skill_path"
+  done
+}
+
+emit_loaded_skills_markdown() {
+  local role="$1"
+  shift
+  local entries=("$@")
+  echo "# Loaded Skills"
+  echo "Role: $role"
+  if (( ${#entries[@]} == 0 )); then
+    echo "(none)"
+    echo
+    return
+  fi
+
+  local entry
+  local skill_name
+  local skill_path
+  for entry in "${entries[@]}"; do
+    skill_name="${entry%%|*}"
+    skill_path="${entry#*|}"
+    echo "## Skill: $skill_name"
+    echo "Source: $skill_path"
+    cat "$skill_path"
+    echo
+  done
+}
 
 if [[ ! -f "$FEATURE_FILE" ]]; then
   echo "Feature context file not found: $FEATURE_FILE" >&2
@@ -50,6 +199,32 @@ run_dir="$RUNS_DIR_BASE/$ts"
 mkdir -p "$run_dir"
 cp "$FEATURE_FILE" "$run_dir/feature-context.md"
 echo "workflow=developer-review-security-qa-loop" > "$run_dir/workflow.txt"
+skill_log="$run_dir/skill-resolution.log"
+
+declare -A role_agents=(
+  [developer]="$DEVELOPER_AGENT"
+  [reviewer]="$REVIEWER_AGENT"
+  [security-reviewer]="$SECURITY_REVIEWER_AGENT"
+  [qa]="$QA_AGENT"
+)
+declare -A role_overlays=(
+  [developer]="$DEVELOPER_OVERLAY"
+  [reviewer]="$REVIEWER_OVERLAY"
+  [security-reviewer]="$SECURITY_REVIEWER_OVERLAY"
+  [qa]="$QA_OVERLAY"
+)
+
+mapfile -t developer_skill_entries < <(resolve_skill_bundle "$DEVELOPER_AGENT" "$DEVELOPER_OVERLAY")
+mapfile -t reviewer_skill_entries < <(resolve_skill_bundle "$REVIEWER_AGENT" "$REVIEWER_OVERLAY")
+mapfile -t security_skill_entries < <(resolve_skill_bundle "$SECURITY_REVIEWER_AGENT" "$SECURITY_REVIEWER_OVERLAY")
+mapfile -t qa_skill_entries < <(resolve_skill_bundle "$QA_AGENT" "$QA_OVERLAY")
+
+{
+  print_skill_resolution "developer" "${developer_skill_entries[@]}"
+  print_skill_resolution "reviewer" "${reviewer_skill_entries[@]}"
+  print_skill_resolution "security-reviewer" "${security_skill_entries[@]}"
+  print_skill_resolution "qa" "${qa_skill_entries[@]}"
+} | tee "$skill_log"
 
 last_reviewer_feedback="No prior reviewer feedback."
 last_security_feedback="No prior security-reviewer feedback."
@@ -121,6 +296,7 @@ for round in $(seq 1 "$MAX_ROUNDS"); do
     echo "# Developer Agent Definition (source of truth)"
     cat "$DEVELOPER_AGENT"
     echo
+    emit_loaded_skills_markdown "developer" "${developer_skill_entries[@]}"
     echo "# Developer Loop Overlay"
     cat "$DEVELOPER_OVERLAY"
     echo
@@ -146,6 +322,7 @@ for round in $(seq 1 "$MAX_ROUNDS"); do
     echo "# Reviewer Agent Definition (source of truth)"
     cat "$REVIEWER_AGENT"
     echo
+    emit_loaded_skills_markdown "reviewer" "${reviewer_skill_entries[@]}"
     echo "# Reviewer Loop Overlay"
     cat "$REVIEWER_OVERLAY"
     echo
@@ -165,6 +342,7 @@ for round in $(seq 1 "$MAX_ROUNDS"); do
     echo "# Security Reviewer Agent Definition (source of truth)"
     cat "$SECURITY_REVIEWER_AGENT"
     echo
+    emit_loaded_skills_markdown "security-reviewer" "${security_skill_entries[@]}"
     echo "# Security Reviewer Loop Overlay"
     cat "$SECURITY_REVIEWER_OVERLAY"
     echo
@@ -184,6 +362,7 @@ for round in $(seq 1 "$MAX_ROUNDS"); do
     echo "# QA Agent Definition (source of truth)"
     cat "$QA_AGENT"
     echo
+    emit_loaded_skills_markdown "qa" "${qa_skill_entries[@]}"
     echo "# QA Loop Overlay"
     cat "$QA_OVERLAY"
     echo

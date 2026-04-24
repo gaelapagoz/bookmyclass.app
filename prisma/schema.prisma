@@ -202,6 +202,14 @@ enum LoyaltyLedgerEntryType {
   ADJUSTMENT
 }
 
+enum LoyaltyCouponStatus {
+  GENERATED
+  SENT
+  USED
+  EXPIRED
+  VOIDED
+}
+
 enum ContactMessageStatus {
   OPEN
   IN_PROGRESS
@@ -300,6 +308,11 @@ model User {
   createdCreditLedgerEntries CreditLedgerEntry[]    @relation("CreditLedgerEntryCreatedBy")
   clientLoyaltyLedgerEntries LoyaltyLedgerEntry[]   @relation("LoyaltyLedgerEntryClient")
   createdLoyaltyEntries      LoyaltyLedgerEntry[]   @relation("LoyaltyLedgerEntryCreatedBy")
+  loyaltyCoupons             LoyaltyCoupon[]        @relation("LoyaltyCouponClient")
+  createdLoyaltyCoupons      LoyaltyCoupon[]        @relation("LoyaltyCouponCreatedBy")
+  voidedLoyaltyCoupons       LoyaltyCoupon[]        @relation("LoyaltyCouponVoidedBy")
+  createdLoyaltyRewardRules  LoyaltyRewardRule[]    @relation("LoyaltyRewardRuleCreatedBy")
+  updatedLoyaltyRewardRules  LoyaltyRewardRule[]    @relation("LoyaltyRewardRuleUpdatedBy")
   auditLogsAsActor           AuditLog[]             @relation("AuditLogActor")
   adminNotesAuthored         AdminNote[]            @relation("AdminNoteAuthor")
   adminNotesAboutClient      AdminNote[]            @relation("AdminNoteClient")
@@ -904,23 +917,85 @@ model CreditLedgerEntry {
 }
 
 model LoyaltyLedgerEntry {
-  id          String                 @id @default(cuid())
-  clientId    String
-  entryType   LoyaltyLedgerEntryType
-  amount      Int
-  happenedAt  DateTime               @default(now())
-  orderId     String?
-  createdById String?
-  notes       String?
-  client      User                   @relation("LoyaltyLedgerEntryClient", fields: [clientId], references: [id], onDelete: Restrict)
-  order       Order?                 @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  createdBy   User?                  @relation("LoyaltyLedgerEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt   DateTime               @default(now())
-  updatedAt   DateTime               @updatedAt
+  id             String                 @id @default(cuid())
+  clientId       String
+  entryType      LoyaltyLedgerEntryType
+  amount         Int
+  happenedAt     DateTime               @default(now())
+  orderId        String?
+  rewardRuleId   String?
+  couponId       String?
+  sourceType     String?
+  sourceReference String?
+  idempotencyKey String?                @unique
+  createdById    String?
+  notes          String?
+  client         User                   @relation("LoyaltyLedgerEntryClient", fields: [clientId], references: [id], onDelete: Restrict)
+  order          Order?                 @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  rewardRule     LoyaltyRewardRule?     @relation(fields: [rewardRuleId], references: [id], onDelete: SetNull)
+  coupon         LoyaltyCoupon?         @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  createdBy      User?                  @relation("LoyaltyLedgerEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
 
   @@index([clientId, happenedAt])
   @@index([clientId, entryType, happenedAt])
   @@index([orderId])
+  @@index([rewardRuleId])
+  @@index([couponId])
+  @@index([sourceType, sourceReference])
+}
+
+model LoyaltyRewardRule {
+  id                String               @id @default(cuid())
+  name              String
+  pointsThreshold   Int
+  couponValueMinor  Int
+  couponCurrencyCode String              @default("EUR")
+  isActive          Boolean              @default(true)
+  createdById       String?
+  updatedById       String?
+  createdBy         User?                @relation("LoyaltyRewardRuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy         User?                @relation("LoyaltyRewardRuleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  ledgerEntries     LoyaltyLedgerEntry[]
+  coupons           LoyaltyCoupon[]
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([isActive, updatedAt])
+}
+
+model LoyaltyCoupon {
+  id                String              @id @default(cuid())
+  clientId          String
+  rewardRuleId      String
+  code              String              @unique
+  pointsRedeemed    Int
+  couponValueMinor  Int
+  couponCurrencyCode String
+  status            LoyaltyCouponStatus @default(GENERATED)
+  idempotencyKey    String?             @unique
+  emailSentAt       DateTime?
+  emailSendAttempts Int                 @default(0)
+  emailLastError    String?
+  usedAt            DateTime?
+  expiredAt         DateTime?
+  voidedAt          DateTime?
+  voidReason        String?
+  createdById       String?
+  voidedById        String?
+  notes             String?
+  client            User                @relation("LoyaltyCouponClient", fields: [clientId], references: [id], onDelete: Restrict)
+  rewardRule        LoyaltyRewardRule   @relation(fields: [rewardRuleId], references: [id], onDelete: Restrict)
+  createdBy         User?               @relation("LoyaltyCouponCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  voidedBy          User?               @relation("LoyaltyCouponVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
+  ledgerEntries     LoyaltyLedgerEntry[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([clientId, status, createdAt])
+  @@index([rewardRuleId, status, createdAt])
+  @@index([status, createdAt])
 }
 
 model AuditLog {

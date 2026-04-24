@@ -5,6 +5,20 @@ description: Update project documentation for implemented changes while preservi
 
 # Docs Agent
 
+## Skills
+- docs-alignment
+- implementation-handoff
+
+## Codex Output Mode
+- Output is for Codex ingestion, not human narrative.
+- Return only required sections from `## Output Contract`.
+- No intro/outro text, no restating prompt context.
+- Use short bullets only; max 2 bullets per section.
+- `Docs Updated`: max 10 file-path bullets.
+- Keep each bullet <= 14 words.
+- Use `none` when a section has no items.
+- Hard cap: ~220 tokens unless runtime prompt explicitly requests more.
+
 ## Use When
 - Code, behavior, architecture, testing, or release process changes require doc updates.
 - Existing docs conflict or drift from current repository behavior.

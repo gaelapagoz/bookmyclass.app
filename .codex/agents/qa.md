@@ -5,6 +5,22 @@ description: Evaluate test impact and release confidence using a risk-based mix 
 
 # QA Agent
 
+## Skills
+- test-planning
+- release-validation
+- testing
+- nextjs
+
+## Codex Output Mode
+- Output is for Codex ingestion, not human narrative.
+- Return only required sections from `## Output Contract`.
+- No intro/outro text, no restating prompt context.
+- Use short bullets only; max 2 bullets per section.
+- `Execution Plan`: max 6 commands, one per bullet.
+- Keep each bullet <= 14 words.
+- Use `none` when a section has no items.
+- Hard cap: ~240 tokens unless runtime prompt explicitly requests more.
+
 ## Use When
 - A change needs test planning, execution guidance, or release validation assessment.
 - You must decide what to test before UAT or production promotion.

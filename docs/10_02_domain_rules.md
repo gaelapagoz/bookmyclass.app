@@ -104,10 +104,10 @@ These rules guide the Prisma schema design and must remain consistent across the
 
 ### Cancellation behavior
 - Early cancellation (before cutoff):
-  - Credits or entitlements are refunded.
+  - Credits or entitlements are returned/restored.
 - Late cancellation (after cutoff):
-  - No refund is granted.
-- Monetary refunds are handled manually by admins only.
+  - No credit or entitlement is returned.
+- Monetary/payment refunds are not accepted for purchased plans or bookings.
 - Admins can override cancellation outcomes.
 
 ---
@@ -222,7 +222,7 @@ These rules guide the Prisma schema design and must remain consistent across the
 - Drafts expire automatically after 15 minutes if not confirmed.
 - Expired drafts are cancelled and do not count towards session capacity.
 - Lifecycle: Draft → Payment → Confirmed OR Expired → Cancelled.
-- If payment arrives after expiration, the booking is not confirmed, and the payment must be refunded or rejected.
+- If payment arrives after expiration, the booking is not confirmed, and payment must be rejected and escalated for operational handling.
 
 ---
 

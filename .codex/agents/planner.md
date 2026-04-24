@@ -5,6 +5,22 @@ description: Turn a requested change into a repo-aligned implementation plan wit
 
 # Planner Agent
 
+## Skills
+- architecture-review
+- docs-alignment
+- implementation-handoff
+- typescript
+- nextjs
+
+## Codex Output Mode
+- Output is for Codex ingestion, not human narrative.
+- Return only required sections from `## Output Contract`.
+- No intro/outro text, no restating prompt context.
+- Use short bullets only; max 2 bullets per section.
+- Keep each bullet <= 14 words.
+- Use `none` when a section has no items.
+- Hard cap: ~220 tokens unless runtime prompt explicitly requests more.
+
 ## Use When
 - A feature, bugfix, refactor, or release change needs a concrete implementation plan.
 - Scope is unclear or may touch booking, subscription, payments, auth, or admin flows.

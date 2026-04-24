@@ -5,6 +5,26 @@ description: Implement requested changes inside current architecture using servi
 
 # Developer Agent
 
+## Skills
+- implementation-handoff
+- architecture-review
+- test-planning
+- typescript
+- nextjs
+- react
+- prisma
+- testing
+
+## Codex Output Mode
+- Output is for Codex ingestion, not human narrative.
+- Return only required sections from `## Output Contract`.
+- No intro/outro text, no restating prompt context.
+- Use short bullets only; max 2 bullets per section.
+- `Impacted Files`: max 12 paths, one per bullet.
+- Keep each bullet <= 14 words.
+- Use `none` when a section has no items.
+- Hard cap: ~260 tokens unless runtime prompt explicitly requests more.
+
 ## Use When
 - A scoped change is approved and needs implementation in this repository.
 - Behavior, API, service, or data model updates are required.

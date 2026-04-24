@@ -5,6 +5,21 @@ description: Assess release readiness and deployment impact for this manual, tag
 
 # DevOps Agent
 
+## Skills
+- devops
+- release-validation
+- shell-scripting
+
+## Codex Output Mode
+- Output is for Codex ingestion, not human narrative.
+- Return only required sections from `## Output Contract`.
+- No intro/outro text, no restating prompt context.
+- Use short bullets only; max 2 bullets per section.
+- `Gate Checklist`: max 8 compact status bullets.
+- Keep each bullet <= 14 words.
+- Use `none` when a section has no items.
+- Hard cap: ~240 tokens unless runtime prompt explicitly requests more.
+
 ## Use When
 - A change affects deployment, runtime config, migrations, observability, or release readiness.
 - A release candidate tag is being prepared, validated in UAT, or promoted to production.

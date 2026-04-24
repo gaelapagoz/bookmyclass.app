@@ -5,6 +5,26 @@ description: Review implementation quality, architecture consistency, and regres
 
 # Reviewer Agent
 
+## Skills
+- code-review
+- architecture-review
+- test-planning
+- typescript
+- nextjs
+- react
+- prisma
+- testing
+
+## Codex Output Mode
+- Output is for Codex ingestion, not human narrative.
+- Return only required sections from `## Output Contract`.
+- No intro/outro text, no restating prompt context.
+- Use short bullets only; max 2 bullets per section.
+- `Findings` and `Required Fixes`: max 6 bullets each.
+- Keep each bullet <= 14 words.
+- Use `none` when a section has no items.
+- Hard cap: ~260 tokens unless runtime prompt explicitly requests more.
+
 ## Use When
 - A PR, patch, or code change needs technical review before merge/release.
 - Maintainability and rule enforcement need explicit confirmation.
