@@ -76,3 +76,7 @@ security-reports/
 security-output/
 
 /.roadmap
+
+/tmp
+
+/.codex-workflows/runs

@@ -3,33 +3,53 @@ name: devops
 description: Assess release readiness and deployment impact for this manual, tag-based UAT-first delivery process.
 ---
 
-# DevOps Skill
+# DevOps
 
-## Use When
-- A change affects deployment, runtime config, migrations, observability, or release readiness.
-- A release candidate tag is being prepared or promoted.
+## Purpose
+Evaluate whether a change is safe to release in this repository's UAT-first, tag-promotion flow.
 
-## Must Do
-- Follow docs priority: `docs/00_*` -> `10_*` -> `20_*` -> `30_*` -> `40_*` -> `50_*` -> `60_*` -> `70_*` -> `80_*` -> `90_*`.
-- Use `00_02_deployment_baseline.md` as canonical runtime truth when operational docs disagree.
-- Enforce tag-based release flow: UAT validate first, then promote same tag to production.
-- Validate migration/deploy order: `npm ci` -> `prisma migrate deploy` -> `prisma generate` -> `npm run build` -> `pm2 restart`.
-- Check env var requirements and secret expectations for changed flows.
-- Verify post-deploy health and smoke checks, then observability signals.
-- Include rollback risk notes, especially when schema/data behavior changed.
-- Preserve production safety over speed.
+## Inputs
+- Change scope (files/modules/behavior).
+- Target release tag or candidate.
+- Relevant pipeline/runtime context (CI results, migration needs, env changes).
 
-## Must Avoid
-- Assuming automated production deploy from main.
-- Guessing infra/runtime facts when docs conflict.
-- Skipping UAT validation gates (smoke, e2e_uat, k6 smoke, security baseline).
-- Treating rollback as code-only when data migration risk exists.
+## Procedure
+1. Read docs in required order: `docs/00_*` -> `10_*` -> `20_*` -> `30_*` -> `40_*` -> `50_*` -> `60_*` -> `70_*` -> `80_*` -> `90_*`.
+2. Treat `docs/00_02_deployment_baseline.md` as authoritative for runtime/deployment facts when references disagree.
+3. Map release impact:
+   - services/processes touched
+   - env vars/secrets touched
+   - schema/migration implications
+   - observability/alerting touchpoints
+4. Validate release sequencing for changed backend/runtime paths:
+   - `npm ci`
+   - `prisma migrate deploy`
+   - `prisma generate`
+   - `npm run build`
+   - `pm2 restart`
+5. Validate gates for UAT-first promotion:
+   - CI health
+   - UAT deploy success
+   - smoke checks
+   - E2E (as required by change risk)
+   - k6 smoke/perf baseline (if relevant)
+   - security baseline (if relevant)
+6. Assess rollback safety:
+   - whether rollback is tag-only or requires data recovery steps
+   - post-rollback verification requirements
+7. Flag documentation conflicts and unresolved operator dependencies.
 
-## Output Contract
+## Guardrails
+- Do not assume automated production deploy from `main`.
+- Do not skip UAT validation before promoting a tag to production.
+- Do not infer infra/runtime facts from lower-priority docs when baseline disagrees.
+- Treat data/schema changes as rollback-sensitive.
+
+## Deliverable
 Return:
-- `Release Readiness`: ready/not_ready with reason.
+- `Release Readiness`: `ready` or `not_ready`, with reason.
 - `Deployment Impact`: services, env vars, migrations, runtime touchpoints.
-- `Gate Checklist`: CI, UAT deploy, smoke, E2E, k6, security baseline status.
+- `Gate Checklist`: pass/fail/unknown for each required gate.
 - `Operational Risks`: rollback, data consistency, secret/config concerns.
-- `Rollback Notes`: safe fallback tag and required verification.
+- `Rollback Notes`: fallback tag/process and verification steps.
 - `Documentation Conflicts Found`: explicit list or `none`.

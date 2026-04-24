@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
 import { ContactFormServiceError, submitHomesiteContactForm } from "@/lib/contact-form/contact-form-service";
+import { getTrustedClientIpFromHeaders } from "@/lib/security/rate-limit";
 import { rejectIfNotSameOrigin } from "@/lib/security/same-origin";
 
 const GENERIC_MESSAGE = "Thanks. If your request is valid, we will contact you soon.";
@@ -18,7 +19,14 @@ export async function POST(request: Request) {
   }
 
   try {
-    await submitHomesiteContactForm(payload);
+    const allowForwardedForFallback =
+      process.env.NODE_ENV !== "production" || process.env.TRUST_X_FORWARDED_FOR === "1";
+
+    await submitHomesiteContactForm(payload, {
+      ipAddress: getTrustedClientIpFromHeaders(request.headers, {
+        allowForwardedFor: allowForwardedForFallback,
+      }),
+    });
     return Response.json({ ok: true, message: GENERIC_MESSAGE }, { status: 200 });
   } catch (error) {
     if (error instanceof ContactFormServiceError) {
@@ -26,7 +34,7 @@ export async function POST(request: Request) {
         return Response.json({ ok: false, message: GENERIC_MESSAGE }, { status: 400 });
       }
 
-      if (error.code === "HONEYPOT_REJECTED") {
+      if (error.code === "HONEYPOT_REJECTED" || error.code === "RATE_LIMITED") {
         return Response.json({ ok: true, message: GENERIC_MESSAGE }, { status: 200 });
       }
 

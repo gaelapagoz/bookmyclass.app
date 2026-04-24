@@ -12,6 +12,7 @@ export default defineConfig({
     environment: "node",
     globals: true,
     fileParallelism: false,
+    setupFiles: ["./test/setup-env.ts"],
     exclude: [...configDefaults.exclude, "test/e2e/**"],
 
     // 👇 ADD THIS

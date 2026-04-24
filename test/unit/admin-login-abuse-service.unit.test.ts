@@ -9,6 +9,7 @@ describe("admin login abuse service", () => {
   afterEach(() => {
     vi.doUnmock("@/lib/db");
     vi.doUnmock("@prisma/client");
+    vi.unstubAllEnvs();
     vi.resetModules();
   });
 
@@ -89,5 +90,56 @@ describe("admin login abuse service", () => {
       "EMAIL",
       "IP_EMAIL",
     ]);
+  });
+
+  it("fails closed in production when abuse delegate is unavailable and break-glass is inactive", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_SECRET", "prod-auth-secret");
+    vi.stubEnv("ADMIN_LOGIN_ABUSE_HASH_SECRET", "prod-abuse-secret");
+    vi.stubEnv("ADMIN_LOGIN_ABUSE_BREAK_GLASS_UNTIL", "");
+
+    vi.doMock("@/lib/db", () => ({
+      prisma: {},
+    }));
+
+    const module = await import("../../src/lib/auth/admin-login-abuse-service");
+
+    await expect(
+      module.getAdminLoginAbuseState({
+        ip: "203.0.113.9",
+        normalizedEmail: "prod-admin@example.test",
+      }),
+    ).rejects.toThrow("ADMIN_LOGIN_ABUSE_UNAVAILABLE");
+  });
+
+  it("allows temporary neutral fallback in production only when break-glass TTL is active", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_SECRET", "prod-auth-secret");
+    vi.stubEnv("ADMIN_LOGIN_ABUSE_HASH_SECRET", "prod-abuse-secret");
+    vi.stubEnv("ADMIN_LOGIN_ABUSE_BREAK_GLASS_UNTIL", "2099-01-01T00:00:00.000Z");
+    vi.stubEnv("ADMIN_LOGIN_ABUSE_BREAK_GLASS_REASON", "incident-123");
+
+    vi.doMock("@/lib/db", () => ({
+      prisma: {},
+    }));
+
+    const module = await import("../../src/lib/auth/admin-login-abuse-service");
+
+    await expect(
+      module.getAdminLoginAbuseState({
+        ip: "203.0.113.10",
+        normalizedEmail: "prod-breakglass@example.test",
+      }),
+    ).resolves.toEqual({
+      isLocked: false,
+      requiresCaptcha: false,
+      retryAfterMs: null,
+    });
+
+    expect(module.getAdminLoginAbuseGuardReadiness()).toMatchObject({
+      ready: true,
+      degraded: true,
+      breakGlassActive: true,
+    });
   });
 });

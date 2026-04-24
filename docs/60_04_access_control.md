@@ -17,7 +17,7 @@ Purpose: summarize role and route access controls currently enforced in code.
 
 ## Known Gaps (Current)
 - Fine-grained split between `ADMIN` and `MASTER_ADMIN` is not broadly implemented.
-- Teacher route enforcement is not fully confirmed as production-hardened.
+- Teacher route group is explicitly enforced via `requireTeacherSession` in `src/app/teacher/layout.tsx`; keep UI/E2E guard coverage active.
 
 ## Canonical References
 - `prisma/schema.prisma`

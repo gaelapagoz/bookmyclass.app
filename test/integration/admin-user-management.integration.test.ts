@@ -9,6 +9,7 @@ import {
   bulkAddClientMarketingSegments,
   bulkRemoveClientMarketingSegments,
   bulkSetClientMarketingSubscriptionStatus,
+  createAdminUser,
   updateAdminTeacherImage,
   updateAdminUser,
 } from "../../src/lib/admin/admin-service";
@@ -67,6 +68,57 @@ describe("admin user management service", () => {
         },
       ),
     ).rejects.toThrow("MASTER_ADMIN_MANAGEMENT_FORBIDDEN");
+  });
+
+  it("prevents ADMIN from creating MASTER_ADMIN", async () => {
+    const admin = await prisma.user.create({
+      data: {
+        name: "Admin Creator",
+        firstName: "Admin",
+        lastName: "Creator",
+        email: `admin.creator.${Date.now()}@example.test`,
+        role: Role.ADMIN,
+        passwordHash: await hash("AdminCreator123!", 12),
+        emailVerified: new Date(),
+      },
+    });
+
+    await expect(
+      createAdminUser({
+        name: "Escalation Target",
+        email: `escalation.target.${Date.now()}@example.test`,
+        role: Role.MASTER_ADMIN,
+        isActive: true,
+        password: "Escalation123!",
+        createdByUserId: admin.id,
+      }),
+    ).rejects.toThrow("MASTER_ADMIN_ASSIGNMENT_FORBIDDEN");
+  });
+
+  it("allows MASTER_ADMIN to create MASTER_ADMIN", async () => {
+    const masterAdmin = await prisma.user.create({
+      data: {
+        name: "Master Creator",
+        firstName: "Master",
+        lastName: "Creator",
+        email: `master.creator.${Date.now()}@example.test`,
+        role: Role.MASTER_ADMIN,
+        passwordHash: await hash("MasterCreator123!", 12),
+        emailVerified: new Date(),
+      },
+    });
+
+    const created = await createAdminUser({
+      name: "Second Master",
+      email: `master.created.${Date.now()}@example.test`,
+      role: Role.MASTER_ADMIN,
+      isActive: true,
+      password: "SecondMaster123!",
+      createdByUserId: masterAdmin.id,
+    });
+
+    expect(created.role).toBe(Role.MASTER_ADMIN);
+    expect(created.createdByUserId).toBe(masterAdmin.id);
   });
 
   it("rejects non-admin actor at admin mutation boundary", async () => {
@@ -561,4 +613,3 @@ describe("admin user management service", () => {
     expect(filtered).toEqual([{ userId: subscribedUser.id, email: subscribedUser.email.toLowerCase() }]);
   });
 });
-

@@ -226,6 +226,40 @@ describe("admin edit pages", () => {
     expect(screen.getByText("Only MASTER_ADMIN can manage another MASTER_ADMIN.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Update user" })).toBeDisabled();
   });
+
+  it("hides MASTER_ADMIN option for ADMIN actor when editing non-master users", async () => {
+    vi.mocked(requireAdminSession).mockResolvedValue({
+      user: { id: "admin-1", role: "ADMIN" },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+    vi.mocked(getAdminUserById).mockResolvedValue({
+      id: "admin-target-1",
+      name: "Admin Target",
+      firstName: "Admin",
+      lastName: "Target",
+      email: "admin.target@example.test",
+      role: "ADMIN",
+      isActive: true,
+      image: "",
+      phone: "",
+      notes: "",
+      bio: "",
+      specialties: [],
+      certifications: [],
+      hireDate: null,
+      marketingSubscriptionStatus: "NEVER_SUBSCRIBED",
+      marketingSegmentIds: [],
+    });
+
+    render(
+      await AdminUserEditPage({
+        params: Promise.resolve({ id: "admin-target-1" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+
+    expect(screen.queryByRole("option", { name: "MASTER_ADMIN" })).not.toBeInTheDocument();
+  });
 });
 
 

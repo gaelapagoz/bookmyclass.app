@@ -107,8 +107,8 @@ Evidence label legend used in this file:
   - Evidence status: Confirmed from repo (`src/lib/auth/admin-access.ts`), Inferred from repo (absence of differentiated checks).
 - Role escalation protections:
   - Admin session required for admin mutation paths.
-  - No explicit safeguard found preventing assignment of `MASTER_ADMIN` by admin user management UI/service.
-  - Evidence status: Confirmed from repo (`src/app/admin/(private)/users/[id]/edit/page.tsx`, `src/lib/admin/admin-service.ts`).
+  - `MASTER_ADMIN` assignment/management is protected server-side: `ADMIN` actors are blocked and `MASTER_ADMIN` is required for privileged role operations, with UI defense-in-depth reflecting that boundary.
+  - Evidence status: Confirmed from repo (`src/app/admin/(private)/actions.ts`, `src/lib/admin/admin-service.ts`, `src/app/admin/(private)/users/new/page.tsx`, `src/app/admin/(private)/users/[id]/edit/page.tsx`).
 
 ## 4. Architecture overview
 - High-level architecture:
@@ -234,8 +234,8 @@ Evidence label legend used in this file:
   - Safe callback URL handling.
   - Login/signup anti-abuse checks.
   - Evidence status: Confirmed from repo (`src/lib/observability/sentry-sanitize.ts`, `src/lib/auth/safe-callback-url.ts`, `src/lib/auth/user-identity-service.ts`).
-- Known security gaps visible from code only:
-  - Teacher route group lacks explicit auth/role gate.
+  - Known security gaps visible from code only:
+  - Teacher route group uses explicit server-side auth/role gate via `requireTeacherSession`.
   - In-memory rate limiter is not shared across instances/restarts.
   - `MARKETING_TRACKING_SECRET` can fall back to hardcoded default.
   - Evidence status: Confirmed from repo (`src/app/teacher/layout.tsx`, `src/lib/security/rate-limit.ts`, `src/lib/marketing/marketing-tracking.ts`).
@@ -423,7 +423,7 @@ Evidence label legend used in this file:
 - Missing critical test areas:
   - Limited e2e (single Playwright mobile navigation spec).
   - No-show runtime workflow not implemented/covered.
-  - Teacher route auth behavior lacks dedicated coverage.
+  - Teacher route auth behavior has explicit UI/E2E coverage (`test/ui/teacher-layout.ui.test.tsx`, `test/e2e/teacher-flow.spec.ts`).
   - Evidence status: Confirmed from repo / Inferred from test inventory + feature implementation.
 
 ## 15. CI/CD
@@ -494,12 +494,10 @@ Evidence label legend used in this file:
   - Evidence status: Confirmed from repo.
 
 ## 18. Known gaps / risks
-- Teacher route group lacks explicit auth/role enforcement.
-  - Evidence status: Confirmed from repo (`src/app/teacher/layout.tsx`).
+- Teacher route group is server-enforced via `requireTeacherSession`; keep regression coverage active for role redirects.
+  - Evidence status: Confirmed from repo (`src/app/teacher/layout.tsx`, `test/ui/teacher-layout.ui.test.tsx`, `test/e2e/teacher-flow.spec.ts`).
 - No-show workflow is modeled but not implemented in active app flows.
   - Evidence status: Confirmed from repo (schema present, route/service usage absent).
-- Admin role assignment can set `MASTER_ADMIN` without visible extra guard.
-  - Evidence status: Confirmed from repo.
 - In-memory rate limiters are process-local.
   - Evidence status: Confirmed from repo (`src/lib/security/rate-limit.ts`).
 - Marketing send path can report send success when `RESEND_API_KEY` is missing.

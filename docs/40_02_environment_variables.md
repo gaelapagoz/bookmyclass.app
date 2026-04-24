@@ -19,6 +19,11 @@ Purpose: define environment-variable expectations by runtime context using repos
   - Expected configured value: `gaelapagoz@gmail.com`
 - In production, sender policy is enforced in code: sender must use verified `@bookmyclass.app` domain when provider delivery is used.
 
+## Contact Form Abuse Guard
+- `TRUST_X_FORWARDED_FOR` (optional, default fail-closed when unset)
+- Purpose: allows homesite contact-form throttling to consume `x-forwarded-for` as client-IP source.
+- Security rule: enable only when ingress/proxy sanitizes and overwrites forwarded headers. Otherwise keep unset so production trusts only `cf-connecting-ip` or `x-real-ip`.
+
 ## Test / E2E Runtime
 - Deterministic email bypass is enabled by `NODE_ENV=test` or `E2E_TEST_MODE=1`.
 - Test/e2e runs do not require real provider delivery to be deterministic.

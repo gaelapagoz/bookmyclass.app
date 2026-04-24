@@ -242,6 +242,77 @@ docker run --rm -v "$(pwd -W):/zap/wrk/:rw" -t ghcr.io/zaproxy/zaproxy:stable \
   -d
 ```
 
+## Planner Auditor Loop (Local Workflow)
+
+Local operator workflow files live in `.codex-workflows/`:
+
+- `.codex-workflows/planner.md`
+- `.codex-workflows/auditor.md`
+- `.codex-workflows/planner-auditor-loop.sh`
+
+The loop uses `.codex/agents/planner.md` and `.codex/agents/auditor.md` as primary agent definitions, and treats `.codex-workflows/planner.md` + `.codex-workflows/auditor.md` as thin loop overlays (non-duplicative).
+
+Run the loop with a feature context markdown file:
+
+```bash
+bash .codex-workflows/planner-auditor-loop.sh path/to/feature-context.md
+```
+
+Optional overrides:
+
+```bash
+# change runner command (must read prompt from stdin, write response to stdout)
+# runner executable (script invokes: <runner> exec --output-last-message ...)
+CODEX_RUNNER="codex" bash .codex-workflows/planner-auditor-loop.sh path/to/feature-context.md
+
+# lower round cap (must be 1-5)
+bash .codex-workflows/planner-auditor-loop.sh path/to/feature-context.md 3
+```
+
+Run artifacts are stored per execution at:
+
+```bash
+.codex-workflows/runs/<timestamp>/
+```
+
+Each round saves planner and auditor prompts/outputs. The loop stops when the auditor ends with `VERDICT: APPROVED` or after 5 rounds.
+
+## Developer Reviewer Security QA Loop (Local Workflow)
+
+Local operator workflow files live in `.codex-workflows/`:
+
+- `.codex-workflows/developer.md`
+- `.codex-workflows/reviewer.md`
+- `.codex-workflows/security-reviewer.md`
+- `.codex-workflows/qa.md`
+- `.codex-workflows/developer-review-security-qa-loop.sh`
+
+The loop uses `.codex/agents/developer.md`, `.codex/agents/reviewer.md`, `.codex/agents/security-reviewer.md`, and `.codex/agents/qa.md` as primary definitions. The `.codex-workflows/*.md` files are thin loop overlays.
+
+Run the loop with a feature context markdown file:
+
+```bash
+bash .codex-workflows/developer-review-security-qa-loop.sh path/to/feature-context.md
+```
+
+Optional overrides:
+
+```bash
+# runner executable (script invokes: <runner> exec --output-last-message ...)
+CODEX_RUNNER="codex" bash .codex-workflows/developer-review-security-qa-loop.sh path/to/feature-context.md
+
+# lower round cap (must be 1-5)
+bash .codex-workflows/developer-review-security-qa-loop.sh path/to/feature-context.md 3
+```
+
+Run artifacts are stored per execution at:
+
+```bash
+.codex-workflows/runs/<timestamp>/
+```
+
+Each round saves developer/reviewer/security-reviewer/qa prompts and outputs. The loop stops when reviewer, security reviewer, and QA all end with `VERDICT: APPROVED`, or after 5 rounds.
+
 ## Documentation Index
 
 * 00_*: canonical baselines and current-state truth.

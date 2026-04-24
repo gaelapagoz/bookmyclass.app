@@ -30,6 +30,30 @@ vi.mock("@/auth", () => ({
   })),
 }));
 
+vi.mock("@/lib/auth/require-auth", () => ({
+  requireAdminSession: vi.fn(async () => {
+    const { auth } = await import("@/auth");
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      throw new Error("UNAUTHENTICATED");
+    }
+
+    const role = session.user.role;
+    if (role !== "ADMIN" && role !== "MASTER_ADMIN") {
+      throw new Error("FORBIDDEN");
+    }
+
+    return {
+      ...session,
+      user: {
+        ...session.user,
+        role,
+      },
+    };
+  }),
+}));
+
 vi.mock("@/lib/admin/admin-service", () => ({
   addSessionAttendeeByManager: vi.fn(),
   adjustAdminClientCredits: vi.fn(),

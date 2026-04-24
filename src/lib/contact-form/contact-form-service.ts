@@ -1,5 +1,33 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { sendEmailViaResend } from "@/lib/email/resend-delivery";
+import { prisma } from "@/lib/db";
+
+const DEFAULT_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 5;
+
+function parsePositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return parsed;
+}
+
+const HOMESITE_CONTACT_RATE_LIMIT_WINDOW_MS = parsePositiveIntEnv(
+  "HOMESITE_CONTACT_RATE_LIMIT_WINDOW_MS",
+  DEFAULT_RATE_LIMIT_WINDOW_MS,
+);
+const HOMESITE_CONTACT_RATE_LIMIT_MAX_REQUESTS = parsePositiveIntEnv(
+  "HOMESITE_CONTACT_RATE_LIMIT_MAX_REQUESTS",
+  DEFAULT_RATE_LIMIT_MAX_REQUESTS,
+);
 
 const contactFormPayloadSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -15,6 +43,7 @@ export class ContactFormServiceError extends Error {
     public readonly code:
       | "INVALID_PAYLOAD"
       | "HONEYPOT_REJECTED"
+      | "RATE_LIMITED"
       | "MISSING_CONTACT_FORM_TO_EMAIL"
       | "MISSING_RESEND_API_KEY"
       | "MISSING_EMAIL_FROM"
@@ -60,6 +89,72 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+function getNormalizedIpAddress(value: string | null | undefined): string {
+  const normalized = value?.trim().toLowerCase();
+  return normalized && normalized.length > 0 ? normalized : "unknown";
+}
+
+function hashHomesiteContactRateLimitIp(ipAddress: string): string {
+  return createHash("sha256")
+    .update(`homesite-contact-rate-limit:${ipAddress}`)
+    .digest("hex");
+}
+
+async function assertHomesiteContactRateLimit(ipAddress: string, now: Date): Promise<void> {
+  const ipHash = hashHomesiteContactRateLimitIp(ipAddress);
+  const activeWindowThreshold = new Date(now.getTime() - HOMESITE_CONTACT_RATE_LIMIT_WINDOW_MS);
+
+  const isRateLimited = await prisma.$transaction(async (tx) => {
+    await tx.contactMessageRateLimit.upsert({
+      where: { ipHash },
+      update: {},
+      create: {
+        ipHash,
+        windowStartedAt: now,
+        requestCount: 0,
+      },
+    });
+
+    const resetWindowResult = await tx.contactMessageRateLimit.updateMany({
+      where: {
+        ipHash,
+        windowStartedAt: {
+          lt: activeWindowThreshold,
+        },
+      },
+      data: {
+        windowStartedAt: now,
+        requestCount: 1,
+      },
+    });
+    if (resetWindowResult.count > 0) {
+      return false;
+    }
+
+    const consumeSlotResult = await tx.contactMessageRateLimit.updateMany({
+      where: {
+        ipHash,
+        windowStartedAt: {
+          gte: activeWindowThreshold,
+        },
+        requestCount: {
+          lt: HOMESITE_CONTACT_RATE_LIMIT_MAX_REQUESTS,
+        },
+      },
+      data: {
+        requestCount: {
+          increment: 1,
+        },
+      },
+    });
+    return consumeSlotResult.count === 0;
+  });
+
+  if (isRateLimited) {
+    throw new ContactFormServiceError("RATE_LIMITED", "Too many homesite contact submissions from this IP.");
+  }
+}
+
 export function parseContactFormPayload(input: unknown): ContactFormPayload {
   const parsed = contactFormPayloadSchema.safeParse(input);
   if (!parsed.success) {
@@ -68,13 +163,18 @@ export function parseContactFormPayload(input: unknown): ContactFormPayload {
   return parsed.data;
 }
 
-export async function submitHomesiteContactForm(input: unknown): Promise<void> {
+export async function submitHomesiteContactForm(
+  input: unknown,
+  options?: { ipAddress?: string | null },
+): Promise<void> {
   const payload = parseContactFormPayload(input);
   if (payload.honeypot) {
     throw new ContactFormServiceError("HONEYPOT_REJECTED", "Honeypot field is filled.");
   }
 
   const config = getRequiredConfig();
+  const now = new Date();
+  await assertHomesiteContactRateLimit(getNormalizedIpAddress(options?.ipAddress), now);
 
   try {
     await sendEmailViaResend({

@@ -1,4 +1,5 @@
 import prisma from "@/lib/db";
+import { getAdminLoginAbuseGuardReadiness } from "@/lib/auth/admin-login-abuse-service";
 
 const NO_CACHE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate",
@@ -7,18 +8,21 @@ const NO_CACHE_HEADERS = {
 
 export async function GET() {
   const timestamp = new Date().toISOString();
+  const adminLoginAbuseGuard = getAdminLoginAbuseGuardReadiness();
 
   try {
     await prisma.$queryRaw`SELECT 1`;
+    const status = adminLoginAbuseGuard.ready ? 200 : 503;
 
     return Response.json(
       {
-        ok: true,
+        ok: adminLoginAbuseGuard.ready,
         db: "up",
+        adminLoginAbuseGuard,
         timestamp,
       },
       {
-        status: 200,
+        status,
         headers: NO_CACHE_HEADERS,
       },
     );
@@ -32,6 +36,7 @@ export async function GET() {
       {
         ok: false,
         db: "down",
+        adminLoginAbuseGuard,
         timestamp,
       },
       {

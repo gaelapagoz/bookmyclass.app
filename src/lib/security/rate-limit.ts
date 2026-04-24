@@ -114,3 +114,38 @@ export function getClientIpFromHeaders(headers: Headers | null | undefined): str
 
   return "unknown";
 }
+
+type TrustedClientIpOptions = {
+  allowForwardedFor?: boolean;
+};
+
+export function getTrustedClientIpFromHeaders(
+  headers: Headers | null | undefined,
+  options?: TrustedClientIpOptions,
+): string {
+  if (!headers) {
+    return "unknown";
+  }
+
+  const cfIp = headers.get("cf-connecting-ip")?.trim();
+  if (cfIp) {
+    return cfIp;
+  }
+
+  const realIp = headers.get("x-real-ip")?.trim();
+  if (realIp) {
+    return realIp;
+  }
+
+  if (!options?.allowForwardedFor) {
+    return "unknown";
+  }
+
+  const forwarded = headers.get("x-forwarded-for");
+  if (!forwarded) {
+    return "unknown";
+  }
+
+  const first = forwarded.split(",")[0]?.trim();
+  return first && first.length > 0 ? first : "unknown";
+}

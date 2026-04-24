@@ -8,6 +8,9 @@ Use this checklist for local-to-UAT security baseline validation.
 - [ ] Confirm local checkout is exactly on a release tag (`git describe --tags --exact-match`)
 - [ ] Confirm Docker is available locally
 - [ ] Confirm UAT deploy tag matches release candidate tag
+- [ ] Confirm admin abuse guard readiness is healthy (`GET /api/health` includes `adminLoginAbuseGuard.ready=true`)
+- [ ] If break-glass is active, confirm `ADMIN_LOGIN_ABUSE_BREAK_GLASS_UNTIL` is explicitly time-bounded and incident-owned before proceeding
+- [ ] Confirm homesite contact-form IP trust boundary is explicit: ingress provides trusted `cf-connecting-ip`/`x-real-ip`, or `TRUST_X_FORWARDED_FOR=1` is set only for sanitized proxy chains
 
 ## Baseline execution
 
@@ -30,6 +33,7 @@ Use this checklist for local-to-UAT security baseline validation.
 - [ ] Confirm security baseline result is attached to UAT evidence for the validated tag
 - [ ] Confirm production promotion uses the same validated tag only
 - [ ] Record operator decision with summary link/path
+- [ ] Confirm break-glass override (if used) is removed or expired before production promotion
 
 ## Evidence retention
 

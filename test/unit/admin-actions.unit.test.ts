@@ -37,6 +37,30 @@ vi.mock("@/auth", () => ({
   auth: vi.fn(async () => null),
 }));
 
+vi.mock("@/lib/auth/require-auth", () => ({
+  requireAdminSession: vi.fn(async () => {
+    const { auth } = await import("@/auth");
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      throw new Error("UNAUTHENTICATED");
+    }
+
+    const role = session.user.role;
+    if (role !== "ADMIN" && role !== "MASTER_ADMIN") {
+      throw new Error("FORBIDDEN");
+    }
+
+    return {
+      ...session,
+      user: {
+        ...session.user,
+        role,
+      },
+    };
+  }),
+}));
+
 vi.mock("@/lib/admin/admin-service", () => ({
   addSessionAttendeeByManager: vi.fn(),
   adjustAdminClientCredits: vi.fn(),
@@ -47,6 +71,7 @@ vi.mock("@/lib/admin/admin-service", () => ({
   createAdminSession: vi.fn(),
   createAdminPlan: vi.fn(),
   createAdminSubscription: vi.fn(),
+  createAdminUser: vi.fn(),
   createAdminSiteWeeklyScheduleEntry: vi.fn(),
   updateAdminSiteWeeklyScheduleEntry: vi.fn(),
   deleteAdminSiteWeeklyScheduleEntry: vi.fn(),
@@ -76,6 +101,7 @@ import {
   createAdminClass,
   createAdminPlan,
   createAdminSubscription,
+  createAdminUser,
   createAdminSiteWeeklyScheduleEntry,
   updateAdminSiteWeeklyScheduleEntry,
   deleteAdminSiteWeeklyScheduleEntry,
@@ -98,6 +124,7 @@ import {
   createPlanAction,
   createSiteWeeklyScheduleEntryAction,
   createSubscriptionAction,
+  createUserAction,
   deleteSiteWeeklyScheduleEntryAction,
   removeSessionAttendeeAction,
   updateCancellationPeriodAction,
@@ -438,6 +465,39 @@ describe("admin actions", () => {
       "user-1",
       expect.objectContaining({ firstName: "Jane", lastName: "Doe", email: "jane@example.test", role: "ADMIN" }),
       expect.objectContaining({ id: "user-1", role: "ADMIN" }),
+    );
+  });
+
+  it("blocks ADMIN create-user attempt assigning MASTER_ADMIN before service call", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+
+    const formData = new FormData();
+    formData.set("name", "Escalation Attempt");
+    formData.set("email", "escalation@example.test");
+    formData.set("role", "MASTER_ADMIN");
+    formData.set("password", "Escalation123!");
+    formData.set("isActive", "on");
+
+    await expect(createUserAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/users/new?error=Only%20MASTER_ADMIN%20can%20assign%20MASTER_ADMIN%20role.",
+    );
+
+    expect(createAdminUser).not.toHaveBeenCalled();
+  });
+
+  it("maps service create-user MASTER_ADMIN restriction error to actionable message", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("MASTER_ADMIN"));
+    vi.mocked(createAdminUser).mockRejectedValue(new Error("MASTER_ADMIN_ASSIGNMENT_FORBIDDEN"));
+
+    const formData = new FormData();
+    formData.set("name", "Escalation Attempt");
+    formData.set("email", "escalation2@example.test");
+    formData.set("role", "MASTER_ADMIN");
+    formData.set("password", "Escalation123!");
+    formData.set("isActive", "on");
+
+    await expect(createUserAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/users/new?error=Only%20MASTER_ADMIN%20can%20assign%20MASTER_ADMIN%20role.",
     );
   });
 

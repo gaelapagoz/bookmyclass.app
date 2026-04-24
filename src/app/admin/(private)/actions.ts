@@ -1264,6 +1264,13 @@ export async function createUserAction(formData: FormData) {
         redirectWithError("/admin/users/new", "Please complete all required user fields.");
       }
 
+      if (session.user.role === Role.ADMIN && parsed.data.role === Role.MASTER_ADMIN) {
+        redirectWithError(
+          "/admin/users/new",
+          getAdminActionErrorMessage(new Error("MASTER_ADMIN_ASSIGNMENT_FORBIDDEN")),
+        );
+      }
+
       try {
         await createAdminUser({
           ...parsed.data,
@@ -1271,7 +1278,12 @@ export async function createUserAction(formData: FormData) {
         });
       } catch (error) {
         Sentry.captureException(error);
-        redirectWithError("/admin/users/new", getPrismaErrorMessage(error));
+        const mappedAdminMessage = getAdminActionErrorMessage(error);
+        const message =
+          mappedAdminMessage === "Unexpected server error."
+            ? getPrismaErrorMessage(error)
+            : mappedAdminMessage;
+        redirectWithError("/admin/users/new", message);
       }
 
       redirect("/admin/users");

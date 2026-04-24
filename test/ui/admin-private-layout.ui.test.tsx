@@ -26,6 +26,30 @@ vi.mock("@/auth", () => ({
   signOut: vi.fn(async () => undefined),
 }));
 
+vi.mock("@/lib/auth/require-auth", () => ({
+  requireAdminSession: vi.fn(async () => {
+    const [{ auth }, { redirect }] = await Promise.all([import("@/auth"), import("next/navigation")]);
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      redirect("/admin");
+    }
+
+    const role = session.user.role;
+    if (role !== "ADMIN" && role !== "MASTER_ADMIN") {
+      redirect("/admin?error=unauthorized");
+    }
+
+    return {
+      ...session,
+      user: {
+        ...session.user,
+        role,
+      },
+    };
+  }),
+}));
+
 vi.mock("@/lib/client-messages/client-message-service", () => ({
   getUnreadClientMessagesCount: vi.fn(async () => 0),
 }));

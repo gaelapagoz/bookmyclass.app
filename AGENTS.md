@@ -29,5 +29,9 @@
   - impacted services/modules
   - impacted tests
   - documentation conflicts found
-<!-- END:nextjs-agent-rules -->
 
+## Codex Structure
+- Global repository rules stay in `AGENTS.md`
+- Role behavior lives in `.codex/agents/*.md`
+- Reusable task procedures live in `.codex/skills/*/SKILL.md`
+<!-- END:nextjs-agent-rules -->

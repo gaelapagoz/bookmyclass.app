@@ -44,7 +44,8 @@ test.describe("teacher flow", () => {
     await expect(page.getByText("E2E Client Credits").first()).toBeVisible();
   });
 
-  // @covers teacher-manual-attendee-add-eligibility-enforced
+  // @covers-partial teacher-mutation-action-works
+  // @covers-partial cross-ineligible-booking-blocked
   test("teacher cannot add client without eligible credit or qualifying subscription", async ({ page }) => {
     await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_NO_CREDITS.email);
     await signInTeacher(page, SEEDED_TEACHER);

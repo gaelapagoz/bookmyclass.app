@@ -3,6 +3,7 @@ import type { Role } from "@prisma/client";
 import Credentials from "next-auth/providers/credentials";
 
 import { authorizeCredentials, type AuthUser } from "@/lib/auth/credentials-authorize";
+import { assertAdminLoginAbuseGuardPreflight } from "@/lib/auth/admin-login-abuse-service";
 import { prisma } from "@/lib/db";
 import { createPerfTrace } from "@/lib/monitoring/perf-trace";
 import { createInMemoryTtlCache } from "@/lib/cache/in-memory-ttl-cache";
@@ -12,6 +13,8 @@ const SESSION_USER_CACHE_TTL_MS = 300_000;
 const jwtTokenUserCache = createInMemoryTtlCache<{ id: string; role: Role } | null>({
   defaultTtlMs: SESSION_USER_CACHE_TTL_MS,
 });
+
+assertAdminLoginAbuseGuardPreflight();
 
 function isRole(value: unknown): value is Role {
   return typeof value === "string" && ROLES.includes(value as Role);

@@ -11,7 +11,10 @@ import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
 
 function hashAdminLoginBucketKey(value: string): string {
-  const secret = process.env.ADMIN_LOGIN_ABUSE_HASH_SECRET ?? process.env.AUTH_SECRET ?? "admin-login-abuse-fallback";
+  const secret = process.env.ADMIN_LOGIN_ABUSE_HASH_SECRET ?? process.env.AUTH_SECRET;
+  if (!secret) {
+    throw new Error("Missing AUTH_SECRET for admin abuse key hashing in tests.");
+  }
   return createHash("sha256").update(`${secret}:${value}`).digest("hex");
 }
 

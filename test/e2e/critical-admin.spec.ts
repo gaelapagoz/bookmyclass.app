@@ -135,7 +135,7 @@ test("admin list pages load with stable headings", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Automations" })).toBeVisible();
 });
 
-// @covers admin-manual-attendee-add
+// @covers-partial admin-session-edit-persists
 test("admin can manually add an eligible client from session edit roster", async ({ page }) => {
   await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_WITH_CREDITS.email);
   await signInAdmin(page, SEEDED_ADMIN);
@@ -159,7 +159,7 @@ test("admin can manually add an eligible client from session edit roster", async
   await expect(page.getByTestId(/admin-attendee-/).getByText("E2E Client Credits")).toBeVisible();
 });
 
-// @covers admin-waitlist-count-visibility
+// @covers-partial admin-sessions-list-loads
 test("admin calendar shows waitlist count without manual waitlist controls", async ({ page }) => {
   await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_NO_CREDITS.email);
   const prepared = await prepareWaitlistSessionForTest(page.request, {

@@ -48,6 +48,10 @@ Flat release view:
 
 All jobs are release-blocking and stop on failure (no production deployment in this workflow).
 
+Regression gate includes fail-fast coverage validation before expensive e2e:
+- `npm run qa:e2e:coverage`
+- Unknown `@covers` / `@covers-partial` IDs fail the gate immediately.
+
 This preserves immutable tag deployment because deploy and smoke jobs both use `${github.ref}` / `${github.ref_name}`.
 
 ### Required secrets
@@ -270,6 +274,7 @@ curl -i https://<ENV_DOMAIN>/api/health
 
 - CI build must pass
 - Test suite must pass
+- E2E coverage matrix check must pass (`npm run qa:e2e:coverage`)
 - Prisma migration status must be valid
 
 Defined in:

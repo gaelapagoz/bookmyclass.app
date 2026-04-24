@@ -33,8 +33,9 @@ const ADMIN_LOGIN_CAPTCHA_REQUIRED_MS = parsePositiveIntEnv(
   DEFAULT_CAPTCHA_REQUIRED_MS,
 );
 
-const ADMIN_LOGIN_ABUSE_HASH_SECRET =
-  process.env.ADMIN_LOGIN_ABUSE_HASH_SECRET ?? process.env.AUTH_SECRET ?? "admin-login-abuse-fallback";
+const ADMIN_LOGIN_ABUSE_HASH_SECRET = process.env.ADMIN_LOGIN_ABUSE_HASH_SECRET ?? process.env.AUTH_SECRET;
+const ADMIN_LOGIN_ABUSE_BREAK_GLASS_UNTIL = process.env.ADMIN_LOGIN_ABUSE_BREAK_GLASS_UNTIL?.trim() ?? "";
+const ADMIN_LOGIN_ABUSE_BREAK_GLASS_REASON = process.env.ADMIN_LOGIN_ABUSE_BREAK_GLASS_REASON?.trim() ?? null;
 
 type AdminLoginAbuseBucket = {
   keyType: AdminLoginAbuseKeyType;
@@ -59,8 +60,45 @@ const NEUTRAL_ADMIN_LOGIN_ABUSE_STATE: AdminLoginAbuseState = {
   retryAfterMs: null,
 };
 
+function parseBreakGlassUntil(value: string): Date | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function resolveBreakGlassState(now: Date = new Date()) {
+  const until = parseBreakGlassUntil(ADMIN_LOGIN_ABUSE_BREAK_GLASS_UNTIL);
+  const isConfigured = ADMIN_LOGIN_ABUSE_BREAK_GLASS_UNTIL.length > 0;
+  const hasValidTimestamp = until !== null;
+  const isActive = Boolean(until && until.getTime() > now.getTime());
+
+  return {
+    isConfigured,
+    hasValidTimestamp,
+    isActive,
+    until,
+    reason: ADMIN_LOGIN_ABUSE_BREAK_GLASS_REASON,
+  };
+}
+
+function requireAbuseHashSecret(): string {
+  if (ADMIN_LOGIN_ABUSE_HASH_SECRET) {
+    return ADMIN_LOGIN_ABUSE_HASH_SECRET;
+  }
+
+  throw new Error("ADMIN_LOGIN_ABUSE_HASH_SECRET_MISSING");
+}
+
 function hashKey(value: string): string {
-  return createHash("sha256").update(`${ADMIN_LOGIN_ABUSE_HASH_SECRET}:${value}`).digest("hex");
+  const secret = requireAbuseHashSecret();
+  return createHash("sha256").update(`${secret}:${value}`).digest("hex");
 }
 
 function buildBuckets(input: { ip: string; normalizedEmail: string }): AdminLoginAbuseBucket[] {
@@ -146,32 +184,111 @@ type PrismaWithOptionalAdminLoginAbuseDelegate = {
   adminLoginAbuseCounter?: AdminLoginAbuseDelegate;
 };
 
-function resolveAdminLoginAbuseDelegate(
+function resolveAdminLoginAbuseDelegateOrNull(
   db: PrismaWithOptionalAdminLoginAbuseDelegate = prisma as PrismaWithOptionalAdminLoginAbuseDelegate,
-): AdminLoginAbuseDelegate | null {
+) {
   // Guard dev/runtime drift where the generated Prisma Client does not expose adminLoginAbuseCounter yet.
   return db.adminLoginAbuseCounter ?? null;
 }
 
 function warnMissingAdminLoginAbuseDelegate(scope: "read_state" | "record_failure" | "reset_counters") {
-  if (process.env.NODE_ENV === "production") {
-    return;
-  }
-
   console.warn("[auth-security]", {
     event: "admin_auth_guard_delegate_missing",
     scope: "admin_login",
     operation: scope,
-    message:
-      "adminLoginAbuseCounter delegate unavailable. Using neutral fallback state. Ensure Prisma Client is generated with admin abuse model.",
+    message: "adminLoginAbuseCounter delegate unavailable.",
+    breakGlassUntil: ADMIN_LOGIN_ABUSE_BREAK_GLASS_UNTIL || null,
+    breakGlassReason: ADMIN_LOGIN_ABUSE_BREAK_GLASS_REASON,
     timestamp: new Date().toISOString(),
   });
 }
 
+function resolveAdminLoginAbuseDelegate(scope: "read_state" | "record_failure" | "reset_counters") {
+  const delegate = resolveAdminLoginAbuseDelegateOrNull();
+  if (delegate) {
+    return delegate;
+  }
+
+  const breakGlass = resolveBreakGlassState();
+  if (process.env.NODE_ENV === "production") {
+    if (breakGlass.isActive) {
+      warnMissingAdminLoginAbuseDelegate(scope);
+      return null;
+    }
+
+    throw new Error("ADMIN_LOGIN_ABUSE_UNAVAILABLE");
+  }
+
+  warnMissingAdminLoginAbuseDelegate(scope);
+  return null;
+}
+
+export function getAdminLoginAbuseGuardReadiness() {
+  const breakGlass = resolveBreakGlassState();
+  const hasHashSecret = Boolean(ADMIN_LOGIN_ABUSE_HASH_SECRET);
+  const hasDelegate = Boolean(resolveAdminLoginAbuseDelegateOrNull());
+  const isProduction = process.env.NODE_ENV === "production";
+
+  if (!hasHashSecret) {
+    return {
+      ready: false,
+      degraded: false,
+      reason: "ADMIN_LOGIN_ABUSE_HASH_SECRET_MISSING",
+      breakGlassActive: breakGlass.isActive,
+      breakGlassUntil: breakGlass.until?.toISOString() ?? null,
+    };
+  }
+
+  if (hasDelegate) {
+    return {
+      ready: true,
+      degraded: false,
+      reason: "OK",
+      breakGlassActive: breakGlass.isActive,
+      breakGlassUntil: breakGlass.until?.toISOString() ?? null,
+    };
+  }
+
+  if (!isProduction) {
+    return {
+      ready: true,
+      degraded: true,
+      reason: "DELEGATE_MISSING_NON_PRODUCTION",
+      breakGlassActive: breakGlass.isActive,
+      breakGlassUntil: breakGlass.until?.toISOString() ?? null,
+    };
+  }
+
+  if (breakGlass.isActive) {
+    return {
+      ready: true,
+      degraded: true,
+      reason: "DELEGATE_MISSING_BREAK_GLASS_ACTIVE",
+      breakGlassActive: true,
+      breakGlassUntil: breakGlass.until?.toISOString() ?? null,
+    };
+  }
+
+  return {
+    ready: false,
+    degraded: false,
+    reason: "ADMIN_LOGIN_ABUSE_UNAVAILABLE",
+    breakGlassActive: false,
+    breakGlassUntil: breakGlass.until?.toISOString() ?? null,
+  };
+}
+
+export function assertAdminLoginAbuseGuardPreflight() {
+  const readiness = getAdminLoginAbuseGuardReadiness();
+
+  if (!readiness.ready && process.env.NODE_ENV === "production") {
+    throw new Error(readiness.reason);
+  }
+}
+
 async function getCountersForBuckets(buckets: AdminLoginAbuseBucket[]) {
-  const delegate = resolveAdminLoginAbuseDelegate();
+  const delegate = resolveAdminLoginAbuseDelegate("read_state");
   if (!delegate) {
-    warnMissingAdminLoginAbuseDelegate("read_state");
     return [];
   }
 
@@ -198,6 +315,8 @@ export async function getAdminLoginAbuseState(input: {
   ip: string;
   normalizedEmail: string;
 }): Promise<AdminLoginAbuseState> {
+  assertAdminLoginAbuseGuardPreflight();
+
   const now = new Date();
   const buckets = buildBuckets(input);
   const counters = await getCountersForBuckets(buckets);
@@ -215,9 +334,10 @@ export async function recordAdminLoginFailure(input: {
     | "captcha_failed"
     | "prelocked";
 }): Promise<AdminLoginAbuseState> {
-  const delegate = resolveAdminLoginAbuseDelegate();
+  assertAdminLoginAbuseGuardPreflight();
+
+  const delegate = resolveAdminLoginAbuseDelegate("record_failure");
   if (!delegate) {
-    warnMissingAdminLoginAbuseDelegate("record_failure");
     return NEUTRAL_ADMIN_LOGIN_ABUSE_STATE;
   }
 
@@ -347,9 +467,10 @@ export async function recordAdminLoginFailure(input: {
 }
 
 export async function resetAdminLoginFailureCounters(input: { ip: string; normalizedEmail: string }): Promise<void> {
-  const delegate = resolveAdminLoginAbuseDelegate();
+  assertAdminLoginAbuseGuardPreflight();
+
+  const delegate = resolveAdminLoginAbuseDelegate("reset_counters");
   if (!delegate) {
-    warnMissingAdminLoginAbuseDelegate("reset_counters");
     return;
   }
 

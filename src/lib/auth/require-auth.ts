@@ -135,8 +135,21 @@ export async function requireAdminSession(options?: {
     failAuth(Boolean(options?.throwOnFailure), "UNAUTHENTICATED", signInPath);
   }
 
-  const role = session.user.role;
-  if (!isAdminRole(role)) {
+  const { prisma } = await import("@/lib/db");
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: {
+      role: true,
+      activationStatus: true,
+      isActive: true,
+    },
+  });
+
+  if (!user || user.activationStatus !== UserActivationStatus.ACTIVE || !user.isActive) {
+    failAuth(Boolean(options?.throwOnFailure), "UNAUTHENTICATED", signInPath);
+  }
+
+  if (!isAdminRole(user.role)) {
     failAuth(Boolean(options?.throwOnFailure), "FORBIDDEN", unauthorizedPath);
   }
 
@@ -144,7 +157,7 @@ export async function requireAdminSession(options?: {
     ...session,
     user: {
       ...session.user,
-      role,
+      role: user.role,
     },
   };
 }

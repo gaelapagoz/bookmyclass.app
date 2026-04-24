@@ -56,6 +56,7 @@ export default async function AdminUserEditPage({
   const adminSession = await requireAdminSession({ throwOnFailure: true });
   const { error, success } = await searchParams;
   const isMasterAdminRestricted = record.role === "MASTER_ADMIN" && adminSession.user.role !== "MASTER_ADMIN";
+  const canAssignMasterAdmin = adminSession.user.role === "MASTER_ADMIN";
 
   return (
     <section className="space-y-4">
@@ -127,7 +128,9 @@ export default async function AdminUserEditPage({
               <option value="CLIENT">CLIENT</option>
               <option value="TEACHER">TEACHER</option>
               <option value="ADMIN">ADMIN</option>
-              <option value="MASTER_ADMIN">MASTER_ADMIN</option>
+              {canAssignMasterAdmin || record.role === "MASTER_ADMIN" ? (
+                <option value="MASTER_ADMIN">MASTER_ADMIN</option>
+              ) : null}
             </select>
           </label>
 

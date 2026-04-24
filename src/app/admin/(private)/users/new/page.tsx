@@ -1,11 +1,14 @@
 import Link from "next/link";
 
 import { createUserAction } from "@/app/admin/(private)/actions";
+import { requireAdminSession } from "@/lib/auth/require-auth";
 
 type SearchParams = Promise<{ error?: string }>;
 
 export default async function AdminUserCreatePage({ searchParams }: { searchParams: SearchParams }) {
   const { error } = await searchParams;
+  const adminSession = await requireAdminSession({ throwOnFailure: true });
+  const canAssignMasterAdmin = adminSession.user.role === "MASTER_ADMIN";
 
   return (
     <section className="space-y-4">
@@ -37,7 +40,7 @@ export default async function AdminUserCreatePage({ searchParams }: { searchPara
               <option value="CLIENT">CLIENT</option>
               <option value="TEACHER">TEACHER</option>
               <option value="ADMIN">ADMIN</option>
-              <option value="MASTER_ADMIN">MASTER_ADMIN</option>
+              {canAssignMasterAdmin ? <option value="MASTER_ADMIN">MASTER_ADMIN</option> : null}
             </select>
           </label>
 

@@ -4613,6 +4613,21 @@ export async function createAdminUser(input: {
   password: string;
   createdByUserId?: string;
 }) {
+  if (input.role === Role.MASTER_ADMIN) {
+    if (!input.createdByUserId) {
+      throw new Error("MASTER_ADMIN_ASSIGNMENT_FORBIDDEN");
+    }
+
+    const actor = await prisma.user.findUnique({
+      where: { id: input.createdByUserId },
+      select: { role: true },
+    });
+
+    if (!actor || actor.role !== Role.MASTER_ADMIN) {
+      throw new Error("MASTER_ADMIN_ASSIGNMENT_FORBIDDEN");
+    }
+  }
+
   const passwordHash = await hash(input.password, 12);
   const { firstName, lastName } = splitName(input.name);
 
