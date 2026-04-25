@@ -34,11 +34,8 @@ enum UserActivationStatus {
 enum ProductType {
   DROP_IN_CLASS
   CLASS_PACK
+  PRIVATE_PACK
   UNLIMITED_MEMBERSHIP
-  INTRO_OFFER
-  PRIVATE_CLASS
-  WORKSHOP_PASS
-  GIFT_CARD
 }
 
 enum PriceType {
@@ -831,6 +828,22 @@ enum CartCheckoutIdempotencyState {
   FAILED_BEFORE_WRITE
   FAILED_AFTER_WRITE_PRE_STRIPE
   FAILED_STRIPE_UNCERTAIN
+}
+
+enum StripeWebhookReceiptStatus {
+  PROCESSING
+  PROCESSED
+  RETRYABLE_FAILED
+}
+
+model StripeWebhookEventReceipt {
+  id        String                     @id @default(cuid())
+  eventId   String                     @unique
+  status    StripeWebhookReceiptStatus @default(PROCESSING)
+  createdAt DateTime                   @default(now())
+  updatedAt DateTime                   @updatedAt
+
+  @@index([status, updatedAt])
 }
 
 model SubscriptionContract {

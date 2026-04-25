@@ -9,10 +9,12 @@ import {
   EntitlementType,
   OrderStatus,
   PaymentProvider,
+  PaymentMethod,
   PriceType,
   ProductType,
   Role,
   StudioSessionStatus,
+  StripeWebhookReceiptStatus,
   SubscriptionStatus,
   WaitlistStatus,
   AttendanceSource,
@@ -23,6 +25,8 @@ import {
   cancelClientBooking,
   cancelClientWaitlistEntry,
   DashboardServiceError,
+  getClientActivityPage,
+  getClientSubscriptionRecoveryState,
   getDashboardBookingsData,
   getDashboardHomeData,
   getDashboardMembershipData,
@@ -856,6 +860,337 @@ describe("dashboard-service integration", () => {
 
     expect(restoreEntries).toHaveLength(1);
     expect(restoreEntries[0]?.idempotencyKey).toBeTruthy();
+  });
+});
+
+describe("getClientActivityPage", () => {
+  beforeEach(async () => {
+    const { resetDb } = await import("./helpers/reset-db");
+    await resetDb();
+  });
+
+  async function makeClientWithActivity() {
+    const client = await prisma.user.create({
+      data: {
+        name: "Activity Client",
+        email: `activity.client.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+    const product = await prisma.product.create({
+      data: {
+        name: "Drop In",
+        slug: `dropin-activity-${Date.now()}`,
+        productType: ProductType.DROP_IN_CLASS,
+        isActive: true,
+        isArchived: false,
+        sortOrder: 0,
+      },
+    });
+    const price = await prisma.price.create({
+      data: {
+        productId: product.id,
+        lookupKey: `dropin-price-activity-${Date.now()}`,
+        name: "Standard",
+        priceType: PriceType.ONE_TIME,
+        currencyCode: "EUR",
+        unitAmountMinor: 1500,
+        isActive: true,
+        isArchived: false,
+      },
+    });
+    const order = await prisma.order.create({
+      data: {
+        clientId: client.id,
+        subtotalAmountMinor: 1500,
+        discountAmountMinor: 0,
+        totalAmountMinor: 1500,
+        currencyCode: "EUR",
+        status: OrderStatus.PAID,
+        items: {
+          create: {
+            productId: product.id,
+            priceId: price.id,
+            quantity: 1,
+            productNameSnapshot: product.name,
+            priceNameSnapshot: price.name,
+            unitAmountMinor: 1500,
+            lineSubtotalAmountMinor: 1500,
+            lineDiscountAmountMinor: 0,
+            lineTotalAmountMinor: 1500,
+            currencyCode: "EUR",
+          },
+        },
+      },
+    });
+
+    const { createClassCategory, createClassType } = await import("./helpers/factories");
+    const cat = await createClassCategory(prisma, {
+      name: "Activity Cat",
+      slug: `activity-cat-${Date.now()}`,
+      sortOrder: 1,
+      isActive: true,
+    });
+    const ct = await createClassType(prisma, {
+      categoryId: cat.id,
+      name: "Activity Type",
+      slug: `activity-ct-${Date.now()}`,
+      sortOrder: 1,
+      isActive: true,
+      isVisible: true,
+    });
+    const teacher = await prisma.user.create({
+      data: { name: "T", email: `t.act.${Date.now()}@example.test`, role: Role.TEACHER },
+    });
+    const template = await prisma.classTemplate.create({
+      data: {
+        classTypeId: ct.id,
+        defaultTeacherId: teacher.id,
+        title: "Act Template",
+        slug: `act-tpl-${Date.now()}`,
+        defaultCapacity: 10,
+        defaultDurationMinutes: 60,
+        isActive: true,
+        isPublished: true,
+      },
+    });
+    const sessionDate = new Date(Date.now() + 86400000);
+    const studioSession = await prisma.studioSession.create({
+      data: {
+        classTemplateId: template.id,
+        classTypeId: ct.id,
+        teacherId: teacher.id,
+        title: "Activity Session",
+        startsAt: sessionDate,
+        endsAt: new Date(sessionDate.getTime() + 3600000),
+        capacity: 10,
+        status: StudioSessionStatus.SCHEDULED,
+        isPublished: true,
+      },
+    });
+    const booking = await prisma.booking.create({
+      data: {
+        studioSessionId: studioSession.id,
+        clientId: client.id,
+        orderId: order.id,
+        status: BookingStatus.CONFIRMED,
+      },
+    });
+
+    return { client, order, booking };
+  }
+
+  it("returns activity items for current user", async () => {
+    const { client } = await makeClientWithActivity();
+    const result = await getClientActivityPage(client.id, {});
+    expect(result.items.length).toBeGreaterThan(0);
+    expect(result.filter).toBe("all");
+    expect(result.page).toBe(1);
+    expect(result.pageSize).toBe(20);
+  });
+
+  it("normalizes invalid filter to 'all'", async () => {
+    const { client } = await makeClientWithActivity();
+    const result = await getClientActivityPage(client.id, { filter: "invalid_filter" });
+    expect(result.filter).toBe("all");
+  });
+
+  it("normalizes invalid page to 1", async () => {
+    const { client } = await makeClientWithActivity();
+    const result = await getClientActivityPage(client.id, { page: "not_a_number" });
+    expect(result.page).toBe(1);
+  });
+
+  it("normalizes invalid pageSize to 20", async () => {
+    const { client } = await makeClientWithActivity();
+    const result = await getClientActivityPage(client.id, { pageSize: "0" });
+    expect(result.pageSize).toBe(20);
+  });
+
+  it("caps pageSize at 50", async () => {
+    const { client } = await makeClientWithActivity();
+    const result = await getClientActivityPage(client.id, { pageSize: "999" });
+    expect(result.pageSize).toBe(50);
+  });
+
+  it("filters by bookings only", async () => {
+    const { client } = await makeClientWithActivity();
+    const result = await getClientActivityPage(client.id, { filter: "bookings" });
+    expect(result.filter).toBe("bookings");
+    expect(result.items.every((i) => i.type === "BOOKING")).toBe(true);
+  });
+
+  it("filters by orders only", async () => {
+    const { client } = await makeClientWithActivity();
+    const result = await getClientActivityPage(client.id, { filter: "orders" });
+    expect(result.filter).toBe("orders");
+    expect(result.items.every((i) => i.type === "ORDER")).toBe(true);
+  });
+
+  it("items are sorted descending by timestamp", async () => {
+    const { client } = await makeClientWithActivity();
+    const result = await getClientActivityPage(client.id, {});
+    const timestamps = result.items.map((i) => new Date(i.timestamp).getTime());
+    for (let i = 1; i < timestamps.length; i++) {
+      expect(timestamps[i - 1]).toBeGreaterThanOrEqual(timestamps[i]!);
+    }
+  });
+});
+
+describe("getClientSubscriptionRecoveryState", () => {
+  beforeEach(async () => {
+    const { resetDb } = await import("./helpers/reset-db");
+    await resetDb();
+  });
+
+  async function makeClientWithContract(status: SubscriptionStatus) {
+    const client = await prisma.user.create({
+      data: {
+        name: "Recovery Client",
+        email: `recovery.dashboard.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+    const product = await prisma.product.create({
+      data: {
+        name: "Recovery Membership",
+        slug: `recov-mem-${Date.now()}`,
+        productType: ProductType.UNLIMITED_MEMBERSHIP,
+        isActive: true,
+        isArchived: false,
+        sortOrder: 0,
+      },
+    });
+    const price = await prisma.price.create({
+      data: {
+        productId: product.id,
+        lookupKey: `recov-price-${Date.now()}`,
+        name: "Monthly",
+        priceType: PriceType.RECURRING,
+        currencyCode: "EUR",
+        unitAmountMinor: 4900,
+        billingInterval: BillingInterval.MONTH,
+        billingIntervalCount: 1,
+        isActive: true,
+        isArchived: false,
+      },
+    });
+    await prisma.subscriptionContract.create({
+      data: {
+        clientId: client.id,
+        productId: product.id,
+        priceId: price.id,
+        status,
+        startsAt: new Date(),
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        provider: PaymentProvider.STRIPE,
+        providerSubscriptionReference: `sub_recov_${Date.now()}`,
+      },
+    });
+    return client;
+  }
+
+  it("returns HEALTHY for active subscription", async () => {
+    const client = await makeClientWithContract(SubscriptionStatus.ACTIVE);
+    const state = await getClientSubscriptionRecoveryState(client.id);
+    expect(state.status).toBe("HEALTHY");
+  });
+
+  it("returns PAST_DUE for past_due subscription", async () => {
+    const client = await makeClientWithContract(SubscriptionStatus.PAST_DUE);
+    const state = await getClientSubscriptionRecoveryState(client.id);
+    expect(state.status).toBe("PAST_DUE");
+    if (state.status === "PAST_DUE") {
+      expect(state.productName).toBeTruthy();
+    }
+  });
+
+  it("returns NONE when no subscriptions exist", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "No Sub",
+        email: `nosub.dash.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+    const state = await getClientSubscriptionRecoveryState(client.id);
+    expect(state.status).toBe("NONE");
+  });
+});
+
+describe("webhook receipt cleanup", () => {
+  beforeEach(async () => {
+    const { resetDb } = await import("./helpers/reset-db");
+    await resetDb();
+  });
+
+  it("removes PROCESSED receipts older than 90 days and keeps recent ones", async () => {
+    const { cleanupStaleWebhookReceipts } = await import(
+      "../../src/lib/public-booking/webhook-receipt-cleanup"
+    );
+
+    const ninetyOneDaysAgo = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000);
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const [stale, recent] = await Promise.all([
+      prisma.stripeWebhookEventReceipt.create({
+        data: {
+          eventId: `evt_stale_cleanup_${Date.now()}`,
+          status: StripeWebhookReceiptStatus.PROCESSED,
+          updatedAt: ninetyOneDaysAgo,
+        },
+      }),
+      prisma.stripeWebhookEventReceipt.create({
+        data: {
+          eventId: `evt_recent_cleanup_${Date.now()}`,
+          status: StripeWebhookReceiptStatus.PROCESSED,
+        },
+      }),
+    ]);
+
+    await cleanupStaleWebhookReceipts();
+
+    const [staleAfter, recentAfter] = await Promise.all([
+      prisma.stripeWebhookEventReceipt.findUnique({ where: { id: stale.id } }),
+      prisma.stripeWebhookEventReceipt.findUnique({ where: { id: recent.id } }),
+    ]);
+
+    expect(staleAfter).toBeNull();
+    expect(recentAfter).not.toBeNull();
+  });
+
+  it("does not remove PROCESSING or RETRYABLE_FAILED receipts even if old", async () => {
+    const { cleanupStaleWebhookReceipts } = await import(
+      "../../src/lib/public-booking/webhook-receipt-cleanup"
+    );
+
+    const ninetyOneDaysAgo = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000);
+
+    const processing = await prisma.stripeWebhookEventReceipt.create({
+      data: {
+        eventId: `evt_proc_cleanup_${Date.now()}`,
+        status: StripeWebhookReceiptStatus.PROCESSING,
+        updatedAt: ninetyOneDaysAgo,
+      },
+    });
+    const retryable = await prisma.stripeWebhookEventReceipt.create({
+      data: {
+        eventId: `evt_retry_cleanup_${Date.now()}`,
+        status: StripeWebhookReceiptStatus.RETRYABLE_FAILED,
+        updatedAt: ninetyOneDaysAgo,
+      },
+    });
+
+    await cleanupStaleWebhookReceipts();
+
+    const [procAfter, retryAfter] = await Promise.all([
+      prisma.stripeWebhookEventReceipt.findUnique({ where: { id: processing.id } }),
+      prisma.stripeWebhookEventReceipt.findUnique({ where: { id: retryable.id } }),
+    ]);
+
+    expect(procAfter).not.toBeNull();
+    expect(retryAfter).not.toBeNull();
   });
 });
 

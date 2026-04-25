@@ -80,3 +80,4 @@ security-output/
 /tmp
 
 /.codex-workflows/runs
+.aider*

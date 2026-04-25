@@ -27,6 +27,9 @@
     "db:verify:dashboard-trend-seed": "tsx scripts/verify-dashboard-trend-seed-db.ts",
     "ops:verify-production-readiness": "bash scripts/verify-production-readiness.sh",
     "db:seed:uat:k6": "UAT_K6_SEED=1 tsx scripts/seed-uat-k6.ts",
+    "db:seed:dev": "dotenv -e .env.local -- cross-env BOOKMYCLASS_SEED_MODE=development prisma db seed",
+    "db:seed:uat-performance": "dotenv -e .env.local -- cross-env BOOKMYCLASS_SEED_MODE=uat-performance prisma db seed",
+    "db:seed:prod": "dotenv -e .env.production -- cross-env BOOKMYCLASS_SEED_MODE=production prisma db seed",
     "k6:discover:uat": "tsx scripts/k6-discover-uat.ts",
     "qa:e2e:coverage": "tsx scripts/e2e-coverage-report.ts",
     "test:uat:smoke": "tsx scripts/uat-smoke-check.ts"
@@ -65,6 +68,7 @@
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.0",
     "babel-plugin-react-compiler": "^1.0.0",
+    "cross-env": "^10.1.0",
     "dotenv-cli": "^11.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.0",

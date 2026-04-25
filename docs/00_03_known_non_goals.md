@@ -6,7 +6,7 @@ Purpose: prevent future implementation work from assuming modeled capabilities a
 
 - No-show operational flow is modeled but not confirmed as active end-to-end in runtime paths.
 - Teacher route group access is enforced via `requireTeacherSession`; broader teacher operational workflows are still modeled and not fully production-ready.
-- Fine-grained `ADMIN` vs `MASTER_ADMIN` separation is not confirmed as implemented beyond shared admin gate checks.
+- Fine-grained `ADMIN` vs `MASTER_ADMIN` separation is partial: privileged role assignment/management is enforced, while broader admin route access remains shared.
 
 ## Working Rule
 

@@ -551,8 +551,8 @@ Client
                                      | Entitlement state         |
                                      +---------------------------+
 
-Confirmed active flow; waitlist promotion and no-show are modeled but not
-confirmed as active runtime flows. :contentReference[oaicite:10]{index=10} :contentReference[oaicite:11]{index=11}
+Confirmed active flow; waitlist promotion is active for collective classes,
+while no-show remains partial/manual in runtime operations. :contentReference[oaicite:10]{index=10} :contentReference[oaicite:11]{index=11}
 
 C) SUBSCRIPTION / PRODUCT CHECKOUT FLOW
 ---------------------------------------

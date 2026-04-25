@@ -373,8 +373,8 @@ export default async function AdminUserEditPage({
                         <input name="expiresAt" type="date" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-2 py-1" />
                       </label>
                       <label className="text-xs text-[#334155] md:col-span-4">
-                        Audit reason (optional)
-                        <input name="reason" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-2 py-1" />
+                        Audit reason
+                        <input name="reason" required className="mt-1 w-full rounded-md border border-[#d3dbe5] px-2 py-1" />
                       </label>
                       <div className="flex items-end">
                         <button type="submit" className="rounded-md border border-[#d3dbe5] px-3 py-1 text-xs hover:bg-[#f3f6fb]">
@@ -409,8 +409,8 @@ export default async function AdminUserEditPage({
               <input name="expiresAt" type="date" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-2 py-1" />
             </label>
             <label className="text-xs text-[#334155] md:col-span-4">
-              Audit reason (optional)
-              <input name="reason" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-2 py-1" />
+              Audit reason
+              <input name="reason" required className="mt-1 w-full rounded-md border border-[#d3dbe5] px-2 py-1" />
             </label>
             <div className="flex items-end">
               <button type="submit" className="rounded-md bg-[#1d3652] px-3 py-1 text-xs text-white">

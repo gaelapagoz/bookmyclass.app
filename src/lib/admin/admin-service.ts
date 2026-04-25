@@ -37,6 +37,10 @@ import {
 } from "@/lib/auth/user-identity-service";
 import { normalizeBookingCancellationWindowHours } from "@/lib/booking/cancellation-policy";
 import { assertLearningImagePath } from "@/lib/learning/image-paths";
+import {
+  bookingDraftActiveBookingFilter,
+  countActiveBookingsForSession,
+} from "@/lib/public-booking/booking-draft-service";
 import { sendWaitlistPromotionNotification } from "@/lib/public-booking/waitlist-notification-service";
 import { promoteWaitlistAfterCancellationWithinTx } from "@/lib/public-booking/waitlist-service";
 import { resolveWaitlistPromotionCoverage } from "@/lib/public-booking/waitlist-service";
@@ -239,6 +243,7 @@ export type AdminPlanItem = {
   productType: ProductType;
   isActive: boolean;
   sortOrder: number;
+  activeEntitlementQuantity: number | null;
   currentPriceAmountMinor: number | null;
   currentPriceCurrencyCode: string | null;
   currentPriceType: PriceType | null;
@@ -514,12 +519,17 @@ async function createCatalogAuditLog(
 }
 
 function assertAdminPlanPriceInput(input: {
-  priceType: PriceType;
+  productType: ProductType;
+  priceType?: PriceType;
   currencyCode: string;
   unitAmountMinor: number;
   billingInterval?: BillingInterval;
   billingIntervalCount?: number;
-}) {
+}): {
+  derivedPriceType: PriceType;
+  derivedBillingInterval: BillingInterval | null;
+  derivedBillingIntervalCount: number | null;
+} {
   // Phase 1 invariant guard for admin catalog price writes.
   if (!/^[A-Z]{3}$/.test(input.currencyCode)) {
     throw new Error("INVALID_CURRENCY_CODE");
@@ -529,23 +539,66 @@ function assertAdminPlanPriceInput(input: {
     throw new Error("INVALID_UNIT_AMOUNT");
   }
 
-  if (input.priceType === PriceType.RECURRING) {
+  const derivedPriceType =
+    input.productType === ProductType.UNLIMITED_MEMBERSHIP
+      ? PriceType.RECURRING
+      : PriceType.ONE_TIME;
+
+  if (input.priceType !== undefined && input.priceType !== derivedPriceType) {
+    throw new Error("PRICE_TYPE_DERIVATION_MISMATCH");
+  }
+
+  if (derivedPriceType === PriceType.RECURRING) {
     if (!input.billingInterval) {
       throw new Error("RECURRING_INTERVAL_REQUIRED");
     }
 
-    if (
-      input.billingIntervalCount !== undefined &&
-      (!Number.isInteger(input.billingIntervalCount) || input.billingIntervalCount < 1)
-    ) {
+    if (input.billingInterval !== BillingInterval.MONTH && input.billingInterval !== BillingInterval.YEAR) {
+      throw new Error("BILLING_INTERVAL_INVALID_FOR_MEMBERSHIP");
+    }
+
+    if (input.billingIntervalCount !== undefined && input.billingIntervalCount !== 1) {
       throw new Error("INVALID_BILLING_INTERVAL_COUNT");
     }
 
-    return;
+    return {
+      derivedPriceType,
+      derivedBillingInterval: input.billingInterval,
+      derivedBillingIntervalCount: 1,
+    };
   }
 
   if (input.billingInterval !== undefined || input.billingIntervalCount !== undefined) {
     throw new Error("ONE_TIME_INTERVAL_FORBIDDEN");
+  }
+
+  return {
+    derivedPriceType,
+    derivedBillingInterval: null,
+    derivedBillingIntervalCount: null,
+  };
+}
+
+function isPackProductType(productType: ProductType): boolean {
+  return productType === ProductType.CLASS_PACK || productType === ProductType.PRIVATE_PACK;
+}
+
+function assertAdminPlanEntitlementInput(input: {
+  productType: ProductType;
+  classPackCreditQuantity?: number;
+}) {
+  if (isPackProductType(input.productType)) {
+    if (
+      input.classPackCreditQuantity !== undefined &&
+      (!Number.isInteger(input.classPackCreditQuantity) || input.classPackCreditQuantity < 1)
+    ) {
+      throw new Error("CLASS_PACK_QUANTITY_INVALID");
+    }
+    return;
+  }
+
+  if (input.classPackCreditQuantity !== undefined) {
+    throw new Error("CLASS_PACK_QUANTITY_NOT_ALLOWED");
   }
 }
 
@@ -2079,9 +2132,7 @@ export async function getAdminSessionsData(input?: {
       },
       bookings: {
         where: {
-          status: {
-            in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
-          },
+          ...bookingDraftActiveBookingFilter(),
         },
         select: {
           id: true,
@@ -2762,9 +2813,7 @@ export async function addSessionAttendeeByManager(input: {
     where: {
       studioSessionId: session.id,
       clientId: clientUser.id,
-      status: {
-        in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
-      },
+      ...bookingDraftActiveBookingFilter(now),
     },
     select: {
       id: true,
@@ -2782,13 +2831,9 @@ export async function addSessionAttendeeByManager(input: {
     };
   }
 
-  const activeBookingCount = await prisma.booking.count({
-    where: {
-      studioSessionId: session.id,
-      status: {
-        in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
-      },
-    },
+  const activeBookingCount = await countActiveBookingsForSession({
+    studioSessionId: session.id,
+    now,
   });
 
   if (activeBookingCount >= session.capacity) {
@@ -3047,6 +3092,14 @@ export async function getAdminPlansData(): Promise<AdminPlanItem[]> {
       productType: true,
       isActive: true,
       sortOrder: true,
+      entitlementRules: {
+        where: { isActive: true },
+        orderBy: [{ updatedAt: "desc" }],
+        take: 1,
+        select: {
+          quantity: true,
+        },
+      },
       prices: {
         where: {
           isActive: true,
@@ -3076,6 +3129,7 @@ export async function getAdminPlansData(): Promise<AdminPlanItem[]> {
       productType: item.productType,
       isActive: item.isActive,
       sortOrder: item.sortOrder,
+      activeEntitlementQuantity: item.entitlementRules[0]?.quantity ?? null,
       currentPriceAmountMinor: currentPrice?.unitAmountMinor ?? null,
       currentPriceCurrencyCode: currentPrice?.currencyCode ?? null,
       currentPriceType: currentPrice?.priceType ?? null,
@@ -3097,6 +3151,16 @@ export async function getAdminPlanById(id: string) {
       productType: true,
       isActive: true,
       sortOrder: true,
+      entitlementRules: {
+        where: { isActive: true },
+        orderBy: [{ updatedAt: "desc" }],
+        take: 1,
+        select: {
+          entitlementType: true,
+          entitlementScope: true,
+          quantity: true,
+        },
+      },
       prices: {
         where: {
           isActive: true,
@@ -3134,10 +3198,11 @@ export async function createAdminPlan(input: {
   name: string;
   description?: string;
   productType: ProductType;
+  classPackCreditQuantity?: number;
   isActive: boolean;
   sortOrder: number;
   priceName?: string;
-  priceType: PriceType;
+  priceType?: PriceType;
   currencyCode: string;
   unitAmountMinor: number;
   billingInterval?: BillingInterval;
@@ -3150,9 +3215,14 @@ export async function createAdminPlan(input: {
   const priceName = input.priceName?.trim() || `${name} Price`;
   const normalizedDescription = toNullable(input.description);
   const normalizedCurrencyCode = input.currencyCode.trim().toUpperCase();
-  const normalizedBillingInterval = input.priceType === PriceType.RECURRING ? input.billingInterval ?? null : null;
-  const normalizedBillingIntervalCount =
-    input.priceType === PriceType.RECURRING ? input.billingIntervalCount ?? 1 : null;
+  const pricingShape = assertAdminPlanPriceInput({
+    productType: input.productType,
+    priceType: input.priceType,
+    currencyCode: normalizedCurrencyCode,
+    unitAmountMinor: input.unitAmountMinor,
+    billingInterval: input.billingInterval,
+    billingIntervalCount: input.billingIntervalCount,
+  });
   const syncCorrelation = buildDeterministicCorrelation("admin-create", [
     slug,
     name,
@@ -3161,20 +3231,17 @@ export async function createAdminPlan(input: {
     String(input.isActive),
     String(input.sortOrder),
     priceName,
-    input.priceType,
+    pricingShape.derivedPriceType,
     normalizedCurrencyCode,
     String(input.unitAmountMinor),
-    normalizedBillingInterval ?? "none",
-    String(normalizedBillingIntervalCount ?? 0),
+    pricingShape.derivedBillingInterval ?? "none",
+    String(pricingShape.derivedBillingIntervalCount ?? 0),
   ]);
   const syncAttemptAt = new Date();
 
-  assertAdminPlanPriceInput({
-    priceType: input.priceType,
-    currencyCode: normalizedCurrencyCode,
-    unitAmountMinor: input.unitAmountMinor,
-    billingInterval: input.billingInterval,
-    billingIntervalCount: input.billingIntervalCount,
+  assertAdminPlanEntitlementInput({
+    productType: input.productType,
+    classPackCreditQuantity: input.classPackCreditQuantity,
   });
 
   const created = await prisma.$transaction(
@@ -3195,18 +3262,18 @@ export async function createAdminPlan(input: {
                 slug,
                 priceName,
                 correlationKey: syncCorrelation,
-                priceType: input.priceType,
+                priceType: pricingShape.derivedPriceType,
                 currencyCode: normalizedCurrencyCode,
                 unitAmountMinor: input.unitAmountMinor,
-                billingInterval: normalizedBillingInterval,
-                billingIntervalCount: normalizedBillingIntervalCount,
+                billingInterval: pricingShape.derivedBillingInterval,
+                billingIntervalCount: pricingShape.derivedBillingIntervalCount,
               }),
               name: priceName,
-              priceType: input.priceType,
+              priceType: pricingShape.derivedPriceType,
               currencyCode: normalizedCurrencyCode,
               unitAmountMinor: input.unitAmountMinor,
-              billingInterval: normalizedBillingInterval,
-              billingIntervalCount: normalizedBillingIntervalCount,
+              billingInterval: pricingShape.derivedBillingInterval,
+              billingIntervalCount: pricingShape.derivedBillingIntervalCount,
               isActive: true,
               isArchived: false,
               stripeSyncStatus: StripeSyncStatus.PENDING,
@@ -3229,6 +3296,7 @@ export async function createAdminPlan(input: {
       await ensureEntitlementRuleForProduct({
         productId: createdProduct.id,
         productType: input.productType,
+        packCreditQuantity: input.classPackCreditQuantity,
         prismaClient: tx,
       });
 
@@ -3256,11 +3324,11 @@ export async function createAdminPlan(input: {
       productName: name,
       productDescription: normalizedDescription,
       priceName,
-      priceType: input.priceType,
+      priceType: pricingShape.derivedPriceType,
       currencyCode: normalizedCurrencyCode,
       unitAmountMinor: input.unitAmountMinor,
-      billingInterval: normalizedBillingInterval,
-      billingIntervalCount: normalizedBillingIntervalCount,
+      billingInterval: pricingShape.derivedBillingInterval,
+      billingIntervalCount: pricingShape.derivedBillingIntervalCount,
       syncCorrelation,
     });
 
@@ -3283,10 +3351,11 @@ export async function updateAdminPlan(
     name: string;
     description?: string;
     productType: ProductType;
+    classPackCreditQuantity?: number;
     isActive: boolean;
     sortOrder: number;
     priceName?: string;
-    priceType: PriceType;
+    priceType?: PriceType;
     currencyCode: string;
     unitAmountMinor: number;
     billingInterval?: BillingInterval;
@@ -3300,9 +3369,16 @@ export async function updateAdminPlan(
   const priceName = input.priceName?.trim() || `${name} Price`;
   const normalizedDescription = toNullable(input.description);
   const normalizedCurrencyCode = input.currencyCode.trim().toUpperCase();
-  const normalizedBillingInterval = input.priceType === PriceType.RECURRING ? input.billingInterval ?? null : null;
-  const normalizedBillingIntervalCount =
-    input.priceType === PriceType.RECURRING ? input.billingIntervalCount ?? 1 : null;
+  const pricingShape = assertAdminPlanPriceInput({
+    productType: input.productType,
+    priceType: input.priceType,
+    currencyCode: normalizedCurrencyCode,
+    unitAmountMinor: input.unitAmountMinor,
+    billingInterval: input.billingInterval,
+    billingIntervalCount: input.billingIntervalCount,
+  });
+  const normalizedClassPackCreditQuantity =
+    isPackProductType(input.productType) ? input.classPackCreditQuantity ?? 10 : null;
   const syncCorrelation = buildDeterministicCorrelation("admin-update", [
     id,
     slug,
@@ -3312,20 +3388,17 @@ export async function updateAdminPlan(
     String(input.isActive),
     String(input.sortOrder),
     priceName,
-    input.priceType,
+    pricingShape.derivedPriceType,
     normalizedCurrencyCode,
     String(input.unitAmountMinor),
-    normalizedBillingInterval ?? "none",
-    String(normalizedBillingIntervalCount ?? 0),
+    pricingShape.derivedBillingInterval ?? "none",
+    String(pricingShape.derivedBillingIntervalCount ?? 0),
   ]);
   const syncAttemptAt = new Date();
 
-  assertAdminPlanPriceInput({
-    priceType: input.priceType,
-    currencyCode: normalizedCurrencyCode,
-    unitAmountMinor: input.unitAmountMinor,
-    billingInterval: input.billingInterval,
-    billingIntervalCount: input.billingIntervalCount,
+  assertAdminPlanEntitlementInput({
+    productType: input.productType,
+    classPackCreditQuantity: input.classPackCreditQuantity,
   });
 
   const currentState = await prisma.product.findUnique({
@@ -3338,6 +3411,14 @@ export async function updateAdminPlan(
       productType: true,
       isActive: true,
       sortOrder: true,
+      entitlementRules: {
+        where: { isActive: true },
+        orderBy: [{ updatedAt: "desc" }],
+        take: 1,
+        select: {
+          quantity: true,
+        },
+      },
       prices: {
         where: { isActive: true, isArchived: false },
         orderBy: [{ createdAt: "desc" }],
@@ -3362,6 +3443,7 @@ export async function updateAdminPlan(
   }
 
   const activePrice = currentState.prices[0];
+  const activeEntitlementRule = currentState.entitlementRules[0] ?? null;
   const isRepeatedSubmitNoOp =
     currentState.name === name &&
     currentState.slug === slug &&
@@ -3371,11 +3453,12 @@ export async function updateAdminPlan(
     currentState.sortOrder === input.sortOrder &&
     activePrice !== undefined &&
     activePrice.name === priceName &&
-    activePrice.priceType === input.priceType &&
+    activePrice.priceType === pricingShape.derivedPriceType &&
     activePrice.currencyCode === normalizedCurrencyCode &&
     activePrice.unitAmountMinor === input.unitAmountMinor &&
-    activePrice.billingInterval === normalizedBillingInterval &&
-    activePrice.billingIntervalCount === normalizedBillingIntervalCount &&
+    activePrice.billingInterval === pricingShape.derivedBillingInterval &&
+    activePrice.billingIntervalCount === pricingShape.derivedBillingIntervalCount &&
+    (activeEntitlementRule?.quantity ?? null) === normalizedClassPackCreditQuantity &&
     activePrice.stripePriceId !== null &&
     activePrice.stripeSyncStatus === StripeSyncStatus.SYNCED;
 
@@ -3392,11 +3475,12 @@ export async function updateAdminPlan(
     currentState.sortOrder === input.sortOrder &&
     activePrice !== undefined &&
     activePrice.name === priceName &&
-    activePrice.priceType === input.priceType &&
+    activePrice.priceType === pricingShape.derivedPriceType &&
     activePrice.currencyCode === normalizedCurrencyCode &&
     activePrice.unitAmountMinor === input.unitAmountMinor &&
-    activePrice.billingInterval === normalizedBillingInterval &&
-    activePrice.billingIntervalCount === normalizedBillingIntervalCount &&
+    activePrice.billingInterval === pricingShape.derivedBillingInterval &&
+    activePrice.billingIntervalCount === pricingShape.derivedBillingIntervalCount &&
+    (activeEntitlementRule?.quantity ?? null) === normalizedClassPackCreditQuantity &&
     activePrice.stripePriceId === null &&
     (activePrice.stripeSyncStatus === StripeSyncStatus.PENDING ||
       activePrice.stripeSyncStatus === StripeSyncStatus.FAILED);
@@ -3460,18 +3544,18 @@ export async function updateAdminPlan(
                 slug,
                 priceName,
                 correlationKey: syncCorrelation,
-                priceType: input.priceType,
+                priceType: pricingShape.derivedPriceType,
                 currencyCode: normalizedCurrencyCode,
                 unitAmountMinor: input.unitAmountMinor,
-                billingInterval: normalizedBillingInterval,
-                billingIntervalCount: normalizedBillingIntervalCount,
+                billingInterval: pricingShape.derivedBillingInterval,
+                billingIntervalCount: pricingShape.derivedBillingIntervalCount,
               }),
               name: priceName,
-              priceType: input.priceType,
+              priceType: pricingShape.derivedPriceType,
               currencyCode: normalizedCurrencyCode,
               unitAmountMinor: input.unitAmountMinor,
-              billingInterval: normalizedBillingInterval,
-              billingIntervalCount: normalizedBillingIntervalCount,
+              billingInterval: pricingShape.derivedBillingInterval,
+              billingIntervalCount: pricingShape.derivedBillingIntervalCount,
               isActive: true,
               isArchived: false,
               stripeSyncStatus: StripeSyncStatus.PENDING,
@@ -3484,6 +3568,7 @@ export async function updateAdminPlan(
           await ensureEntitlementRuleForProduct({
             productId: id,
             productType: input.productType,
+            packCreditQuantity: input.classPackCreditQuantity,
             prismaClient: tx,
           });
 
@@ -3532,11 +3617,11 @@ export async function updateAdminPlan(
     productName: name,
     productDescription: normalizedDescription,
     priceName,
-    priceType: input.priceType,
+    priceType: pricingShape.derivedPriceType,
     currencyCode: normalizedCurrencyCode,
     unitAmountMinor: input.unitAmountMinor,
-    billingInterval: normalizedBillingInterval,
-    billingIntervalCount: normalizedBillingIntervalCount,
+    billingInterval: pricingShape.derivedBillingInterval,
+    billingIntervalCount: pricingShape.derivedBillingIntervalCount,
     syncCorrelation,
   });
 
@@ -4297,7 +4382,12 @@ export async function getAdminClientActivityData(clientId: string): Promise<Admi
           },
           product: {
             productType: {
-              in: [ProductType.CLASS_PACK, ProductType.UNLIMITED_MEMBERSHIP, ProductType.INTRO_OFFER],
+              in: [
+                ProductType.CLASS_PACK,
+                ProductType.PRIVATE_PACK,
+                ProductType.UNLIMITED_MEMBERSHIP,
+                ProductType.DROP_IN_CLASS,
+              ],
             },
           },
         },
@@ -4462,6 +4552,10 @@ export async function adjustAdminClientCredits(input: {
   if (!Number.isInteger(input.amount) || input.amount === 0) {
     throw new Error("INVALID_CREDIT_AMOUNT");
   }
+  const normalizedReason = input.reason?.trim() ?? "";
+  if (!normalizedReason) {
+    throw new Error("CREDIT_ADJUSTMENT_REASON_REQUIRED");
+  }
 
   const now = new Date();
   const [clientRecord, adminRecord] = await prisma.$transaction([
@@ -4509,6 +4603,20 @@ export async function adjustAdminClientCredits(input: {
         });
       }
 
+      const currentBalanceAggregate = await tx.creditLedgerEntry.aggregate({
+        where: {
+          entitlementId: entitlement.id,
+        },
+        _sum: {
+          amount: true,
+        },
+      });
+      const currentBalance = currentBalanceAggregate._sum.amount ?? 0;
+      const nextBalance = currentBalance + input.amount;
+      if (nextBalance < 0) {
+        throw new Error("CREDIT_BALANCE_NEGATIVE_FORBIDDEN");
+      }
+
       await tx.creditLedgerEntry.create({
         data: {
           clientId: clientRecord.id,
@@ -4517,7 +4625,7 @@ export async function adjustAdminClientCredits(input: {
           amount: input.amount,
           happenedAt: now,
           createdById: adminRecord.id,
-          notes: input.reason?.trim() || "Admin credit adjustment from client detail.",
+          notes: normalizedReason,
         },
       });
     });
@@ -4576,7 +4684,7 @@ export async function adjustAdminClientCredits(input: {
         amount: input.amount,
         happenedAt: now,
         createdById: adminRecord.id,
-        notes: input.reason?.trim() || "Admin created entitlement with starting credits.",
+        notes: normalizedReason,
       },
     });
   });
@@ -5599,6 +5707,59 @@ export async function updateAdminLearningVideo(
       priority: input.priority,
     },
   });
+}
+
+export type AdminClientRecoveryState =
+  | { status: "HEALTHY"; contractId: string; productName: string }
+  | { status: "PAST_DUE"; contractId: string; productName: string }
+  | { status: "CANCELLED"; contractId: string; productName: string }
+  | { status: "NONE" };
+
+export async function getAdminClientRecoveryState(
+  params: { clientId: string; actor: CatalogMutationActor },
+): Promise<AdminClientRecoveryState> {
+  assertCatalogMutationActor(params.actor);
+
+  const now = new Date();
+
+  const contracts = await prisma.subscriptionContract.findMany({
+    where: { clientId: params.clientId },
+    orderBy: { updatedAt: "desc" },
+    take: 5,
+    select: {
+      id: true,
+      status: true,
+      currentPeriodEnd: true,
+      endedAt: true,
+      product: { select: { name: true } },
+    },
+  });
+
+  const active = contracts.find(
+    (c) =>
+      c.status === SubscriptionStatus.ACTIVE &&
+      c.currentPeriodEnd > now &&
+      (c.endedAt === null || c.endedAt > now),
+  );
+  if (active) {
+    return { status: "HEALTHY", contractId: active.id, productName: active.product.name };
+  }
+
+  const pastDue = contracts.find((c) => c.status === SubscriptionStatus.PAST_DUE);
+  if (pastDue) {
+    return { status: "PAST_DUE", contractId: pastDue.id, productName: pastDue.product.name };
+  }
+
+  const cancelled = contracts.find(
+    (c) =>
+      c.status === SubscriptionStatus.CANCELLED ||
+      c.status === SubscriptionStatus.EXPIRED,
+  );
+  if (cancelled) {
+    return { status: "CANCELLED", contractId: cancelled.id, productName: cancelled.product.name };
+  }
+
+  return { status: "NONE" };
 }
 
 

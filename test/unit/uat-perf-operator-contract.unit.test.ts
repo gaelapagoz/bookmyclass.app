@@ -18,9 +18,14 @@ describe("UAT perf operator script contract", () => {
   });
 
   it("keeps seed checkout-readiness guard by setting and verifying synced Stripe status for catalog prices", () => {
-    const seedScript = readRepoFile("prisma/seed.ts");
-    expect(seedScript).toContain("const stripeSyncStatus = hasStripePriceId ? StripeSyncStatus.SYNCED : StripeSyncStatus.PENDING;");
-    expect(seedScript).toContain('stripeSyncStatus: true');
-    expect(seedScript).toContain("expected purchasable catalog prices to be SYNCED");
+    const devSeed = readRepoFile("prisma/seed/modes/development.ts");
+    const perfSeed = readRepoFile("prisma/seed/modes/uat-performance.ts");
+
+    expect(devSeed).toContain("const stripeSyncStatus = hasStripePriceId ? StripeSyncStatus.SYNCED : StripeSyncStatus.PENDING;");
+    expect(perfSeed).toContain("const stripeSyncStatus = hasStripePriceId ? StripeSyncStatus.SYNCED : StripeSyncStatus.PENDING;");
+
+    // Stripe sync verification for catalog prices should exist in dev seed.
+    expect(devSeed).toContain("stripeSyncStatus: true");
+    expect(devSeed).toContain("non-SYNCED prices");
   });
 });

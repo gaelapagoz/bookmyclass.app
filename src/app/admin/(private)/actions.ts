@@ -4,7 +4,6 @@ import {
   BillingInterval,
   ClientMessageStatus,
   PaymentProvider,
-  PriceType,
   ProductType,
   Role,
   MarketingSubscriptionStatus,
@@ -216,23 +215,69 @@ const recurringSessionSchema = z
     }
   });
 
+const ALLOWED_PRODUCT_TYPES = [
+  ProductType.DROP_IN_CLASS,
+  ProductType.CLASS_PACK,
+  ProductType.PRIVATE_PACK,
+  ProductType.UNLIMITED_MEMBERSHIP,
+] as const;
+
 const planSchema = z
   .object({
     name: z.string().min(1),
     description: z.string().optional(),
-    productType: z.nativeEnum(ProductType),
+    productType: z.enum(ALLOWED_PRODUCT_TYPES.map(String) as [string, ...string[]]).transform((v) => v as ProductType),
+    classPackCreditQuantity: z.coerce.number().int().positive().optional(),
     isActive: z.boolean(),
     sortOrder: z.coerce.number().int().min(0),
     priceName: z.string().optional(),
-    priceType: z.nativeEnum(PriceType),
     currencyCode: z.string().length(3),
     unitAmount: z.coerce.number().positive(),
     billingInterval: z.nativeEnum(BillingInterval).optional(),
-    billingIntervalCount: z.coerce.number().int().positive().optional(),
   })
-  .refine((input) => input.priceType === PriceType.ONE_TIME || Boolean(input.billingInterval), {
-    message: "Billing interval is required for recurring prices.",
-    path: ["billingInterval"],
+  .superRefine((input, ctx) => {
+    const isPackProduct =
+      input.productType === ProductType.CLASS_PACK || input.productType === ProductType.PRIVATE_PACK;
+    if (isPackProduct && input.classPackCreditQuantity === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Class pack credit quantity is required.",
+        path: ["classPackCreditQuantity"],
+      });
+    }
+
+    if (!isPackProduct && input.classPackCreditQuantity !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Pack credits are only allowed for class packs.",
+        path: ["classPackCreditQuantity"],
+      });
+    }
+
+    if (input.productType === ProductType.UNLIMITED_MEMBERSHIP) {
+      if (!input.billingInterval) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Billing interval is required for memberships.",
+          path: ["billingInterval"],
+        });
+      } else if (input.billingInterval !== BillingInterval.MONTH && input.billingInterval !== BillingInterval.YEAR) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Membership billing interval must be monthly or yearly.",
+          path: ["billingInterval"],
+        });
+      }
+      return;
+    }
+
+    if (input.billingInterval !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Billing interval is only allowed for unlimited memberships.",
+        path: ["billingInterval"],
+      });
+    }
   });
 
 const createUserSchema = z.object({
@@ -331,7 +376,7 @@ const adjustClientCreditsSchema = z
     productId: z.string().optional(),
     creditDelta: z.coerce.number().int(),
     expiresAt: z.coerce.date().nullable().optional(),
-    reason: z.string().max(400).optional(),
+    reason: z.string().trim().min(1).max(400),
   })
   .refine((input) => input.creditDelta !== 0, {
     message: "Adjustment amount must be non-zero.",
@@ -487,6 +532,12 @@ function getAdminActionErrorMessage(error: unknown): string {
   if (code === "PRODUCT_NOT_CREDIT_ELIGIBLE") {
     return "Selected product cannot be used to create client credits.";
   }
+  if (code === "CREDIT_ADJUSTMENT_REASON_REQUIRED") {
+    return "Audit reason is required for credit adjustments.";
+  }
+  if (code === "CREDIT_BALANCE_NEGATIVE_FORBIDDEN") {
+    return "This adjustment would result in a negative credit balance.";
+  }
   if (code === "SUBSCRIPTION_NOT_FOUND") {
     return "Selected membership could not be found for this user.";
   }
@@ -596,13 +647,28 @@ function getAdminActionErrorMessage(error: unknown): string {
     return "Price amount must be greater than zero.";
   }
   if (code === "RECURRING_INTERVAL_REQUIRED") {
-    return "Recurring prices require a billing interval.";
+    return "Unlimited memberships require a billing interval.";
+  }
+  if (code === "BILLING_INTERVAL_INVALID_FOR_MEMBERSHIP") {
+    return "Membership billing interval must be monthly or yearly.";
   }
   if (code === "INVALID_BILLING_INTERVAL_COUNT") {
-    return "Billing interval count must be a positive whole number.";
+    return "Billing interval count must be 1 for memberships.";
+  }
+  if (code === "CLASS_PACK_QUANTITY_REQUIRED") {
+    return "Pack credits are required for CLASS_PACK and PRIVATE_PACK products.";
+  }
+  if (code === "CLASS_PACK_QUANTITY_INVALID") {
+    return "Pack credits must be a positive whole number.";
+  }
+  if (code === "CLASS_PACK_QUANTITY_NOT_ALLOWED") {
+    return "Pack credits can only be set for CLASS_PACK and PRIVATE_PACK products.";
+  }
+  if (code === "PRICE_TYPE_DERIVATION_MISMATCH") {
+    return "Billing type is derived from product type and cannot be changed manually.";
   }
   if (code === "ONE_TIME_INTERVAL_FORBIDDEN") {
-    return "One-time prices cannot include recurring interval fields.";
+    return "Billing interval can only be set for unlimited memberships.";
   }
   if (code === "PRODUCT_NOT_FOUND") {
     return "Selected plan no longer exists. Refresh and try again.";
@@ -625,6 +691,7 @@ async function assertAdminAccess(): Promise<AdminSession> {
 }
 
 async function assertSessionManagerAccess(): Promise<SessionManagerSession> {
+  await assertSameOriginServerAction();
   const session = await auth();
   if (!session?.user?.id) {
     throw new Error("UNAUTHENTICATED");
@@ -671,6 +738,10 @@ function toOptionalTrimmedString(value: FormDataEntryValue | null): string | und
   return normalized ? normalized : undefined;
 }
 
+function sanitizeFilenamePart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9\-_]/g, "");
+}
+
 function mapTeacherImageMimeTypeToExtension(mimeType: string): string | null {
   if (mimeType === "image/jpeg") {
     return "jpg";
@@ -700,7 +771,7 @@ async function storeCampaignImageAsset(file: File, campaignId: string): Promise<
 
   const bytes = await file.arrayBuffer();
   const imagesDir = join(process.cwd(), "public", "images", "marketing");
-  const targetFileName = `campaign-${campaignId}-${Date.now()}.${extension}`;
+  const targetFileName = `campaign-${sanitizeFilenamePart(campaignId)}-${Date.now()}.${extension}`;
   const targetAbsolutePath = join(imagesDir, targetFileName);
   const relativePath = `/images/marketing/${targetFileName}`;
 
@@ -726,6 +797,9 @@ function getMarketingActionErrorMessage(error: unknown): string {
   }
   if (code === "MARKETING_FLOW_INVALID_SENDER") {
     return "Sender details are invalid. Use a valid from email and reply-to address.";
+  }
+  if (code === "MARKETING_CAMPAIGN_DELIVERY_INCOMPLETE") {
+    return "Campaign delivery failed for one or more recipients. Campaign remains in sending state.";
   }
   if (code === "MARKETING_FLOW_TEST_DRAFT_REQUIRED") {
     return "Save the campaign draft before sending a test email.";
@@ -1158,14 +1232,13 @@ export async function createPlanAction(formData: FormData) {
     name: formData.get("name"),
     description: formData.get("description") ?? undefined,
     productType: formData.get("productType"),
+    classPackCreditQuantity: formData.get("classPackCreditQuantity") || undefined,
     isActive: isChecked(formData, "isActive"),
     sortOrder: formData.get("sortOrder"),
     priceName: formData.get("priceName") ?? undefined,
-    priceType: formData.get("priceType"),
     currencyCode: String(formData.get("currencyCode") ?? "").toUpperCase(),
     unitAmount: formData.get("unitAmount"),
     billingInterval: formData.get("billingInterval") || undefined,
-    billingIntervalCount: formData.get("billingIntervalCount") || undefined,
   });
 
   if (!parsed.success) {
@@ -1181,14 +1254,20 @@ export async function createPlanAction(formData: FormData) {
       name: parsed.data.name,
       description: parsed.data.description,
       productType: parsed.data.productType,
+      classPackCreditQuantity:
+        parsed.data.productType === ProductType.CLASS_PACK ||
+        parsed.data.productType === ProductType.PRIVATE_PACK
+          ? parsed.data.classPackCreditQuantity
+          : undefined,
       isActive: parsed.data.isActive,
       sortOrder: parsed.data.sortOrder,
       priceName: parsed.data.priceName,
-      priceType: parsed.data.priceType,
       currencyCode: parsed.data.currencyCode,
       unitAmountMinor: Math.round(parsed.data.unitAmount * 100),
-      billingInterval: parsed.data.priceType === PriceType.RECURRING ? parsed.data.billingInterval : undefined,
-      billingIntervalCount: parsed.data.priceType === PriceType.RECURRING ? parsed.data.billingIntervalCount ?? 1 : undefined,
+      billingInterval:
+        parsed.data.productType === ProductType.UNLIMITED_MEMBERSHIP
+          ? parsed.data.billingInterval
+          : undefined,
     });
   } catch (error) {
     Sentry.captureException(error);
@@ -1205,14 +1284,13 @@ export async function updatePlanAction(id: string, formData: FormData) {
     name: formData.get("name"),
     description: formData.get("description") ?? undefined,
     productType: formData.get("productType"),
+    classPackCreditQuantity: formData.get("classPackCreditQuantity") || undefined,
     isActive: isChecked(formData, "isActive"),
     sortOrder: formData.get("sortOrder"),
     priceName: formData.get("priceName") ?? undefined,
-    priceType: formData.get("priceType"),
     currencyCode: String(formData.get("currencyCode") ?? "").toUpperCase(),
     unitAmount: formData.get("unitAmount"),
     billingInterval: formData.get("billingInterval") || undefined,
-    billingIntervalCount: formData.get("billingIntervalCount") || undefined,
   });
 
   if (!parsed.success) {
@@ -1228,14 +1306,20 @@ export async function updatePlanAction(id: string, formData: FormData) {
       name: parsed.data.name,
       description: parsed.data.description,
       productType: parsed.data.productType,
+      classPackCreditQuantity:
+        parsed.data.productType === ProductType.CLASS_PACK ||
+        parsed.data.productType === ProductType.PRIVATE_PACK
+          ? parsed.data.classPackCreditQuantity
+          : undefined,
       isActive: parsed.data.isActive,
       sortOrder: parsed.data.sortOrder,
       priceName: parsed.data.priceName,
-      priceType: parsed.data.priceType,
       currencyCode: parsed.data.currencyCode,
       unitAmountMinor: Math.round(parsed.data.unitAmount * 100),
-      billingInterval: parsed.data.priceType === PriceType.RECURRING ? parsed.data.billingInterval : undefined,
-      billingIntervalCount: parsed.data.priceType === PriceType.RECURRING ? parsed.data.billingIntervalCount ?? 1 : undefined,
+      billingInterval:
+        parsed.data.productType === ProductType.UNLIMITED_MEMBERSHIP
+          ? parsed.data.billingInterval
+          : undefined,
     });
   } catch (error) {
     Sentry.captureException(error);
@@ -1364,7 +1448,7 @@ export async function adjustClientCreditsAction(formData: FormData) {
         productId: rawProductId || undefined,
         creditDelta: formData.get("creditDelta") ?? formData.get("amount"),
         expiresAt: toNullableDate(formData.get("expiresAt")),
-        reason: toOptionalTrimmedString(formData.get("reason")),
+        reason: String(formData.get("reason") ?? ""),
       });
 
       if (!parsed.success) {
@@ -1832,7 +1916,7 @@ export async function uploadTeacherImageAction(formData: FormData) {
 
   const bytes = await file.arrayBuffer();
   const imagesDir = join(process.cwd(), "public", "images", "instructors");
-  const targetFileName = `teacher-${userId}-${Date.now()}.${extension}`;
+  const targetFileName = `teacher-${sanitizeFilenamePart(userId)}-${Date.now()}.${extension}`;
   const targetAbsolutePath = join(imagesDir, targetFileName);
   const relativePath = `/images/instructors/${targetFileName}`;
 
@@ -1883,7 +1967,7 @@ export async function uploadClassImageAction(formData: FormData) {
 
   const bytes = await file.arrayBuffer();
   const imagesDir = join(process.cwd(), "public", "images", "classes");
-  const targetFileName = `service-${classTypeId}-${Date.now()}.${extension}`;
+  const targetFileName = `service-${sanitizeFilenamePart(classTypeId)}-${Date.now()}.${extension}`;
   const targetAbsolutePath = join(imagesDir, targetFileName);
   const relativePath = `/images/classes/${targetFileName}`;
 

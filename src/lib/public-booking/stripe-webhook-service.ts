@@ -4,12 +4,15 @@ import {
   CheckoutSource,
   ClientEntitlementStatus,
   CreditLedgerEntryType,
+  EntitlementScope,
   EntitlementType,
   OrderStatus,
   PaymentMethod,
   PaymentProvider,
   PaymentStatus,
   PriceType,
+  ProductType,
+  StripeWebhookReceiptStatus,
   SubscriptionStatus,
 } from "@prisma/client";
 import type Stripe from "stripe";
@@ -38,12 +41,68 @@ type GenericCheckoutMetadata = {
   source: string | null;
 };
 
+const STALE_PROCESSING_THRESHOLD_MS = 10 * 60 * 1000;
+
 function logInfo(message: string, context?: Record<string, unknown>) {
   console.info("[stripe/webhook]", message, context ?? {});
 }
 
 function logWarn(message: string, context?: Record<string, unknown>) {
   console.warn("[stripe/webhook]", message, context ?? {});
+}
+
+async function acquireWebhookEventLease(eventId: string): Promise<"skip" | "proceed"> {
+  const now = new Date();
+  const staleThreshold = new Date(now.getTime() - STALE_PROCESSING_THRESHOLD_MS);
+
+  const existing = await prisma.stripeWebhookEventReceipt.findUnique({
+    where: { eventId },
+    select: { status: true, updatedAt: true },
+  });
+
+  if (!existing) {
+    try {
+      await prisma.stripeWebhookEventReceipt.create({
+        data: { eventId, status: StripeWebhookReceiptStatus.PROCESSING },
+      });
+      return "proceed";
+    } catch {
+      return "skip";
+    }
+  }
+
+  if (existing.status === StripeWebhookReceiptStatus.PROCESSED) {
+    logInfo("webhook event already processed, skipping", { eventId });
+    return "skip";
+  }
+
+  if (
+    existing.status === StripeWebhookReceiptStatus.PROCESSING &&
+    existing.updatedAt > staleThreshold
+  ) {
+    logInfo("webhook event already in progress, skipping", { eventId });
+    return "skip";
+  }
+
+  await prisma.stripeWebhookEventReceipt.update({
+    where: { eventId },
+    data: { status: StripeWebhookReceiptStatus.PROCESSING },
+  });
+  return "proceed";
+}
+
+async function markWebhookEventProcessed(eventId: string): Promise<void> {
+  await prisma.stripeWebhookEventReceipt.update({
+    where: { eventId },
+    data: { status: StripeWebhookReceiptStatus.PROCESSED },
+  });
+}
+
+async function markWebhookEventRetryable(eventId: string): Promise<void> {
+  await prisma.stripeWebhookEventReceipt.update({
+    where: { eventId },
+    data: { status: StripeWebhookReceiptStatus.RETRYABLE_FAILED },
+  });
 }
 
 function getStringMetadataValue(
@@ -161,6 +220,48 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
   consumeCreditForBooking: boolean;
   purchaseQuantity?: number;
 }) {
+  function resolveRuleFromProductType(params: {
+    productType: ProductType;
+    configuredQuantity: number | null;
+  }): {
+    entitlementType: EntitlementType;
+    entitlementScope: EntitlementScope;
+    quantity: number;
+  } {
+    switch (params.productType) {
+      case ProductType.DROP_IN_CLASS:
+        return {
+          entitlementType: EntitlementType.SINGLE_USE,
+          entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+          quantity: 1,
+        };
+      case ProductType.CLASS_PACK: {
+        const quantity = params.configuredQuantity ?? 0;
+        if (quantity < 1) {
+          throw new Error("CLASS_PACK_QUANTITY_INVALID");
+        }
+        return {
+          entitlementType: EntitlementType.CREDIT_PACK,
+          entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+          quantity,
+        };
+      }
+      case ProductType.PRIVATE_PACK: {
+        const quantity = params.configuredQuantity ?? 0;
+        if (quantity < 1) {
+          throw new Error("CLASS_PACK_QUANTITY_INVALID");
+        }
+        return {
+          entitlementType: EntitlementType.CREDIT_PACK,
+          entitlementScope: EntitlementScope.PRIVATE_CLASSES,
+          quantity,
+        };
+      }
+      default:
+        throw new Error("UNSUPPORTED_PRODUCT_TYPE_FOR_ONE_TIME_ENTITLEMENT");
+    }
+  }
+
   const price = await prisma.price.findUnique({
     where: { id: input.selectedPriceId },
     select: {
@@ -168,6 +269,7 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
       productId: true,
       product: {
         select: {
+          productType: true,
           entitlementRules: {
             where: { isActive: true },
             orderBy: { updatedAt: "desc" },
@@ -198,6 +300,15 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
     return null;
   }
 
+  if (price.product.productType === ProductType.UNLIMITED_MEMBERSHIP) {
+    throw new Error("MEMBERSHIP_PRICE_TYPE_MISMATCH");
+  }
+
+  const resolvedRule = resolveRuleFromProductType({
+    productType: price.product.productType,
+    configuredQuantity: rule.quantity,
+  });
+
   const activatedAt = new Date();
   const expiresAt =
     typeof rule.validForDays === "number"
@@ -215,8 +326,8 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
         },
         update: {
           status: ClientEntitlementStatus.ACTIVE,
-          entitlementType: rule.entitlementType,
-          entitlementScope: rule.entitlementScope,
+          entitlementType: resolvedRule.entitlementType,
+          entitlementScope: resolvedRule.entitlementScope,
           activatedAt,
           expiresAt,
           notes: "Activated via Stripe checkout finalization.",
@@ -225,8 +336,8 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
           clientId: input.clientId,
           productId: price.productId,
           orderId: input.orderId,
-          entitlementType: rule.entitlementType,
-          entitlementScope: rule.entitlementScope,
+          entitlementType: resolvedRule.entitlementType,
+          entitlementScope: resolvedRule.entitlementScope,
           status: ClientEntitlementStatus.ACTIVE,
           activatedAt,
           expiresAt,
@@ -239,8 +350,8 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
           clientId: input.clientId,
           productId: price.productId,
           orderId: input.orderId,
-          entitlementType: rule.entitlementType,
-          entitlementScope: rule.entitlementScope,
+          entitlementType: resolvedRule.entitlementType,
+          entitlementScope: resolvedRule.entitlementScope,
           status: ClientEntitlementStatus.ACTIVE,
           activatedAt,
           expiresAt,
@@ -249,7 +360,7 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
         select: { id: true },
       });
 
-  if (typeof rule.quantity === "number" && rule.quantity > 0) {
+  if (resolvedRule.quantity > 0) {
     const purchaseQuantity = Math.max(1, input.purchaseQuantity ?? 1);
     await prisma.creditLedgerEntry.createMany({
       data: {
@@ -258,7 +369,7 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
         orderId: input.orderId,
         bookingId: input.bookingId ?? null,
         entryType: CreditLedgerEntryType.GRANT,
-        amount: rule.quantity * purchaseQuantity,
+        amount: resolvedRule.quantity * purchaseQuantity,
         idempotencyKey: buildCreditLedgerIdempotencyKey({
           type: "GRANT",
           clientId: input.clientId,
@@ -276,8 +387,8 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
   if (
     input.consumeCreditForBooking &&
     input.bookingId &&
-    (rule.entitlementType === EntitlementType.CREDIT_PACK ||
-      rule.entitlementType === EntitlementType.SINGLE_USE)
+    (resolvedRule.entitlementType === EntitlementType.CREDIT_PACK ||
+      resolvedRule.entitlementType === EntitlementType.SINGLE_USE)
   ) {
     await prisma.creditLedgerEntry.createMany({
       data: {
@@ -309,6 +420,7 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
 
   return entitlement.id;
 }
+
 
 async function ensureOwnershipForSuccessfulPricePurchase(input: {
   clientId: string;
@@ -724,7 +836,12 @@ async function markPaymentFailedByCheckoutSession(input: {
   });
 }
 
-async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+async function handleCheckoutCompleted(
+  session: Stripe.Checkout.Session,
+  options?: {
+    allowStripeRetrieve?: boolean;
+  },
+) {
   logInfo("checkout.session.completed received", {
     checkoutSessionId: session.id,
     paymentStatus: session.payment_status,
@@ -835,6 +952,19 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   }
 
   if (!payment) {
+    const allowStripeRetrieve = options?.allowStripeRetrieve ?? true;
+    const metadataIsEmpty = !session.metadata || Object.keys(session.metadata).length === 0;
+    const sessionLooksThin = metadataIsEmpty || session.amount_total === null;
+
+    if (allowStripeRetrieve && sessionLooksThin) {
+      const stripeSession = await getStripeClient().checkout.sessions.retrieve(session.id);
+      if (stripeSession && typeof stripeSession.id === "string" && stripeSession.id.length > 0) {
+        await handleCheckoutCompleted(stripeSession, { allowStripeRetrieve: false });
+        return;
+      }
+      return;
+    }
+
     logWarn("no local payment matched checkout completion", {
       checkoutSessionId: session.id,
       paymentIdFromMetadata,
@@ -1248,36 +1378,100 @@ async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
   });
 }
 
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  const invoiceAny = invoice as unknown as Record<string, unknown>;
+  const sub = invoiceAny["subscription"];
+  const stripeSubscriptionId =
+    typeof sub === "string"
+      ? sub
+      : sub !== null && typeof sub === "object" && typeof (sub as Record<string, unknown>)["id"] === "string"
+        ? (sub as Record<string, unknown>)["id"] as string
+        : null;
+
+  if (!stripeSubscriptionId) {
+    logWarn("invoice.payment_failed: no subscription id, ignoring", { invoiceId: invoice.id });
+    return;
+  }
+
+  const contract = await prisma.subscriptionContract.findUnique({
+    where: {
+      provider_providerSubscriptionReference: {
+        provider: PaymentProvider.STRIPE,
+        providerSubscriptionReference: stripeSubscriptionId,
+      },
+    },
+    select: { id: true, status: true },
+  });
+
+  if (!contract) {
+    logWarn("invoice.payment_failed: no local contract found", { stripeSubscriptionId });
+    return;
+  }
+
+  if (contract.status === SubscriptionStatus.ACTIVE) {
+    logInfo("invoice.payment_failed: contract is ACTIVE, not overriding with PAST_DUE (subscription.updated is canonical)", {
+      contractId: contract.id,
+      stripeSubscriptionId,
+    });
+    return;
+  }
+
+  if (
+    contract.status === SubscriptionStatus.CANCELLED ||
+    contract.status === SubscriptionStatus.EXPIRED
+  ) {
+    logInfo("invoice.payment_failed: contract is terminal, ignoring", {
+      contractId: contract.id,
+      status: contract.status,
+    });
+    return;
+  }
+
+  await prisma.subscriptionContract.update({
+    where: { id: contract.id },
+    data: { status: SubscriptionStatus.PAST_DUE },
+  });
+
+  logInfo("invoice.payment_failed: marked contract PAST_DUE", {
+    contractId: contract.id,
+    stripeSubscriptionId,
+  });
+}
+
 export async function processStripeWebhookEvent(event: Stripe.Event) {
   logInfo("event received", {
     eventId: event.id,
     eventType: event.type,
   });
 
-  if (event.type === "checkout.session.completed") {
-    await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+  const lease = await acquireWebhookEventLease(event.id);
+  if (lease === "skip") {
     return;
   }
 
-  if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
-    await handleSubscriptionContractChange(event.data.object as Stripe.Subscription);
-    return;
-  }
+  try {
+    if (event.type === "checkout.session.completed") {
+      await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+    } else if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
+      await handleSubscriptionContractChange(event.data.object as Stripe.Subscription);
+    } else if (event.type === "checkout.session.expired") {
+      await handleCheckoutExpired(event.data.object as Stripe.Checkout.Session);
+    } else if (event.type === "checkout.session.async_payment_failed") {
+      await markPaymentFailedByCheckoutSession({
+        checkoutSessionId: (event.data.object as Stripe.Checkout.Session).id,
+        reason: "Async payment failed.",
+      });
+    } else if (event.type === "invoice.payment_failed") {
+      await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+    } else {
+      logInfo("event ignored", { eventType: event.type });
+    }
 
-  if (event.type === "checkout.session.expired") {
-    await handleCheckoutExpired(event.data.object as Stripe.Checkout.Session);
-    return;
+    await markWebhookEventProcessed(event.id);
+  } catch (error) {
+    await markWebhookEventRetryable(event.id);
+    throw error;
   }
-
-  if (event.type === "checkout.session.async_payment_failed") {
-    await markPaymentFailedByCheckoutSession({
-      checkoutSessionId: (event.data.object as Stripe.Checkout.Session).id,
-      reason: "Async payment failed.",
-    });
-    return;
-  }
-
-  logInfo("event ignored", { eventType: event.type });
 }
 
 export async function completeStripeCheckoutSessionForE2ETests(input: {

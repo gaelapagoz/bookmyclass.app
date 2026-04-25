@@ -10,8 +10,11 @@ export function assertE2ETestRequest(request: Request): Response | null {
   }
 
   const expectedSecret = process.env.E2E_TEST_SECRET?.trim();
+  if (!expectedSecret) {
+    return Response.json({ error: "Unauthorized." }, { status: 401 });
+  }
   const providedSecret = request.headers.get(E2E_SECRET_HEADER)?.trim();
-  if (!expectedSecret || !providedSecret || expectedSecret !== providedSecret) {
+  if (!providedSecret || expectedSecret !== providedSecret) {
     return Response.json({ error: "Unauthorized." }, { status: 401 });
   }
 

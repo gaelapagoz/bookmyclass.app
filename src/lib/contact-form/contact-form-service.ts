@@ -104,17 +104,19 @@ async function assertHomesiteContactRateLimit(ipAddress: string, now: Date): Pro
   const ipHash = hashHomesiteContactRateLimitIp(ipAddress);
   const activeWindowThreshold = new Date(now.getTime() - HOMESITE_CONTACT_RATE_LIMIT_WINDOW_MS);
 
-  const isRateLimited = await prisma.$transaction(async (tx) => {
-    await tx.contactMessageRateLimit.upsert({
-      where: { ipHash },
-      update: {},
-      create: {
-        ipHash,
-        windowStartedAt: now,
-        requestCount: 0,
-      },
-    });
+  // Ensure the record exists before the transaction to avoid concurrent-upsert unique constraint races.
+  const existing = await prisma.contactMessageRateLimit.findFirst({ where: { ipHash } });
+  if (!existing) {
+    try {
+      await prisma.contactMessageRateLimit.create({
+        data: { ipHash, windowStartedAt: now, requestCount: 0 },
+      });
+    } catch {
+      // Race: another concurrent request created it first — proceed.
+    }
+  }
 
+  const isRateLimited = await prisma.$transaction(async (tx) => {
     const resetWindowResult = await tx.contactMessageRateLimit.updateMany({
       where: {
         ipHash,

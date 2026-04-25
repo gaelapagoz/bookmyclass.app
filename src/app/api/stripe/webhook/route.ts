@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
-import { processStripeWebhookEvent } from "../../../../lib/public-booking/stripe-webhook-service";
-import { verifyStripeWebhookEvent } from "../../../../lib/payments/stripe";
+import { processStripeWebhookEvent } from "@/lib/public-booking/stripe-webhook-service";
+import { verifyStripeWebhookEvent } from "@/lib/payments/stripe";
 
 function getSafeStripeContext(event: { id: string; type: string; data: { object: unknown } }) {
   const dataObject =

@@ -51,6 +51,23 @@ These rules guide the Prisma schema design and must remain consistent across the
 - Workshop / special event
 - Gift cards (planned for later implementation)
 
+### Product type to entitlement behavior (active)
+- `CLASS_PACK` creates a credit-pack entitlement rule with configurable credit quantity for collective classes.
+- `PRIVATE_PACK` creates a credit-pack entitlement rule with configurable credit quantity for private classes.
+- `DROP_IN_CLASS` creates a single-use collective-class entitlement rule.
+- `UNLIMITED_MEMBERSHIP` creates unlimited collective access entitlement rules.
+
+Removed types: `INTRO_OFFER`, `WORKSHOP_PASS`, `GIFT_CARD` (migrated to `DROP_IN_CLASS` / `CLASS_PACK` respectively).
+
+### Admin catalog rules (active)
+- Pack scope is derived from product type and is not selected manually:
+  - `CLASS_PACK` => `COLLECTIVE_CLASSES`
+  - `PRIVATE_PACK` => `PRIVATE_CLASSES`
+- Billing type is derived from product type and is not selected manually:
+  - `DROP_IN_CLASS`, `CLASS_PACK`, `PRIVATE_PACK` => one-time
+  - `UNLIMITED_MEMBERSHIP` => recurring
+- Billing interval applies only to `UNLIMITED_MEMBERSHIP`, with allowed values `MONTH` or `YEAR`.
+
 ### Promotions
 - Discount codes can be applied to orders.
 - Promotions affect pricing but do not alter product structure.

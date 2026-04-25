@@ -1,8 +1,9 @@
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
-import { config } from "dotenv";
+// NOTE: Environment variables are injected by the test runner (see npm test).
+import * as dotenv from "dotenv";
 
-config({ path: ".env.test" });
+dotenv.config({ path: ".env.test", override: true });
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is not set in .env.test.");

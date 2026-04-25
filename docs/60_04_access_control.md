@@ -16,7 +16,9 @@ Purpose: summarize role and route access controls currently enforced in code.
 - Admin unauthorized users are redirected to admin unauthorized state.
 
 ## Known Gaps (Current)
-- Fine-grained split between `ADMIN` and `MASTER_ADMIN` is not broadly implemented.
+- Fine-grained split between `ADMIN` and `MASTER_ADMIN` is partial:
+  - `MASTER_ADMIN` assignment/management is enforced server-side.
+  - Broader admin area access still uses shared admin-role checks.
 - Teacher route group is explicitly enforced via `requireTeacherSession` in `src/app/teacher/layout.tsx`; keep UI/E2E guard coverage active.
 
 ## Canonical References

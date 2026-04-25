@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { excludeUnsubscribedRecipients, resolveMarketingAudience } from "@/lib/marketing/marketing-audience";
 import { renderMarketingEmailHtml, extractTrackingLinks, normalizeMarketingContentJson } from "@/lib/marketing/marketing-renderer";
 import { buildTrackingToken, createRecipientTrackingToken, parseRecipientTrackingToken } from "@/lib/marketing/marketing-tracking";
-import { sendEmailViaResend } from "@/lib/email/resend-delivery";
+import { isDeterministicEmailDeliveryMode, sendEmailViaResend } from "@/lib/email/resend-delivery";
 
 const SEND_BATCH_SIZE = 50;
 
@@ -152,6 +152,24 @@ export async function sendMarketingCampaignNow(campaignId: string) {
       );
     }
 
+    const recipientStatusRows = await prisma.marketingCampaignRecipient.groupBy({
+      by: ["status"],
+      where: { campaignId: campaign.id },
+      _count: { _all: true },
+    });
+    const failedRecipientCount = recipientStatusRows.find((row) => row.status === MarketingRecipientStatus.FAILED)?._count._all ?? 0;
+    if (!isDeterministicEmailDeliveryMode() && failedRecipientCount > 0) {
+      await prisma.marketingCampaign.update({
+        where: { id: campaign.id },
+        data: {
+          status: MarketingCampaignStatus.SENDING,
+          sentAt: null,
+          htmlSnapshot: null,
+        },
+      });
+      throw new Error("MARKETING_CAMPAIGN_DELIVERY_INCOMPLETE");
+    }
+
     const snapshotHtml = renderMarketingEmailHtml({
       contentJson,
       links: storedLinks.map((link) => ({ url: link.url, token: link.token })),
@@ -168,6 +186,9 @@ export async function sendMarketingCampaignNow(campaignId: string) {
       },
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "MARKETING_CAMPAIGN_DELIVERY_INCOMPLETE") {
+      throw error;
+    }
     await prisma.marketingCampaign.update({
       where: { id: campaignId },
       data: {

@@ -8,22 +8,43 @@ export type EntitlementRuleDraft = {
   quantity: number | null;
 };
 
+type EntitlementRuleOverrides = {
+  packCreditQuantity?: number;
+};
+
 const ELIGIBLE_PRODUCT_TYPES: ProductType[] = [
   ProductType.CLASS_PACK,
+  ProductType.PRIVATE_PACK,
   ProductType.UNLIMITED_MEMBERSHIP,
-  ProductType.INTRO_OFFER,
   ProductType.DROP_IN_CLASS,
-  ProductType.PRIVATE_CLASS,
-  ProductType.WORKSHOP_PASS,
 ];
 
-export function getDefaultEntitlementRuleForProductType(productType: ProductType): EntitlementRuleDraft | null {
+function normalizePackCreditQuantity(input?: number): number {
+  if (input === undefined) {
+    return 10;
+  }
+  if (!Number.isInteger(input) || input < 1) {
+    throw new Error("CLASS_PACK_QUANTITY_INVALID");
+  }
+  return input;
+}
+
+export function getDefaultEntitlementRuleForProductType(
+  productType: ProductType,
+  overrides?: EntitlementRuleOverrides,
+): EntitlementRuleDraft | null {
   switch (productType) {
     case ProductType.CLASS_PACK:
       return {
         entitlementType: EntitlementType.CREDIT_PACK,
         entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
-        quantity: 10,
+        quantity: normalizePackCreditQuantity(overrides?.packCreditQuantity),
+      };
+    case ProductType.PRIVATE_PACK:
+      return {
+        entitlementType: EntitlementType.CREDIT_PACK,
+        entitlementScope: EntitlementScope.PRIVATE_CLASSES,
+        quantity: normalizePackCreditQuantity(overrides?.packCreditQuantity),
       };
     case ProductType.UNLIMITED_MEMBERSHIP:
       return {
@@ -31,23 +52,10 @@ export function getDefaultEntitlementRuleForProductType(productType: ProductType
         entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
         quantity: null,
       };
-    case ProductType.INTRO_OFFER:
     case ProductType.DROP_IN_CLASS:
       return {
         entitlementType: EntitlementType.SINGLE_USE,
         entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
-        quantity: 1,
-      };
-    case ProductType.PRIVATE_CLASS:
-      return {
-        entitlementType: EntitlementType.SINGLE_USE,
-        entitlementScope: EntitlementScope.PRIVATE_CLASSES,
-        quantity: 1,
-      };
-    case ProductType.WORKSHOP_PASS:
-      return {
-        entitlementType: EntitlementType.SINGLE_USE,
-        entitlementScope: EntitlementScope.WORKSHOPS,
         quantity: 1,
       };
     default:
@@ -59,8 +67,11 @@ export async function ensureEntitlementRuleForProduct(params: {
   productId: string;
   productType: ProductType;
   prismaClient: Prisma.TransactionClient | typeof prisma;
+  packCreditQuantity?: number;
 }) {
-  const rule = getDefaultEntitlementRuleForProductType(params.productType);
+  const rule = getDefaultEntitlementRuleForProductType(params.productType, {
+    packCreditQuantity: params.packCreditQuantity,
+  });
 
   await params.prismaClient.entitlementRule.updateMany({
     where: {
@@ -123,4 +134,3 @@ export async function backfillMissingPlanEntitlementRules(prismaClient: typeof p
 
   return candidates.length;
 }
-

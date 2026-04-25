@@ -32,10 +32,8 @@ vi.mock("@/lib/payments/stripe", () => ({
   getStripeClient: () => stripeClientMock,
 }));
 
-vi.mock("../../src/lib/admin/plan-provisioning", async () => {
-  const actual = await vi.importActual<typeof import("../../src/lib/admin/plan-provisioning")>(
-    "../../src/lib/admin/plan-provisioning",
-  );
+vi.mock("@/lib/admin/plan-provisioning", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/admin/plan-provisioning")>("@/lib/admin/plan-provisioning");
 
   return {
     ...actual,
@@ -52,7 +50,7 @@ import {
   remediatePriceStripeId,
   updateAdminPlan,
 } from "../../src/lib/admin/admin-service";
-import { buildStripeIdempotencyKey } from "../../src/lib/admin/plan-provisioning";
+import { buildStripeIdempotencyKey } from "@/lib/admin/plan-provisioning";
 import { getActiveSubscriptionCatalogProducts } from "../../src/lib/subscription/subscription-products";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
@@ -169,6 +167,110 @@ describe("admin plan service", () => {
     expect(activeRule?.quantity).toBeNull();
   });
 
+  it("creates class pack with configured credit allocation quantity", async () => {
+    const created = await createPlan({
+      name: "5-Class Pack",
+      productType: ProductType.CLASS_PACK,
+      classPackCreditQuantity: 5,
+      isActive: true,
+      sortOrder: 1,
+      priceType: PriceType.ONE_TIME,
+      currencyCode: "EUR",
+      unitAmountMinor: 5900,
+    });
+
+    const activeRule = await prisma.entitlementRule.findFirst({
+      where: {
+        productId: created?.id,
+        isActive: true,
+      },
+      select: {
+        entitlementType: true,
+        quantity: true,
+      },
+    });
+
+    expect(activeRule?.entitlementType).toBe(EntitlementType.CREDIT_PACK);
+    expect(activeRule?.quantity).toBe(5);
+  });
+
+  it("updates class pack credit allocation quantity", async () => {
+    const created = await createPlan({
+      name: "Starter Credits",
+      productType: ProductType.CLASS_PACK,
+      classPackCreditQuantity: 3,
+      isActive: true,
+      sortOrder: 1,
+      priceType: PriceType.ONE_TIME,
+      currencyCode: "EUR",
+      unitAmountMinor: 3900,
+    });
+
+    await updatePlan(created!.id, {
+      name: "Starter Credits",
+      productType: ProductType.CLASS_PACK,
+      classPackCreditQuantity: 8,
+      isActive: true,
+      sortOrder: 1,
+      priceType: PriceType.ONE_TIME,
+      currencyCode: "EUR",
+      unitAmountMinor: 3900,
+    });
+
+    const activeRule = await prisma.entitlementRule.findFirst({
+      where: {
+        productId: created!.id,
+        isActive: true,
+      },
+      select: {
+        quantity: true,
+      },
+    });
+    expect(activeRule?.quantity).toBe(8);
+  });
+
+  it("creates drop-in products with exactly one collective credit", async () => {
+    const created = await createPlan({
+      name: "Drop-In Credit",
+      productType: ProductType.DROP_IN_CLASS,
+      isActive: true,
+      sortOrder: 1,
+      currencyCode: "EUR",
+      unitAmountMinor: 2200,
+    });
+
+    const activeRule = await prisma.entitlementRule.findFirst({
+      where: {
+        productId: created?.id,
+        isActive: true,
+      },
+      select: {
+        entitlementType: true,
+        entitlementScope: true,
+        quantity: true,
+      },
+    });
+
+    expect(activeRule?.entitlementType).toBe(EntitlementType.SINGLE_USE);
+    expect(activeRule?.entitlementScope).toBe(EntitlementScope.COLLECTIVE_CLASSES);
+    expect(activeRule?.quantity).toBe(1);
+  });
+
+  it("rejects invalid class pack credit allocation quantity", async () => {
+    await expect(
+      createPlan({
+        name: "Invalid Class Pack Quantity",
+        productType: ProductType.CLASS_PACK,
+        classPackCreditQuantity: 0,
+        isActive: true,
+        sortOrder: 1,
+        priceType: PriceType.ONE_TIME,
+        currencyCode: "EUR",
+        unitAmountMinor: 3900,
+      }),
+    ).rejects.toThrow("CLASS_PACK_QUANTITY_INVALID");
+  });
+
   it("rejects one-time prices with billing interval fields", async () => {
     await expect(
       createPlan({
@@ -182,6 +284,50 @@ describe("admin plan service", () => {
         billingInterval: BillingInterval.MONTH,
       }),
     ).rejects.toThrow("ONE_TIME_INTERVAL_FORBIDDEN");
+  });
+
+  it("derives billing type and rejects manual mismatches", async () => {
+    await expect(
+      createPlan({
+        name: "Invalid Derived Billing",
+        productType: ProductType.CLASS_PACK,
+        classPackCreditQuantity: 5,
+        isActive: true,
+        sortOrder: 1,
+        priceType: PriceType.RECURRING,
+        currencyCode: "EUR",
+        unitAmountMinor: 5900,
+      }),
+    ).rejects.toThrow("PRICE_TYPE_DERIVATION_MISMATCH");
+  });
+
+  it("rejects pack credits for unlimited memberships", async () => {
+    await expect(
+      createPlan({
+        name: "Membership With Pack Credits",
+        productType: ProductType.UNLIMITED_MEMBERSHIP,
+        classPackCreditQuantity: 5,
+        isActive: true,
+        sortOrder: 1,
+        currencyCode: "EUR",
+        unitAmountMinor: 12900,
+        billingInterval: BillingInterval.MONTH,
+      }),
+    ).rejects.toThrow("CLASS_PACK_QUANTITY_NOT_ALLOWED");
+  });
+
+  it("accepts only monthly or yearly interval for memberships", async () => {
+    await expect(
+      createPlan({
+        name: "Invalid Membership Interval",
+        productType: ProductType.UNLIMITED_MEMBERSHIP,
+        isActive: true,
+        sortOrder: 1,
+        currencyCode: "EUR",
+        unitAmountMinor: 4900,
+        billingInterval: BillingInterval.WEEK,
+      }),
+    ).rejects.toThrow("BILLING_INTERVAL_INVALID_FOR_MEMBERSHIP");
   });
 
   it("rejects recurring prices without billing interval", async () => {
@@ -257,11 +403,9 @@ describe("admin plan service", () => {
       isActive: true,
       sortOrder: 2,
       priceName: "Starter Plus",
-      priceType: PriceType.RECURRING,
+      priceType: PriceType.ONE_TIME,
       currencyCode: "EUR",
       unitAmountMinor: 4900,
-      billingInterval: BillingInterval.MONTH,
-      billingIntervalCount: 1,
     };
 
     resolveStripeProductIdFromPriceMock.mockResolvedValue("prod_test_existing");
@@ -280,7 +424,7 @@ describe("admin plan service", () => {
     expect(activePrices).toHaveLength(1);
     expect(product?.prices).toHaveLength(2);
     expect(activePrices[0]?.unitAmountMinor).toBe(4900);
-    expect(activePrices[0]?.priceType).toBe(PriceType.RECURRING);
+    expect(activePrices[0]?.priceType).toBe(PriceType.ONE_TIME);
     expect(activePrices[0]?.stripePriceId).toBeTruthy();
     expect(updatedSecond?.id).toBe(created?.id);
     expect(provisionPlanOnStripeMock).toHaveBeenCalledTimes(2);
@@ -340,11 +484,9 @@ describe("admin plan service", () => {
       isActive: true,
       sortOrder: 2,
       priceName: "Retryable Failure Plan Updated Price",
-      priceType: PriceType.RECURRING,
+      priceType: PriceType.ONE_TIME,
       currencyCode: "EUR",
       unitAmountMinor: 4900,
-      billingInterval: BillingInterval.MONTH,
-      billingIntervalCount: 1,
     };
 
     await updatePlan(created?.id ?? "", updateInput);
@@ -435,11 +577,9 @@ describe("admin plan service", () => {
       isActive: true,
       sortOrder: 2,
       priceName: "Retryable Pending Plan Updated Price",
-      priceType: PriceType.RECURRING,
+      priceType: PriceType.ONE_TIME,
       currencyCode: "EUR",
       unitAmountMinor: 4900,
-      billingInterval: BillingInterval.MONTH,
-      billingIntervalCount: 1,
     };
 
     await updatePlan(created?.id ?? "", updateInput);
@@ -986,11 +1126,9 @@ describe("admin plan service", () => {
       isActive: true,
       sortOrder: 2,
       priceName: "Concurrency Plan Updated Price",
-      priceType: PriceType.RECURRING,
+      priceType: PriceType.ONE_TIME,
       currencyCode: "EUR",
       unitAmountMinor: 4900,
-      billingInterval: BillingInterval.MONTH,
-      billingIntervalCount: 1,
     };
 
     const [first, second] = await Promise.allSettled([
@@ -1129,6 +1267,143 @@ describe("admin plan service", () => {
     expect(buildStripeIdempotencyKey("corr-123", "price-create")).toMatch(
       /^catalog-sync:price-create:[a-f0-9]{32}$/,
     );
+  });
+
+  describe("product type removal regression", () => {
+    it("rejects INTRO_OFFER product type at the schema level (type is no longer valid)", async () => {
+      await expect(
+        prisma.product.create({
+          data: {
+            name: "Intro Offer",
+            slug: `intro-offer-reject-${Date.now()}`,
+            productType: "INTRO_OFFER" as unknown as ProductType,
+            isActive: true,
+            isArchived: false,
+            sortOrder: 0,
+          },
+        }),
+      ).rejects.toThrow();
+    });
+
+    it("rejects WORKSHOP_PASS product type at the schema level", async () => {
+      await expect(
+        prisma.product.create({
+          data: {
+            name: "Workshop Pass",
+            slug: `workshop-pass-reject-${Date.now()}`,
+            productType: "WORKSHOP_PASS" as unknown as ProductType,
+            isActive: true,
+            isArchived: false,
+            sortOrder: 0,
+          },
+        }),
+      ).rejects.toThrow();
+    });
+
+    it("rejects GIFT_CARD product type at the schema level", async () => {
+      await expect(
+        prisma.product.create({
+          data: {
+            name: "Gift Card",
+            slug: `gift-card-reject-${Date.now()}`,
+            productType: "GIFT_CARD" as unknown as ProductType,
+            isActive: true,
+            isArchived: false,
+            sortOrder: 0,
+          },
+        }),
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("collective and private class pack credit allocation", () => {
+    it("creates collective class pack with correct CREDIT_PACK scope", async () => {
+      const created = await createPlan({
+        name: "Collective 8-Class Pack",
+        productType: ProductType.CLASS_PACK,
+        classPackCreditQuantity: 8,
+        isActive: true,
+        sortOrder: 1,
+        priceType: PriceType.ONE_TIME,
+        currencyCode: "EUR",
+        unitAmountMinor: 9900,
+      });
+
+      const rule = await prisma.entitlementRule.findFirst({
+        where: { productId: created!.id, isActive: true },
+        select: { entitlementType: true, entitlementScope: true, quantity: true },
+      });
+      expect(rule?.entitlementType).toBe(EntitlementType.CREDIT_PACK);
+      expect(rule?.entitlementScope).toBe(EntitlementScope.COLLECTIVE_CLASSES);
+      expect(rule?.quantity).toBe(8);
+    });
+
+    it("creates private class pack with PRIVATE_CLASSES scope", async () => {
+      const created = await createPlan({
+        name: "Private 5-Class Pack",
+        productType: ProductType.PRIVATE_PACK,
+        classPackCreditQuantity: 5,
+        isActive: true,
+        sortOrder: 1,
+        priceType: PriceType.ONE_TIME,
+        currencyCode: "EUR",
+        unitAmountMinor: 19900,
+      });
+
+      const rule = await prisma.entitlementRule.findFirst({
+        where: { productId: created!.id, isActive: true },
+        select: { entitlementType: true, entitlementScope: true, quantity: true },
+      });
+      expect(rule?.entitlementType).toBe(EntitlementType.CREDIT_PACK);
+      expect(rule?.entitlementScope).toBe(EntitlementScope.PRIVATE_CLASSES);
+      expect(rule?.quantity).toBe(5);
+    });
+
+    it("updates private class pack credit quantity", async () => {
+      const created = await createPlan({
+        name: "Private Starter Pack",
+        productType: ProductType.PRIVATE_PACK,
+        classPackCreditQuantity: 3,
+        isActive: true,
+        sortOrder: 1,
+        priceType: PriceType.ONE_TIME,
+        currencyCode: "EUR",
+        unitAmountMinor: 12900,
+      });
+
+      await updatePlan(created!.id, {
+        name: "Private Starter Pack",
+        productType: ProductType.PRIVATE_PACK,
+        classPackCreditQuantity: 10,
+        isActive: true,
+        sortOrder: 1,
+        priceType: PriceType.ONE_TIME,
+        currencyCode: "EUR",
+        unitAmountMinor: 12900,
+      });
+
+      const rule = await prisma.entitlementRule.findFirst({
+        where: { productId: created!.id, isActive: true },
+        select: { entitlementScope: true, quantity: true },
+      });
+      expect(rule?.entitlementScope).toBe(EntitlementScope.PRIVATE_CLASSES);
+      expect(rule?.quantity).toBe(10);
+    });
+
+    it("rejects pack credits for drop-in products", async () => {
+      await expect(
+        createPlan({
+          name: "Drop-In With Invalid Pack Credits",
+          productType: ProductType.DROP_IN_CLASS,
+          classPackCreditQuantity: 5,
+          isActive: true,
+          sortOrder: 1,
+          priceType: PriceType.ONE_TIME,
+          currencyCode: "EUR",
+          unitAmountMinor: 9900,
+        }),
+      ).rejects.toThrow("CLASS_PACK_QUANTITY_NOT_ALLOWED");
+    });
   });
 });
 

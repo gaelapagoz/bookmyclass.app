@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sendEmailViaResendMock = vi.fn();
 const contactRateLimitState = new Map<string, { id: string; requestCount: number; windowStartedAt: Date }>();
-const contactRateLimitUpsertMock = vi.fn();
+const contactRateLimitFindFirstMock = vi.fn();
+const contactRateLimitCreateMock = vi.fn();
 const contactRateLimitUpdateManyMock = vi.fn();
 
 vi.mock("@/lib/email/resend-delivery", () => ({
@@ -14,10 +15,13 @@ vi.mock("@/lib/db", () => ({
     $transaction: async (operation: (tx: unknown) => Promise<unknown>) =>
       operation({
         contactMessageRateLimit: {
-          upsert: contactRateLimitUpsertMock,
           updateMany: contactRateLimitUpdateManyMock,
         },
       }),
+    contactMessageRateLimit: {
+      findFirst: (...args: unknown[]) => contactRateLimitFindFirstMock(...args),
+      create: (...args: unknown[]) => contactRateLimitCreateMock(...args),
+    },
   },
 }));
 
@@ -26,19 +30,18 @@ import { ContactFormServiceError, submitHomesiteContactForm } from "@/lib/contac
 describe("contact-form-service", () => {
   beforeEach(() => {
     contactRateLimitState.clear();
-    contactRateLimitUpsertMock.mockReset();
+    contactRateLimitFindFirstMock.mockReset();
+    contactRateLimitCreateMock.mockReset();
     contactRateLimitUpdateManyMock.mockReset();
 
-    contactRateLimitUpsertMock.mockImplementation(async ({ where, create }: { where: { ipHash: string }; create: { windowStartedAt: Date; requestCount: number } }) => {
-      const existing = contactRateLimitState.get(where.ipHash);
-      if (!existing) {
-        contactRateLimitState.set(where.ipHash, {
-          id: `rate-${where.ipHash}`,
-          requestCount: create.requestCount,
-          windowStartedAt: create.windowStartedAt,
-        });
-      }
-      return { id: `rate-${where.ipHash}` };
+    contactRateLimitFindFirstMock.mockImplementation(async ({ where }: { where: { ipHash: string } }) => {
+      return contactRateLimitState.get(where.ipHash) ?? null;
+    });
+
+    contactRateLimitCreateMock.mockImplementation(async ({ data }: { data: { ipHash: string; windowStartedAt: Date; requestCount: number } }) => {
+      const record = { id: `rate-${data.ipHash}`, requestCount: data.requestCount, windowStartedAt: data.windowStartedAt };
+      contactRateLimitState.set(data.ipHash, record);
+      return record;
     });
 
     contactRateLimitUpdateManyMock.mockImplementation(
@@ -103,7 +106,7 @@ describe("contact-form-service", () => {
     ).rejects.toMatchObject<ContactFormServiceError>({ code: "MISSING_CONTACT_FORM_TO_EMAIL" });
 
     expect(sendEmailViaResendMock).not.toHaveBeenCalled();
-    expect(contactRateLimitUpsertMock).not.toHaveBeenCalled();
+    expect(contactRateLimitFindFirstMock).not.toHaveBeenCalled();
     expect(contactRateLimitUpdateManyMock).not.toHaveBeenCalled();
   });
 

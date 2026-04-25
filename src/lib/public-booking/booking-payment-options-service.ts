@@ -12,6 +12,7 @@ import {
   StudioSessionStatus,
 } from "@prisma/client";
 import { prisma } from "../db";
+import { bookingDraftActiveBookingFilter } from "./booking-draft-service";
 
 type PlanBalance = {
   credits: number | null;
@@ -286,11 +287,7 @@ async function getBookingForOptions(bookingId: string): Promise<BookingForOption
           status: true,
           isPublished: true,
           bookings: {
-            where: {
-              status: {
-                in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
-              },
-            },
+            where: bookingDraftActiveBookingFilter(),
             select: { id: true },
           },
           classType: {
@@ -702,7 +699,12 @@ async function getPlanPurchaseOptions(requiredScope: EntitlementScope): Promise<
       isActive: true,
       isArchived: false,
       productType: {
-        in: [ProductType.CLASS_PACK, ProductType.UNLIMITED_MEMBERSHIP, ProductType.INTRO_OFFER],
+        in: [
+          ProductType.CLASS_PACK,
+          ProductType.PRIVATE_PACK,
+          ProductType.UNLIMITED_MEMBERSHIP,
+          ProductType.DROP_IN_CLASS,
+        ],
       },
       entitlementRules: {
         some: {
@@ -1413,7 +1415,12 @@ async function applyPriceSelection(input: {
           ? { productType: ProductType.DROP_IN_CLASS }
           : {
               productType: {
-                in: [ProductType.CLASS_PACK, ProductType.UNLIMITED_MEMBERSHIP, ProductType.INTRO_OFFER],
+                in: [
+                  ProductType.CLASS_PACK,
+                  ProductType.PRIVATE_PACK,
+                  ProductType.UNLIMITED_MEMBERSHIP,
+                  ProductType.DROP_IN_CLASS,
+                ],
               },
             }),
       },

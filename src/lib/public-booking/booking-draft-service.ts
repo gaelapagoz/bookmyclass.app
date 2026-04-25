@@ -29,6 +29,21 @@ export function bookingDraftActiveBookingFilter(now = new Date()): Prisma.Bookin
   };
 }
 
+export async function countActiveBookingsForSession(input: {
+  studioSessionId: string;
+  now?: Date;
+  prismaClient?: Prisma.TransactionClient | typeof prisma;
+}): Promise<number> {
+  const now = input.now ?? new Date();
+  const db = input.prismaClient ?? prisma;
+  return db.booking.count({
+    where: {
+      studioSessionId: input.studioSessionId,
+      ...bookingDraftActiveBookingFilter(now),
+    },
+  });
+}
+
 export type BookingDraftPayload = {
   bookingIntent: BookingIntent;
   consentPrivacyAccepted: boolean;

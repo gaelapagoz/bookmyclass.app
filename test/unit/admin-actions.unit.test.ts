@@ -94,6 +94,7 @@ vi.mock("@/lib/client-messages/client-message-service", () => ({
 }));
 
 import { auth } from "@/auth";
+import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 import {
   addSessionAttendeeByManager,
   adjustAdminClientCredits,
@@ -133,6 +134,7 @@ import {
   updatePlanAction,
   updateSessionAction,
   updateSiteWeeklyScheduleEntryAction,
+  uploadClassImageAction,
   uploadTeacherImageAction,
   updateUserAction,
 } from "../../src/app/admin/(private)/actions";
@@ -237,11 +239,9 @@ describe("admin actions", () => {
     formData.set("productType", "UNLIMITED_MEMBERSHIP");
     formData.set("sortOrder", "1");
     formData.set("priceName", "Monthly Membership");
-    formData.set("priceType", "RECURRING");
     formData.set("currencyCode", "EUR");
     formData.set("unitAmount", "89");
     formData.set("billingInterval", "MONTH");
-    formData.set("billingIntervalCount", "1");
     formData.set("isActive", "on");
 
     await expect(createPlanAction(formData)).rejects.toThrow("NEXT_REDIRECT:/admin/plans");
@@ -252,7 +252,6 @@ describe("admin actions", () => {
           actorRole: "ADMIN",
         },
         name: "Unlimited Monthly",
-        priceType: "RECURRING",
         currencyCode: "EUR",
         unitAmountMinor: 8900,
       }),
@@ -266,7 +265,6 @@ describe("admin actions", () => {
     formData.set("name", "Unlimited Monthly");
     formData.set("productType", "UNLIMITED_MEMBERSHIP");
     formData.set("sortOrder", "1");
-    formData.set("priceType", "RECURRING");
     formData.set("currencyCode", "EUR");
     formData.set("unitAmount", "89");
 
@@ -285,9 +283,9 @@ describe("admin actions", () => {
     formData.set("productType", "UNLIMITED_MEMBERSHIP");
     formData.set("sortOrder", "1");
     formData.set("priceName", "Monthly Membership Pro");
-    formData.set("priceType", "ONE_TIME");
     formData.set("currencyCode", "EUR");
     formData.set("unitAmount", "99");
+    formData.set("billingInterval", "MONTH");
     formData.set("isActive", "on");
 
     await expect(updatePlanAction("plan-1", formData)).rejects.toThrow("NEXT_REDIRECT:/admin/plans");
@@ -299,7 +297,6 @@ describe("admin actions", () => {
           actorRole: "ADMIN",
         },
         name: "Unlimited Monthly Pro",
-        priceType: "ONE_TIME",
         unitAmountMinor: 9900,
       }),
     );
@@ -313,11 +310,9 @@ describe("admin actions", () => {
     recurringForm.set("productType", "UNLIMITED_MEMBERSHIP");
     recurringForm.set("sortOrder", "1");
     recurringForm.set("priceName", "Monthly Membership");
-    recurringForm.set("priceType", "RECURRING");
     recurringForm.set("currencyCode", "EUR");
     recurringForm.set("unitAmount", "89");
     recurringForm.set("billingInterval", "MONTH");
-    recurringForm.set("billingIntervalCount", "1");
     recurringForm.set("isActive", "on");
 
     vi.mocked(createAdminPlan).mockRejectedValueOnce(new Error("INVALID_CURRENCY_CODE"));
@@ -332,27 +327,27 @@ describe("admin actions", () => {
 
     vi.mocked(createAdminPlan).mockRejectedValueOnce(new Error("RECURRING_INTERVAL_REQUIRED"));
     await expect(createPlanAction(recurringForm)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/plans/new?error=Recurring%20prices%20require%20a%20billing%20interval.",
+      "NEXT_REDIRECT:/admin/plans/new?error=Unlimited%20memberships%20require%20a%20billing%20interval.",
     );
 
     vi.mocked(createAdminPlan).mockRejectedValueOnce(new Error("INVALID_BILLING_INTERVAL_COUNT"));
     await expect(createPlanAction(recurringForm)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/plans/new?error=Billing%20interval%20count%20must%20be%20a%20positive%20whole%20number.",
+      "NEXT_REDIRECT:/admin/plans/new?error=Billing%20interval%20count%20must%20be%201%20for%20memberships.",
     );
 
     const oneTimeForm = new FormData();
     oneTimeForm.set("name", "Single");
     oneTimeForm.set("productType", "CLASS_PACK");
+    oneTimeForm.set("classPackCreditQuantity", "1");
     oneTimeForm.set("sortOrder", "1");
     oneTimeForm.set("priceName", "Single Price");
-    oneTimeForm.set("priceType", "ONE_TIME");
     oneTimeForm.set("currencyCode", "EUR");
     oneTimeForm.set("unitAmount", "39");
     oneTimeForm.set("isActive", "on");
 
     vi.mocked(createAdminPlan).mockRejectedValueOnce(new Error("ONE_TIME_INTERVAL_FORBIDDEN"));
     await expect(createPlanAction(oneTimeForm)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/plans/new?error=One-time%20prices%20cannot%20include%20recurring%20interval%20fields.",
+      "NEXT_REDIRECT:/admin/plans/new?error=Billing%20interval%20can%20only%20be%20set%20for%20unlimited%20memberships.",
     );
   });
 
@@ -365,9 +360,9 @@ describe("admin actions", () => {
     formData.set("productType", "UNLIMITED_MEMBERSHIP");
     formData.set("sortOrder", "1");
     formData.set("priceName", "Missing Price");
-    formData.set("priceType", "ONE_TIME");
     formData.set("currencyCode", "EUR");
     formData.set("unitAmount", "99");
+    formData.set("billingInterval", "MONTH");
     formData.set("isActive", "on");
 
     await expect(updatePlanAction("plan-missing", formData)).rejects.toThrow(
@@ -468,6 +463,45 @@ describe("admin actions", () => {
     );
   });
 
+  it("creates class pack plan with explicit credit allocation", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(createAdminPlan).mockResolvedValue({ id: "plan-credit-1" });
+
+    const formData = new FormData();
+    formData.set("name", "Class Pack 7");
+    formData.set("productType", "CLASS_PACK");
+    formData.set("classPackCreditQuantity", "7");
+    formData.set("sortOrder", "1");
+    formData.set("currencyCode", "EUR");
+    formData.set("unitAmount", "79");
+    formData.set("isActive", "on");
+
+    await expect(createPlanAction(formData)).rejects.toThrow("NEXT_REDIRECT:/admin/plans");
+    expect(createAdminPlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        productType: "CLASS_PACK",
+        classPackCreditQuantity: 7,
+      }),
+    );
+  });
+
+  it("rejects class pack create payload when credit allocation is missing", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+
+    const formData = new FormData();
+    formData.set("name", "Class Pack Missing Qty");
+    formData.set("productType", "CLASS_PACK");
+    formData.set("sortOrder", "1");
+    formData.set("currencyCode", "EUR");
+    formData.set("unitAmount", "59");
+    formData.set("isActive", "on");
+
+    await expect(createPlanAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/plans/new?error=Please%20complete%20all%20required%20plan%20fields.",
+    );
+    expect(createAdminPlan).not.toHaveBeenCalled();
+  });
+
   it("blocks ADMIN create-user attempt assigning MASTER_ADMIN before service call", async () => {
     vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
 
@@ -509,6 +543,7 @@ describe("admin actions", () => {
     formData.set("userId", "client-1");
     formData.set("entitlementId", "ent-1");
     formData.set("creditDelta", "2");
+    formData.set("reason", "Manual top-up");
 
     await expect(adjustClientCreditsAction(formData)).rejects.toThrow(
       "NEXT_REDIRECT:/admin/users/client-1/edit?success=Credits%20updated.",
@@ -542,6 +577,7 @@ describe("admin actions", () => {
     formData.set("userId", "client-1");
     formData.set("entitlementId", "ent-1");
     formData.set("creditDelta", "1");
+    formData.set("reason", "Manual adjustment");
 
     await expect(adjustClientCreditsAction(formData)).rejects.toThrow(
       "NEXT_REDIRECT:/admin/users/client-1/edit?error=Your%20admin%20session%20is%20no%20longer%20valid.%20Sign%20in%20again%20and%20retry.",
@@ -818,5 +854,66 @@ describe("admin actions", () => {
       "NEXT_REDIRECT:/admin/manage-site?success=Cancellation%20period%20updated.",
     );
     expect(updateAdminCancellationPeriodHours).toHaveBeenCalledWith(36);
+  });
+
+  it("rejects addSessionAttendeeAction when CSRF check fails", async () => {
+    vi.mocked(assertSameOriginServerAction).mockRejectedValueOnce(new Error("CSRF_INVALID_ORIGIN"));
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+
+    const formData = new FormData();
+    formData.set("clientId", "client-1");
+
+    await expect(addSessionAttendeeAction("session-1", formData)).rejects.toThrow("CSRF_INVALID_ORIGIN");
+    expect(addSessionAttendeeByManager).not.toHaveBeenCalled();
+  });
+
+  it("rejects removeSessionAttendeeAction when CSRF check fails", async () => {
+    vi.mocked(assertSameOriginServerAction).mockRejectedValueOnce(new Error("CSRF_INVALID_ORIGIN"));
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+
+    const formData = new FormData();
+    formData.set("bookingId", "booking-1");
+
+    await expect(removeSessionAttendeeAction("session-1", formData)).rejects.toThrow("CSRF_INVALID_ORIGIN");
+    expect(removeSessionAttendeeByManager).not.toHaveBeenCalled();
+  });
+
+  it("strips path traversal characters from userId when uploading teacher image", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(updateAdminTeacherImage).mockResolvedValue({
+      id: "teacher-1",
+      image: "/images/instructors/teacher-teacher-1-1.png",
+    });
+    vi.spyOn(Date, "now").mockReturnValue(1);
+
+    const formData = new FormData();
+    formData.set("userId", "../../../etc/teacher-1");
+    formData.set("teacherImage", new File(["png"], "teacher.png", { type: "image/png" }));
+
+    await expect(uploadTeacherImageAction(formData)).rejects.toThrow("NEXT_REDIRECT");
+
+    const [writtenPath] = vi.mocked(writeFileMock).mock.calls[0] as [string, Buffer];
+    expect(writtenPath).not.toContain("..");
+    expect(writtenPath).not.toContain("/etc/");
+    expect(updateAdminTeacherImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imagePath: expect.not.stringContaining(".."),
+      }),
+    );
+  });
+
+  it("strips path traversal characters from classTypeId when uploading class image", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.spyOn(Date, "now").mockReturnValue(2);
+
+    const formData = new FormData();
+    formData.set("classTypeId", "../../../etc/class-1");
+    formData.set("classImage", new File(["png"], "class.png", { type: "image/png" }));
+
+    await expect(uploadClassImageAction(formData)).rejects.toThrow("NEXT_REDIRECT");
+
+    const [writtenPath] = vi.mocked(writeFileMock).mock.calls[0] as [string, Buffer];
+    expect(writtenPath).not.toContain("..");
+    expect(writtenPath).not.toContain("/etc/");
   });
 });

@@ -26,7 +26,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { requireAdminSession } from "@/lib/auth/require-auth";
+import { requireAdminSession, requireTeacherSession } from "@/lib/auth/require-auth";
 
 describe("requireAdminSession", () => {
   beforeEach(() => {
@@ -88,5 +88,74 @@ describe("requireAdminSession", () => {
     const session = await requireAdminSession({ throwOnFailure: true });
 
     expect(session.user.role).toBe("MASTER_ADMIN");
+  });
+});
+
+describe("requireTeacherSession", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("throws UNAUTHENTICATED when session is missing", async () => {
+    authMock.mockResolvedValue(null);
+
+    await expect(requireTeacherSession({ throwOnFailure: true })).rejects.toThrow("NEXT_REDIRECT");
+  });
+
+  it("throws UNAUTHENTICATED when DB re-check cannot find user", async () => {
+    authMock.mockResolvedValue({ user: { id: "teacher-1", role: "TEACHER" } });
+    findUniqueMock.mockResolvedValue(null);
+
+    await expect(requireTeacherSession({ throwOnFailure: true })).rejects.toThrow("UNAUTHENTICATED");
+  });
+
+  it("throws UNAUTHENTICATED when DB user is deactivated (JWT still valid)", async () => {
+    authMock.mockResolvedValue({ user: { id: "teacher-1", role: "TEACHER" } });
+    findUniqueMock.mockResolvedValue({
+      role: "TEACHER",
+      activationStatus: "DISABLED",
+      isActive: false,
+    });
+
+    await expect(requireTeacherSession({ throwOnFailure: true })).rejects.toThrow("UNAUTHENTICATED");
+  });
+
+  it("throws UNAUTHENTICATED when DB user isActive is false", async () => {
+    authMock.mockResolvedValue({ user: { id: "teacher-1", role: "TEACHER" } });
+    findUniqueMock.mockResolvedValue({
+      role: "TEACHER",
+      activationStatus: "ACTIVE",
+      isActive: false,
+    });
+
+    await expect(requireTeacherSession({ throwOnFailure: true })).rejects.toThrow("UNAUTHENTICATED");
+  });
+
+  it("throws FORBIDDEN when DB role is not TEACHER (JWT role was spoofed)", async () => {
+    authMock.mockResolvedValue({ user: { id: "client-1", role: "TEACHER" } });
+    findUniqueMock.mockResolvedValue({
+      role: "CLIENT",
+      activationStatus: "ACTIVE",
+      isActive: true,
+    });
+
+    await expect(requireTeacherSession({ throwOnFailure: true })).rejects.toThrow("FORBIDDEN");
+  });
+
+  it("returns session with TEACHER role on success", async () => {
+    authMock.mockResolvedValue({
+      user: { id: "teacher-1", role: "TEACHER", email: "teacher@example.test" },
+      expires: "2099-01-01T00:00:00.000Z",
+    });
+    findUniqueMock.mockResolvedValue({
+      role: "TEACHER",
+      activationStatus: "ACTIVE",
+      isActive: true,
+    });
+
+    const session = await requireTeacherSession({ throwOnFailure: true });
+
+    expect(session.user.role).toBe("TEACHER");
+    expect(session.user.id).toBe("teacher-1");
   });
 });

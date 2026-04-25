@@ -430,7 +430,7 @@ describe("booking payment options api", () => {
     expect(body.paymentOptions.newPlanOptions.some((option) => option.productId === adminPlan?.id)).toBe(true);
   });
 
-  it("keeps admin-created private-class plans out of collective booking options", async () => {
+  it("keeps admin-created private-pack plans out of collective booking options", async () => {
     const fixture = await createFixture({
       bookingIntent: BookingIntent.USE_PLAN,
       createActivePlanCount: 0,
@@ -438,7 +438,7 @@ describe("booking payment options api", () => {
 
     const privatePlan = await createAdminTestPlan({
       name: "Admin Private Session",
-      productType: ProductType.PRIVATE_CLASS,
+      productType: ProductType.PRIVATE_PACK,
       isActive: true,
       sortOrder: 10,
       priceType: PriceType.ONE_TIME,
@@ -655,7 +655,7 @@ describe("booking payment options api", () => {
       data: {
         name: "Private Session Product",
         slug: `private-plan-${Date.now()}`,
-        productType: ProductType.PRIVATE_CLASS,
+        productType: ProductType.PRIVATE_PACK,
         isActive: true,
         isArchived: false,
         sortOrder: 99,
@@ -676,7 +676,7 @@ describe("booking payment options api", () => {
     await prisma.entitlementRule.create({
       data: {
         productId: privateProduct.id,
-        entitlementType: EntitlementType.SINGLE_USE,
+        entitlementType: EntitlementType.CREDIT_PACK,
         entitlementScope: EntitlementScope.PRIVATE_CLASSES,
         quantity: 1,
         isActive: true,

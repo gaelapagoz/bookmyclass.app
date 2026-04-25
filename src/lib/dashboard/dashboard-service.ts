@@ -217,17 +217,26 @@ async function toBookingItem(input: {
 }
 
 async function getCancellationCutoffHours(): Promise<number> {
-  const policy = await prisma.bookingPolicy.upsert({
+  const existing = await prisma.bookingPolicy.findFirst({
     where: { scope: "GLOBAL" },
-    create: {
-      scope: "GLOBAL",
-      cancellationCutoffHours: 24,
-    },
-    update: {},
     select: { cancellationCutoffHours: true },
   });
+  if (existing) return normalizeBookingCancellationWindowHours(existing.cancellationCutoffHours);
 
-  return normalizeBookingCancellationWindowHours(policy.cancellationCutoffHours);
+  try {
+    const created = await prisma.bookingPolicy.create({
+      data: { scope: "GLOBAL", cancellationCutoffHours: 24 },
+      select: { cancellationCutoffHours: true },
+    });
+    return normalizeBookingCancellationWindowHours(created.cancellationCutoffHours);
+  } catch {
+    // Race: another concurrent request created it — read it back.
+    const fallback = await prisma.bookingPolicy.findFirst({
+      where: { scope: "GLOBAL" },
+      select: { cancellationCutoffHours: true },
+    });
+    return normalizeBookingCancellationWindowHours(fallback?.cancellationCutoffHours ?? 24);
+  }
 }
 
 export async function getCreditsLeft(clientId: string): Promise<number> {
@@ -969,4 +978,178 @@ export async function getDashboardLoyaltyPlaceholder(clientId: string): Promise<
   });
 
   return result._sum.amount ?? 0;
+}
+
+const ACTIVITY_ALLOWED_FILTERS = ["all", "bookings", "orders"] as const;
+type ActivityFilter = (typeof ACTIVITY_ALLOWED_FILTERS)[number];
+const ACTIVITY_DEFAULT_PAGE_SIZE = 20;
+const ACTIVITY_MAX_PAGE_SIZE = 50;
+
+export type ActivityItem = {
+  id: string;
+  type: "BOOKING" | "ORDER";
+  label: string;
+  detail: string | null;
+  status: string;
+  timestamp: string;
+};
+
+export type ActivityPage = {
+  items: ActivityItem[];
+  filter: ActivityFilter;
+  page: number;
+  pageSize: number;
+  total: number;
+};
+
+function normalizeActivityFilter(raw: string | null | undefined): ActivityFilter {
+  if (ACTIVITY_ALLOWED_FILTERS.includes(raw as ActivityFilter)) {
+    return raw as ActivityFilter;
+  }
+  return "all";
+}
+
+function normalizeActivityPage(raw: string | null | undefined): number {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 ? n : 1;
+}
+
+function normalizeActivityPageSize(raw: string | null | undefined): number {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) return ACTIVITY_DEFAULT_PAGE_SIZE;
+  return Math.min(n, ACTIVITY_MAX_PAGE_SIZE);
+}
+
+export async function getClientActivityPage(
+  clientId: string,
+  params: { filter?: string | null; page?: string | null; pageSize?: string | null },
+): Promise<ActivityPage> {
+  const filter = normalizeActivityFilter(params.filter);
+  const page = normalizeActivityPage(params.page);
+  const pageSize = normalizeActivityPageSize(params.pageSize);
+  const skip = (page - 1) * pageSize;
+
+  const bookingItems: ActivityItem[] = [];
+  const orderItems: ActivityItem[] = [];
+
+  if (filter === "all" || filter === "bookings") {
+    const bookings = await prisma.booking.findMany({
+      where: { clientId },
+      orderBy: { bookedAt: "desc" },
+      skip: filter === "bookings" ? skip : 0,
+      take: filter === "bookings" ? pageSize : 200,
+      select: {
+        id: true,
+        status: true,
+        bookedAt: true,
+        studioSession: {
+          select: { title: true, startsAt: true },
+        },
+      },
+    });
+    for (const b of bookings) {
+      bookingItems.push({
+        id: b.id,
+        type: "BOOKING",
+        label: b.studioSession.title,
+        detail: b.studioSession.startsAt.toISOString(),
+        status: b.status,
+        timestamp: b.bookedAt.toISOString(),
+      });
+    }
+  }
+
+  if (filter === "all" || filter === "orders") {
+    const orders = await prisma.order.findMany({
+      where: { clientId },
+      orderBy: { placedAt: "desc" },
+      skip: filter === "orders" ? skip : 0,
+      take: filter === "orders" ? pageSize : 200,
+      select: {
+        id: true,
+        status: true,
+        placedAt: true,
+        totalAmountMinor: true,
+        currencyCode: true,
+        items: {
+          take: 1,
+          select: { productNameSnapshot: true },
+        },
+      },
+    });
+    for (const o of orders) {
+      const label = o.items[0]?.productNameSnapshot ?? "Order";
+      const amount = `${(o.totalAmountMinor / 100).toFixed(2)} ${o.currencyCode}`;
+      orderItems.push({
+        id: o.id,
+        type: "ORDER",
+        label,
+        detail: amount,
+        status: o.status,
+        timestamp: o.placedAt.toISOString(),
+      });
+    }
+  }
+
+  const combined = [...bookingItems, ...orderItems].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+  );
+
+  const total = combined.length;
+  const paginated = filter === "all" ? combined.slice(skip, skip + pageSize) : combined;
+
+  return {
+    items: paginated,
+    filter,
+    page,
+    pageSize,
+    total,
+  };
+}
+
+export type ClientSubscriptionRecoveryState =
+  | { status: "HEALTHY" }
+  | { status: "PAST_DUE"; contractId: string; productName: string }
+  | { status: "NONE" };
+
+export async function getClientSubscriptionRecoveryState(
+  clientId: string,
+): Promise<ClientSubscriptionRecoveryState> {
+  const now = new Date();
+
+  const active = await prisma.subscriptionContract.findFirst({
+    where: {
+      clientId,
+      status: SubscriptionStatus.ACTIVE,
+      currentPeriodEnd: { gt: now },
+      OR: [{ endedAt: null }, { endedAt: { gt: now } }],
+    },
+    select: { id: true },
+  });
+
+  if (active) {
+    return { status: "HEALTHY" };
+  }
+
+  const pastDue = await prisma.subscriptionContract.findFirst({
+    where: {
+      clientId,
+      status: SubscriptionStatus.PAST_DUE,
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      product: { select: { name: true } },
+    },
+  });
+
+  if (pastDue) {
+    return {
+      status: "PAST_DUE",
+      contractId: pastDue.id,
+      productName: pastDue.product.name,
+    };
+  }
+
+  return { status: "NONE" };
 }

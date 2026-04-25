@@ -1,7 +1,7 @@
 import "./helpers/setup-env";
 
 import { MarketingCampaignStatus, MarketingSubscriptionStatus, Role } from "@prisma/client";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createMarketingCampaignFlowDraft,
@@ -14,9 +14,24 @@ import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
 
 describe("marketing final send", () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalResendApiKey = process.env.RESEND_API_KEY;
+  const originalE2eMode = process.env.E2E_TEST_MODE;
+  const originalTrackingSecret = process.env.MARKETING_TRACKING_SECRET;
+
   beforeEach(async () => {
     await resetDb();
     delete process.env.RESEND_API_KEY;
+    process.env.NODE_ENV = "test";
+    delete process.env.E2E_TEST_MODE;
+    process.env.MARKETING_TRACKING_SECRET = process.env.MARKETING_TRACKING_SECRET || "test-marketing-tracking-secret";
+  });
+
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
+    process.env.RESEND_API_KEY = originalResendApiKey;
+    process.env.E2E_TEST_MODE = originalE2eMode;
+    process.env.MARKETING_TRACKING_SECRET = originalTrackingSecret;
   });
 
   it("sends from Step 4 using persisted block content and phase-3 recipient resolution", async () => {
@@ -187,5 +202,124 @@ describe("marketing final send", () => {
     await expect(sendMarketingCampaignFlowNow({ campaignId: draft!.id })).rejects.toThrow(
       "MARKETING_CAMPAIGN_ALREADY_SENT",
     );
+  });
+
+  it("does not mark campaign SENT when provider config is missing outside deterministic mode", async () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.E2E_TEST_MODE;
+    delete process.env.RESEND_API_KEY;
+    process.env.MARKETING_TRACKING_SECRET = "test-marketing-tracking-secret";
+
+    const admin = await prisma.user.create({
+      data: {
+        name: "Admin",
+        firstName: "Admin",
+        lastName: "User",
+        email: `admin.missing-provider.${Date.now()}@example.test`,
+        role: Role.ADMIN,
+      },
+    });
+    const recipient = await prisma.user.create({
+      data: {
+        name: "Recipient",
+        firstName: "Recipient",
+        lastName: "User",
+        email: `recipient.missing-provider.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+        marketingSubscriptionStatus: MarketingSubscriptionStatus.SUBSCRIBED,
+      },
+    });
+    expect(recipient.id).toBeTruthy();
+
+    const draft = await createMarketingCampaignFlowDraft({
+      createdById: admin.id,
+      name: "Missing Provider Config Campaign",
+      goalPrompt: "",
+      generatedDraft: {
+        subject: "Provider config missing",
+        previewText: "Preview",
+        contentJson: { blocks: [{ type: "paragraph", contentHtml: "<p>Body</p>" }] },
+      },
+    });
+    await updateMarketingCampaignFlowDraft(draft!.id, {
+      currentStep: "STEP_4",
+      fromEmail: "no-reply@bookmyclass.app",
+      replyTo: "no-reply@bookmyclass.app",
+    });
+
+    await expect(sendMarketingCampaignFlowNow({ campaignId: draft!.id })).rejects.toThrow(
+      "MARKETING_CAMPAIGN_DELIVERY_INCOMPLETE",
+    );
+
+    const persistedCampaign = await prisma.marketingCampaign.findUnique({
+      where: { id: draft!.id },
+      select: { status: true, sentAt: true },
+    });
+    expect(persistedCampaign?.status).toBe(MarketingCampaignStatus.SENDING);
+    expect(persistedCampaign?.sentAt).toBeNull();
+  });
+
+  it("does not mark campaign SENT when provider send fails outside deterministic mode", async () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.E2E_TEST_MODE;
+    process.env.RESEND_API_KEY = "resend-failing-key";
+    process.env.MARKETING_TRACKING_SECRET = "test-marketing-tracking-secret";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "provider down" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    try {
+      const admin = await prisma.user.create({
+        data: {
+          name: "Admin",
+          firstName: "Admin",
+          lastName: "User",
+          email: `admin.provider-failure.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      });
+      await prisma.user.create({
+        data: {
+          name: "Recipient",
+          firstName: "Recipient",
+          lastName: "User",
+          email: `recipient.provider-failure.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+          marketingSubscriptionStatus: MarketingSubscriptionStatus.SUBSCRIBED,
+        },
+      });
+
+      const draft = await createMarketingCampaignFlowDraft({
+        createdById: admin.id,
+        name: "Provider Failure Campaign",
+        goalPrompt: "",
+        generatedDraft: {
+          subject: "Provider failure",
+          previewText: "Preview",
+          contentJson: { blocks: [{ type: "paragraph", contentHtml: "<p>Body</p>" }] },
+        },
+      });
+      await updateMarketingCampaignFlowDraft(draft!.id, {
+        currentStep: "STEP_4",
+        fromEmail: "no-reply@bookmyclass.app",
+        replyTo: "no-reply@bookmyclass.app",
+      });
+
+      await expect(sendMarketingCampaignFlowNow({ campaignId: draft!.id })).rejects.toThrow(
+        "MARKETING_CAMPAIGN_DELIVERY_INCOMPLETE",
+      );
+
+      const persistedCampaign = await prisma.marketingCampaign.findUnique({
+        where: { id: draft!.id },
+        select: { status: true, sentAt: true },
+      });
+      expect(persistedCampaign?.status).toBe(MarketingCampaignStatus.SENDING);
+      expect(persistedCampaign?.sentAt).toBeNull();
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 });

@@ -1,6 +1,8 @@
 import "./helpers/setup-env";
 
 import {
+  BookingIntent,
+  BookingPaymentSelection,
   AttendanceSource,
   AttendanceStatus,
   BookingStatus,
@@ -19,6 +21,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   addSessionAttendeeByManager,
   getAdminSessionById,
+  getAdminSessionsData,
   getAdminSessionOptions,
   removeSessionAttendeeByManager,
 } from "../../src/lib/admin/admin-service";
@@ -609,6 +612,142 @@ describe("admin session attendee management service", () => {
       addSessionAttendeeByManager({
         studioSessionId: session.id,
         clientId: clientC.id,
+        actor: {
+          userId: admin.id,
+          role: Role.ADMIN,
+        },
+      }),
+    ).rejects.toThrow("SESSION_FULL");
+  });
+
+  it("treats pending draft at 15-minute cutoff as expired for manager capacity and admin booked count", async () => {
+    const { session } = await createSessionFixture();
+    const [admin, draftClient, activeClient] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Admin Draft Capacity",
+          email: `admin.draft.capacity.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Draft Client",
+          email: `draft.client.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Active Client",
+          email: `active.client.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+    ]);
+
+    await prisma.studioSession.update({
+      where: { id: session.id },
+      data: { capacity: 1 },
+    });
+
+    await grantCollectiveCredits({ clientId: draftClient.id, amount: 1 });
+    await grantCollectiveCredits({ clientId: activeClient.id, amount: 1 });
+
+    const expiredDraftCreatedAt = new Date(Date.now() - 15 * 60 * 1000);
+    await prisma.booking.create({
+      data: {
+        clientId: draftClient.id,
+        studioSessionId: session.id,
+        status: BookingStatus.PENDING,
+        bookingIntent: BookingIntent.USE_PLAN,
+        paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
+        draftAmountMinor: 0,
+        draftCurrencyCode: "EUR",
+        customerName: draftClient.name,
+        customerEmail: draftClient.email,
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+        consentAcceptedAt: expiredDraftCreatedAt,
+        createdAt: expiredDraftCreatedAt,
+      },
+    });
+
+    const added = await addSessionAttendeeByManager({
+      studioSessionId: session.id,
+      clientId: activeClient.id,
+      actor: {
+        userId: admin.id,
+        role: Role.ADMIN,
+      },
+    });
+    expect(added.status).toBe(BookingStatus.CONFIRMED);
+
+    const sessions = await getAdminSessionsData({
+      weekStart: new Date(session.startsAt.getTime() - 24 * 60 * 60 * 1000),
+      weekEnd: new Date(session.startsAt.getTime() + 24 * 60 * 60 * 1000),
+    });
+    const target = sessions.find((item) => item.id === session.id);
+    expect(target?.bookedCount).toBe(1);
+  });
+
+  it("treats pending drafts inside hold window as active capacity", async () => {
+    const { session } = await createSessionFixture();
+    const [admin, draftClient, blockedClient] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Admin Window Capacity",
+          email: `admin.window.capacity.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Draft Window Client",
+          email: `draft.window.client.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Blocked Window Client",
+          email: `blocked.window.client.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+    ]);
+
+    await prisma.studioSession.update({
+      where: { id: session.id },
+      data: { capacity: 1 },
+    });
+
+    await grantCollectiveCredits({ clientId: draftClient.id, amount: 1 });
+    await grantCollectiveCredits({ clientId: blockedClient.id, amount: 1 });
+
+    const activeDraftCreatedAt = new Date(Date.now() - 14 * 60 * 1000);
+    await prisma.booking.create({
+      data: {
+        clientId: draftClient.id,
+        studioSessionId: session.id,
+        status: BookingStatus.PENDING,
+        bookingIntent: BookingIntent.USE_PLAN,
+        paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
+        draftAmountMinor: 0,
+        draftCurrencyCode: "EUR",
+        customerName: draftClient.name,
+        customerEmail: draftClient.email,
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+        consentAcceptedAt: activeDraftCreatedAt,
+        createdAt: activeDraftCreatedAt,
+      },
+    });
+
+    await expect(
+      addSessionAttendeeByManager({
+        studioSessionId: session.id,
+        clientId: blockedClient.id,
         actor: {
           userId: admin.id,
           role: Role.ADMIN,

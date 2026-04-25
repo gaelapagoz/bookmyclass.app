@@ -103,8 +103,9 @@ Evidence label legend used in this file:
   - Customer protected area gated by `requireVerifiedUser`.
   - Evidence status: Confirmed from repo (`src/lib/auth/require-auth.ts`, `src/app/admin/(private)/layout.tsx`, `src/app/(protected)/layout.tsx`).
 - Admin/MasterAdmin behavior:
-  - Treated equivalently by `isAdminRole`; no code-evidenced fine-grained split.
-  - Evidence status: Confirmed from repo (`src/lib/auth/admin-access.ts`), Inferred from repo (absence of differentiated checks).
+  - Shared route/admin access checks use `isAdminRole`.
+  - Privileged `MASTER_ADMIN` assignment/management is enforced server-side in admin user create/update flows.
+  - Evidence status: Confirmed from repo (`src/lib/auth/admin-access.ts`, `src/lib/admin/admin-service.ts`, `src/app/admin/(private)/actions.ts`).
 - Role escalation protections:
   - Admin session required for admin mutation paths.
   - `MASTER_ADMIN` assignment/management is protected server-side: `ADMIN` actors are blocked and `MASTER_ADMIN` is required for privileged role operations, with UI defense-in-depth reflecting that boundary.

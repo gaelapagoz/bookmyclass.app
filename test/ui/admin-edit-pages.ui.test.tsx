@@ -182,7 +182,7 @@ describe("admin edit pages", () => {
       "name",
       "creditDelta",
     );
-    expect(within(adjustForm).getByRole("textbox", { name: "Audit reason (optional)" })).toHaveAttribute("name", "reason");
+    expect(within(adjustForm).getByRole("textbox", { name: "Audit reason" })).toHaveAttribute("name", "reason");
 
     const createForm = screen.getByTestId("client-credits-create-form");
     expect(within(createForm).getByDisplayValue("client-1")).toHaveAttribute("name", "userId");
@@ -190,7 +190,7 @@ describe("admin edit pages", () => {
       "name",
       "creditDelta",
     );
-    expect(within(createForm).getByRole("textbox", { name: "Audit reason (optional)" })).toHaveAttribute("name", "reason");
+    expect(within(createForm).getByRole("textbox", { name: "Audit reason" })).toHaveAttribute("name", "reason");
   });
   it("shows restricted master admin management UI to ADMIN users", async () => {
     vi.mocked(requireAdminSession).mockResolvedValue({

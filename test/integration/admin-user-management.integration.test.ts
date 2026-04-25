@@ -1,6 +1,16 @@
 import "./helpers/setup-env";
 
-import { EntitlementScope, EntitlementType, MarketingSubscriptionStatus, ProductType, Role } from "@prisma/client";
+import {
+  BillingInterval,
+  EntitlementScope,
+  EntitlementType,
+  MarketingSubscriptionStatus,
+  PaymentProvider,
+  PriceType,
+  ProductType,
+  Role,
+  SubscriptionStatus,
+} from "@prisma/client";
 import { hash } from "bcryptjs";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -10,6 +20,7 @@ import {
   bulkRemoveClientMarketingSegments,
   bulkSetClientMarketingSubscriptionStatus,
   createAdminUser,
+  getAdminClientRecoveryState,
   updateAdminTeacherImage,
   updateAdminUser,
 } from "../../src/lib/admin/admin-service";
@@ -334,6 +345,211 @@ describe("admin user management service", () => {
     expect(latestEntry?.notes).toBe("Manual correction");
   });
 
+  it("rejects credit adjustment when reason is empty", async () => {
+    const [client, admin] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Client User",
+          firstName: "Client",
+          lastName: "User",
+          email: `client.reason.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Admin User",
+          firstName: "Admin",
+          lastName: "User",
+          email: `admin.reason.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+    ]);
+
+    const product = await prisma.product.create({
+      data: {
+        name: "Credit Pack",
+        slug: `credit-pack-reason-${Date.now()}`,
+        productType: ProductType.CLASS_PACK,
+        isActive: true,
+        isArchived: false,
+        sortOrder: 1,
+      },
+    });
+    await prisma.entitlementRule.create({
+      data: {
+        productId: product.id,
+        entitlementType: EntitlementType.CREDIT_PACK,
+        entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+        quantity: 10,
+        isActive: true,
+      },
+    });
+
+    await expect(
+      adjustAdminClientCredits({
+        clientId: client.id,
+        adminUserId: admin.id,
+        productId: product.id,
+        amount: 2,
+        reason: "   ",
+      }),
+    ).rejects.toThrow("CREDIT_ADJUSTMENT_REASON_REQUIRED");
+  });
+
+  it("rejects negative adjustment that would make entitlement balance negative", async () => {
+    const [client, admin] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Client User",
+          firstName: "Client",
+          lastName: "User",
+          email: `client.negative.reject.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Admin User",
+          firstName: "Admin",
+          lastName: "User",
+          email: `admin.negative.reject.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+    ]);
+
+    const product = await prisma.product.create({
+      data: {
+        name: "Credit Pack",
+        slug: `credit-pack-negative-reject-${Date.now()}`,
+        productType: ProductType.CLASS_PACK,
+        isActive: true,
+        isArchived: false,
+        sortOrder: 1,
+      },
+    });
+    await prisma.entitlementRule.create({
+      data: {
+        productId: product.id,
+        entitlementType: EntitlementType.CREDIT_PACK,
+        entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+        quantity: 10,
+        isActive: true,
+      },
+    });
+
+    await adjustAdminClientCredits({
+      clientId: client.id,
+      adminUserId: admin.id,
+      productId: product.id,
+      amount: 1,
+      reason: "Seed one credit",
+    });
+    const entitlement = await prisma.clientEntitlement.findFirstOrThrow({
+      where: {
+        clientId: client.id,
+        productId: product.id,
+      },
+      select: { id: true },
+    });
+
+    await expect(
+      adjustAdminClientCredits({
+        clientId: client.id,
+        adminUserId: admin.id,
+        entitlementId: entitlement.id,
+        amount: -2,
+        reason: "Overdraw attempt",
+      }),
+    ).rejects.toThrow("CREDIT_BALANCE_NEGATIVE_FORBIDDEN");
+  });
+
+  it("accepts valid negative adjustment and preserves ledger audit metadata", async () => {
+    const [client, admin] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Client User",
+          firstName: "Client",
+          lastName: "User",
+          email: `client.negative.ok.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Admin User",
+          firstName: "Admin",
+          lastName: "User",
+          email: `admin.negative.ok.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+    ]);
+
+    const product = await prisma.product.create({
+      data: {
+        name: "Credit Pack",
+        slug: `credit-pack-negative-ok-${Date.now()}`,
+        productType: ProductType.CLASS_PACK,
+        isActive: true,
+        isArchived: false,
+        sortOrder: 1,
+      },
+    });
+    await prisma.entitlementRule.create({
+      data: {
+        productId: product.id,
+        entitlementType: EntitlementType.CREDIT_PACK,
+        entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+        quantity: 10,
+        isActive: true,
+      },
+    });
+
+    await adjustAdminClientCredits({
+      clientId: client.id,
+      adminUserId: admin.id,
+      productId: product.id,
+      amount: 3,
+      reason: "Seed credits",
+    });
+    const entitlement = await prisma.clientEntitlement.findFirstOrThrow({
+      where: {
+        clientId: client.id,
+        productId: product.id,
+      },
+      select: { id: true },
+    });
+
+    await adjustAdminClientCredits({
+      clientId: client.id,
+      adminUserId: admin.id,
+      entitlementId: entitlement.id,
+      amount: -2,
+      reason: "Correction down by 2",
+    });
+
+    const latestEntry = await prisma.creditLedgerEntry.findFirst({
+      where: {
+        clientId: client.id,
+        entitlementId: entitlement.id,
+        amount: -2,
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        createdById: true,
+        notes: true,
+        happenedAt: true,
+      },
+    });
+
+    expect(latestEntry?.createdById).toBe(admin.id);
+    expect(latestEntry?.notes).toBe("Correction down by 2");
+    expect(latestEntry?.happenedAt).toBeTruthy();
+  });
+
   it("stores teacher image path reference on upload flow", async () => {
     const [teacher, admin] = await Promise.all([
       prisma.user.create({
@@ -611,5 +827,125 @@ describe("admin user management service", () => {
     ]);
 
     expect(filtered).toEqual([{ userId: subscribedUser.id, email: subscribedUser.email.toLowerCase() }]);
+  });
+
+  describe("admin client recovery state", () => {
+    async function makeAdminActor() {
+      const admin = await prisma.user.create({
+        data: {
+          name: "Recovery Admin",
+          email: `recovery.admin.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+          emailVerified: new Date(),
+        },
+        select: { id: true, role: true },
+      });
+      return { actorId: admin.id, actorRole: admin.role };
+    }
+
+    async function makeClientWithSubscription(status: SubscriptionStatus) {
+      const client = await prisma.user.create({
+        data: {
+          name: "Recovery Client",
+          email: `recovery.client.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+        select: { id: true },
+      });
+      const product = await prisma.product.create({
+        data: {
+          name: "Recovery Membership",
+          slug: `recovery-membership-${Date.now()}`,
+          productType: ProductType.UNLIMITED_MEMBERSHIP,
+          isActive: true,
+          isArchived: false,
+          sortOrder: 0,
+        },
+      });
+      const price = await prisma.price.create({
+        data: {
+          productId: product.id,
+          lookupKey: `recovery-price-${Date.now()}`,
+          name: "Monthly",
+          priceType: PriceType.RECURRING,
+          currencyCode: "EUR",
+          unitAmountMinor: 4900,
+          billingInterval: BillingInterval.MONTH,
+          billingIntervalCount: 1,
+          isActive: true,
+          isArchived: false,
+        },
+      });
+      const contract = await prisma.subscriptionContract.create({
+        data: {
+          clientId: client.id,
+          productId: product.id,
+          priceId: price.id,
+          status,
+          startsAt: new Date(),
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          provider: PaymentProvider.STRIPE,
+          providerSubscriptionReference: `sub_recovery_${Date.now()}`,
+        },
+      });
+      return { client, product, contract };
+    }
+
+    it("returns HEALTHY for active subscription", async () => {
+      const actor = await makeAdminActor();
+      const { client } = await makeClientWithSubscription(SubscriptionStatus.ACTIVE);
+
+      const state = await getAdminClientRecoveryState({ clientId: client.id, actor });
+      expect(state.status).toBe("HEALTHY");
+    });
+
+    it("returns PAST_DUE for past_due subscription", async () => {
+      const actor = await makeAdminActor();
+      const { client } = await makeClientWithSubscription(SubscriptionStatus.PAST_DUE);
+
+      const state = await getAdminClientRecoveryState({ clientId: client.id, actor });
+      expect(state.status).toBe("PAST_DUE");
+    });
+
+    it("returns CANCELLED for cancelled subscription", async () => {
+      const actor = await makeAdminActor();
+      const { client } = await makeClientWithSubscription(SubscriptionStatus.CANCELLED);
+
+      const state = await getAdminClientRecoveryState({ clientId: client.id, actor });
+      expect(state.status).toBe("CANCELLED");
+    });
+
+    it("returns NONE for client with no subscriptions", async () => {
+      const actor = await makeAdminActor();
+      const client = await prisma.user.create({
+        data: {
+          name: "No Sub Client",
+          email: `nosub.client.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      });
+
+      const state = await getAdminClientRecoveryState({ clientId: client.id, actor });
+      expect(state.status).toBe("NONE");
+    });
+
+    it("requires admin role", async () => {
+      const client = await prisma.user.create({
+        data: {
+          name: "Non Admin",
+          email: `nonadmin.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+        select: { id: true, role: true },
+      });
+
+      await expect(
+        getAdminClientRecoveryState({
+          clientId: client.id,
+          actor: { actorId: client.id, actorRole: client.role },
+        }),
+      ).rejects.toThrow("ADMIN_ROLE_REQUIRED");
+    });
   });
 });

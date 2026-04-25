@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const s = require\\('stripe'\\); const i = {}; console.log\\('ok'\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(grep -v \"//\")",
+      "Bash(npx tsc *)",
+      "Bash(npm test *)",
+      "Bash(npm run *)",
+      "Bash(grep -v \"^$\")",
+      "Bash(git stash *)",
+      "Bash(git -C /c/Dev/studio.saas.platform log --oneline --diff-filter=D -- prisma/migrations/20260424195000_loyalty_rewards/migration.sql)",
+      "Bash(git -C /c/Dev/studio.saas.platform status --short prisma/migrations/20260424195000_loyalty_rewards/migration.sql)",
+      "Bash(git ls-tree *)",
+      "Bash(git -C /c/Dev/studio.saas.platform checkout HEAD -- prisma/migrations/20260424195000_loyalty_rewards/migration.sql)",
+      "Bash(npx vitest *)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/vitest/package.json'\\).version\\)\")"
+    ]
+  }
+}

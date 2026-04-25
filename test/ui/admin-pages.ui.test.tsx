@@ -419,6 +419,7 @@ describe("Admin pages branching", () => {
         productType: "UNLIMITED_MEMBERSHIP",
         isActive: true,
         sortOrder: 1,
+        activeEntitlementQuantity: null,
         currentPriceAmountMinor: 8900,
         currentPriceCurrencyCode: "EUR",
         currentPriceType: "RECURRING",

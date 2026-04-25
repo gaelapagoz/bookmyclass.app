@@ -1,18 +1,19 @@
 import "./helpers/setup-env";
 
 import { hash } from "bcryptjs";
-import { AuthError } from "next-auth";
 import { Role, UserActivationStatus, UserCreatedVia } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { auth, signIn } from "@/auth";
 import { clearCapturedTestEmails, getCapturedTestEmails } from "@/lib/email/resend-delivery";
-import VerifyEmailPage from "../../src/app/(public)/verify-email/page";
-import { signInAction } from "../../src/app/(public)/sign-in/page";
-import { registerAction } from "../../src/app/(public)/sign-up/page";
-import { requireAuth } from "../../src/lib/auth/require-auth";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
+
+let auth: ReturnType<typeof vi.fn>;
+let signIn: ReturnType<typeof vi.fn>;
+let VerifyEmailPage: typeof import("../../src/app/(public)/verify-email/page").default;
+let signInAction: typeof import("../../src/app/(public)/sign-in/page").signInAction;
+let registerAction: typeof import("../../src/app/(public)/sign-up/page").registerAction;
+let requireAuth: typeof import("../../src/lib/auth/require-auth").requireAuth;
 
 vi.mock("next-auth", () => {
   class MockAuthError extends Error {
@@ -28,7 +29,7 @@ vi.mock("next-auth", () => {
   return {
     AuthError: MockAuthError,
   };
-});
+}, { virtual: true });
 
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((url: string) => {
@@ -44,15 +45,6 @@ vi.mock("@/lib/security/same-origin", () => ({
 
 const { captureExceptionMock } = vi.hoisted(() => ({
   captureExceptionMock: vi.fn(),
-}));
-
-vi.mock("@sentry/nextjs", () => ({
-  withServerActionInstrumentation: async (
-    _name: string,
-    _options: { recordResponse?: boolean },
-    callback: () => Promise<unknown>,
-  ) => callback(),
-  captureException: captureExceptionMock,
 }));
 
 vi.mock("@/auth", () => ({
@@ -106,9 +98,19 @@ function extractRegistrationTokenFromCapturedEmail(email: string): string {
 describe("auth actions integration", () => {
   beforeEach(async () => {
     await resetDb();
-    vi.mocked(signIn).mockReset();
-    vi.mocked(auth).mockResolvedValue(null);
+    const authModule = await import("@/auth");
+    auth = vi.mocked(authModule.auth);
+    signIn = vi.mocked(authModule.signIn);
+    ({ default: VerifyEmailPage } = await import("../../src/app/(public)/verify-email/page"));
+    ({ signInAction } = await import("../../src/app/(public)/sign-in/page"));
+    ({ registerAction } = await import("../../src/app/(public)/sign-up/page"));
+    ({ requireAuth } = await import("../../src/lib/auth/require-auth"));
+
+    signIn.mockReset();
+    auth.mockResolvedValue(null);
     captureExceptionMock.mockReset();
+    (globalThis as unknown as { __sentryCaptureException?: (error: unknown) => void }).__sentryCaptureException =
+      captureExceptionMock;
     clearCapturedTestEmails();
 
     process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || "test-resend-key";
@@ -444,6 +446,7 @@ describe("auth actions integration", () => {
   });
 
   it("sign-in action rejects invalid credentials", async () => {
+    const { AuthError } = await import("next-auth");
     vi.mocked(signIn).mockRejectedValue(new AuthError("CredentialsSignin"));
 
     await expect(
@@ -453,6 +456,7 @@ describe("auth actions integration", () => {
   });
 
   it("sign-in action reports unexpected auth errors", async () => {
+    const { AuthError } = await import("next-auth");
     vi.mocked(signIn).mockRejectedValue(new AuthError("CallbackRouteError"));
 
     await expect(

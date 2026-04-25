@@ -175,7 +175,16 @@ export async function requireTeacherSession(options?: {
   });
   const unauthorizedPath = options?.unauthorizedPath ?? "/dashboard";
 
-  if (session.user.role !== "TEACHER") {
+  const { prisma } = await import("@/lib/db");
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { role: true, activationStatus: true, isActive: true },
+  });
+
+  if (!user || user.activationStatus !== UserActivationStatus.ACTIVE || !user.isActive) {
+    failAuth(Boolean(options?.throwOnFailure), "UNAUTHENTICATED", unauthorizedPath);
+  }
+  if (user.role !== "TEACHER") {
     failAuth(Boolean(options?.throwOnFailure), "FORBIDDEN", unauthorizedPath);
   }
 

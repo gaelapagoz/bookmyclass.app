@@ -64,11 +64,8 @@ type SubscriptionCatalogItem = {
   productType:
     | "DROP_IN_CLASS"
     | "CLASS_PACK"
-    | "UNLIMITED_MEMBERSHIP"
-    | "INTRO_OFFER"
-    | "PRIVATE_CLASS"
-    | "WORKSHOP_PASS"
-    | "GIFT_CARD";
+    | "PRIVATE_PACK"
+    | "UNLIMITED_MEMBERSHIP";
   priceType: "ONE_TIME" | "RECURRING";
   checkoutEnabled: boolean;
 };
@@ -386,16 +383,10 @@ function productPriority(type: SubscriptionCatalogItem["productType"]): number {
       return 0;
     case "CLASS_PACK":
       return 1;
-    case "INTRO_OFFER":
-      return 2;
     case "DROP_IN_CLASS":
+      return 2;
+    case "PRIVATE_PACK":
       return 3;
-    case "WORKSHOP_PASS":
-      return 4;
-    case "GIFT_CARD":
-      return 5;
-    case "PRIVATE_CLASS":
-      return 99;
     default:
       return 100;
   }
@@ -408,7 +399,7 @@ async function discoverProductSeed(baseUrl: string): Promise<{ productId: string
     throw new Error("No checkout-capable products returned from /api/subscription/plans.");
   }
 
-  const nonPrivate = products.filter((item) => item.productType !== "PRIVATE_CLASS");
+  const nonPrivate = products.filter((item) => item.productType !== "PRIVATE_PACK");
   const pool = nonPrivate.length > 0 ? nonPrivate : products;
   const sorted = pool.slice().sort((left, right) => {
     const typeRank = productPriority(left.productType) - productPriority(right.productType);

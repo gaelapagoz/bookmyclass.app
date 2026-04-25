@@ -47,25 +47,34 @@ type StaffAttendanceMutationResult =
   };
 
 export async function getAttendanceWindowPolicy(): Promise<AttendanceWindowPolicy> {
-  const policy = await prisma.bookingPolicy.upsert({
+  const existing = await prisma.bookingPolicy.findFirst({
     where: { scope: "GLOBAL" },
-    create: {
-      scope: "GLOBAL",
-      cancellationCutoffHours: 24,
-      checkInOpensMinutesBefore: 15,
-      checkInClosesMinutesAfter: 10,
-    },
-    update: {},
-    select: {
-      checkInOpensMinutesBefore: true,
-      checkInClosesMinutesAfter: true,
-    },
+    select: { checkInOpensMinutesBefore: true, checkInClosesMinutesAfter: true },
   });
+  if (existing) {
+    return {
+      checkInOpensMinutesBefore: existing.checkInOpensMinutesBefore,
+      checkInClosesMinutesAfter: existing.checkInClosesMinutesAfter,
+    };
+  }
 
-  return {
-    checkInOpensMinutesBefore: policy.checkInOpensMinutesBefore,
-    checkInClosesMinutesAfter: policy.checkInClosesMinutesAfter,
-  };
+  try {
+    const created = await prisma.bookingPolicy.create({
+      data: { scope: "GLOBAL", cancellationCutoffHours: 24, checkInOpensMinutesBefore: 15, checkInClosesMinutesAfter: 10 },
+      select: { checkInOpensMinutesBefore: true, checkInClosesMinutesAfter: true },
+    });
+    return { checkInOpensMinutesBefore: created.checkInOpensMinutesBefore, checkInClosesMinutesAfter: created.checkInClosesMinutesAfter };
+  } catch {
+    // Race: another concurrent request created it — read it back.
+    const fallback = await prisma.bookingPolicy.findFirst({
+      where: { scope: "GLOBAL" },
+      select: { checkInOpensMinutesBefore: true, checkInClosesMinutesAfter: true },
+    });
+    return {
+      checkInOpensMinutesBefore: fallback?.checkInOpensMinutesBefore ?? 15,
+      checkInClosesMinutesAfter: fallback?.checkInClosesMinutesAfter ?? 10,
+    };
+  }
 }
 
 export function getSessionCheckInWindow(

@@ -22,6 +22,7 @@ export default async function AdminPlanEditPage({
   }
 
   const currentPrice = record.prices[0] ?? null;
+  const activeEntitlementRule = record.entitlementRules[0] ?? null;
   const isCheckoutReady = record.isCheckoutReady;
   const { error } = await searchParams;
 
@@ -54,13 +55,10 @@ export default async function AdminPlanEditPage({
               defaultValue={record.productType}
               className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
             >
-              <option value="DROP_IN_CLASS">DROP_IN_CLASS</option>
-              <option value="CLASS_PACK">CLASS_PACK</option>
-              <option value="UNLIMITED_MEMBERSHIP">UNLIMITED_MEMBERSHIP</option>
-              <option value="INTRO_OFFER">INTRO_OFFER</option>
-              <option value="PRIVATE_CLASS">PRIVATE_CLASS</option>
-              <option value="WORKSHOP_PASS">WORKSHOP_PASS</option>
-              <option value="GIFT_CARD">GIFT_CARD</option>
+              <option value="DROP_IN_CLASS">DROP_IN_CLASS - single collective-class use</option>
+              <option value="CLASS_PACK">CLASS_PACK - collective class credit pack</option>
+              <option value="PRIVATE_PACK">PRIVATE_PACK - private class credit pack</option>
+              <option value="UNLIMITED_MEMBERSHIP">UNLIMITED_MEMBERSHIP - unlimited collective access</option>
             </select>
           </label>
         </div>
@@ -108,7 +106,29 @@ export default async function AdminPlanEditPage({
           </label>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="block text-sm text-[#334155]">
+            Pack Credits
+            <input
+              name="classPackCreditQuantity"
+              type="number"
+              min={1}
+              defaultValue={activeEntitlementRule?.quantity ?? 10}
+              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+            />
+            <span className="mt-1 block text-xs text-[#64748b]">
+              Required for CLASS_PACK and PRIVATE_PACK. Ignored for other product types.
+            </span>
+          </label>
+          <div className="block text-sm text-[#334155]">
+            <span className="block">Billing Type</span>
+            <p className="mt-1 rounded-md border border-[#d3dbe5] bg-[#f8fafc] px-3 py-2 text-[#64748b]">
+              Derived automatically from product type.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-3">
           <label className="block text-sm text-[#334155]">
             Price
             <input
@@ -132,41 +152,21 @@ export default async function AdminPlanEditPage({
             />
           </label>
           <label className="block text-sm text-[#334155]">
-            Billing Type
-            <select
-              name="priceType"
-              defaultValue={currentPrice?.priceType ?? "RECURRING"}
-              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
-            >
-              <option value="RECURRING">Recurring</option>
-              <option value="ONE_TIME">One-time</option>
-            </select>
-          </label>
-          <label className="block text-sm text-[#334155]">
             Interval
             <select
               name="billingInterval"
-              defaultValue={currentPrice?.billingInterval ?? "MONTH"}
+              defaultValue={currentPrice?.billingInterval ?? ""}
               className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
             >
-              <option value="DAY">Day</option>
-              <option value="WEEK">Week</option>
-              <option value="MONTH">Month</option>
-              <option value="YEAR">Year</option>
+              <option value="">Not applicable</option>
+              <option value="MONTH">Monthly</option>
+              <option value="YEAR">Yearly</option>
             </select>
+            <span className="mt-1 block text-xs text-[#64748b]">
+              Applies only to UNLIMITED_MEMBERSHIP.
+            </span>
           </label>
         </div>
-
-        <label className="block text-sm text-[#334155]">
-          Interval Count
-          <input
-            name="billingIntervalCount"
-            type="number"
-            min={1}
-            defaultValue={currentPrice?.billingIntervalCount ?? 1}
-            className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
-          />
-        </label>
 
         <div className="flex items-center justify-between gap-3 pt-2">
           <label className="inline-flex items-center gap-2 text-sm text-[#334155]">
@@ -181,4 +181,3 @@ export default async function AdminPlanEditPage({
     </section>
   );
 }
-

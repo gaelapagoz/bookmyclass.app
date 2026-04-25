@@ -4,7 +4,8 @@ import { AttendanceSource, AttendanceStatus } from "@prisma/client";
 const { dbMock } = vi.hoisted(() => ({
   dbMock: {
     bookingPolicy: {
-      upsert: vi.fn(),
+      findFirst: vi.fn(),
+      create: vi.fn(),
     },
     booking: {
       findUnique: vi.fn(),
@@ -91,7 +92,7 @@ describe("attendance service", () => {
   });
 
   it("creates a check-in on first valid self check-in", async () => {
-    dbMock.bookingPolicy.upsert.mockResolvedValue({
+    dbMock.bookingPolicy.findFirst.mockResolvedValue({
       checkInOpensMinutesBefore: 15,
       checkInClosesMinutesAfter: 10,
     });
@@ -140,7 +141,7 @@ describe("attendance service", () => {
   });
 
   it("updates an existing CHECKED_IN attendance record idempotently", async () => {
-    dbMock.bookingPolicy.upsert.mockResolvedValue({
+    dbMock.bookingPolicy.findFirst.mockResolvedValue({
       checkInOpensMinutesBefore: 15,
       checkInClosesMinutesAfter: 10,
     });
@@ -187,7 +188,7 @@ describe("attendance service", () => {
   });
 
   it("uses explicit markedById when provided", async () => {
-    dbMock.bookingPolicy.upsert.mockResolvedValue({
+    dbMock.bookingPolicy.findFirst.mockResolvedValue({
       checkInOpensMinutesBefore: 15,
       checkInClosesMinutesAfter: 10,
     });
@@ -367,7 +368,7 @@ describe("attendance service", () => {
   });
 
   it("handles concurrent self check-in requests with single successful record creation", async () => {
-    dbMock.bookingPolicy.upsert.mockResolvedValue({
+    dbMock.bookingPolicy.findFirst.mockResolvedValue({
       checkInOpensMinutesBefore: 15,
       checkInClosesMinutesAfter: 10,
     });
