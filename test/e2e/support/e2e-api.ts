@@ -157,3 +157,23 @@ export async function prepareWaitlistSessionForTest(
     endTime: payload.endTime as string,
   };
 }
+
+export async function deactivateUserForTest(request: APIRequestContext, email: string) {
+  const response = await request.post("/api/test/e2e/users/deactivate", {
+    headers: testHeaders(),
+    data: { email },
+  });
+  expect(response.ok()).toBeTruthy();
+  const payload = (await response.json()) as { deactivated?: boolean };
+  expect(payload.deactivated).toBe(true);
+}
+
+export async function reactivateUserForTest(request: APIRequestContext, email: string) {
+  const response = await request.post("/api/test/e2e/users/reactivate", {
+    headers: testHeaders(),
+    data: { email },
+  });
+  expect(response.ok()).toBeTruthy();
+  const payload = (await response.json()) as { reactivated?: boolean };
+  expect(payload.reactivated).toBe(true);
+}

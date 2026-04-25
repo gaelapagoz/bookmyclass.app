@@ -1,16 +1,23 @@
 import "./helpers/setup-env";
 
 import { MarketingCampaignStatus, Role } from "@prisma/client";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createMarketingCampaignFlowDraft, sendMarketingCampaignFlowTestEmail } from "../../src/lib/marketing/marketing-service";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
 
 describe("marketing flow test email send", () => {
+  const originalTrackingSecret = process.env.MARKETING_TRACKING_SECRET;
+
   beforeEach(async () => {
     await resetDb();
     delete process.env.RESEND_API_KEY;
+    process.env.MARKETING_TRACKING_SECRET = process.env.MARKETING_TRACKING_SECRET || "test-marketing-tracking-secret";
+  });
+
+  afterEach(() => {
+    process.env.MARKETING_TRACKING_SECRET = originalTrackingSecret;
   });
 
   it("sends test email from persisted draft content without marking campaign sent", async () => {

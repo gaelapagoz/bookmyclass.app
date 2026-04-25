@@ -24,6 +24,7 @@ If a setup/runbook file conflicts with this file, treat this file as authoritati
 | Backup script path | `/usr/local/bin/bookmyclass-db-backup-run.sh` | Verified live | Confirmed in root crontab on production host. |
 | Healthcheck cron | `*/5 * * * * /usr/local/bin/bookmyclass-healthcheck.sh >> /var/log/bookmyclass-healthcheck.log 2>&1` | Confirmed from deployment docs | Root crontab. |
 | Backup cron | `30 2 * * * /usr/local/bin/bookmyclass-db-backup-run.sh >> /var/log/bookmyclass-db-backup.log 2>&1` | Verified live | Root crontab. |
+| Webhook receipt cleanup cron | `GET /api/cron/webhook-receipt-cleanup` with `Authorization: Bearer $CRON_SECRET` header must be scheduled externally (e.g. daily or weekly). Without it, `StripeWebhookEventReceipt` grows unboundedly. | Needs operator confirmation | Route exists; external schedule not yet confirmed in root crontab or external scheduler. |
 | Canonical auth secret env var | `AUTH_SECRET` | Confirmed from code/runtime | `NEXTAUTH_SECRET` appears only as fallback in one marketing helper. |
 | Canonical Stripe env vars | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Confirmed from code/runtime | Seed/test-only Stripe price IDs are separate from core runtime Stripe keys. |
 | Production email sender policy | `EMAIL_FROM` must use verified `@bookmyclass.app` sender domain when provider delivery is enabled | Confirmed from code/runtime | Test/e2e deterministic bypass does not require provider send. |

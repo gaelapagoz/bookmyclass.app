@@ -29,6 +29,7 @@ import {
   getClientSubscriptionRecoveryState,
   getDashboardBookingsData,
   getDashboardHomeData,
+  getDashboardLoyaltyPlaceholder,
   getDashboardMembershipData,
   updateDashboardProfile,
 } from "../../src/lib/dashboard/dashboard-service";
@@ -1194,3 +1195,71 @@ describe("webhook receipt cleanup", () => {
   });
 });
 
+describe("getDashboardLoyaltyPlaceholder", () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it("returns 0 for a client with no loyalty ledger entries (graceful empty state)", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Loyalty Client",
+        firstName: "Loyalty",
+        lastName: "Client",
+        email: `loyalty.empty.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    const result = await getDashboardLoyaltyPlaceholder(client.id);
+
+    expect(result).toBe(0);
+  });
+
+  it("returns the correct summed point balance when loyalty entries exist", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Loyalty Client",
+        firstName: "Loyalty",
+        lastName: "Client",
+        email: `loyalty.sum.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await prisma.loyaltyLedgerEntry.createMany({
+      data: [
+        { clientId: client.id, entryType: "EARN", amount: 50 },
+        { clientId: client.id, entryType: "EARN", amount: 30 },
+        { clientId: client.id, entryType: "REDEEM", amount: -20 },
+      ],
+    });
+
+    const result = await getDashboardLoyaltyPlaceholder(client.id);
+
+    expect(result).toBe(60);
+  });
+
+  it("returns 0 when all loyalty entries net to zero", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Loyalty Client",
+        firstName: "Loyalty",
+        lastName: "Client",
+        email: `loyalty.zero.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await prisma.loyaltyLedgerEntry.createMany({
+      data: [
+        { clientId: client.id, entryType: "EARN", amount: 40 },
+        { clientId: client.id, entryType: "REDEEM", amount: -40 },
+      ],
+    });
+
+    const result = await getDashboardLoyaltyPlaceholder(client.id);
+
+    expect(result).toBe(0);
+  });
+});

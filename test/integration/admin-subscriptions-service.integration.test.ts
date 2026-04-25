@@ -107,6 +107,60 @@ describe("admin subscription service", () => {
     ).rejects.toThrow("PRICE_PRODUCT_MISMATCH");
   });
 
+  it("rejects createAdminSubscription when clientId belongs to a non-CLIENT user", async () => {
+    const fixture = await createFixture();
+
+    const teacher = await prisma.user.create({
+      data: {
+        name: "Teacher",
+        email: `teacher.${Date.now()}@example.test`,
+        role: Role.TEACHER,
+      },
+    });
+
+    await expect(
+      createAdminSubscription({
+        clientId: teacher.id,
+        productId: fixture.product.id,
+        priceId: fixture.price.id,
+        status: SubscriptionStatus.ACTIVE,
+        startsAt: new Date("2026-03-22T09:00:00.000Z"),
+        currentPeriodStart: new Date("2026-03-22T09:00:00.000Z"),
+        currentPeriodEnd: new Date("2026-04-22T09:00:00.000Z"),
+        cancelAtPeriodEnd: false,
+        provider: PaymentProvider.STRIPE,
+      }),
+    ).rejects.toThrow("SUBSCRIPTION_CLIENT_ROLE_MISMATCH");
+  });
+
+  it("rejects updateAdminSubscription when the subscription's user is not a CLIENT", async () => {
+    const fixture = await createFixture();
+
+    const created = await createAdminSubscription({
+      clientId: fixture.client.id,
+      productId: fixture.product.id,
+      priceId: fixture.price.id,
+      status: SubscriptionStatus.ACTIVE,
+      startsAt: new Date("2026-03-22T09:00:00.000Z"),
+      currentPeriodStart: new Date("2026-03-22T09:00:00.000Z"),
+      currentPeriodEnd: new Date("2026-04-22T09:00:00.000Z"),
+      cancelAtPeriodEnd: false,
+      provider: PaymentProvider.STRIPE,
+    });
+
+    // Simulate the user being re-assigned to a non-CLIENT role (e.g. promoted to TEACHER).
+    await prisma.user.update({ where: { id: fixture.client.id }, data: { role: Role.TEACHER } });
+
+    await expect(
+      updateAdminSubscription(created.id, {
+        status: SubscriptionStatus.CANCELLED,
+        currentPeriodStart: new Date("2026-03-22T09:00:00.000Z"),
+        currentPeriodEnd: new Date("2026-04-22T09:00:00.000Z"),
+        cancelAtPeriodEnd: false,
+      }),
+    ).rejects.toThrow("SUBSCRIPTION_CLIENT_ROLE_MISMATCH");
+  });
+
   it("keeps one contract row when update is replayed with same payload", async () => {
     const fixture = await createFixture();
 

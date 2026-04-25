@@ -56,4 +56,16 @@ describe("Teacher layout guard", () => {
       }),
     ).rejects.toThrow("FORBIDDEN");
   });
+
+  it("rejects a JWT-valid session whose DB record has been deactivated (role revocation)", async () => {
+    // requireTeacherSession now re-checks role/isActive/activationStatus from the DB.
+    // Even if the JWT is valid, a deactivated teacher must not reach the layout.
+    requireTeacherSessionMock.mockRejectedValue(new Error("UNAUTHENTICATED"));
+
+    await expect(
+      TeacherLayout({
+        children: <div>Should not render</div>,
+      }),
+    ).rejects.toThrow("UNAUTHENTICATED");
+  });
 });

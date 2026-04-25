@@ -8,23 +8,7 @@ import { extractTrackingLinks, normalizeMarketingContentJson, renderMarketingEma
 import { sendMarketingCampaignTest, sendMarketingEmailViaResend } from "@/lib/marketing/marketing-delivery";
 import { buildTrackingToken, createRecipientTrackingToken } from "@/lib/marketing/marketing-tracking";
 
-export type MarketingCampaignListFilter = "draft" | "sent";
-export type MarketingCampaignPageFilter = MarketingCampaignListFilter | "all";
-
-export type MarketingCampaignListItem = {
-  id: string;
-  name: string;
-  categoryName: string;
-  status: string;
-  audience: string;
-  updatedAt: Date;
-  sentAt: Date | null;
-  sentCount: number;
-  openedCount: number;
-  clickedCount: number;
-  openRate: number;
-  clickRate: number;
-};
+export type MarketingCampaignPageFilter = "draft" | "sent" | "all";
 
 export type MarketingCampaignListPageItem = {
   id: string;
@@ -375,8 +359,8 @@ export async function createMarketingCampaignFlowDraft(input: {
       subject: input.generatedDraft?.subject?.trim() || `New campaign: ${campaignName}`,
       previewText: input.generatedDraft?.previewText?.trim() || goalSummary.slice(0, 180) || goalPrompt.slice(0, 180) || "Campaign preview",
       fromName: "Studio Team",
-      fromEmail: "no-reply@bookmyclass.app",
-      replyTo: "no-reply@bookmyclass.app",
+      fromEmail: process.env.EMAIL_FROM?.trim() || "no-reply@bookmyclass.app",
+      replyTo: process.env.EMAIL_FROM?.trim() || "no-reply@bookmyclass.app",
       contentJson,
       htmlSnapshot,
       createdById: input.createdById,
@@ -668,14 +652,32 @@ export async function sendMarketingCampaignFlowNow(input: { campaignId: string }
       : {}),
   };
 
-  const recipients = await prisma.user.findMany({
-    where,
-    orderBy: [{ firstName: "asc" }, { lastName: "asc" }, { name: "asc" }, { email: "asc" }],
-    select: {
-      id: true,
-      email: true,
-    },
-  });
+  // Persist recipient snapshot before the SENDING status flip so a crash between
+  // the two operations leaves the campaign in DRAFT with recipients intact (clean retry).
+  // Paginated to avoid loading thousands of user rows into memory at once.
+  const RECIPIENT_SNAPSHOT_PAGE = 500;
+  let snapshotCursor: string | undefined;
+  while (true) {
+    const userPage = await prisma.user.findMany({
+      where,
+      take: RECIPIENT_SNAPSHOT_PAGE,
+      ...(snapshotCursor ? { cursor: { id: snapshotCursor }, skip: 1 } : {}),
+      orderBy: { id: "asc" },
+      select: { id: true, email: true },
+    });
+    if (userPage.length === 0) break;
+    await prisma.marketingCampaignRecipient.createMany({
+      data: userPage.map((u) => ({
+        campaignId: campaign.id,
+        userId: u.id,
+        email: u.email,
+        status: MarketingRecipientStatus.PENDING,
+      })),
+      skipDuplicates: true,
+    });
+    snapshotCursor = userPage[userPage.length - 1].id;
+    if (userPage.length < RECIPIENT_SNAPSHOT_PAGE) break;
+  }
 
   const moved = await prisma.marketingCampaign.updateMany({
     where: {
@@ -693,19 +695,6 @@ export async function sendMarketingCampaignFlowNow(input: { campaignId: string }
   }
 
   try {
-    await prisma.marketingCampaignRecipient.deleteMany({
-      where: { campaignId: campaign.id },
-    });
-    if (recipients.length > 0) {
-      await prisma.marketingCampaignRecipient.createMany({
-        data: recipients.map((recipient) => ({
-          campaignId: campaign.id,
-          userId: recipient.id,
-          email: recipient.email,
-          status: MarketingRecipientStatus.PENDING,
-        })),
-      });
-    }
 
     const links = extractTrackingLinks(contentJson);
     await prisma.$transaction(async (tx) => {
@@ -723,23 +712,21 @@ export async function sendMarketingCampaignFlowNow(input: { campaignId: string }
       }
     });
 
-    const [recipientRows, storedLinks] = await Promise.all([
-      prisma.marketingCampaignRecipient.findMany({
-        where: {
-          campaignId: campaign.id,
-          status: MarketingRecipientStatus.PENDING,
-        },
-        orderBy: { createdAt: "asc" },
-      }),
-      prisma.marketingCampaignLink.findMany({ where: { campaignId: campaign.id } }),
-    ]);
-
+    const storedLinks = await prisma.marketingCampaignLink.findMany({ where: { campaignId: campaign.id } });
     const appUrl = process.env.APP_URL?.trim() || "http://localhost:3000";
     const now = new Date();
 
+    // Cursor-paginate the send loop to avoid loading all PENDING recipients into memory.
+    // Each batch is fetched fresh; rows become SENT/FAILED after processing so they
+    // are excluded from subsequent pages.
     const SEND_BATCH_SIZE = 50;
-    for (let index = 0; index < recipientRows.length; index += SEND_BATCH_SIZE) {
-      const batch = recipientRows.slice(index, index + SEND_BATCH_SIZE);
+    while (true) {
+      const batch = await prisma.marketingCampaignRecipient.findMany({
+        where: { campaignId: campaign.id, status: MarketingRecipientStatus.PENDING },
+        take: SEND_BATCH_SIZE,
+        orderBy: { id: "asc" },
+      });
+      if (batch.length === 0) break;
       await Promise.all(
         batch.map(async (recipient) => {
           const recipientToken = createRecipientTrackingToken(recipient.id);
@@ -767,6 +754,7 @@ export async function sendMarketingCampaignFlowNow(input: { campaignId: string }
           });
         }),
       );
+      if (batch.length < SEND_BATCH_SIZE) break;
     }
 
     const recipientStatusRows = await prisma.marketingCampaignRecipient.groupBy({
@@ -818,7 +806,7 @@ export async function getMarketingCampaignFlowSentSummary(campaignId: string): P
       sentAt: true,
       manualAudienceJson: true,
       category: { select: { name: true } },
-      recipients: { select: { id: true } },
+      _count: { select: { recipients: true } },
     },
   });
   if (!campaign) {
@@ -838,7 +826,7 @@ export async function getMarketingCampaignFlowSentSummary(campaignId: string): P
     campaignId: campaign.id,
     campaignName: campaign.name,
     status: campaign.status,
-    recipientCount: campaign.recipients.length,
+    recipientCount: campaign._count.recipients,
     categoryName: campaign.category?.name ?? null,
     selectedSegmentIds,
     selectedSegmentNames: selectedSegments.map((segment) => segment.name),
@@ -981,29 +969,32 @@ export async function getMarketingCampaignListPageData(input: {
 }
 
 export async function getMarketingSentCampaignSummaryById(campaignId: string): Promise<MarketingSentCampaignSummary | null> {
-  const campaign = await prisma.marketingCampaign.findUnique({
-    where: { id: campaignId },
-    select: {
-      id: true,
-      name: true,
-      status: true,
-      sentAt: true,
-      manualAudienceJson: true,
-      fromName: true,
-      fromEmail: true,
-      replyTo: true,
-      subject: true,
-      previewText: true,
-      htmlSnapshot: true,
-      contentJson: true,
-      category: { select: { name: true } },
-      recipients: {
-        select: {
-          status: true,
-        },
+  const [campaign, recipientCounts] = await Promise.all([
+    prisma.marketingCampaign.findUnique({
+      where: { id: campaignId },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        sentAt: true,
+        manualAudienceJson: true,
+        fromName: true,
+        fromEmail: true,
+        replyTo: true,
+        subject: true,
+        previewText: true,
+        htmlSnapshot: true,
+        contentJson: true,
+        category: { select: { name: true } },
       },
-    },
-  });
+    }),
+    prisma.marketingCampaignRecipient.groupBy({
+      by: ["status"],
+      where: { campaignId },
+      _count: { _all: true },
+    }),
+  ]);
+
   if (!campaign) {
     return null;
   }
@@ -1017,9 +1008,8 @@ export async function getMarketingSentCampaignSummaryById(campaignId: string): P
     })
     : [];
 
-  const recipientSentCount = campaign.recipients.filter((recipient) => recipient.status === MarketingRecipientStatus.SENT).length;
-  const recipientFailedCount = campaign.recipients.filter((recipient) => recipient.status === MarketingRecipientStatus.FAILED).length;
-  const recipientPendingCount = campaign.recipients.filter((recipient) => recipient.status === MarketingRecipientStatus.PENDING).length;
+  const getCount = (status: MarketingRecipientStatus) =>
+    recipientCounts.find((r) => r.status === status)?._count._all ?? 0;
 
   return {
     campaignId: campaign.id,
@@ -1034,75 +1024,12 @@ export async function getMarketingSentCampaignSummaryById(campaignId: string): P
     previewText: campaign.previewText,
     selectedSegmentIds,
     selectedSegmentNames: selectedSegments.map((segment) => segment.name),
-    recipientCount: campaign.recipients.length,
-    recipientSentCount,
-    recipientFailedCount,
-    recipientPendingCount,
+    recipientCount: recipientCounts.reduce((sum, r) => sum + r._count._all, 0),
+    recipientSentCount: getCount(MarketingRecipientStatus.SENT),
+    recipientFailedCount: getCount(MarketingRecipientStatus.FAILED),
+    recipientPendingCount: getCount(MarketingRecipientStatus.PENDING),
     htmlSnapshot: campaign.htmlSnapshot?.trim() || renderMarketingPreviewHtml(normalizeMarketingContentJson(campaign.contentJson)),
   };
-}
-
-export async function listMarketingCampaigns(filter: MarketingCampaignListFilter) {
-  const status = filter === "sent" ? MarketingCampaignStatus.SENT : MarketingCampaignStatus.DRAFT;
-  return prisma.marketingCampaign.findMany({
-    where: { status },
-    include: {
-      category: { select: { name: true } },
-      recipients: {
-        select: {
-          id: true,
-          sentAt: true,
-          openedAt: true,
-          clickedAt: true,
-          unsubscribedAt: true,
-        },
-      },
-    },
-    orderBy: { updatedAt: "desc" },
-  });
-}
-
-export async function listMarketingCampaignListItems(filter: MarketingCampaignPageFilter = "all"): Promise<MarketingCampaignListItem[]> {
-  const where =
-    filter === "all"
-      ? undefined
-      : { status: filter === "sent" ? MarketingCampaignStatus.SENT : MarketingCampaignStatus.DRAFT };
-
-  const rows = await prisma.marketingCampaign.findMany({
-    where,
-    include: {
-      category: { select: { name: true } },
-      recipients: {
-        select: {
-          sentAt: true,
-          openedAt: true,
-          clickedAt: true,
-        },
-      },
-    },
-    orderBy: [{ updatedAt: "desc" }],
-  });
-
-  return rows.map((row) => {
-    const sentCount = row.recipients.filter((recipient) => Boolean(recipient.sentAt)).length;
-    const openedCount = row.recipients.filter((recipient) => Boolean(recipient.openedAt)).length;
-    const clickedCount = row.recipients.filter((recipient) => Boolean(recipient.clickedAt)).length;
-
-    return {
-      id: row.id,
-      name: row.name,
-      categoryName: row.category?.name ?? "-",
-      status: row.status,
-      audience: row.audienceType,
-      updatedAt: row.updatedAt,
-      sentAt: row.sentAt,
-      sentCount,
-      openedCount,
-      clickedCount,
-      openRate: sentCount > 0 ? Number(((openedCount / sentCount) * 100).toFixed(1)) : 0,
-      clickRate: sentCount > 0 ? Number(((clickedCount / sentCount) * 100).toFixed(1)) : 0,
-    };
-  });
 }
 
 export async function getMarketingCampaignById(id: string) {

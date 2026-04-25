@@ -1,18 +1,11 @@
 import { createHmac, randomUUID } from "node:crypto";
 
-const DEFAULT_SECRET = "dev-marketing-secret";
-
-function getSecret() {
+function getSecret(): string {
   const trackingSecret = process.env.MARKETING_TRACKING_SECRET?.trim();
-  if (trackingSecret) {
-    return trackingSecret;
-  }
-
-  if (process.env.NODE_ENV === "production") {
+  if (!trackingSecret) {
     throw new Error("Missing required env var: MARKETING_TRACKING_SECRET");
   }
-
-  return process.env.NEXTAUTH_SECRET?.trim() || DEFAULT_SECRET;
+  return trackingSecret;
 }
 
 export function createRecipientTrackingToken(recipientId: string): string {

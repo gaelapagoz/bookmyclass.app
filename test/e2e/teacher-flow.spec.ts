@@ -4,7 +4,9 @@ import { signInAdmin, signInClient, signInTeacher } from "./support/auth";
 import {
   cleanSeededClientBookingsForTest,
   createUnassignedTeacherSessionForTest,
+  deactivateUserForTest,
   prepareCheckInWindowBookingForTest,
+  reactivateUserForTest,
 } from "./support/e2e-api";
 import { E2E_PASSWORD, SEEDED_ADMIN, SEEDED_CLIENT_NO_CREDITS, SEEDED_CLIENT_WITH_CREDITS, SEEDED_TEACHER } from "./support/constants";
 
@@ -182,6 +184,23 @@ test.describe("teacher flow", () => {
   test("anonymous user is blocked from teacher area", async ({ page }) => {
     await page.goto("/teacher");
     await expect(page).toHaveURL(/\/sign-in\?callbackUrl=/);
+  });
+
+  // @covers teacher-db-revocation
+  test("deactivated teacher is redirected after DB revocation even with valid JWT", async ({ page }) => {
+    // Sign in first to obtain a valid JWT/session cookie.
+    await signInTeacher(page, SEEDED_TEACHER);
+    await expect(page.getByRole("heading", { name: "Teacher Dashboard" })).toBeVisible();
+
+    // Deactivate the user in the DB — simulating an admin revoking access server-side.
+    await deactivateUserForTest(page.request, SEEDED_TEACHER.email);
+
+    // requireTeacherSession re-checks the DB on every request; the revocation must be enforced.
+    await page.goto("/teacher");
+    await expect(page).toHaveURL(/\/(dashboard|sign-in)/);
+
+    // Restore account so subsequent serial tests can sign in as the teacher.
+    await reactivateUserForTest(page.request, SEEDED_TEACHER.email);
   });
 
   // @covers teacher-profile-page-loads

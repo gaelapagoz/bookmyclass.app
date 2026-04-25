@@ -77,12 +77,24 @@ vi.mock("@/lib/admin/admin-service", () => ({
   deleteAdminSiteWeeklyScheduleEntry: vi.fn(),
   updateAdminCancellationPeriodHours: vi.fn(),
   removeSessionAttendeeByManager: vi.fn(),
+  resolveAdminActorUser: vi.fn(),
+  updateAdminClassImage: vi.fn(),
   updateAdminLearningProgram: vi.fn(),
   updateAdminLearningVideo: vi.fn(),
   updateAdminPlan: vi.fn(),
   updateAdminSession: vi.fn(),
   updateAdminTeacherImage: vi.fn(),
   updateAdminUser: vi.fn(),
+}));
+
+vi.mock("@/lib/marketing/marketing-renderer", () => ({
+  normalizeMarketingContentJson: vi.fn((x: unknown) => x),
+}));
+
+vi.mock("@/lib/marketing/marketing-service", () => ({
+  createMarketingCampaignFlowDraft: vi.fn(),
+  updateMarketingCampaignFlowDraft: vi.fn(),
+  getMarketingCampaignFlowDraftById: vi.fn(),
 }));
 
 vi.mock("@/lib/public-documents/agenda-document-service", () => ({
@@ -109,6 +121,7 @@ import {
   updateAdminCancellationPeriodHours,
   upsertAdminClassScheduleConfig,
   removeSessionAttendeeByManager,
+  resolveAdminActorUser,
   updateAdminLearningProgram,
   updateAdminLearningVideo,
   updateAdminPlan,
@@ -116,6 +129,7 @@ import {
   updateAdminTeacherImage,
   updateAdminUser,
 } from "@/lib/admin/admin-service";
+import { updateMarketingCampaignFlowDraft } from "@/lib/marketing/marketing-service";
 
 import {
   addSessionAttendeeAction,
@@ -128,12 +142,14 @@ import {
   createUserAction,
   deleteSiteWeeklyScheduleEntryAction,
   removeSessionAttendeeAction,
+  saveMarketingCampaignFlowDraftAction,
   updateCancellationPeriodAction,
   updateLearningProgramAction,
   updateLearningVideoAction,
   updatePlanAction,
   updateSessionAction,
   updateSiteWeeklyScheduleEntryAction,
+  updateSessionAttendanceAction,
   uploadClassImageAction,
   uploadTeacherImageAction,
   updateUserAction,
@@ -911,6 +927,40 @@ describe("admin actions", () => {
     formData.set("classImage", new File(["png"], "class.png", { type: "image/png" }));
 
     await expect(uploadClassImageAction(formData)).rejects.toThrow("NEXT_REDIRECT");
+
+    const [writtenPath] = vi.mocked(writeFileMock).mock.calls[0] as [string, Buffer];
+    expect(writtenPath).not.toContain("..");
+    expect(writtenPath).not.toContain("/etc/");
+  });
+
+  it("rejects updateSessionAttendanceAction when CSRF check fails", async () => {
+    vi.mocked(assertSameOriginServerAction).mockRejectedValueOnce(new Error("CSRF_INVALID_ORIGIN"));
+
+    const formData = new FormData();
+    formData.set("bookingId", "booking-1");
+    formData.set("targetStatus", "ATTENDED");
+
+    await expect(updateSessionAttendanceAction("session-1", formData)).rejects.toThrow("CSRF_INVALID_ORIGIN");
+  });
+
+  it("strips path traversal characters from campaignId when storing campaign image", async () => {
+    const dangerousId = "../../../etc/campaign-1";
+    const safeDraft = { id: dangerousId, name: "Campaign", status: "DRAFT" };
+
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(resolveAdminActorUser).mockResolvedValue({ id: "user-1", role: "ADMIN" });
+    vi.mocked(updateMarketingCampaignFlowDraft).mockResolvedValue(safeDraft as never);
+    vi.spyOn(Date, "now").mockReturnValue(3);
+
+    const formData = new FormData();
+    formData.set("campaignId", dangerousId);
+    formData.set("campaignName", "Test Campaign");
+    formData.set("subject", "Subject");
+    formData.set("previewText", "Preview");
+    formData.set("contentJson", JSON.stringify({ blocks: [] }));
+    formData.set("campaignImage", new File(["png"], "img.png", { type: "image/png" }));
+
+    await expect(saveMarketingCampaignFlowDraftAction(formData)).rejects.toThrow("NEXT_REDIRECT");
 
     const [writtenPath] = vi.mocked(writeFileMock).mock.calls[0] as [string, Buffer];
     expect(writtenPath).not.toContain("..");

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep *)",
+      "Read(//c/Users/gaela/.claude/projects/c--Dev-studio-saas-platform\" 2>/dev/**)",
+      "Read(//c/Users/gaela/.claude/projects/c--Dev-studio-saas-platform//**)",
+      "Bash(grep -o 'Phase [0-9][^\"\\\\\\\\]*' /c/Users/gaela/.claude/projects/c--Dev-studio-saas-platform/5cfd448d-50f2-44b5-8d7b-01acfad6ccb7.jsonl)"
+    ]
+  }
+}

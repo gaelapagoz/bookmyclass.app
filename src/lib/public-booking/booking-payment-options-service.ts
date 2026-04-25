@@ -12,6 +12,7 @@ import {
   StudioSessionStatus,
 } from "@prisma/client";
 import { prisma } from "../db";
+import { resolveEntitlementScopeFromCategorySlug } from "../booking/entitlement-scope";
 import { bookingDraftActiveBookingFilter } from "./booking-draft-service";
 
 type PlanBalance = {
@@ -195,17 +196,6 @@ export class BookingPaymentOptionsError extends Error {
   }
 }
 
-function toEntitlementScope(categorySlug: string): EntitlementScope {
-  if (categorySlug.includes("private")) {
-    return EntitlementScope.PRIVATE_CLASSES;
-  }
-
-  if (categorySlug.includes("workshop")) {
-    return EntitlementScope.WORKSHOPS;
-  }
-
-  return EntitlementScope.COLLECTIVE_CLASSES;
-}
 
 function formatPurchaseOptionDisplayName(input: { productName: string }): string {
   return input.productName;
@@ -1094,7 +1084,7 @@ export async function getBookingPaymentOptions(params: {
   assertBookingOwnedByUser(booking, params.userId);
   assertSessionStillBookable(booking);
 
-  const requiredScope = toEntitlementScope(booking.classType.categorySlug);
+  const requiredScope = resolveEntitlementScopeFromCategorySlug(booking.classType.categorySlug);
   const [singleSession, newPlanOptions, existingPlans] = await Promise.all([
     getSingleSessionOptionByScope(requiredScope),
     getPlanPurchaseOptions(requiredScope),
@@ -1141,7 +1131,7 @@ export async function getBookingPaymentOptionsPreview(params: {
     throw new BookingPaymentOptionsError("BOOKING_NOT_FOUND", "Service was not found.");
   }
 
-  const requiredScope = toEntitlementScope(categorySlug);
+  const requiredScope = resolveEntitlementScopeFromCategorySlug(categorySlug);
   const [singleSession, newPlanOptions, existingPlans] = await Promise.all([
     getSingleSessionOptionByScope(requiredScope),
     getPlanPurchaseOptions(requiredScope),
@@ -1477,7 +1467,7 @@ export async function selectBookingPaymentOption(input: SelectPaymentInput): Pro
   assertBookingOwnedByUser(booking, input.userId);
   assertSessionStillBookable(booking);
 
-  const requiredScope = toEntitlementScope(booking.classType.categorySlug);
+  const requiredScope = resolveEntitlementScopeFromCategorySlug(booking.classType.categorySlug);
 
   if (input.mode === "EXISTING_PLAN") {
     if (!input.userId) {

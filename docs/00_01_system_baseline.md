@@ -236,9 +236,8 @@ Evidence label legend used in this file:
   - Login/signup anti-abuse checks.
   - Evidence status: Confirmed from repo (`src/lib/observability/sentry-sanitize.ts`, `src/lib/auth/safe-callback-url.ts`, `src/lib/auth/user-identity-service.ts`).
   - Known security gaps visible from code only:
-  - Teacher route group uses explicit server-side auth/role gate via `requireTeacherSession`.
+  - Teacher route group uses explicit server-side auth/role gate via `requireTeacherSession` with DB re-validation on every request.
   - In-memory rate limiter is not shared across instances/restarts.
-  - `MARKETING_TRACKING_SECRET` can fall back to hardcoded default.
   - Evidence status: Confirmed from repo (`src/app/teacher/layout.tsx`, `src/lib/security/rate-limit.ts`, `src/lib/marketing/marketing-tracking.ts`).
 
 ## 8. Billing and subscription architecture

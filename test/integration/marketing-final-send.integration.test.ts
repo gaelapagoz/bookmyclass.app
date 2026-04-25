@@ -322,4 +322,168 @@ describe("marketing final send", () => {
       fetchMock.mockRestore();
     }
   });
+
+  it("succeeds cleanly when recipients were persisted before the SENDING flip (crash-safe ordering)", async () => {
+    // This verifies the crash-safe ordering: createMany runs before updateMany(SENDING).
+    // If the process had crashed after createMany but before the CAS flip, the campaign
+    // stays DRAFT with PENDING recipients. A retry must not duplicate rows and must succeed.
+    const admin = await prisma.user.create({
+      data: {
+        name: "Admin",
+        firstName: "Admin",
+        lastName: "User",
+        email: `admin.crash-ordering.${Date.now()}@example.test`,
+        role: Role.ADMIN,
+      },
+    });
+
+    const subscriber = await prisma.user.create({
+      data: {
+        name: "Subscriber",
+        firstName: "Sub",
+        lastName: "User",
+        email: `sub.crash-ordering.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+        marketingSubscriptionStatus: MarketingSubscriptionStatus.SUBSCRIBED,
+      },
+    });
+
+    const draft = await createMarketingCampaignFlowDraft({
+      createdById: admin.id,
+      name: "Crash-Ordering Campaign",
+      goalPrompt: "",
+      generatedDraft: {
+        subject: "Crash ordering subject",
+        previewText: "Preview",
+        contentJson: { blocks: [{ type: "paragraph", contentHtml: "<p>Body</p>" }] },
+      },
+    });
+    await updateMarketingCampaignFlowDraft(draft!.id, {
+      currentStep: "STEP_4",
+      fromEmail: "no-reply@bookmyclass.app",
+      replyTo: "no-reply@bookmyclass.app",
+    });
+
+    // Simulate crash after createMany but before CAS: pre-seed PENDING recipients while
+    // the campaign is still in DRAFT (the new ordering guarantees this state is reachable).
+    await prisma.marketingCampaignRecipient.create({
+      data: {
+        campaignId: draft!.id,
+        userId: subscriber.id,
+        email: subscriber.email,
+        status: "PENDING",
+      },
+    });
+
+    // Retry: campaign is still DRAFT, one PENDING recipient already exists.
+    await sendMarketingCampaignFlowNow({ campaignId: draft!.id });
+
+    const recipients = await prisma.marketingCampaignRecipient.findMany({
+      where: { campaignId: draft!.id },
+    });
+    expect(recipients).toHaveLength(1);
+    expect(recipients[0]?.status).toBe("SENT");
+
+    const campaign = await prisma.marketingCampaign.findUnique({ where: { id: draft!.id } });
+    expect(campaign?.status).toBe(MarketingCampaignStatus.SENT);
+  });
+
+  it("uses EMAIL_FROM env var as fromEmail when set", async () => {
+    const originalEmailFrom = process.env.EMAIL_FROM;
+    process.env.EMAIL_FROM = "custom@studio.example";
+
+    try {
+      const admin = await prisma.user.create({
+        data: {
+          name: "Admin",
+          firstName: "Admin",
+          lastName: "User",
+          email: `admin.emailfrom.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      });
+
+      const draft = await createMarketingCampaignFlowDraft({
+        createdById: admin.id,
+        name: "EMAIL_FROM Campaign",
+        goalPrompt: "",
+        generatedDraft: {
+          subject: "Subject",
+          previewText: "Preview",
+          contentJson: { blocks: [{ type: "paragraph", contentHtml: "<p>Body</p>" }] },
+        },
+      });
+
+      expect(draft?.fromEmail).toBe("custom@studio.example");
+      expect(draft?.replyTo).toBe("custom@studio.example");
+    } finally {
+      process.env.EMAIL_FROM = originalEmailFrom;
+    }
+  });
+
+  it("preserves already-sent recipients when campaign is reset and retried (idempotent createMany)", async () => {
+    const admin = await prisma.user.create({
+      data: {
+        name: "Admin",
+        firstName: "Admin",
+        lastName: "User",
+        email: `admin.idempotent.${Date.now()}@example.test`,
+        role: Role.ADMIN,
+      },
+    });
+
+    const subscribedUser = await prisma.user.create({
+      data: {
+        name: "Subscriber",
+        firstName: "Sub",
+        lastName: "User",
+        email: `sub.idempotent.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+        marketingSubscriptionStatus: MarketingSubscriptionStatus.SUBSCRIBED,
+      },
+    });
+
+    const draft = await createMarketingCampaignFlowDraft({
+      createdById: admin.id,
+      name: "Idempotent Send Campaign",
+      goalPrompt: "",
+      generatedDraft: {
+        subject: "Idempotent subject",
+        previewText: "Preview",
+        contentJson: { blocks: [{ type: "paragraph", contentHtml: "<p>Body</p>" }] },
+      },
+    });
+    await updateMarketingCampaignFlowDraft(draft!.id, {
+      currentStep: "STEP_4",
+      fromEmail: "no-reply@bookmyclass.app",
+      replyTo: "no-reply@bookmyclass.app",
+    });
+
+    // Simulate a partial failure: manually pre-seed a SENT recipient row and put
+    // the campaign in SENDING state, then reset it back to DRAFT (admin recovery).
+    await prisma.marketingCampaignRecipient.create({
+      data: {
+        campaignId: draft!.id,
+        userId: subscribedUser.id,
+        email: subscribedUser.email,
+        status: "SENT",
+        sentAt: new Date(),
+      },
+    });
+    await prisma.marketingCampaign.update({
+      where: { id: draft!.id },
+      data: { status: MarketingCampaignStatus.DRAFT },
+    });
+
+    // Retry the send — with skipDuplicates the pre-seeded row must not be overwritten.
+    await sendMarketingCampaignFlowNow({ campaignId: draft!.id });
+
+    const recipients = await prisma.marketingCampaignRecipient.findMany({
+      where: { campaignId: draft!.id },
+    });
+    // There should be exactly one recipient row (not duplicated).
+    expect(recipients).toHaveLength(1);
+    // The row must not be downgraded from SENT to PENDING.
+    expect(recipients[0]?.status).toBe("SENT");
+  });
 });

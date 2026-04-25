@@ -27,6 +27,7 @@ import { hash } from "bcryptjs";
 import { createHash, randomUUID } from "node:crypto";
 
 import { prisma } from "@/lib/db";
+import { resolveEntitlementScopeFromCategorySlug } from "@/lib/booking/entitlement-scope";
 import { generatePlanSlug } from "@/lib/admin/plan-slug";
 import { ensureEntitlementRuleForProduct } from "@/lib/admin/plan-entitlement-rules";
 import { provisionPlanOnStripe, resolveStripeProductIdFromPrice } from "@/lib/admin/plan-provisioning";
@@ -812,17 +813,6 @@ function withTime(input: Date, time: string): Date {
   return date;
 }
 
-function toEntitlementScopeFromCategorySlug(categorySlug: string): EntitlementScope {
-  if (categorySlug.includes("private")) {
-    return EntitlementScope.PRIVATE_CLASSES;
-  }
-
-  if (categorySlug.includes("workshop")) {
-    return EntitlementScope.WORKSHOPS;
-  }
-
-  return EntitlementScope.COLLECTIVE_CLASSES;
-}
 
 function buildRecurringOccurrences(input: AdminRecurringSessionScheduleInput): Array<{
   weekday: Weekday;
@@ -2327,7 +2317,7 @@ export async function getAdminSessionOptions(sessionId?: string): Promise<{
     };
   }
 
-  const requiredScope = toEntitlementScopeFromCategorySlug(sessionClassCategory.classType.category.slug);
+  const requiredScope = resolveEntitlementScopeFromCategorySlug(sessionClassCategory.classType.category.slug);
   const availableCreditsByClientId = await getClientAvailableCreditsByScope({
     clientIds: clients.map((client) => client.id),
     requiredScope,
@@ -2840,7 +2830,7 @@ export async function addSessionAttendeeByManager(input: {
     throw new Error("SESSION_FULL");
   }
 
-  const requiredScope = toEntitlementScopeFromCategorySlug(session.classType.category.slug);
+  const requiredScope = resolveEntitlementScopeFromCategorySlug(session.classType.category.slug);
   const coverage = await resolveWaitlistPromotionCoverage(prisma, {
     clientId: clientUser.id,
     requiredScope,
@@ -5437,10 +5427,14 @@ export async function createAdminSubscription(input: {
   provider: PaymentProvider;
   providerSubscriptionReference?: string;
 }) {
-  const price = await prisma.price.findUnique({
-    where: { id: input.priceId },
-    select: { productId: true },
-  });
+  const [client, price] = await Promise.all([
+    prisma.user.findUnique({ where: { id: input.clientId }, select: { role: true } }),
+    prisma.price.findUnique({ where: { id: input.priceId }, select: { productId: true } }),
+  ]);
+
+  if (!client || client.role !== Role.CLIENT) {
+    throw new Error("SUBSCRIPTION_CLIENT_ROLE_MISMATCH");
+  }
 
   if (!price || price.productId !== input.productId) {
     throw new Error("PRICE_PRODUCT_MISMATCH");
@@ -5474,6 +5468,18 @@ export async function updateAdminSubscription(
     providerSubscriptionReference?: string;
   },
 ) {
+  const existing = await prisma.subscriptionContract.findUnique({
+    where: { id },
+    select: { client: { select: { role: true } } },
+  });
+
+  if (!existing) {
+    throw new Error("SUBSCRIPTION_NOT_FOUND");
+  }
+  if (existing.client.role !== Role.CLIENT) {
+    throw new Error("SUBSCRIPTION_CLIENT_ROLE_MISMATCH");
+  }
+
   return prisma.subscriptionContract.update({
     where: { id },
     data: {

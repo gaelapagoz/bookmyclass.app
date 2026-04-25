@@ -20,9 +20,19 @@ describe("marketing tracking secret resolution", () => {
     );
   });
 
-  it("allows non-production fallback when MARKETING_TRACKING_SECRET is missing", async () => {
+  it("throws in non-production environments when MARKETING_TRACKING_SECRET is missing", async () => {
     process.env.NODE_ENV = "test";
-    process.env.NEXTAUTH_SECRET = "nextauth-test-secret";
+
+    const module = await import("../../src/lib/marketing/marketing-tracking");
+
+    expect(() => module.createRecipientTrackingToken("recipient-1")).toThrow(
+      "Missing required env var: MARKETING_TRACKING_SECRET",
+    );
+  });
+
+  it("returns a valid token when MARKETING_TRACKING_SECRET is set", async () => {
+    process.env.NODE_ENV = "test";
+    process.env.MARKETING_TRACKING_SECRET = "test-secret-value";
 
     const module = await import("../../src/lib/marketing/marketing-tracking");
 

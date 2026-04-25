@@ -12,6 +12,7 @@ import {
   WaitlistStatus,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { resolveEntitlementScopeFromCategorySlug } from "@/lib/booking/entitlement-scope";
 import { bookingDraftActiveBookingFilter } from "@/lib/public-booking/booking-draft-service";
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
@@ -57,17 +58,6 @@ type PromotionResult = {
   notifications: WaitlistPromotionNotification[];
 };
 
-function toEntitlementScopeFromCategorySlug(categorySlug: string): EntitlementScope {
-  if (categorySlug.includes("private")) {
-    return EntitlementScope.PRIVATE_CLASSES;
-  }
-
-  if (categorySlug.includes("workshop")) {
-    return EntitlementScope.WORKSHOPS;
-  }
-
-  return EntitlementScope.COLLECTIVE_CLASSES;
-}
 
 function computeWaitlistLimit(capacity: number): number {
   return Math.max(0, Math.floor(capacity / 2));
@@ -326,7 +316,7 @@ async function processWaitlistPromotionsForSession(tx: DbClient, input: {
     return { notifications: [] };
   }
 
-  const requiredScope = toEntitlementScopeFromCategorySlug(session.classType.category.slug);
+  const requiredScope = resolveEntitlementScopeFromCategorySlug(session.classType.category.slug);
   if (requiredScope !== EntitlementScope.COLLECTIVE_CLASSES) {
     return { notifications: [] };
   }
@@ -661,7 +651,7 @@ export async function joinSessionWaitlist(input: {
         throw new WaitlistServiceError("SESSION_NOT_BOOKABLE", "Session is not bookable.");
       }
 
-      const requiredScope = toEntitlementScopeFromCategorySlug(session.classType.category.slug);
+      const requiredScope = resolveEntitlementScopeFromCategorySlug(session.classType.category.slug);
       if (requiredScope !== EntitlementScope.COLLECTIVE_CLASSES) {
         throw new WaitlistServiceError("WAITLIST_NOT_SUPPORTED", "Waitlist is only available for collective classes.");
       }
