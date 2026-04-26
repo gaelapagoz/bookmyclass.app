@@ -12,7 +12,7 @@ import {
   StudioSessionStatus,
 } from "@prisma/client";
 import { prisma } from "../db";
-import { resolveEntitlementScopeFromCategorySlug } from "../booking/entitlement-scope";
+import { resolveEntitlementScope } from "../booking/entitlement-scope";
 import { bookingDraftActiveBookingFilter } from "./booking-draft-service";
 
 type PlanBalance = {
@@ -119,6 +119,7 @@ type BookingForOptions = {
   classType: {
     categorySlug: string;
     serviceSlug: string;
+    serviceScope: EntitlementScope | null;
   };
   draftAmountMinor: number | null;
   draftCurrencyCode: string | null;
@@ -283,6 +284,7 @@ async function getBookingForOptions(bookingId: string): Promise<BookingForOption
           classType: {
             select: {
               slug: true,
+              serviceScope: true,
               category: {
                 select: {
                   slug: true,
@@ -319,14 +321,18 @@ async function getBookingForOptions(bookingId: string): Promise<BookingForOption
     classType: {
       serviceSlug: booking.studioSession.classType.slug,
       categorySlug: booking.studioSession.classType.category.slug,
+      serviceScope: booking.studioSession.classType.serviceScope,
     },
   };
 }
 
-async function getServiceCategorySlug(serviceSlug: string): Promise<string | null> {
+async function getServiceScopeInfo(
+  serviceSlug: string,
+): Promise<{ categorySlug: string; serviceScope: EntitlementScope | null } | null> {
   const classType = await prisma.classType.findUnique({
     where: { slug: serviceSlug },
     select: {
+      serviceScope: true,
       category: {
         select: {
           slug: true,
@@ -335,7 +341,8 @@ async function getServiceCategorySlug(serviceSlug: string): Promise<string | nul
     },
   });
 
-  return classType?.category.slug ?? null;
+  if (!classType) return null;
+  return { categorySlug: classType.category.slug, serviceScope: classType.serviceScope };
 }
 
 function isEntitlementActive(expiresAt: Date | null): boolean {
@@ -1084,7 +1091,7 @@ export async function getBookingPaymentOptions(params: {
   assertBookingOwnedByUser(booking, params.userId);
   assertSessionStillBookable(booking);
 
-  const requiredScope = resolveEntitlementScopeFromCategorySlug(booking.classType.categorySlug);
+  const requiredScope = resolveEntitlementScope({ serviceScope: booking.classType.serviceScope, categorySlug: booking.classType.categorySlug });
   const [singleSession, newPlanOptions, existingPlans] = await Promise.all([
     getSingleSessionOptionByScope(requiredScope),
     getPlanPurchaseOptions(requiredScope),
@@ -1126,12 +1133,12 @@ export async function getBookingPaymentOptionsPreview(params: {
   userId: string | null;
 }): Promise<BookingPaymentOptionsPreview> {
   const bookingIntent = params.bookingIntent ?? "USE_PLAN";
-  const categorySlug = await getServiceCategorySlug(params.serviceSlug);
-  if (!categorySlug) {
+  const scopeInfo = await getServiceScopeInfo(params.serviceSlug);
+  if (!scopeInfo) {
     throw new BookingPaymentOptionsError("BOOKING_NOT_FOUND", "Service was not found.");
   }
 
-  const requiredScope = resolveEntitlementScopeFromCategorySlug(categorySlug);
+  const requiredScope = resolveEntitlementScope({ serviceScope: scopeInfo.serviceScope, categorySlug: scopeInfo.categorySlug });
   const [singleSession, newPlanOptions, existingPlans] = await Promise.all([
     getSingleSessionOptionByScope(requiredScope),
     getPlanPurchaseOptions(requiredScope),
@@ -1163,7 +1170,8 @@ export async function getBookingPaymentOptionsPreview(params: {
       },
       classType: {
         serviceSlug: params.serviceSlug,
-        categorySlug,
+        categorySlug: scopeInfo.categorySlug,
+        serviceScope: scopeInfo.serviceScope,
       },
     },
     existingPlans,
@@ -1467,7 +1475,7 @@ export async function selectBookingPaymentOption(input: SelectPaymentInput): Pro
   assertBookingOwnedByUser(booking, input.userId);
   assertSessionStillBookable(booking);
 
-  const requiredScope = resolveEntitlementScopeFromCategorySlug(booking.classType.categorySlug);
+  const requiredScope = resolveEntitlementScope({ serviceScope: booking.classType.serviceScope, categorySlug: booking.classType.categorySlug });
 
   if (input.mode === "EXISTING_PLAN") {
     if (!input.userId) {

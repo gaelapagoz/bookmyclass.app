@@ -15,6 +15,22 @@ function getBookingDraftExpirationCutoff(now = new Date()) {
   return new Date(now.getTime() - BOOKING_DRAFT_HOLD_WINDOW_MINUTES * 60_000);
 }
 
+export async function expireStaleBookingDrafts(): Promise<{ expiredCount: number }> {
+  const cutoff = getBookingDraftExpirationCutoff();
+  const result = await prisma.booking.updateMany({
+    where: {
+      status: BookingStatus.PENDING,
+      createdAt: { lt: cutoff },
+    },
+    data: {
+      status: BookingStatus.CANCELLED,
+      cancelledAt: new Date(),
+      cancellationReason: "Expired booking draft",
+    },
+  });
+  return { expiredCount: result.count };
+}
+
 export function bookingDraftActiveBookingFilter(now = new Date()): Prisma.BookingWhereInput {
   return {
     OR: [

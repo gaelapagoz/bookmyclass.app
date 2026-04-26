@@ -3,7 +3,8 @@ import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
 import { auth } from "../../../../auth";
 import { BookingDraftError, createPendingBookingDraft } from "../../../../lib/public-booking/booking-draft-service";
-import { createRateLimiter, getClientIpFromHeaders } from "../../../../lib/security/rate-limit";
+import { getClientIpFromHeaders } from "../../../../lib/security/rate-limit";
+import { checkAndRecordDbRateLimit } from "../../../../lib/security/db-rate-limit";
 import { rejectIfNotSameOrigin } from "../../../../lib/security/same-origin";
 
 const draftSchema = z.object({
@@ -44,40 +45,28 @@ export function resolveBookingDraftUserRateLimitConfig() {
     return {
       maxAttempts: parsePositiveIntegerEnv("BOOKING_DRAFT_USER_MAX_ATTEMPTS_LOAD", 200),
       windowMs: parsePositiveIntegerEnv("BOOKING_DRAFT_USER_WINDOW_MS_LOAD", 60 * 1000),
-      blockDurationMs: parsePositiveIntegerEnv("BOOKING_DRAFT_USER_BLOCK_DURATION_MS_LOAD", 30 * 1000),
     };
   }
 
   return {
     maxAttempts: parsePositiveIntegerEnv("BOOKING_DRAFT_USER_MAX_ATTEMPTS", 8),
     windowMs: parsePositiveIntegerEnv("BOOKING_DRAFT_USER_WINDOW_MS", 60 * 1000),
-    blockDurationMs: parsePositiveIntegerEnv("BOOKING_DRAFT_USER_BLOCK_DURATION_MS", 5 * 60 * 1000),
   };
 }
-
-const bookingDraftUserRateLimiter = createRateLimiter({
-  ...resolveBookingDraftUserRateLimitConfig(),
-});
 
 export function resolveBookingDraftIpRateLimitConfig() {
   if (isLoadWindowRateLimitModeEnabled()) {
     return {
       maxAttempts: parsePositiveIntegerEnv("BOOKING_DRAFT_IP_MAX_ATTEMPTS_LOAD", 400),
       windowMs: parsePositiveIntegerEnv("BOOKING_DRAFT_IP_WINDOW_MS_LOAD", 60 * 1000),
-      blockDurationMs: parsePositiveIntegerEnv("BOOKING_DRAFT_IP_BLOCK_DURATION_MS_LOAD", 30 * 1000),
     };
   }
 
   return {
     maxAttempts: parsePositiveIntegerEnv("BOOKING_DRAFT_IP_MAX_ATTEMPTS", 20),
     windowMs: parsePositiveIntegerEnv("BOOKING_DRAFT_IP_WINDOW_MS", 60 * 1000),
-    blockDurationMs: parsePositiveIntegerEnv("BOOKING_DRAFT_IP_BLOCK_DURATION_MS", 5 * 60 * 1000),
   };
 }
-
-const bookingDraftIpRateLimiter = createRateLimiter({
-  ...resolveBookingDraftIpRateLimitConfig(),
-});
 
 function toStatusCode(code: BookingDraftError["code"]): number {
   switch (code) {
@@ -317,11 +306,19 @@ export async function POST(request: Request) {
   }
 
   const ipAddress = getClientIpFromHeaders(request.headers);
-  const userKey = `user:${authenticatedUserId}`;
-  const ipKey = `ip:${ipAddress}`;
 
-  const userLimit = bookingDraftUserRateLimiter.checkLimit(userKey);
-  const ipLimit = bookingDraftIpRateLimiter.checkLimit(ipKey);
+  const [userLimit, ipLimit] = await Promise.all([
+    checkAndRecordDbRateLimit(
+      "booking-draft-user",
+      authenticatedUserId,
+      resolveBookingDraftUserRateLimitConfig(),
+    ),
+    checkAndRecordDbRateLimit(
+      "booking-draft-ip",
+      ipAddress,
+      resolveBookingDraftIpRateLimitConfig(),
+    ),
+  ]);
 
   if (!userLimit.allowed || !ipLimit.allowed) {
     captureBookingRateLimitTriggered({
@@ -329,19 +326,11 @@ export async function POST(request: Request) {
       ip: ipAddress,
     });
 
-    const retryAfter = Math.max(userLimit.retryAfter ?? 0, ipLimit.retryAfter ?? 0);
-
     return Response.json(
-      {
-        error: "Too many booking attempts. Please try again later.",
-        retryAfter,
-      },
+      { error: "Too many booking attempts. Please try again later." },
       { status: 429 },
     );
   }
-
-  bookingDraftUserRateLimiter.recordFailure(userKey);
-  bookingDraftIpRateLimiter.recordFailure(ipKey);
 
   try {
     const result = await createPendingBookingDraft({
@@ -364,6 +353,7 @@ export async function POST(request: Request) {
       userLimitAllowed: userLimit.allowed,
       ipLimitAllowed: ipLimit.allowed,
     });
+
     if (process.env.NODE_ENV !== "production") {
       console.error("[bookings/draft] unexpected error", error);
     }

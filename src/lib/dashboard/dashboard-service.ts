@@ -28,6 +28,7 @@ import {
   normalizeBookingCancellationWindowHours,
 } from "@/lib/booking/cancellation-policy";
 import { assertBookingNotCheckedInForCancellation, getBookingSelfCheckInEligibility } from "@/lib/attendance/attendance-service";
+import { restoreCredit } from "@/lib/credits/credit-service";
 
 type DashboardServiceErrorCode =
   | "BOOKING_NOT_FOUND"
@@ -717,24 +718,20 @@ export async function cancelClientBooking(input: {
         });
 
         if (consumed && !restoreExists) {
-          const restoreResult = await tx.creditLedgerEntry.createMany({
-            data: {
+          const restoreResult = await restoreCredit({
+            clientId: input.clientId,
+            entitlementId: booking.selectedEntitlementId,
+            bookingId: booking.id,
+            reason: "Credit restored after client dashboard cancellation.",
+            idempotencyKey: buildBookingCreditLedgerIdempotencyKey({
+              type: "RESTORE",
               clientId: input.clientId,
               entitlementId: booking.selectedEntitlementId,
               bookingId: booking.id,
-              entryType: CreditLedgerEntryType.RESTORE,
-              amount: 1,
-              idempotencyKey: buildBookingCreditLedgerIdempotencyKey({
-                type: "RESTORE",
-                clientId: input.clientId,
-                entitlementId: booking.selectedEntitlementId,
-                bookingId: booking.id,
-              }),
-              notes: "Credit restored after client dashboard cancellation.",
-            },
-            skipDuplicates: true,
+            }),
+            prismaClient: tx,
           });
-          refunded = restoreResult.count > 0;
+          refunded = restoreResult.restored;
         }
       }
     }
@@ -980,14 +977,14 @@ export async function getDashboardLoyaltyPlaceholder(clientId: string): Promise<
   return result._sum.amount ?? 0;
 }
 
-const ACTIVITY_ALLOWED_FILTERS = ["all", "bookings", "orders"] as const;
+const ACTIVITY_ALLOWED_FILTERS = ["all", "bookings", "orders", "payments", "subscriptions", "credits"] as const;
 type ActivityFilter = (typeof ACTIVITY_ALLOWED_FILTERS)[number];
 const ACTIVITY_DEFAULT_PAGE_SIZE = 20;
 const ACTIVITY_MAX_PAGE_SIZE = 50;
 
 export type ActivityItem = {
   id: string;
-  type: "BOOKING" | "ORDER";
+  type: "BOOKING" | "ORDER" | "PAYMENT" | "SUBSCRIPTION" | "CREDIT";
   label: string;
   detail: string | null;
   status: string;
@@ -1031,6 +1028,9 @@ export async function getClientActivityPage(
 
   const bookingItems: ActivityItem[] = [];
   const orderItems: ActivityItem[] = [];
+  const paymentItems: ActivityItem[] = [];
+  const subscriptionItems: ActivityItem[] = [];
+  const creditItems: ActivityItem[] = [];
 
   if (filter === "all" || filter === "bookings") {
     const bookings = await prisma.booking.findMany({
@@ -1091,7 +1091,93 @@ export async function getClientActivityPage(
     }
   }
 
-  const combined = [...bookingItems, ...orderItems].sort(
+  if (filter === "all" || filter === "payments") {
+    const payments = await prisma.payment.findMany({
+      where: {
+        OR: [
+          { order: { clientId } },
+          { booking: { clientId } },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      skip: filter === "payments" ? skip : 0,
+      take: filter === "payments" ? pageSize : 200,
+      select: {
+        id: true,
+        status: true,
+        amountMinor: true,
+        currencyCode: true,
+        method: true,
+        createdAt: true,
+      },
+    });
+    for (const p of payments) {
+      const amount = `${(p.amountMinor / 100).toFixed(2)} ${p.currencyCode}`;
+      paymentItems.push({
+        id: p.id,
+        type: "PAYMENT",
+        label: `Payment via ${p.method}`,
+        detail: amount,
+        status: p.status,
+        timestamp: p.createdAt.toISOString(),
+      });
+    }
+  }
+
+  if (filter === "all" || filter === "subscriptions") {
+    const subscriptions = await prisma.subscriptionContract.findMany({
+      where: { clientId },
+      orderBy: { createdAt: "desc" },
+      skip: filter === "subscriptions" ? skip : 0,
+      take: filter === "subscriptions" ? pageSize : 200,
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        currentPeriodEnd: true,
+        product: { select: { name: true } },
+      },
+    });
+    for (const s of subscriptions) {
+      subscriptionItems.push({
+        id: s.id,
+        type: "SUBSCRIPTION",
+        label: s.product.name,
+        detail: s.currentPeriodEnd.toISOString(),
+        status: s.status,
+        timestamp: s.createdAt.toISOString(),
+      });
+    }
+  }
+
+  if (filter === "all" || filter === "credits") {
+    const credits = await prisma.creditLedgerEntry.findMany({
+      where: { clientId },
+      orderBy: { happenedAt: "desc" },
+      skip: filter === "credits" ? skip : 0,
+      take: filter === "credits" ? pageSize : 200,
+      select: {
+        id: true,
+        entryType: true,
+        amount: true,
+        happenedAt: true,
+        notes: true,
+      },
+    });
+    for (const c of credits) {
+      const sign = c.amount > 0 ? `+${c.amount}` : String(c.amount);
+      creditItems.push({
+        id: c.id,
+        type: "CREDIT",
+        label: c.entryType,
+        detail: `${sign} credit${Math.abs(c.amount) !== 1 ? "s" : ""}${c.notes ? ` — ${c.notes}` : ""}`,
+        status: c.entryType,
+        timestamp: c.happenedAt.toISOString(),
+      });
+    }
+  }
+
+  const combined = [...bookingItems, ...orderItems, ...paymentItems, ...subscriptionItems, ...creditItems].sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
   );
 

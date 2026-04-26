@@ -743,6 +743,8 @@ export async function sendMarketingCampaignFlowNow(input: { campaignId: string }
             fromName: campaign.fromName,
             fromEmail: fromEmail.data,
             replyTo: replyTo.data,
+            campaignId: campaign.id,
+            recipientId: recipient.id,
           });
 
           await prisma.marketingCampaignRecipient.update({

@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/db";
 import { renderMarketingEmailHtml, extractTrackingLinks, normalizeMarketingContentJson } from "@/lib/marketing/marketing-renderer";
 import { createRecipientTrackingToken, parseRecipientTrackingToken } from "@/lib/marketing/marketing-tracking";
@@ -10,6 +11,8 @@ export async function sendMarketingEmailViaResend(input: {
   fromName: string;
   fromEmail: string;
   replyTo?: string | null;
+  campaignId?: string | null;
+  recipientId?: string | null;
 }) {
   const from = `${input.fromName} <${input.fromEmail}>`;
   try {
@@ -32,6 +35,13 @@ export async function sendMarketingEmailViaResend(input: {
     console.error("[marketing-delivery] resend-failed", {
       to: input.to,
       details,
+    });
+    Sentry.withScope((scope) => {
+      scope.setTag("domain", "marketing-delivery");
+      if (input.campaignId) scope.setExtra("campaignId", input.campaignId);
+      if (input.recipientId) scope.setExtra("recipientId", input.recipientId);
+      scope.setExtra("providerError", details);
+      Sentry.captureException(error instanceof Error ? error : new Error(String(details)));
     });
     return { sent: false };
   }

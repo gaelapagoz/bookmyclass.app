@@ -27,7 +27,8 @@ import { hash } from "bcryptjs";
 import { createHash, randomUUID } from "node:crypto";
 
 import { prisma } from "@/lib/db";
-import { resolveEntitlementScopeFromCategorySlug } from "@/lib/booking/entitlement-scope";
+import { resolveEntitlementScope } from "@/lib/booking/entitlement-scope";
+import { consumeCredit } from "@/lib/credits/credit-service";
 import { generatePlanSlug } from "@/lib/admin/plan-slug";
 import { ensureEntitlementRuleForProduct } from "@/lib/admin/plan-entitlement-rules";
 import { provisionPlanOnStripe, resolveStripeProductIdFromPrice } from "@/lib/admin/plan-provisioning";
@@ -2293,6 +2294,7 @@ export async function getAdminSessionOptions(sessionId?: string): Promise<{
     select: {
       classType: {
         select: {
+          serviceScope: true,
           category: {
             select: {
               slug: true,
@@ -2317,7 +2319,7 @@ export async function getAdminSessionOptions(sessionId?: string): Promise<{
     };
   }
 
-  const requiredScope = resolveEntitlementScopeFromCategorySlug(sessionClassCategory.classType.category.slug);
+  const requiredScope = resolveEntitlementScope({ serviceScope: sessionClassCategory.classType.serviceScope, categorySlug: sessionClassCategory.classType.category.slug });
   const availableCreditsByClientId = await getClientAvailableCreditsByScope({
     clientIds: clients.map((client) => client.id),
     requiredScope,
@@ -2769,6 +2771,7 @@ export async function addSessionAttendeeByManager(input: {
         status: true,
         classType: {
           select: {
+            serviceScope: true,
             category: {
               select: {
                 slug: true,
@@ -2830,7 +2833,7 @@ export async function addSessionAttendeeByManager(input: {
     throw new Error("SESSION_FULL");
   }
 
-  const requiredScope = resolveEntitlementScopeFromCategorySlug(session.classType.category.slug);
+  const requiredScope = resolveEntitlementScope({ serviceScope: session.classType.serviceScope, categorySlug: session.classType.category.slug });
   const coverage = await resolveWaitlistPromotionCoverage(prisma, {
     clientId: clientUser.id,
     requiredScope,
@@ -2861,17 +2864,14 @@ export async function addSessionAttendeeByManager(input: {
     });
 
     if (coverage.consumeEntitlementId) {
-      await tx.creditLedgerEntry.create({
-        data: {
-          clientId: clientUser.id,
-          entitlementId: coverage.consumeEntitlementId,
-          bookingId: createdBooking.id,
-          entryType: CreditLedgerEntryType.CONSUME,
-          amount: -1,
-          createdById: actorUser.id,
-          happenedAt: now,
-          notes: `Credit consumed from session manager attendee add${normalizedNote ? `: ${normalizedNote}` : "."}`,
-        },
+      await consumeCredit({
+        clientId: clientUser.id,
+        entitlementId: coverage.consumeEntitlementId,
+        bookingId: createdBooking.id,
+        reason: `admin:attendee-add${normalizedNote ? `:${normalizedNote}` : ""}`,
+        idempotencyKey: `admin-attendee-add:${clientUser.id}:${coverage.consumeEntitlementId}:${createdBooking.id}`,
+        createdById: actorUser.id,
+        prismaClient: tx,
       });
     }
 
@@ -2898,7 +2898,7 @@ export async function addSessionAttendeeByManager(input: {
       usedCreditEntitlementId: coverage.consumeEntitlementId,
       overrideApplied: false,
     };
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function removeSessionAttendeeByManager(input: {

@@ -1,5 +1,6 @@
 import prisma from "@/lib/db";
 import { getAdminLoginAbuseGuardReadiness } from "@/lib/auth/admin-login-abuse-service";
+import { validateRuntimeEnv, RuntimeEnvError } from "@/lib/config/runtime-env";
 
 const NO_CACHE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate",
@@ -8,6 +9,19 @@ const NO_CACHE_HEADERS = {
 
 export async function GET() {
   const timestamp = new Date().toISOString();
+
+  try {
+    validateRuntimeEnv();
+  } catch (error) {
+    if (error instanceof RuntimeEnvError) {
+      return Response.json(
+        { ok: false, db: "unknown", runtimeEnv: error.message, timestamp },
+        { status: 503, headers: NO_CACHE_HEADERS },
+      );
+    }
+    throw error;
+  }
+
   const adminLoginAbuseGuard = getAdminLoginAbuseGuardReadiness();
 
   try {

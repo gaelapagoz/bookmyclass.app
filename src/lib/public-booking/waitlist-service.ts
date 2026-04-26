@@ -12,7 +12,7 @@ import {
   WaitlistStatus,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { resolveEntitlementScopeFromCategorySlug } from "@/lib/booking/entitlement-scope";
+import { resolveEntitlementScope } from "@/lib/booking/entitlement-scope";
 import { bookingDraftActiveBookingFilter } from "@/lib/public-booking/booking-draft-service";
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
@@ -294,6 +294,7 @@ async function processWaitlistPromotionsForSession(tx: DbClient, input: {
       isPublished: true,
       classType: {
         select: {
+          serviceScope: true,
           category: {
             select: {
               slug: true,
@@ -316,7 +317,7 @@ async function processWaitlistPromotionsForSession(tx: DbClient, input: {
     return { notifications: [] };
   }
 
-  const requiredScope = resolveEntitlementScopeFromCategorySlug(session.classType.category.slug);
+  const requiredScope = resolveEntitlementScope({ serviceScope: session.classType.serviceScope, categorySlug: session.classType.category.slug });
   if (requiredScope !== EntitlementScope.COLLECTIVE_CLASSES) {
     return { notifications: [] };
   }
@@ -629,6 +630,7 @@ export async function joinSessionWaitlist(input: {
           isPublished: true,
           classType: {
             select: {
+              serviceScope: true,
               category: {
                 select: {
                   slug: true,
@@ -651,7 +653,7 @@ export async function joinSessionWaitlist(input: {
         throw new WaitlistServiceError("SESSION_NOT_BOOKABLE", "Session is not bookable.");
       }
 
-      const requiredScope = resolveEntitlementScopeFromCategorySlug(session.classType.category.slug);
+      const requiredScope = resolveEntitlementScope({ serviceScope: session.classType.serviceScope, categorySlug: session.classType.category.slug });
       if (requiredScope !== EntitlementScope.COLLECTIVE_CLASSES) {
         throw new WaitlistServiceError("WAITLIST_NOT_SUPPORTED", "Waitlist is only available for collective classes.");
       }

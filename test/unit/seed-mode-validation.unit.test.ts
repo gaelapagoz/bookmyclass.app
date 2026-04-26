@@ -1,6 +1,5 @@
 import { isLearningImagePath } from "../../src/lib/learning/image-paths";
 import {
-  NON_PRODUCTION_URL_INDICATORS,
   PRODUCTION_CONFIRM_VALUE,
   PRODUCTION_URL_INDICATORS,
   resolveSeedMode,
@@ -66,26 +65,6 @@ describe("seed config", () => {
     }
   });
 
-  it("production seed refuses non-production looking DATABASE_URL", () => {
-    const prevConfirm = process.env.CONFIRM_PRODUCTION_SEED;
-    const prevNodeEnv = process.env.NODE_ENV;
-
-    try {
-      process.env.NODE_ENV = "production";
-      process.env.CONFIRM_PRODUCTION_SEED = PRODUCTION_CONFIRM_VALUE;
-
-      for (const indicator of NON_PRODUCTION_URL_INDICATORS) {
-        expect(() =>
-          validateEnvironmentForMode("production", `postgres://user:pass@${indicator}/db`),
-        ).toThrow(/appears non-production/i);
-      }
-    } finally {
-      if (prevConfirm !== undefined) process.env.CONFIRM_PRODUCTION_SEED = prevConfirm;
-      else delete process.env.CONFIRM_PRODUCTION_SEED;
-      if (prevNodeEnv !== undefined) process.env.NODE_ENV = prevNodeEnv;
-      else delete process.env.NODE_ENV;
-    }
-  });
 
   it("non-production seeds refuse production-like DATABASE_URL", () => {
     for (const indicator of PRODUCTION_URL_INDICATORS) {

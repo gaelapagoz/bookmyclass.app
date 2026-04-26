@@ -1,7 +1,7 @@
 import { EntitlementScope } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
-import { resolveEntitlementScopeFromCategorySlug } from "@/lib/booking/entitlement-scope";
+import { resolveEntitlementScope, resolveEntitlementScopeFromCategorySlug } from "@/lib/booking/entitlement-scope";
 
 describe("resolveEntitlementScopeFromCategorySlug", () => {
   it("returns PRIVATE_CLASSES for slugs containing 'private'", () => {
@@ -68,5 +68,39 @@ describe("resolveEntitlementScopeFromCategorySlug", () => {
     expect(resolveEntitlementScopeFromCategorySlug("123-category")).toBe(
       EntitlementScope.COLLECTIVE_CLASSES,
     );
+  });
+});
+
+describe("resolveEntitlementScope", () => {
+  it("returns serviceScope directly when set, ignoring categorySlug", () => {
+    expect(
+      resolveEntitlementScope({
+        serviceScope: EntitlementScope.PRIVATE_CLASSES,
+        categorySlug: "collective-classes",
+      }),
+    ).toBe(EntitlementScope.PRIVATE_CLASSES);
+
+    expect(
+      resolveEntitlementScope({
+        serviceScope: EntitlementScope.WORKSHOPS,
+        categorySlug: "yoga",
+      }),
+    ).toBe(EntitlementScope.WORKSHOPS);
+  });
+
+  it("falls back to slug resolution when serviceScope is null", () => {
+    expect(
+      resolveEntitlementScope({ serviceScope: null, categorySlug: "private-sessions" }),
+    ).toBe(EntitlementScope.PRIVATE_CLASSES);
+
+    expect(
+      resolveEntitlementScope({ serviceScope: null, categorySlug: "yoga" }),
+    ).toBe(EntitlementScope.COLLECTIVE_CLASSES);
+  });
+
+  it("falls back to slug resolution when serviceScope is undefined", () => {
+    expect(
+      resolveEntitlementScope({ serviceScope: undefined, categorySlug: "workshops" }),
+    ).toBe(EntitlementScope.WORKSHOPS);
   });
 });

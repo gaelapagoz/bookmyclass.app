@@ -22,6 +22,7 @@ import {
 } from "@/lib/cart/cart-contract";
 import { prisma } from "../db";
 import { getStripeClient } from "../payments/stripe";
+import { consumeCredit } from "@/lib/credits/credit-service";
 
 type CatalogCheckoutMetadata = {
   userId: string;
@@ -390,24 +391,19 @@ async function grantEntitlementForSuccessfulPricePurchase(input: {
     (resolvedRule.entitlementType === EntitlementType.CREDIT_PACK ||
       resolvedRule.entitlementType === EntitlementType.SINGLE_USE)
   ) {
-    await prisma.creditLedgerEntry.createMany({
-      data: {
+    await consumeCredit({
+      clientId: input.clientId,
+      entitlementId: entitlement.id,
+      bookingId: input.bookingId,
+      reason: "stripe:checkout-complete",
+      idempotencyKey: buildCreditLedgerIdempotencyKey({
+        type: "CONSUME",
         clientId: input.clientId,
         entitlementId: entitlement.id,
+        orderId: input.orderId,
         bookingId: input.bookingId,
-        entryType: CreditLedgerEntryType.CONSUME,
-        amount: -1,
-        idempotencyKey: buildCreditLedgerIdempotencyKey({
-          type: "CONSUME",
-          clientId: input.clientId,
-          entitlementId: entitlement.id,
-          orderId: input.orderId,
-          bookingId: input.bookingId,
-          linePriceId: input.selectedPriceId,
-        }),
-        notes: "Credit consumed for booking confirmed by Stripe purchase.",
-      },
-      skipDuplicates: true,
+        linePriceId: input.selectedPriceId,
+      }),
     });
   }
 
@@ -1116,7 +1112,7 @@ async function handleCheckoutCompleted(
     }
   }
 
-  if (booking && booking.status !== BookingStatus.CONFIRMED) {
+  if (booking && booking.status === BookingStatus.PENDING) {
     await prisma.booking.update({
       where: { id: booking.id },
       data: { status: BookingStatus.CONFIRMED },

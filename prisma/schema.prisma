@@ -489,6 +489,7 @@ model ClassType {
   isVisible              Boolean            @default(true)
   pricingMode            ServicePricingMode @default(SINGLE_OR_PLAN)
   sortOrder              Int                @default(0)
+  serviceScope           EntitlementScope?
   category               ClassCategory      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   templates              ClassTemplate[]
   studioSessions         StudioSession[]
@@ -1092,6 +1093,17 @@ model ClientMessage {
 model ContactMessageRateLimit {
   id              String   @id @default(cuid())
   ipHash          String   @unique
+  windowStartedAt DateTime
+  requestCount    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([windowStartedAt])
+}
+
+model RateLimitCounter {
+  id              String   @id @default(cuid())
+  keyHash         String   @unique
   windowStartedAt DateTime
   requestCount    Int      @default(0)
   createdAt       DateTime @default(now())

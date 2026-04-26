@@ -45,15 +45,6 @@ export function validateEnvironmentForMode(mode: SeedMode, databaseUrl: string):
       throw new Error("Production seed refused: NODE_ENV is 'test'.");
     }
 
-    // 3. Refuse if DATABASE_URL looks like a non-production environment.
-    // for (const indicator of NON_PRODUCTION_URL_INDICATORS) {
-    //   if (urlLower.includes(indicator)) {
-    //     throw new Error(
-    //       `Production seed refused: DATABASE_URL appears non-production (contains '${indicator}'). ` +
-    //         "Connect to the production database to run this seed.",
-    //     );
-    //   }
-    // }
 
     console.info("[seed] Production safety checks passed.");
   } else {

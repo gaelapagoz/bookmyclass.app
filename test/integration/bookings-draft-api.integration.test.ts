@@ -205,7 +205,6 @@ describe("POST /api/bookings/draft", () => {
     expect(resolveBookingDraftIpRateLimitConfig()).toEqual({
       maxAttempts: 20,
       windowMs: 60_000,
-      blockDurationMs: 300_000,
     });
   });
 
@@ -213,34 +212,28 @@ describe("POST /api/bookings/draft", () => {
     expect(resolveBookingDraftUserRateLimitConfig()).toEqual({
       maxAttempts: 8,
       windowMs: 60_000,
-      blockDurationMs: 300_000,
     });
   });
 
   it("accepts UAT IP rate-limit env overrides", () => {
     process.env.BOOKING_DRAFT_IP_MAX_ATTEMPTS = "400";
     process.env.BOOKING_DRAFT_IP_WINDOW_MS = "60000";
-    process.env.BOOKING_DRAFT_IP_BLOCK_DURATION_MS = "30000";
 
     expect(resolveBookingDraftIpRateLimitConfig()).toEqual({
       maxAttempts: 400,
       windowMs: 60_000,
-      blockDurationMs: 30_000,
     });
   });
 
   it("accepts UAT user rate-limit env overrides", () => {
     process.env.BOOKING_DRAFT_USER_MAX_ATTEMPTS = "200";
     process.env.BOOKING_DRAFT_USER_WINDOW_MS = "60000";
-    process.env.BOOKING_DRAFT_USER_BLOCK_DURATION_MS = "30000";
 
     expect(resolveBookingDraftUserRateLimitConfig()).toEqual({
       maxAttempts: 200,
       windowMs: 60_000,
-      blockDurationMs: 30_000,
     });
   });
-
 
   it("uses load-window-safe defaults when BOOKING_DRAFT_RATE_LIMIT_MODE=load", () => {
     process.env.BOOKING_DRAFT_RATE_LIMIT_MODE = "load";
@@ -248,13 +241,11 @@ describe("POST /api/bookings/draft", () => {
     expect(resolveBookingDraftIpRateLimitConfig()).toEqual({
       maxAttempts: 400,
       windowMs: 60_000,
-      blockDurationMs: 30_000,
     });
 
     expect(resolveBookingDraftUserRateLimitConfig()).toEqual({
       maxAttempts: 200,
       windowMs: 60_000,
-      blockDurationMs: 30_000,
     });
   });
 
@@ -262,21 +253,17 @@ describe("POST /api/bookings/draft", () => {
     process.env.BOOKING_DRAFT_RATE_LIMIT_MODE = "load";
     process.env.BOOKING_DRAFT_IP_MAX_ATTEMPTS_LOAD = "500";
     process.env.BOOKING_DRAFT_IP_WINDOW_MS_LOAD = "65000";
-    process.env.BOOKING_DRAFT_IP_BLOCK_DURATION_MS_LOAD = "45000";
     process.env.BOOKING_DRAFT_USER_MAX_ATTEMPTS_LOAD = "250";
     process.env.BOOKING_DRAFT_USER_WINDOW_MS_LOAD = "65000";
-    process.env.BOOKING_DRAFT_USER_BLOCK_DURATION_MS_LOAD = "45000";
 
     expect(resolveBookingDraftIpRateLimitConfig()).toEqual({
       maxAttempts: 500,
       windowMs: 65_000,
-      blockDurationMs: 45_000,
     });
 
     expect(resolveBookingDraftUserRateLimitConfig()).toEqual({
       maxAttempts: 250,
       windowMs: 65_000,
-      blockDurationMs: 45_000,
     });
   });
 
