@@ -1,5 +1,5 @@
 import { EntitlementScope } from "@prisma/client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { resolveEntitlementScope, resolveEntitlementScopeFromCategorySlug } from "@/lib/booking/entitlement-scope";
 
@@ -89,6 +89,7 @@ describe("resolveEntitlementScope", () => {
   });
 
   it("falls back to slug resolution when serviceScope is null", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(
       resolveEntitlementScope({ serviceScope: null, categorySlug: "private-sessions" }),
     ).toBe(EntitlementScope.PRIVATE_CLASSES);
@@ -96,11 +97,30 @@ describe("resolveEntitlementScope", () => {
     expect(
       resolveEntitlementScope({ serviceScope: null, categorySlug: "yoga" }),
     ).toBe(EntitlementScope.COLLECTIVE_CLASSES);
+    warn.mockRestore();
   });
 
   it("falls back to slug resolution when serviceScope is undefined", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(
       resolveEntitlementScope({ serviceScope: undefined, categorySlug: "workshops" }),
     ).toBe(EntitlementScope.WORKSHOPS);
+    warn.mockRestore();
+  });
+
+  it("emits console.warn with slug name when falling back", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    resolveEntitlementScope({ serviceScope: null, categorySlug: "yoga" });
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0][0]).toContain("serviceScope is null");
+    expect(warn.mock.calls[0][0]).toContain("yoga");
+    warn.mockRestore();
+  });
+
+  it("does not emit console.warn when serviceScope is set", () => {
+    const warn = vi.spyOn(console, "warn");
+    resolveEntitlementScope({ serviceScope: EntitlementScope.COLLECTIVE_CLASSES, categorySlug: "yoga" });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

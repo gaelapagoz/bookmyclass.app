@@ -37,6 +37,23 @@ vi.mock("@/auth", () => ({
   auth: vi.fn(async () => null),
 }));
 
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    user: {
+      findUnique: vi.fn(async () => {
+        const { auth } = await import("@/auth");
+        const session = await auth();
+        if (!session?.user) return null;
+        return {
+          role: session.user.role,
+          activationStatus: "ACTIVE",
+          isActive: true,
+        };
+      }),
+    },
+  },
+}));
+
 vi.mock("@/lib/auth/require-auth", () => ({
   requireAdminSession: vi.fn(async () => {
     const { auth } = await import("@/auth");

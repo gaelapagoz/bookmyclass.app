@@ -27,7 +27,7 @@ import { hash } from "bcryptjs";
 import { createHash, randomUUID } from "node:crypto";
 
 import { prisma } from "@/lib/db";
-import { resolveEntitlementScope } from "@/lib/booking/entitlement-scope";
+import { resolveEntitlementScope, resolveEntitlementScopeFromCategorySlug } from "@/lib/booking/entitlement-scope";
 import { consumeCredit } from "@/lib/credits/credit-service";
 import { generatePlanSlug } from "@/lib/admin/plan-slug";
 import { ensureEntitlementRuleForProduct } from "@/lib/admin/plan-entitlement-rules";
@@ -1833,7 +1833,12 @@ export async function createAdminClass(input: {
   isVisible: boolean;
   sortOrder: number;
 }) {
-  const slug = await buildUniqueClassSlug(input.name);
+  const [slug, category] = await Promise.all([
+    buildUniqueClassSlug(input.name),
+    prisma.classCategory.findUniqueOrThrow({ where: { id: input.categoryId }, select: { slug: true } }),
+  ]);
+
+  const serviceScope = resolveEntitlementScopeFromCategorySlug(category.slug);
 
   return prisma.classType.create({
     data: {
@@ -1847,6 +1852,7 @@ export async function createAdminClass(input: {
       isActive: input.isActive,
       isVisible: input.isVisible,
       sortOrder: input.sortOrder,
+      serviceScope,
     },
   });
 }
@@ -1865,7 +1871,12 @@ export async function updateAdminClass(
     sortOrder: number;
   },
 ) {
-  const slug = await buildUniqueClassSlug(input.name, id);
+  const [slug, category] = await Promise.all([
+    buildUniqueClassSlug(input.name, id),
+    prisma.classCategory.findUniqueOrThrow({ where: { id: input.categoryId }, select: { slug: true } }),
+  ]);
+
+  const serviceScope = resolveEntitlementScopeFromCategorySlug(category.slug);
 
   return prisma.classType.update({
     where: { id },
@@ -1880,8 +1891,31 @@ export async function updateAdminClass(
       isActive: input.isActive,
       isVisible: input.isVisible,
       sortOrder: input.sortOrder,
+      serviceScope,
     },
   });
+}
+
+export async function backfillClassTypeServiceScope(): Promise<{ updatedCount: number }> {
+  const nullScopeTypes = await prisma.classType.findMany({
+    where: { serviceScope: null },
+    select: { id: true, category: { select: { slug: true } } },
+  });
+
+  if (nullScopeTypes.length === 0) {
+    return { updatedCount: 0 };
+  }
+
+  await Promise.all(
+    nullScopeTypes.map((ct) =>
+      prisma.classType.update({
+        where: { id: ct.id },
+        data: { serviceScope: resolveEntitlementScopeFromCategorySlug(ct.category.slug) },
+      }),
+    ),
+  );
+
+  return { updatedCount: nullScopeTypes.length };
 }
 
 function combineDateAndTime(dateValue: Date, timeValue: string): Date {

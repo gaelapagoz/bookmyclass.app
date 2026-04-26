@@ -27,6 +27,7 @@ export function validateRuntimeEnv(): void {
   if (!process.env.RESEND_API_KEY?.trim()) missing.push("RESEND_API_KEY");
   if (!process.env.EMAIL_FROM?.trim()) missing.push("EMAIL_FROM");
   if (!process.env.MARKETING_TRACKING_SECRET?.trim()) missing.push("MARKETING_TRACKING_SECRET");
+  if (!process.env.CRON_SECRET?.trim()) missing.push("CRON_SECRET");
 
   if (missing.length > 0) {
     throw new RuntimeEnvError(

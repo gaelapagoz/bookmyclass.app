@@ -11,7 +11,9 @@ import {
   SubscriptionStatus,
   Weekday,
   Prisma,
+  UserActivationStatus,
 } from "@prisma/client";
+import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -697,8 +699,17 @@ async function assertSessionManagerAccess(): Promise<SessionManagerSession> {
     throw new Error("UNAUTHENTICATED");
   }
 
-  const role = session.user.role as Role | undefined;
-  if (!role || (role !== Role.ADMIN && role !== Role.MASTER_ADMIN && role !== Role.TEACHER)) {
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { role: true, activationStatus: true, isActive: true },
+  });
+
+  if (!user || !user.isActive || user.activationStatus !== UserActivationStatus.ACTIVE) {
+    throw new Error("UNAUTHENTICATED");
+  }
+
+  const role = user.role as Role;
+  if (role !== Role.ADMIN && role !== Role.MASTER_ADMIN && role !== Role.TEACHER) {
     throw new Error("FORBIDDEN");
   }
 

@@ -9,6 +9,7 @@ const REQUIRED_PROD_VARS: Record<string, string> = {
   RESEND_API_KEY: "re_xxx",
   EMAIL_FROM: "noreply@bookmyclass.app",
   MARKETING_TRACKING_SECRET: "mts_xxx",
+  CRON_SECRET: "cron_xxx",
 };
 
 function setProductionEnv(overrides: Partial<typeof REQUIRED_PROD_VARS> = {}) {

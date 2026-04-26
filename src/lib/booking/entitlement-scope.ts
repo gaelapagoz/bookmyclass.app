@@ -18,5 +18,8 @@ export function resolveEntitlementScope(input: {
   if (input.serviceScope) {
     return input.serviceScope;
   }
+  console.warn(
+    `[entitlement-scope] ClassType.serviceScope is null for category slug "${input.categorySlug}". Falling back to slug heuristic — backfill required.`,
+  );
   return resolveEntitlementScopeFromCategorySlug(input.categorySlug);
 }
