@@ -18,8 +18,6 @@ export type SessionCalendarItem = {
   href?: string;
 };
 
-const HOUR_START = 6;
-const HOUR_END = 22;
 const DAYS_IN_WEEK = 7;
 
 function getHourLabel(hour: number): string {

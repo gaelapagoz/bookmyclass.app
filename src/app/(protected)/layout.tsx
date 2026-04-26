@@ -1,10 +1,8 @@
-import { Role } from "@prisma/client";
 import { redirect } from "next/navigation";
 
 import { requireAuth } from "@/lib/auth/require-auth";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
-import { prisma } from "@/lib/db";
 
 export default async function ProtectedLayout({
   children,

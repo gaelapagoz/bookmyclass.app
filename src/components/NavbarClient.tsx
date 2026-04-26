@@ -9,7 +9,6 @@ import { siteConfig } from "@/lib/site-config";
 import {
   getHeaderAccountNavigation,
   getHeaderPrimaryNavigation,
-  type HeaderNavDisclosure,
 } from "@/lib/navigation/site-header-nav";
 
 type NavbarClientProps = {
@@ -77,8 +76,6 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
       document.removeEventListener("keydown", onEscape);
     };
   }, [isDesktopAboutOpen]);
-
-  const aboutItem = primaryItems.find((item): item is HeaderNavDisclosure => item.type === "disclosure") ?? null;
 
   useEffect(() => {
     const sync = () => {

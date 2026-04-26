@@ -162,6 +162,16 @@ Evidence label legend used in this file:
   5. Billing portal is available when Stripe customer exists.
   - Flow status: Confirmed.
   - Evidence status: Confirmed from repo (`src/app/(public)/subscription/page.tsx`, `src/app/api/subscription/*`, `src/lib/public-booking/stripe-webhook-service.ts`, `src/lib/subscription/ownership.ts`).
+- Cart checkout (multi-item):
+  1. Authenticated, active, email-verified client POSTs `{ lines, clientCartVersion }` to `POST /api/cart/checkout` with an `Idempotency-Key` header.
+  2. DB-backed rate limit (10 req/min per user, `RateLimitCounter` table) is checked before body parsing.
+  3. `CartCheckoutIdempotency` record is created or resolved: previously-SUCCEEDED/FAILED keys return cached responses without re-executing.
+  4. `createCheckoutSessionForCart` validates line items against DB, creates order/payments, and opens a Stripe Checkout session (`CheckoutSource.CART_CHECKOUT_V1`).
+  5. Client is redirected to Stripe and returns to `/subscription/success?session_id=...` (shared with subscription catalog success page).
+  6. Webhook `checkout.session.completed` updates payments → SUCCEEDED, orders → PAID, bookings → CONFIRMED via `processStripeWebhookEvent`.
+  7. Stale `CartCheckoutIdempotency` rows (SUCCEEDED/FAILED_* > 7 days; IN_PROGRESS > 1 hour) are cleaned up by the `GET /api/cron/maintenance` job.
+  - Flow status: Confirmed.
+  - Evidence status: Confirmed from repo (`src/app/api/cart/checkout/route.ts`, `src/lib/cart/cart-checkout-service.ts`, `src/lib/public-booking/checkout-service.ts`, `src/lib/public-booking/stripe-webhook-service.ts`, `src/app/api/cron/maintenance/route.ts`).
 - Payment/webhook synchronization:
   1. Stripe webhook verifies signature.
   2. Handlers process checkout completion, async failures, expiry, and subscription updates/deletes.

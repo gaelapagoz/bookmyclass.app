@@ -199,7 +199,6 @@ test.describe("critical client flows", () => {
     await signInClient(page, SEEDED_CLIENT_WITH_CREDITS);
 
     await page.goto("/dashboard/bookings");
-    const bookingCard = page.getByTestId(`dashboard-booking-${prepared.bookingId}`);
     const cancelButton = page.getByTestId(`dashboard-cancel-${prepared.bookingId}`);
     await expect(cancelButton).toBeEnabled();
     await cancelButton.click();
@@ -217,7 +216,6 @@ test.describe("critical client flows", () => {
     await signInClient(page, SEEDED_CLIENT_WITH_CREDITS);
 
     await page.goto("/dashboard/bookings");
-    const bookingCard = page.getByTestId(`dashboard-booking-${prepared.bookingId}`);
     const cancelButton = page.getByTestId(`dashboard-cancel-${prepared.bookingId}`);
     await expect(cancelButton).toBeVisible();
     await expect(cancelButton).toBeDisabled();

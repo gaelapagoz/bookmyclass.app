@@ -151,6 +151,7 @@ export default async function AdminClassEditPage({
           <h2 className="text-lg font-semibold text-[#1f2735]">Service Image</h2>
           {record.imageUrl ? (
             <div className="mt-3 h-[430px] w-full overflow-hidden rounded-md border border-[#d3dbe5]" data-testid="class-image-preview-container">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={record.imageUrl}
                 alt={`${record.name} image`}

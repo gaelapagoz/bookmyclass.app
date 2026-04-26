@@ -34,6 +34,7 @@ export default function LearningProgramsSection({
             >
               <div className="h-full min-h-[280px] bg-[#f7f3ee]">
                 {program.picture1 ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={program.picture1}
                     alt={program.mainTitle}

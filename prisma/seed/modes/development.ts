@@ -30,7 +30,6 @@ import {
   StripeSyncStatus,
   StudioSessionStatus,
   SubscriptionStatus,
-  Weekday,
 } from "@prisma/client";
 import { hash } from "bcryptjs";
 import { readFile } from "node:fs/promises";
@@ -74,13 +73,7 @@ const futureWindowEndUtc = new Date(seedDayUtc);
 futureWindowEndUtc.setUTCDate(futureWindowEndUtc.getUTCDate() + SEED_FUTURE_DAYS);
 futureWindowEndUtc.setUTCHours(23, 59, 59, 999);
 
-const SCHEDULE_BLACKOUT_DATES = new Set<string>();
 const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9]+$/;
-const COUNTED_BOOKING_STATUSES: BookingStatus[] = [
-  BookingStatus.CONFIRMED,
-  BookingStatus.COMPLETED,
-  BookingStatus.NO_SHOW,
-];
 
 type CatalogStripePriceEnvSpec = { productName: string; lookupKey: string; envVarName: string };
 
@@ -182,47 +175,6 @@ function endOfUtcDay(value: Date): Date {
   return date;
 }
 
-function dateKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function weekdayToJsDay(weekday: Weekday): number {
-  switch (weekday) {
-    case Weekday.MONDAY: return 1;
-    case Weekday.TUESDAY: return 2;
-    case Weekday.WEDNESDAY: return 3;
-    case Weekday.THURSDAY: return 4;
-    case Weekday.FRIDAY: return 5;
-    case Weekday.SATURDAY: return 6;
-    case Weekday.SUNDAY: return 0;
-  }
-}
-
-function parseTime(time: string): { hour: number; minute: number } {
-  const [hourRaw, minuteRaw] = time.split(":");
-  return { hour: Number(hourRaw), minute: Number(minuteRaw) };
-}
-
-function nextOccurrencesInWindow(params: {
-  weekday: Weekday; time: string; windowStart: Date; windowEnd: Date; extraSkipDates?: string[];
-}): Date[] {
-  const { weekday, time, windowStart, windowEnd, extraSkipDates = [] } = params;
-  const jsDay = weekdayToJsDay(weekday);
-  const { hour, minute } = parseTime(time);
-  const skipDates = new Set([...SCHEDULE_BLACKOUT_DATES, ...extraSkipDates]);
-  const result: Date[] = [];
-  const cursor = new Date(windowStart);
-  cursor.setUTCHours(0, 0, 0, 0);
-  while (cursor <= windowEnd) {
-    const candidate = new Date(cursor);
-    if (candidate.getUTCDay() !== jsDay) { cursor.setUTCDate(cursor.getUTCDate() + 1); continue; }
-    const startsAt = new Date(Date.UTC(candidate.getUTCFullYear(), candidate.getUTCMonth(), candidate.getUTCDate(), hour, minute, 0, 0));
-    if (startsAt < windowStart || startsAt > windowEnd || skipDates.has(dateKey(startsAt))) { cursor.setUTCDate(cursor.getUTCDate() + 1); continue; }
-    result.push(startsAt);
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-  return result;
-}
 
 // ─── Stripe price resolution ──────────────────────────────────────────────────
 

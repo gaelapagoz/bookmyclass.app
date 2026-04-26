@@ -59,17 +59,6 @@ type CheckoutResult = {
   paymentId: string;
 };
 
-type CheckoutDraftBooking = {
-  clientId: string | null;
-  draftAmountMinor: number | null;
-  draftCurrencyCode: string | null;
-  id: string;
-  paymentSelection: BookingPaymentSelection | null;
-  selectedPriceId: string | null;
-  serviceSlug: string;
-  status: BookingStatus;
-};
-
 async function assertClientCheckoutEligibility(input: {
   userId: string | null;
   buildAuthError: (message: string) => CheckoutError | CatalogCheckoutError;

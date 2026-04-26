@@ -106,6 +106,7 @@ export default function LearningProgramDetail({
                 className="rounded-2xl border border-[#eadfd7] bg-[#fffdfa] p-4"
               >
                 {course.thumbnail ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={course.thumbnail}
                     alt={course.title}

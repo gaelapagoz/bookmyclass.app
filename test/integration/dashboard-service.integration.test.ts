@@ -9,7 +9,6 @@ import {
   EntitlementType,
   OrderStatus,
   PaymentProvider,
-  PaymentMethod,
   PriceType,
   ProductType,
   Role,
@@ -1132,7 +1131,6 @@ describe("webhook receipt cleanup", () => {
     );
 
     const ninetyOneDaysAgo = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000);
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const [stale, recent] = await Promise.all([
       prisma.stripeWebhookEventReceipt.create({

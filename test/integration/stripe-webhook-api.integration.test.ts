@@ -14,7 +14,6 @@ import {
   PriceType,
   ProductType,
   Role,
-  StripeSyncStatus,
   StudioSessionStatus,
   StripeWebhookReceiptStatus,
   SubscriptionStatus,

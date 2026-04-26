@@ -401,13 +401,6 @@ const ALLOWED_CLASS_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "imag
 const MAX_CAMPAIGN_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_CAMPAIGN_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
-const marketingAudienceTypeSchema = z.enum([
-  "ALL_USERS",
-  "ACTIVE_USERS",
-  "PAYING_SUBSCRIBERS",
-  "MANUAL",
-]);
-
 const marketingCampaignTestSchema = z.object({
   campaignId: z.string().min(1),
   toEmail: z.email(),

@@ -213,6 +213,7 @@ async function main() {
       isActive: true,
       isVisible: true,
       sortOrder: 0,
+      serviceScope: EntitlementScope.COLLECTIVE_CLASSES,
     },
   });
 
@@ -397,7 +398,7 @@ async function main() {
     },
   });
 
-  const seededUnlimitedEntitlement = await prisma.clientEntitlement.create({
+  await prisma.clientEntitlement.create({
     data: {
       clientId: clientWithCredits.id,
       productId: recurringProduct.id,

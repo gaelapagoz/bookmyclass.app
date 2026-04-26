@@ -78,23 +78,12 @@ function addDaysUtc(value: Date, days: number): Date {
   return next;
 }
 
-function addMonthsUtc(value: Date, months: number): Date {
-  const next = new Date(value);
-  next.setUTCMonth(next.getUTCMonth() + months);
-  return next;
-}
-
 function startOfUtcDay(value: Date): Date {
   const date = new Date(value);
   date.setUTCHours(0, 0, 0, 0);
   return date;
 }
 
-function endOfUtcDay(value: Date): Date {
-  const date = new Date(value);
-  date.setUTCHours(23, 59, 59, 999);
-  return date;
-}
 
 // ─── Stripe price resolution ──────────────────────────────────────────────────
 

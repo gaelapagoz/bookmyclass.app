@@ -32,7 +32,6 @@ import {
   getStaffAttendanceTransitionAvailability,
   markBookingAttendanceByStaff,
   checkInBooking,
-  getAttendanceWindowPolicy,
   getSessionCheckInWindow,
   isWithinCheckInWindow,
   isAfterCheckInWindow,

@@ -14,7 +14,27 @@
       "Bash(git ls-tree *)",
       "Bash(git -C /c/Dev/studio.saas.platform checkout HEAD -- prisma/migrations/20260424195000_loyalty_rewards/migration.sql)",
       "Bash(npx vitest *)",
-      "Bash(node -e \"console.log\\(require\\('./node_modules/vitest/package.json'\\).version\\)\")"
+      "Bash(node -e \"console.log\\(require\\('./node_modules/vitest/package.json'\\).version\\)\")",
+      "Bash(ssh root@bookmyclass-prod \"grep -c 'CRON_SECRET' /var/www/bookmyclass/.env 2>/dev/null || echo 0\")",
+      "Bash(ssh root@bookmyclass-uat \"grep -c 'CRON_SECRET' /var/www/bookmyclass-uat/.env 2>/dev/null || echo 0\")",
+      "Bash(ssh root@bookmyclass-prod 'CRON_SECRET=$\\(openssl rand -hex 32\\) && echo \"CRON_SECRET=$CRON_SECRET\" >> /var/www/bookmyclass/.env && echo \"Appended: CRON_SECRET=${CRON_SECRET:0:8}...\"')",
+      "Bash(ssh root@bookmyclass-uat 'CRON_SECRET=$\\(openssl rand -hex 32\\) && echo \"CRON_SECRET=$CRON_SECRET\" >> /var/www/bookmyclass-uat/.env && echo \"Appended: CRON_SECRET=${CRON_SECRET:0:8}...\"')",
+      "Bash(ssh root@bookmyclass-prod \"cd /var/www/bookmyclass && pm2 restart bookmyclass-app --update-env && pm2 status bookmyclass-app\")",
+      "Bash(ssh root@bookmyclass-uat \"cd /var/www/bookmyclass-uat && pm2 restart bookmyclass-app --update-env && pm2 status bookmyclass-app\")",
+      "Bash(ssh root@bookmyclass-uat \"pm2 list\")",
+      "Bash(ssh root@bookmyclass-uat \"cd /var/www/bookmyclass-uat && pm2 restart bookmyclass-app-uat --update-env && pm2 status bookmyclass-app-uat\")",
+      "Bash(ssh root@bookmyclass-prod \"crontab -l 2>/dev/null || echo '\\(empty\\)'\")",
+      "Bash(ssh root@bookmyclass-uat \"crontab -l 2>/dev/null || echo '\\(empty\\)'\")",
+      "Bash(ssh root@bookmyclass-prod ' *)",
+      "Bash(ssh root@bookmyclass-uat ' *)",
+      "Bash(ssh root@bookmyclass-prod \"sleep 5 && curl -fsS https://bookmyclass.app/api/health\")",
+      "Bash(ssh root@bookmyclass-uat \"sleep 5 && curl -fsS https://uat.bookmyclass.app/api/health\")",
+      "Bash(ssh root@bookmyclass-prod \"curl -fsS http://127.0.0.1:3000/api/health\")",
+      "Bash(ssh root@bookmyclass-prod 'cd /var/www/bookmyclass && node -e \" *)",
+      "Bash(ssh root@bookmyclass-prod \"cd /var/www/bookmyclass && set -a && . ./.env && set +a && npx tsx scripts/backfill-classtype-service-scope.ts\")",
+      "Bash(ssh root@bookmyclass-uat \"cd /var/www/bookmyclass-uat && set -a && . ./.env && set +a && npx tsx scripts/backfill-classtype-service-scope.ts\")",
+      "Bash(ssh root@bookmyclass-prod \"grep 'CRON_SECRET' /var/www/bookmyclass/.env | sed 's/=.*/=<redacted>/' && crontab -l\")",
+      "Bash(ssh root@bookmyclass-uat \"grep 'CRON_SECRET' /var/www/bookmyclass-uat/.env | sed 's/=.*/=<redacted>/' && crontab -l\")"
     ]
   }
 }

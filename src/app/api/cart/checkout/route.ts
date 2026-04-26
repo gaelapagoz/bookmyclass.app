@@ -11,6 +11,12 @@ import { prisma } from "@/lib/db";
 import { createCheckoutSessionForCart } from "@/lib/public-booking/checkout-service";
 import { rejectIfNotSameOrigin } from "@/lib/security/same-origin";
 import { resolveDeterministicFailureWithIdempotency } from "@/lib/cart/cart-checkout-service";
+import { checkAndRecordDbRateLimit } from "@/lib/security/db-rate-limit";
+
+const CART_CHECKOUT_RATE_LIMIT = {
+  maxAttempts: 10,
+  windowMs: 60 * 1000,
+} as const;
 
 const checkoutPayloadSchema = z.object({
   lines: z
@@ -181,6 +187,14 @@ export async function POST(request: Request) {
         : null,
     });
     return Response.json(response.body, { status: response.status });
+  }
+
+  const rateLimitResult = await checkAndRecordDbRateLimit("cart_checkout", userId, CART_CHECKOUT_RATE_LIMIT);
+  if (!rateLimitResult.allowed) {
+    return Response.json(
+      { code: "RATE_LIMIT_EXCEEDED", message: "Too many checkout attempts. Please wait." },
+      { status: 429 },
+    );
   }
 
   let payload: unknown;

@@ -251,6 +251,7 @@ export default async function AdminUserEditPage({
         <section className="rounded-xl border border-[#d3dbe5] bg-white p-5">
           <h2 className="text-lg font-semibold text-[#1f2735]">Teacher Picture</h2>
           {record.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={record.image}
               alt={`${record.name} picture`}

@@ -1039,7 +1039,7 @@ export async function getMarketingCampaignById(id: string) {
     where: { id },
     include: {
       category: true,
-      recipients: true,
+      _count: { select: { recipients: true } },
     },
   });
 }

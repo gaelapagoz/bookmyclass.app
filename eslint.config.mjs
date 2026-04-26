@@ -16,6 +16,13 @@ const eslintConfig = defineConfig([
       "react-hooks/set-state-in-effect": "off",
       "@next/next/no-html-link-for-pages": "off",
       "@next/next/no-assign-module-variable": "off",
+
+      // Follow the standard TypeScript convention: prefix intentionally unused params/vars with `_`.
+      "@typescript-eslint/no-unused-vars": ["warn", {
+        argsIgnorePattern: "^_",
+        varsIgnorePattern: "^_",
+        caughtErrorsIgnorePattern: "^_",
+      }],
     },
   },
   // Override default ignores of eslint-config-next.
@@ -25,6 +32,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Auto-generated coverage report assets — not subject to lint.
+    "coverage/**",
   ]),
 ]);
 

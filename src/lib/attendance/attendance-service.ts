@@ -8,7 +8,6 @@ import {
 import { prisma } from "@/lib/db";
 import {
   getStaffAttendanceTransitionAvailability,
-  type StaffAttendanceTransitionAvailability,
 } from "@/lib/attendance/attendance-transitions";
 
 export type AttendanceWindowPolicy = {
@@ -164,7 +163,7 @@ export async function assertBookingNotCheckedInForCancellation(bookingId: string
   }
 }
 
-export async function getBookingSelfCheckInEligibility(bookingId: string, clientId: string) {
+export async function getBookingSelfCheckInEligibility(bookingId: string, _clientId: string) {
   const now = new Date();
   const policy = await getAttendanceWindowPolicy();
 
