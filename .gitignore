@@ -81,3 +81,5 @@ security-output/
 
 /.codex-workflows/runs
 .aider*
+
+/artifacts

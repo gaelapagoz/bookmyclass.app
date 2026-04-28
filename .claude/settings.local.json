@@ -34,7 +34,9 @@
       "Bash(ssh root@bookmyclass-prod \"cd /var/www/bookmyclass && set -a && . ./.env && set +a && npx tsx scripts/backfill-classtype-service-scope.ts\")",
       "Bash(ssh root@bookmyclass-uat \"cd /var/www/bookmyclass-uat && set -a && . ./.env && set +a && npx tsx scripts/backfill-classtype-service-scope.ts\")",
       "Bash(ssh root@bookmyclass-prod \"grep 'CRON_SECRET' /var/www/bookmyclass/.env | sed 's/=.*/=<redacted>/' && crontab -l\")",
-      "Bash(ssh root@bookmyclass-uat \"grep 'CRON_SECRET' /var/www/bookmyclass-uat/.env | sed 's/=.*/=<redacted>/' && crontab -l\")"
+      "Bash(ssh root@bookmyclass-uat \"grep 'CRON_SECRET' /var/www/bookmyclass-uat/.env | sed 's/=.*/=<redacted>/' && crontab -l\")",
+      "Bash(mkdir -p \"c:/Dev/studio.saas.platform/public/images/homesite\")",
+      "Bash(cp \"c:/Dev/studio.saas.platform/artifacts/demo-screenshots/images/\"*.png \"c:/Dev/studio.saas.platform/public/images/homesite/\")"
     ]
   }
 }

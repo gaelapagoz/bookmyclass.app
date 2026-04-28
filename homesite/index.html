@@ -141,9 +141,9 @@
 
   .nav-wrap {
     min-height: 78px;
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
-    justify-content: space-between;
     gap: var(--space-3);
   }
 
@@ -514,9 +514,6 @@
 
   .footer-wrap {
     padding: var(--space-6) 0 var(--space-4);
-    display: grid;
-    grid-template-columns: 1.4fr 1fr 1fr auto;
-    gap: var(--space-4);
   }
 
   .footer-brand h3,
@@ -571,12 +568,12 @@
     }
 
     .nav-wrap {
+      display: flex;
       flex-wrap: wrap;
       padding: var(--space-3) 0;
     }
 
-    .nav-links,
-    .nav-actions {
+    .nav-links {
       width: 100%;
       flex-wrap: wrap;
     }
@@ -609,12 +606,9 @@
       <ul class="nav-links" aria-label="Primary navigation">
         <li><a href="#why">Why it works</a></li>
         <li><a href="#features">What you get</a></li>
-        <li><a href="#contact">Contact</a></li>
+        <li><a href="#product-demo">Try the App</a></li>
+        <li><a href="#contact">Book a demo</a></li>
       </ul>
-      <div class="nav-actions">
-        <a href="https://demo.bookmyclass.app" class="btn btn-secondary">Try the App</a>
-        <a href="#contact" class="btn btn-primary">Book a demo</a>
-      </div>
     </div>
   </header>
 
@@ -627,10 +621,6 @@
         <p class="hero-copy">
           Manage class bookings, memberships, payments, customer accounts, and studio operations from one platform.
         </p>
-        <div class="hero-actions">
-          <a href="#contact" class="btn btn-primary">Book a demo</a>
-          <a href="https://demo.bookmyclass.app" class="btn btn-secondary">Try the App</a>
-        </div>
         <ul class="trust-row" aria-label="Core capabilities">
           <li>Online booking</li>
           <li>Memberships and packs</li>
@@ -758,13 +748,15 @@
       </div>
     </section>
 
-    <section class="section" id="explore-demo">
+    <section class="section" id="product-demo">
       <div class="container">
         <div class="cta-wrap">
           <h2>Want to see the product before we talk?</h2>
           <p>Open the demo and explore the booking flow, memberships, client dashboard, and admin experience.</p>
           <div class="hero-actions" style="margin-top:1rem; margin-bottom:0;">
-            <a href="https://demo.bookmyclass.app" class="btn btn-primary">Try the App</a>
+            <a href="https://demo.bookmyclass.app" class="btn btn-secondary">Try the App</a>
+            <a href="client-experience.html" class="btn btn-primary">Client Experience</a>
+            <a href="studio-operations.html" class="btn btn-primary">Studio Operations</a>
             <a href="#contact" class="btn btn-secondary">Request a walkthrough</a>
           </div>
         </div>
@@ -809,22 +801,6 @@
         <h3>BookMyClass</h3>
         <p>Simplify the work, so you can focus on what matters. Your people</p>
       </div>
-      <nav class="footer-links" aria-label="Product links">
-        <h4>Product</h4>
-        <ul>
-          <li><a href="#product">Overview</a></li>
-          <li><a href="#features">What you get</a></li>
-          <li><a href="#explore-demo">Try the App</a></li>
-        </ul>
-      </nav>
-      <nav class="footer-links" aria-label="Company links">
-        <h4>Company</h4>
-        <ul>
-          <li><a href="#contact">Contact</a></li>
-          <li><a href="#contact">Book a demo</a></li>
-        </ul>
-      </nav>
-      <div><a href="#contact" class="btn btn-secondary">Request a demo</a></div>
     </div>
     <div class="container copyright"><p>&copy; 2026 BookMyClass. All rights reserved.</p></div>
   </footer>
