@@ -36,7 +36,33 @@
       "Bash(ssh root@bookmyclass-prod \"grep 'CRON_SECRET' /var/www/bookmyclass/.env | sed 's/=.*/=<redacted>/' && crontab -l\")",
       "Bash(ssh root@bookmyclass-uat \"grep 'CRON_SECRET' /var/www/bookmyclass-uat/.env | sed 's/=.*/=<redacted>/' && crontab -l\")",
       "Bash(mkdir -p \"c:/Dev/studio.saas.platform/public/images/homesite\")",
-      "Bash(cp \"c:/Dev/studio.saas.platform/artifacts/demo-screenshots/images/\"*.png \"c:/Dev/studio.saas.platform/public/images/homesite/\")"
+      "Bash(cp \"c:/Dev/studio.saas.platform/artifacts/demo-screenshots/images/\"*.png \"c:/Dev/studio.saas.platform/public/images/homesite/\")",
+      "Bash(ssh root@bookmyclass-prod \"ln -s /var/www/public /var/www/bookmyclass-homesite/public && ls -la /var/www/bookmyclass-homesite/\")",
+      "Bash(ssh root@bookmyclass-prod \"ls /var/www/bookmyclass-homesite/public/images/homesite/ | head -5\")",
+      "Bash(ssh root@bookmyclass-prod \"ls /var/www/public/images/homesite/\")",
+      "Bash(ssh root@bookmyclass-prod \"grep -r 'bookmyclass-homesite\\\\|disable_symlinks\\\\|homesite' /etc/nginx/ 2>/dev/null\")",
+      "Bash(ssh root@bookmyclass-prod \"cat /etc/nginx/sites-available/bookmyclass\")",
+      "Bash(ssh root@bookmyclass-prod \"file /var/www/public/images/homesite/client-0*.png\")",
+      "Bash(ssh root@bookmyclass-prod \"tail -30 /var/log/nginx/error.log\")",
+      "Bash(ssh root@bookmyclass-prod \"curl -so /dev/null -w '%{http_code} %{size_download}B %{url}\\\\n' http://localhost/public/images/homesite/client-01-public-home.png http://localhost/public/images/homesite/client-03-class-detail-or-slot-selection.png http://localhost/public/images/homesite/client-05-payment-options.png http://localhost/public/images/homesite/client-06-checkout-handoff-or-confirmation.png\")",
+      "Bash(ssh root@bookmyclass-prod \"which convert mogrify cwebp 2>/dev/null || echo 'none found'\")",
+      "Bash(magick --version)",
+      "Bash(convert --version)",
+      "Bash(ssh root@bookmyclass-prod \"python3 -c 'from PIL import Image; print\\(\\\\\"Pillow ok\\\\\"\\)' 2>/dev/null || echo 'no pillow'\")",
+      "Bash(python3 -c \"from PIL import Image; print\\('Pillow ok'\\)\")",
+      "Bash(python -c \"from PIL import Image; print\\('Pillow ok'\\)\")",
+      "Bash(ssh root@bookmyclass-prod \"apt-get install -y imagemagick 2>&1 | tail -5\")",
+      "Bash(python3 -)",
+      "Bash(py -c \"from PIL import Image; print\\('ok'\\)\")",
+      "Bash(py3 -c \"from PIL import Image; print\\('ok'\\)\")",
+      "PowerShell(python -c \"from PIL import Image; print\\('ok'\\)\")",
+      "PowerShell(python \"c:\\\\Dev\\\\studio.saas.platform\\\\convert_images.py\")",
+      "Bash(ssh root@bookmyclass-prod \"cd /var/www/public/images/homesite && mogrify -format jpg -quality 85 *.png && ls -lh *.jpg | awk '{print \\\\$5, \\\\$9}'\")",
+      "Bash(scp c:/Dev/studio.saas.platform/homesite/client-experience.html c:/Dev/studio.saas.platform/homesite/studio-operations.html root@bookmyclass-prod:/var/www/bookmyclass-homesite/)",
+      "Bash(ssh root@bookmyclass-prod \"rm /var/www/public/images/homesite/*.png && ls /var/www/public/images/homesite/\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Dev\\studio.saas.platform\\public\\images\\homesite"
     ]
   }
 }
