@@ -9,6 +9,8 @@ import {
   updateSessionAction,
 } from "@/app/admin/(private)/actions";
 import { StaffAttendanceControls } from "@/components/attendance/StaffAttendanceControls";
+import { isAdminRole } from "@/lib/auth/admin-access";
+import { requireStaffSession } from "@/lib/auth/require-auth";
 import { getAdminSessionById, getAdminSessionOptions } from "@/lib/admin/admin-service";
 
 type Params = Promise<{ id: string }>;
@@ -29,13 +31,18 @@ export default async function AdminSessionEditPage({
   noStore();
 
   const { id } = await params;
-  const [record, options] = await Promise.all([getAdminSessionById(id), getAdminSessionOptions(id)]);
+  const [managerSession, record, options] = await Promise.all([
+    requireStaffSession({ callbackUrl: `/admin/sessions/${id}/edit` }),
+    getAdminSessionById(id),
+    getAdminSessionOptions(id),
+  ]);
 
   if (!record) {
     notFound();
   }
 
   const { error, success } = await searchParams;
+  const canUseManualOverride = isAdminRole(managerSession.user.role);
 
   return (
     <section className="space-y-4">
@@ -204,6 +211,9 @@ export default async function AdminSessionEditPage({
                         {attendee.checkedInAt && ` | Marked at ${new Date(attendee.checkedInAt).toLocaleString()}`}
                       </p>
                     ) : null}
+                    {attendee.manualOverrideLabel ? (
+                      <p className="mt-1 text-xs font-medium text-[#7b4b12]">{attendee.manualOverrideLabel}</p>
+                    ) : null}
                   </div>
                   <p className="text-xs text-[#4a5b73]">Status: {attendee.status}</p>
                 </div>
@@ -251,6 +261,18 @@ export default async function AdminSessionEditPage({
               className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
             />
           </label>
+          {canUseManualOverride ? (
+            <label className="block text-sm text-[#334155]">
+              Manual no-credit override reason (admin only)
+              <textarea
+                name="overrideReason"
+                rows={2}
+                maxLength={400}
+                minLength={10}
+                className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+              />
+            </label>
+          ) : null}
           <button type="submit" className="rounded-md bg-[#1d3652] px-4 py-2 text-sm text-white">
             Add attendee
           </button>

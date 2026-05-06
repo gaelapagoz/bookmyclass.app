@@ -31,8 +31,8 @@ BOOK MY CLASS SAAS — COMPLETE CURRENT ARCHITECTURE
                      |                                            |
                      v                                            v
       +----------------------------------+         +----------------------------------+
-      |     bookmyclass.app / www        |         |       uat.bookmyclass.app        |
-      |          Production              |         |              UAT                 |
+      |     bookmyclass.app / www        |         |       local / CI validation      |
+      |          Production              |         | UAT disabled unless re-enabled  |
       +----------------------------------+         +----------------------------------+
 
 ======================================================================
@@ -146,7 +146,10 @@ Public sign-up / sign-in uses credentials auth with pending registration and ema
                     | VerificationToken     |
                     +-----------------------+
 
-Customers browse public catalogue and availability APIs. Booking drafts are created before payment or entitlement application. Payment options include entitlement consumption or Stripe checkout. Success-page reconciliation finalizes booking, payment, and entitlement state. Waitlist join/cancel and auto-promotion are active for collective classes; no-show handling remains modeled and not fully active.
+Customers browse public catalogue and availability APIs. Booking drafts are created before payment or entitlement application. Payment options include entitlement consumption or Stripe checkout. Success-page reconciliation finalizes booking, payment, and entitlement state.
+
+Waitlist join/cancel and auto-promotion are active for collective classes.
+No-show handling remains modeled and not fully active.
 
 +---------+    +------------------+    +--------------------+
 | Client  | -> | Public catalogue | -> | Availability APIs  |
@@ -293,7 +296,7 @@ Stripe for payments, subscription checkout, billing portal, and webhook event pr
 ## 7. Environments
 Local: Developer machine with local Next.js execution, local Docker/PostgreSQL, unit/integration tests, and local load/test tooling. Local environment is for development and does not reflect prod Stripe mode.
 
-UAT: Separate Hetzner VM with the same documented architecture as production. Uses Stripe test mode and serves as the pre-release validation target. E2E tests, k6 load generation, and webhook validation are run against UAT.
+UAT: Disabled unless explicitly re-enabled by an operator. Historical UAT runbooks remain for recovery only and are not active release gates.
 
 Production: Hetzner VM with public domain and real Stripe live mode. Architecture is intended to match UAT, but exact host topology and some container naming are marked as operator confirmation needed.
 
@@ -308,17 +311,12 @@ Production: Hetzner VM with public domain and real Stripe live mode. Architectur
 +----------------------------------------------------------------------------------+
 
 +----------------------------------------------------------------------------------+
-| UAT                                                                              |
+| UAT (DISABLED)                                                                   |
 |----------------------------------------------------------------------------------|
-| Separate Hetzner VM                                                              |
-| - same architecture as production                                                |
-| - Stripe test mode                                                               |
-| - pre-release validation                                                         |
-| - E2E tests                                                                      |
-| - webhook validation                                                             |
-| - load testing                                                                   |
-| - deploy/verify/reset/scale on host                                              |
-| - k6 load generated locally, not on the UAT host                                 |
+| Historical runbooks only                                                         |
+| - not an active release gate unless operator re-enables it                       |
+| - use operator-run manual release validation instead                             |
+| - evidence stored under test-results/manual_test_<YYYY-MM-DD>.md                 |
 +----------------------------------------------------------------------------------+
 
 +----------------------------------------------------------------------------------+
@@ -354,7 +352,7 @@ Health endpoint exists for runtime readiness checks. The Next.js app runs under 
        +---------------------+ 
 
 ## 9. Deployment & Delivery
-Deployments are tag-based only. The documented flow is: merge to main, create release tag, deploy to UAT, validate, then deploy the same tag to production. UAT validation is required before production release. Deployment is manual rather than a fully automated continuous delivery pipeline.
+Deployments are tag-based only. The current flow is: merge to main, create release tag, run local/CI validation, collect operator-run manual release validation evidence, then manually promote the exact validated tag to production. UAT validation is disabled unless an operator re-enables it. Deployment is manual rather than a fully automated continuous delivery pipeline.
 
 +-------------------+      +----------------------+      +----------------------+ 
 | GitHub            | ---> | GitHub Actions CI    | ---> | Manual release flow  |
@@ -370,14 +368,13 @@ CI currently includes:
 Release flow:
 - merge to main
 - create tag
-- deploy tag to UAT
-- run E2E + k6
-- if good, deploy same tag to production
+- run local/CI validation
+- collect operator-run manual release validation evidence
+- deploy exact validated tag to production
 - never deploy directly from main
 
 ## 10. Known Gaps / Not Fully Active
 These exist in the model/docs but should not be treated as active architecture:
-- waitlist auto-promotion flow
 - no-show operational flow
 - teacher workflows as fully production-ready
 - fine-grained ADMIN vs MASTER_ADMIN split
@@ -739,17 +736,12 @@ Confirmed:
 +----------------------------------------------------------------------------------+
 
 +----------------------------------------------------------------------------------+
-| UAT                                                                              |
+| UAT (DISABLED)                                                                   |
 |----------------------------------------------------------------------------------|
-| Separate Hetzner VM                                                              |
-| - same architecture as production                                                |
-| - Stripe test mode                                                               |
-| - pre-release validation                                                         |
-| - E2E tests                                                                      |
-| - webhook validation                                                             |
-| - load testing                                                                   |
-| - deploy/verify/reset/scale on host                                              |
-| - k6 load generated locally, not on the UAT host                                 |
+| Historical runbooks only                                                         |
+| - not an active release gate unless operator re-enables it                       |
+| - use operator-run manual release validation instead                             |
+| - evidence stored under test-results/manual_test_<YYYY-MM-DD>.md                 |
 +----------------------------------------------------------------------------------+
 
 +----------------------------------------------------------------------------------+
@@ -762,7 +754,7 @@ Confirmed:
 | - exact host topology still needs operator confirmation                          |
 +----------------------------------------------------------------------------------+
 
-Canonical environment split and UAT testing role are explicitly documented. :contentReference[oaicite:19]{index=19} :contentReference[oaicite:20]{index=20}
+Canonical environment split documents UAT as disabled unless explicitly re-enabled by an operator. :contentReference[oaicite:19]{index=19} :contentReference[oaicite:20]{index=20}
 
 ## Deployment & Delivery
 
@@ -784,9 +776,9 @@ CI currently includes:
 Release flow:
 - merge to main
 - create tag
-- deploy tag to UAT
-- run E2E + k6
-- if good, deploy same tag to production
+- run local/CI validation
+- collect operator-run manual release validation evidence
+- deploy exact validated tag to production
 - never deploy directly from main
 :contentReference[oaicite:21]{index=21} :contentReference[oaicite:22]{index=22} :contentReference[oaicite:23]{index=23}
 
@@ -795,7 +787,6 @@ Release flow:
 ======================================================================
 
 These exist in the model/docs but should not be treated as active architecture:
-- waitlist auto-promotion flow
 - no-show operational flow
 - teacher workflows as fully production-ready
 - fine-grained ADMIN vs MASTER_ADMIN split
@@ -809,5 +800,5 @@ These exist in the model/docs but should not be treated as active architecture:
 
 Your current system is a **Next.js App Router monolith** running behind
 **nginx + PM2**, using **Prisma + PostgreSQL**, with **Stripe** for payments,
-**Resend** for email, **Sentry** for monitoring, a **manual tag-only UAT ->
-production release flow**, and **local k6 load generation against UAT**. :contentReference[oaicite:25]{index=25} :contentReference[oaicite:26]{index=26} :contentReference[oaicite:27]{index=27}
+**Resend** for email, **Sentry** for monitoring, and a **manual tag-only
+production release flow** with operator-run manual release validation. :contentReference[oaicite:25]{index=25} :contentReference[oaicite:26]{index=26} :contentReference[oaicite:27]{index=27}

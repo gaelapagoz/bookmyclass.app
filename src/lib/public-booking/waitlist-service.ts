@@ -13,7 +13,10 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { resolveEntitlementScope } from "@/lib/booking/entitlement-scope";
-import { bookingDraftActiveBookingFilter } from "@/lib/public-booking/booking-draft-service";
+import {
+  bookingDraftActiveBookingFilter,
+  expireStaleBookingDraftsForSessionWithinTx,
+} from "@/lib/public-booking/booking-draft-service";
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -322,6 +325,12 @@ async function processWaitlistPromotionsForSession(tx: DbClient, input: {
     return { notifications: [] };
   }
 
+  await expireStaleBookingDraftsForSessionWithinTx({
+    prismaClient: tx,
+    studioSessionId: session.id,
+    now: input.now,
+  });
+
   let activeBookingCount = await tx.booking.count({
     where: {
       studioSessionId: session.id,
@@ -363,9 +372,7 @@ async function processWaitlistPromotionsForSession(tx: DbClient, input: {
       where: {
         clientId: candidate.clientId,
         studioSessionId: session.id,
-        status: {
-          in: [BookingStatus.PENDING, BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.NO_SHOW],
-        },
+        ...bookingDraftActiveBookingFilter(input.now),
       },
       select: {
         id: true,
@@ -449,17 +456,6 @@ async function processWaitlistPromotionsForSession(tx: DbClient, input: {
       continue;
     }
 
-    const existingBooking = await tx.booking.findFirst({
-      where: {
-        clientId: candidate.clientId,
-        studioSessionId: session.id,
-      },
-      select: {
-        id: true,
-        status: true,
-      },
-    });
-
     const promotedWaitlistEntry = await tx.waitlistEntry.updateMany({
       where: {
         id: candidate.id,
@@ -474,90 +470,26 @@ async function processWaitlistPromotionsForSession(tx: DbClient, input: {
       continue;
     }
 
-    let promotedBookingId: string;
-
-    if (existingBooking && existingBooking.status !== BookingStatus.CANCELLED) {
-      await tx.waitlistEntry.update({
-        where: { id: candidate.id },
-        data: {
-          status: WaitlistStatus.CANCELLED,
-          promotedAt: null,
-        },
-      });
-      await createAuditLog(tx, {
-        actionType: "WAITLIST_REMOVED",
-        actorId: input.actorUserId,
-        entityType: "WaitlistEntry",
-        entityId: candidate.id,
-        metadata: {
-          reason: "existing_non_cancellable_booking_record",
-          studioSessionId: session.id,
-          clientId: candidate.clientId,
-          triggerSource: input.triggerSource,
-        },
-      });
-      await createAuditLog(tx, {
-        actionType: "WAITLIST_PROMOTION_SKIPPED",
-        actorId: input.actorUserId,
-        entityType: "WaitlistEntry",
-        entityId: candidate.id,
-        metadata: {
-          reason: "existing_non_cancellable_booking_record",
-          studioSessionId: session.id,
-          clientId: candidate.clientId,
-          triggerSource: input.triggerSource,
-        },
-      });
-      continue;
-    }
-
-    if (existingBooking?.status === BookingStatus.CANCELLED) {
-      const revivedBooking = await tx.booking.update({
-        where: { id: existingBooking.id },
-        data: {
-          status: BookingStatus.CONFIRMED,
-          bookingIntent: BookingIntent.USE_PLAN,
-          paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
-          selectedEntitlementId: coverage.selectedEntitlementId,
-          selectedPriceId: null,
-          draftAmountMinor: 0,
-          draftCurrencyCode: "EUR",
-          bookedAt: input.now,
-          cancelledAt: null,
-          cancelledById: null,
-          cancellationReason: null,
-          cancellationEligibleUntilAt: null,
-          creditRefundedAt: null,
-          customerName: candidate.client.name,
-          customerEmail: candidate.client.email,
-        },
-        select: {
-          id: true,
-        },
-      });
-      promotedBookingId = revivedBooking.id;
-    } else {
-      const createdBooking = await tx.booking.create({
-        data: {
-          clientId: candidate.clientId,
-          studioSessionId: session.id,
-          status: BookingStatus.CONFIRMED,
-          bookingIntent: BookingIntent.USE_PLAN,
-          paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
-          selectedEntitlementId: coverage.selectedEntitlementId,
-          selectedPriceId: null,
-          draftAmountMinor: 0,
-          draftCurrencyCode: "EUR",
-          bookedAt: input.now,
-          customerName: candidate.client.name,
-          customerEmail: candidate.client.email,
-        },
-        select: {
-          id: true,
-        },
-      });
-      promotedBookingId = createdBooking.id;
-    }
+    const createdBooking = await tx.booking.create({
+      data: {
+        clientId: candidate.clientId,
+        studioSessionId: session.id,
+        status: BookingStatus.CONFIRMED,
+        bookingIntent: BookingIntent.USE_PLAN,
+        paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
+        selectedEntitlementId: coverage.selectedEntitlementId,
+        selectedPriceId: null,
+        draftAmountMinor: 0,
+        draftCurrencyCode: "EUR",
+        bookedAt: input.now,
+        customerName: candidate.client.name,
+        customerEmail: candidate.client.email,
+      },
+      select: {
+        id: true,
+      },
+    });
+    const promotedBookingId = createdBooking.id;
 
     if (coverage.consumeEntitlementId) {
       await tx.creditLedgerEntry.createMany({
@@ -662,9 +594,7 @@ export async function joinSessionWaitlist(input: {
         where: {
           clientId: input.clientId,
           studioSessionId: session.id,
-          status: {
-            in: [BookingStatus.PENDING, BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.NO_SHOW],
-          },
+          ...bookingDraftActiveBookingFilter(now),
         },
         select: {
           id: true,

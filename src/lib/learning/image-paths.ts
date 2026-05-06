@@ -1,7 +1,12 @@
-const LEARNING_IMAGE_PATH_PATTERN = /^\/images\/learning\/[A-Za-z0-9][A-Za-z0-9._-]*\.jpg$/;
+import { assertSafeMediaPublicPath } from "@/lib/media";
 
 export function isLearningImagePath(value: string): boolean {
-  return LEARNING_IMAGE_PATH_PATTERN.test(value.trim());
+  try {
+    assertSafeMediaPublicPath(value.trim(), ["/images/learning"]);
+    return /\.(jpe?g|png|webp)$/i.test(value.trim());
+  } catch {
+    return false;
+  }
 }
 
 export function normalizeLearningImagePath(value: string | null | undefined): string | null {
@@ -24,7 +29,7 @@ export function assertLearningImagePath(
   const normalized = normalizeLearningImagePath(value);
 
   if (typeof value === "string" && value.trim() && !normalized) {
-    throw new Error(`${fieldName} must use /images/learning/*.jpg.`);
+    throw new Error(`${fieldName} must use a JPG, PNG, or WEBP file under /images/learning/.`);
   }
 
   return normalized;

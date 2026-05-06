@@ -21,7 +21,6 @@ description: Audit a request or plan against repository and docs to detect drift
 - `Findings` and `Recommended Fixes`: max 6 bullets each.
 - Keep each bullet <= 14 words.
 - Use `none` when a section has no items.
-- Hard cap: ~260 tokens unless runtime prompt explicitly requests more.
 
 ## Use When
 - A change request or implementation plan must be checked before coding.

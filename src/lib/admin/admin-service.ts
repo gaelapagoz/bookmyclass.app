@@ -39,9 +39,11 @@ import {
 } from "@/lib/auth/user-identity-service";
 import { normalizeBookingCancellationWindowHours } from "@/lib/booking/cancellation-policy";
 import { assertLearningImagePath } from "@/lib/learning/image-paths";
+import { assertSafeMediaPublicPath, getLocalMediaRenderState, listLearningMediaLibraryImages } from "@/lib/media";
 import {
   bookingDraftActiveBookingFilter,
   countActiveBookingsForSession,
+  expireStaleBookingDraftsForSessionWithinTx,
 } from "@/lib/public-booking/booking-draft-service";
 import { sendWaitlistPromotionNotification } from "@/lib/public-booking/waitlist-notification-service";
 import { promoteWaitlistAfterCancellationWithinTx } from "@/lib/public-booking/waitlist-service";
@@ -176,6 +178,16 @@ export type AdminClassItem = {
   sortOrder: number;
 };
 
+export type AdminClassCategoryItem = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  serviceCount: number;
+};
+
 export type AdminClassScheduleConfig = {
   defaultTeacherId: string;
   startTime: string;
@@ -212,6 +224,7 @@ export type AdminSessionAttendeeItem = {
   attendanceStatus: AttendanceStatus | null;
   attendanceSource: AttendanceSource | null;
   checkedInAt: string | null;
+  manualOverrideLabel: string | null;
 };
 
 export type AdminSessionDetail = {
@@ -228,6 +241,9 @@ export type AdminSessionDetail = {
   isPublished: boolean;
   attendees: AdminSessionAttendeeItem[];
 };
+
+const MANUAL_OVERRIDE_LABEL = "Manual override — no credit used";
+const MANUAL_OVERRIDE_AUDIT_ACTION = "BOOKING_ADMIN_OVERRIDE_CREATE";
 
 export type AdminSessionClientOption = {
   id: string;
@@ -1702,13 +1718,16 @@ export async function getAdminClassById(id: string) {
     weekdays: [...new Set(recurringRules.map((rule) => rule.weekday))],
     endDate: recurringRules[0]?.endDate?.toISOString().slice(0, 10) ?? null,
   };
+  const imageRenderState = classType.imageUrl?.startsWith("/images/")
+    ? await getLocalMediaRenderState(classType.imageUrl, { allowedFolders: ["/images/classes"] })
+    : { src: classType.imageUrl, shouldRenderFallback: !classType.imageUrl };
 
   return {
     id: classType.id,
     categoryId: classType.categoryId,
     name: classType.name,
     slug: classType.slug,
-    imageUrl: classType.imageUrl,
+    imageUrl: imageRenderState.src,
     description: classType.description,
     defaultDurationMinutes: classType.defaultDurationMinutes,
     defaultCapacity: classType.defaultCapacity,
@@ -1799,6 +1818,48 @@ export async function getClassCategoryOptions() {
   });
 }
 
+export async function getAdminClassCategoriesData(): Promise<AdminClassCategoryItem[]> {
+  const categories = await prisma.classCategory.findMany({
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      description: true,
+      isActive: true,
+      sortOrder: true,
+      _count: {
+        select: {
+          classTypes: true,
+        },
+      },
+    },
+  });
+
+  return categories.map((category) => ({
+    id: category.id,
+    name: category.name,
+    slug: category.slug,
+    description: category.description,
+    isActive: category.isActive,
+    sortOrder: category.sortOrder,
+    serviceCount: category._count.classTypes,
+  }));
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+function normalizeClassImagePath(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return assertSafeMediaPublicPath(trimmed, ["/images/classes"]);
+}
+
 async function buildUniqueClassSlug(name: string, excludeClassTypeId?: string): Promise<string> {
   const base = generatePlanSlug(name) || "service";
   let candidate = base;
@@ -1822,6 +1883,37 @@ async function buildUniqueClassSlug(name: string, excludeClassTypeId?: string): 
   }
 }
 
+export async function createAdminClassCategory(input: {
+  name: string;
+  description?: string;
+  isActive: boolean;
+  sortOrder: number;
+}) {
+  const name = input.name.trim();
+  const base = generatePlanSlug(name) || "category";
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const slug = attempt === 0 ? base : `${base}-${attempt + 1}`;
+    try {
+      return await prisma.classCategory.create({
+        data: {
+          name,
+          slug,
+          description: toNullable(input.description),
+          isActive: input.isActive,
+          sortOrder: input.sortOrder,
+        },
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error("CATEGORY_SLUG_UNAVAILABLE");
+}
+
 export async function createAdminClass(input: {
   categoryId: string;
   name: string;
@@ -1833,28 +1925,38 @@ export async function createAdminClass(input: {
   isVisible: boolean;
   sortOrder: number;
 }) {
-  const [slug, category] = await Promise.all([
-    buildUniqueClassSlug(input.name),
-    prisma.classCategory.findUniqueOrThrow({ where: { id: input.categoryId }, select: { slug: true } }),
-  ]);
+  const category = await prisma.classCategory.findUniqueOrThrow({ where: { id: input.categoryId }, select: { slug: true } });
 
   const serviceScope = resolveEntitlementScopeFromCategorySlug(category.slug);
+  const base = generatePlanSlug(input.name) || "service";
+  const imageUrl = normalizeClassImagePath(input.imageUrl);
 
-  return prisma.classType.create({
-    data: {
-      categoryId: input.categoryId,
-      name: input.name.trim(),
-      slug,
-      imageUrl: toNullable(input.imageUrl),
-      description: toNullable(input.description),
-      defaultDurationMinutes: input.defaultDurationMinutes,
-      defaultCapacity: input.defaultCapacity,
-      isActive: input.isActive,
-      isVisible: input.isVisible,
-      sortOrder: input.sortOrder,
-      serviceScope,
-    },
-  });
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const slug = attempt === 0 ? base : `${base}-${attempt + 1}`;
+    try {
+      return await prisma.classType.create({
+        data: {
+          categoryId: input.categoryId,
+          name: input.name.trim(),
+          slug,
+          imageUrl,
+          description: toNullable(input.description),
+          defaultDurationMinutes: input.defaultDurationMinutes,
+          defaultCapacity: input.defaultCapacity,
+          isActive: input.isActive,
+          isVisible: input.isVisible,
+          sortOrder: input.sortOrder,
+          serviceScope,
+        },
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error("CLASS_SLUG_UNAVAILABLE");
 }
 
 export async function updateAdminClass(
@@ -1877,6 +1979,7 @@ export async function updateAdminClass(
   ]);
 
   const serviceScope = resolveEntitlementScopeFromCategorySlug(category.slug);
+  const imageUrl = input.imageUrl === undefined ? undefined : normalizeClassImagePath(input.imageUrl);
 
   return prisma.classType.update({
     where: { id },
@@ -1884,7 +1987,7 @@ export async function updateAdminClass(
       categoryId: input.categoryId,
       name: input.name.trim(),
       slug,
-      imageUrl: toNullable(input.imageUrl),
+      ...(imageUrl !== undefined ? { imageUrl } : {}),
       description: toNullable(input.description),
       defaultDurationMinutes: input.defaultDurationMinutes,
       defaultCapacity: input.defaultCapacity,
@@ -1894,6 +1997,10 @@ export async function updateAdminClass(
       serviceScope,
     },
   });
+}
+
+export async function cleanupAdminClassCreateFailure(classTypeId: string): Promise<void> {
+  await prisma.classType.delete({ where: { id: classTypeId } });
 }
 
 export async function backfillClassTypeServiceScope(): Promise<{ updatedCount: number }> {
@@ -2191,7 +2298,7 @@ export async function getAdminSessionsData(input?: {
 }
 
 export async function getAdminSessionById(id: string): Promise<AdminSessionDetail | null> {
-  return prisma.studioSession.findUnique({
+  const session = await prisma.studioSession.findUnique({
     where: { id },
     select: {
       id: true,
@@ -2236,37 +2343,57 @@ export async function getAdminSessionById(id: string): Promise<AdminSessionDetai
         },
       },
     },
-  }).then((session) => {
-    if (!session) {
-      return null;
-    }
-
-    return {
-      id: session.id,
-      classTemplateId: session.classTemplateId,
-      teacherId: session.teacherId,
-      title: session.title,
-      description: session.description,
-      location: session.location,
-      startsAt: session.startsAt,
-      endsAt: session.endsAt,
-      capacity: session.capacity,
-      status: session.status,
-      isPublished: session.isPublished,
-      attendees: session.bookings.map((booking) => ({
-        bookingId: booking.id,
-        clientId: booking.clientId ?? "",
-        clientName: booking.client?.name ?? "Unknown client",
-        clientEmail: booking.client?.email ?? "",
-        bookedAt: booking.bookedAt.toISOString(),
-        status: booking.status,
-        selectedEntitlementId: booking.selectedEntitlementId,
-        attendanceStatus: booking.attendanceRecord?.status ?? null,
-        attendanceSource: booking.attendanceRecord?.source ?? null,
-        checkedInAt: booking.attendanceRecord?.markedAt?.toISOString() ?? null,
-      })),
-    };
   });
+
+  if (!session) {
+    return null;
+  }
+
+  const bookingIds = session.bookings.map((booking) => booking.id);
+  const overrideAuditLogs = bookingIds.length > 0
+    ? await prisma.auditLog.findMany({
+        where: {
+          actionType: MANUAL_OVERRIDE_AUDIT_ACTION,
+          entityType: "Booking",
+          entityId: {
+            in: bookingIds,
+          },
+        },
+        select: {
+          entityId: true,
+        },
+      })
+    : [];
+  const manualOverrideBookingIds = new Set(
+    overrideAuditLogs.flatMap((log) => (log.entityId ? [log.entityId] : [])),
+  );
+
+  return {
+    id: session.id,
+    classTemplateId: session.classTemplateId,
+    teacherId: session.teacherId,
+    title: session.title,
+    description: session.description,
+    location: session.location,
+    startsAt: session.startsAt,
+    endsAt: session.endsAt,
+    capacity: session.capacity,
+    status: session.status,
+    isPublished: session.isPublished,
+    attendees: session.bookings.map((booking) => ({
+      bookingId: booking.id,
+      clientId: booking.clientId ?? "",
+      clientName: booking.client?.name ?? "Unknown client",
+      clientEmail: booking.client?.email ?? "",
+      bookedAt: booking.bookedAt.toISOString(),
+      status: booking.status,
+      selectedEntitlementId: booking.selectedEntitlementId,
+      attendanceStatus: booking.attendanceRecord?.status ?? null,
+      attendanceSource: booking.attendanceRecord?.source ?? null,
+      checkedInAt: booking.attendanceRecord?.markedAt?.toISOString() ?? null,
+      manualOverrideLabel: manualOverrideBookingIds.has(booking.id) ? MANUAL_OVERRIDE_LABEL : null,
+    })),
+  };
 }
 
 export async function getAdminSessionOptions(sessionId?: string): Promise<{
@@ -2772,9 +2899,11 @@ export async function addSessionAttendeeByManager(input: {
   studioSessionId: string;
   clientId: string;
   note?: string;
+  overrideReason?: string;
   actor: SessionManagerActor;
 }) {
   const normalizedNote = input.note?.trim() ?? "";
+  const normalizedOverrideReason = input.overrideReason?.trim() ?? "";
   const now = new Date();
 
   const [actorUser, clientUser, session] = await prisma.$transaction([
@@ -2836,55 +2965,79 @@ export async function addSessionAttendeeByManager(input: {
     throw new Error("SESSION_NOT_BOOKABLE");
   }
 
-  const existingActiveBooking = await prisma.booking.findFirst({
-    where: {
-      studioSessionId: session.id,
-      clientId: clientUser.id,
-      ...bookingDraftActiveBookingFilter(now),
-    },
-    select: {
-      id: true,
-      status: true,
-      selectedEntitlementId: true,
-    },
-  });
-
-  if (existingActiveBooking) {
-    return {
-      bookingId: existingActiveBooking.id,
-      status: existingActiveBooking.status,
-      usedCreditEntitlementId: existingActiveBooking.selectedEntitlementId,
-      overrideApplied: false,
-    };
-  }
-
-  const activeBookingCount = await countActiveBookingsForSession({
-    studioSessionId: session.id,
-    now,
-  });
-
-  if (activeBookingCount >= session.capacity) {
-    throw new Error("SESSION_FULL");
-  }
-
   const requiredScope = resolveEntitlementScope({ serviceScope: session.classType.serviceScope, categorySlug: session.classType.category.slug });
-  const coverage = await resolveWaitlistPromotionCoverage(prisma, {
-    clientId: clientUser.id,
-    requiredScope,
-  });
-  if (!coverage.eligible) {
-    throw new Error("SESSION_ELIGIBILITY_REQUIRED");
-  }
 
-  return prisma.$transaction(async (tx) => {
+  const MAX_ATTENDEE_ADD_RETRIES = 4;
+  let attendeeAddAttempt = 0;
+  while (true) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        await expireStaleBookingDraftsForSessionWithinTx({
+          prismaClient: tx,
+          studioSessionId: session.id,
+          now,
+        });
+
+    const existingActiveBooking = await tx.booking.findFirst({
+      where: {
+        studioSessionId: session.id,
+        clientId: clientUser.id,
+        ...bookingDraftActiveBookingFilter(now),
+      },
+      select: {
+        id: true,
+        status: true,
+        selectedEntitlementId: true,
+      },
+    });
+
+    if (existingActiveBooking) {
+      return {
+        bookingId: existingActiveBooking.id,
+        status: existingActiveBooking.status,
+        usedCreditEntitlementId: existingActiveBooking.selectedEntitlementId,
+        overrideApplied: false,
+      };
+    }
+
+    const activeBookingCount = await countActiveBookingsForSession({
+      studioSessionId: session.id,
+      now,
+      prismaClient: tx,
+    });
+
+    if (activeBookingCount >= session.capacity) {
+      throw new Error("SESSION_FULL");
+    }
+
+    const coverage = await resolveWaitlistPromotionCoverage(tx, {
+      clientId: clientUser.id,
+      requiredScope,
+    });
+    const canOverrideWithoutEligibility =
+      actorUser.role === Role.ADMIN || actorUser.role === Role.MASTER_ADMIN;
+    const shouldApplyOverride = !coverage.eligible && canOverrideWithoutEligibility;
+
+    if (!coverage.eligible && actorUser.role === Role.TEACHER) {
+      throw new Error("SESSION_ELIGIBILITY_REQUIRED");
+    }
+
+    if (shouldApplyOverride && normalizedOverrideReason.length < 10) {
+      throw new Error("SESSION_OVERRIDE_REASON_REQUIRED");
+    }
+
+    if (!coverage.eligible && !shouldApplyOverride) {
+      throw new Error("SESSION_ELIGIBILITY_REQUIRED");
+    }
+
     const createdBooking = await tx.booking.create({
       data: {
         clientId: clientUser.id,
         studioSessionId: session.id,
         status: BookingStatus.CONFIRMED,
-        bookingIntent: BookingIntent.USE_PLAN,
-        paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
-        selectedEntitlementId: coverage.selectedEntitlementId,
+        bookingIntent: shouldApplyOverride ? BookingIntent.SINGLE_BOOKING : BookingIntent.USE_PLAN,
+        paymentSelection: shouldApplyOverride ? null : BookingPaymentSelection.EXISTING_PLAN,
+        selectedEntitlementId: shouldApplyOverride ? null : coverage.selectedEntitlementId,
         draftAmountMinor: 0,
         draftCurrencyCode: "EUR",
         bookedAt: now,
@@ -2897,7 +3050,7 @@ export async function addSessionAttendeeByManager(input: {
       },
     });
 
-    if (coverage.consumeEntitlementId) {
+    if (!shouldApplyOverride && coverage.consumeEntitlementId) {
       await consumeCredit({
         clientId: clientUser.id,
         entitlementId: coverage.consumeEntitlementId,
@@ -2906,6 +3059,35 @@ export async function addSessionAttendeeByManager(input: {
         idempotencyKey: `admin-attendee-add:${clientUser.id}:${coverage.consumeEntitlementId}:${createdBooking.id}`,
         createdById: actorUser.id,
         prismaClient: tx,
+      });
+    }
+
+    if (shouldApplyOverride) {
+      await tx.auditLog.create({
+        data: {
+          actorId: actorUser.id,
+          actionType: MANUAL_OVERRIDE_AUDIT_ACTION,
+          entityType: "Booking",
+          entityId: createdBooking.id,
+          metadata: {
+            action: MANUAL_OVERRIDE_AUDIT_ACTION,
+            entityType: "Booking",
+            entityId: createdBooking.id,
+            actorUserId: actorUser.id,
+            actorRole: actorUser.role,
+            targetClientId: clientUser.id,
+            studioSessionId: session.id,
+            overrideType: "NO_CREDIT_MANUAL_BOOKING",
+            overrideReason: normalizedOverrideReason,
+            entitlementBypassed: true,
+            creditLedgerEntryCreated: false,
+            paymentCreated: false,
+            revenueCreated: false,
+            capacityConsumed: true,
+            bookingStatus: BookingStatus.CONFIRMED,
+            note: normalizedNote || null,
+          },
+        },
       });
     }
 
@@ -2918,9 +3100,10 @@ export async function addSessionAttendeeByManager(input: {
         metadata: {
           sessionId: session.id,
           clientId: clientUser.id,
-          usedCreditEntitlementId: coverage.consumeEntitlementId,
-          selectedEntitlementId: coverage.selectedEntitlementId,
-          coverageReason: coverage.reason,
+          usedCreditEntitlementId: shouldApplyOverride ? null : coverage.consumeEntitlementId,
+          selectedEntitlementId: shouldApplyOverride ? null : coverage.selectedEntitlementId,
+          coverageReason: shouldApplyOverride ? "admin_override_no_credit" : coverage.reason,
+          overrideApplied: shouldApplyOverride,
           note: normalizedNote || null,
         },
       },
@@ -2929,10 +3112,24 @@ export async function addSessionAttendeeByManager(input: {
     return {
       bookingId: createdBooking.id,
       status: createdBooking.status,
-      usedCreditEntitlementId: coverage.consumeEntitlementId,
-      overrideApplied: false,
-    };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      usedCreditEntitlementId: shouldApplyOverride ? null : coverage.consumeEntitlementId,
+        overrideApplied: shouldApplyOverride,
+      };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (
+        attendeeAddAttempt < MAX_ATTENDEE_ADD_RETRIES
+        && error instanceof Prisma.PrismaClientKnownRequestError
+        && error.code === "P2034"
+      ) {
+        const baseMs = 20 * 2 ** (attendeeAddAttempt + 1);
+        await new Promise((resolve) => setTimeout(resolve, Math.min(200, baseMs + Math.floor(Math.random() * 20))));
+        attendeeAddAttempt++;
+        continue;
+      }
+      throw error;
+    }
+  }
 }
 
 export async function removeSessionAttendeeByManager(input: {
@@ -5139,6 +5336,7 @@ export async function updateAdminClassImage(input: {
   imagePath: string;
   adminUserId: string;
 }) {
+  const imagePath = normalizeClassImagePath(input.imagePath);
   const [classType, adminRecord] = await prisma.$transaction([
     prisma.classType.findUnique({
       where: { id: input.classTypeId },
@@ -5161,7 +5359,7 @@ export async function updateAdminClassImage(input: {
   return prisma.classType.update({
     where: { id: classType.id },
     data: {
-      imageUrl: input.imagePath.trim(),
+      imageUrl: imagePath,
     },
     select: {
       id: true,
@@ -5547,7 +5745,7 @@ export async function getAdminLearningProgramsData(): Promise<AdminLearningProgr
 }
 
 export async function getAdminLearningProgramById(id: string) {
-  return prisma.learningProgram.findUnique({
+  const program = await prisma.learningProgram.findUnique({
     where: { id },
     select: {
       id: true,
@@ -5565,6 +5763,32 @@ export async function getAdminLearningProgramById(id: string) {
       picture3: true,
     },
   });
+
+  if (!program) {
+    return null;
+  }
+
+  const [picture1, picture2, picture3] = await Promise.all([
+    getLearningImageRenderPath(program.picture1),
+    getLearningImageRenderPath(program.picture2),
+    getLearningImageRenderPath(program.picture3),
+  ]);
+
+  return {
+    ...program,
+    picture1,
+    picture2,
+    picture3,
+  };
+}
+
+export async function getLearningMediaLibraryOptions() {
+  return listLearningMediaLibraryImages();
+}
+
+async function getLearningImageRenderPath(path: string | null): Promise<string | null> {
+  const renderState = await getLocalMediaRenderState(path, { allowedFolders: ["/images/learning"] });
+  return renderState.src;
 }
 
 export async function createAdminLearningProgram(input: {
@@ -5635,6 +5859,10 @@ export async function updateAdminLearningProgram(
       picture3: assertLearningImagePath(input.picture3, "picture3"),
     },
   });
+}
+
+export async function cleanupAdminLearningProgramCreateFailure(id: string): Promise<void> {
+  await prisma.learningProgram.delete({ where: { id } });
 }
 
 export async function getAdminLearningVideosData(): Promise<AdminLearningVideoItem[]> {

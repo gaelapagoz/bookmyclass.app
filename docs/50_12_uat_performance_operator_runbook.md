@@ -1,10 +1,14 @@
-# UAT Performance + Manual CD Runbook
+# Historical UAT Performance + Manual CD Runbook
 
-Purpose: self-serve operator flow with strict separation:
+Status: historical while UAT is disabled. Do not treat this runbook as a
+current release gate unless an operator explicitly re-enables UAT and updates
+`docs/00_02_deployment_baseline.md`.
+
+Purpose: archived self-serve operator flow with strict separation:
 
 - Local machine runs k6 load generation and local evidence capture.
 - UAT host handles only host operations (reset, PM2, deploy/verify).
-- Deployment remains manual and tag-only.
+- Current validation uses operator-run manual release validation with evidence in `test-results/manual_test_<YYYY-MM-DD>.md`.
 
 ## 0) One-time operator confirmations
 
@@ -51,6 +55,9 @@ Manual CD scripts (run from local machine via SSH):
 
 ## 2) UAT host prep flow
 
+Do not run the examples in this section unless an operator explicitly re-enables
+UAT and approves this historical flow for the target tag.
+
 ### A. Clean reset (destructive)
 
 ```bash
@@ -96,6 +103,9 @@ pm2 restart bookmyclass-app-uat --update-env
 When `BOOKING_DRAFT_RATE_LIMIT_MODE` is unset, app defaults remain strict production-safe values.
 
 ## 3) Local k6 flow
+
+Do not run these UAT examples as current release gates unless UAT has been
+operator-approved for the release.
 
 Mandatory rule:
 - Before each local stage, run local discovery against UAT to refresh `k6/data/services.json` and `k6/data/products.json`.
@@ -164,16 +174,16 @@ Gate rule:
 - If a stage fails (non-zero exit code) or shows unacceptable error/latency metrics, stop ramp-up, collect metrics, and investigate before continuing.
 - Do not jump directly to higher stages unless a deliberate incident drill requires it.
 
-## 4) Manual CD flow (tag-only)
+## 4) Historical manual UAT CD flow (tag-only)
 
 ### Sequence
 
 1. Merge to `main`.
 2. Create tag `vX.Y.Z`.
 3. Wait for CI and E2E to pass.
-4. Manually deploy that exact tag to UAT.
-5. Manually verify UAT is on that exact tag.
-6. Run local UAT security baseline and review normalized summary (`docs/50_13_uat_security_operator_runbook.md`).
+4. If UAT is re-enabled, manually deploy that exact tag to UAT.
+5. If UAT is re-enabled, manually verify UAT is on that exact tag.
+6. Current releases instead use operator-run manual release validation evidence.
 
 ### A. Manual deploy to UAT
 
@@ -228,6 +238,9 @@ Verification checks:
 
 ## 5) End-to-end operator example
 
+Historical example only. Current release validation uses
+operator-run manual release validation evidence.
+
 ```bash
 # 1) reset UAT (destructive)
 CONFIRM_UAT_DB_RESET=YES TARGET_TAG=v0.3.0 bash scripts/uat-reset-and-verify.sh
@@ -262,15 +275,18 @@ BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-security-baseline.sh
 
 ## 6) Safety rules
 
-- Never deploy to UAT from `main` directly.
+- UAT is disabled unless explicitly re-enabled by an operator.
+- Never map UAT workflows or runbooks to production secrets.
 - Deploy and validate tags only.
 - Keep booking and entitlement validation server-side.
 - Keep k6 load generation local so UAT host measurements are not distorted by local load generator CPU usage.
-- Treat local UAT security baseline as an explicit UAT release gate before production promotion.
+- Treat this UAT security baseline as historical while UAT is disabled.
 
 ## 7) Manual configuration
 
 Use this on the **UAT host** (manual, tag-based):
+
+Only use this when UAT has been explicitly re-enabled by an operator.
 
 ```bash
 cd /var/www/bookmyclass-uat

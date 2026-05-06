@@ -1,10 +1,13 @@
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const repoRoot = process.cwd();
 const testRoot = resolve(repoRoot, "test");
-const excludedDirectoryPath = normalizePathForComparison(resolve(testRoot, "e2e"));
+const excludedDirectoryPaths = [
+  resolve(testRoot, "e2e"),
+  resolve(testRoot, "manual", "demo-screenshots"),
+].map(normalizePathForComparison);
 const testFilePattern = /\.(test|spec)\.(ts|tsx|js|jsx)$/i;
 
 function normalizePathForComparison(value: string): string {
@@ -21,10 +24,10 @@ function collectTestFiles(dir: string, output: string[]): void {
     const normalizedFullPath = normalizePathForComparison(fullPath);
 
     if (entry.isDirectory()) {
-      if (
-        normalizedFullPath === excludedDirectoryPath ||
-        normalizedFullPath.startsWith(`${excludedDirectoryPath}/`)
-      ) {
+      if (excludedDirectoryPaths.some((excludedPath) => (
+        normalizedFullPath === excludedPath ||
+        normalizedFullPath.startsWith(`${excludedPath}/`)
+      ))) {
         continue;
       }
 
@@ -38,10 +41,26 @@ function collectTestFiles(dir: string, output: string[]): void {
   }
 }
 
+function resolveRequestedPath(arg: string): string[] {
+  const fullPath = resolve(repoRoot, arg);
+  if (!existsSync(fullPath)) {
+    return [arg];
+  }
+
+  const stat = statSync(fullPath);
+  if (!stat.isDirectory()) {
+    return [arg];
+  }
+
+  const discovered: string[] = [];
+  collectTestFiles(fullPath, discovered);
+  return discovered.sort((left, right) => left.localeCompare(right));
+}
+
 function resolveRequestedFiles(args: string[]): string[] {
   const requestedFiles = args.filter((arg) => !isOption(arg));
   if (requestedFiles.length > 0) {
-    return requestedFiles;
+    return requestedFiles.flatMap(resolveRequestedPath);
   }
 
   const discovered: string[] = [];

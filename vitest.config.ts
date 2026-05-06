@@ -3,6 +3,7 @@ import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
+    preserveSymlinks: true,
     alias: [
       { find: "@", replacement: resolve(__dirname, "src") },
       { find: "next/server", replacement: resolve(__dirname, "node_modules/next/server.js") },

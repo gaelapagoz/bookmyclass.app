@@ -79,7 +79,7 @@ describe("expireStaleBookingDrafts", () => {
     await resetDb();
   });
 
-  it("marks expired PENDING drafts as CANCELLED", async () => {
+  it("marks expired PENDING drafts as EXPIRED", async () => {
     const { session, client } = await createSessionFixture();
 
     const expiredCreatedAt = new Date(Date.now() - 30 * 60 * 1000); // 30 min ago
@@ -102,7 +102,7 @@ describe("expireStaleBookingDrafts", () => {
     expect(expiredCount).toBeGreaterThanOrEqual(1);
 
     const updated = await prisma.booking.findUnique({ where: { id: draft.id } });
-    expect(updated?.status).toBe(BookingStatus.CANCELLED);
+    expect(updated?.status).toBe(BookingStatus.EXPIRED);
     expect(updated?.cancellationReason).toBe("Expired booking draft");
   });
 

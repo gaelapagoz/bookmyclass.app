@@ -1,12 +1,15 @@
-# UAT Security Baseline + Manual CD Runbook
+# Historical UAT Security Baseline + Manual CD Runbook
 
-Purpose: define the minimum local, repo-owned UAT security baseline flow using Dockerized OWASP ZAP, with evidence capture and explicit release gating.
+Status: historical while UAT is disabled. Current releases use operator-run
+manual release validation with evidence in `test-results/manual_test_<YYYY-MM-DD>.md`.
+
+Purpose: define the archived local, repo-owned UAT security baseline flow using Dockerized OWASP ZAP.
 
 ## 0) Scope and hard rules
 
-- Target: UAT only (`https://uat.bookmyclass.app` by default)
+- Target: UAT only if an operator re-enables UAT
 - Local machine executes ZAP scan and normalization
-- UAT validation must run from a git tag (`git describe --tags --exact-match`)
+- Any re-enabled UAT validation must run from a git tag (`git describe --tags --exact-match`)
 - Never deploy directly from `main` to UAT or production
 - Never target production in this flow
 
@@ -17,6 +20,9 @@ Purpose: define the minimum local, repo-owned UAT security baseline flow using D
 - Header forensics runner: `scripts/local-uat-header-forensics.sh`
 
 ## 2) Local baseline run
+
+Do not run this UAT example as a current release gate unless an operator has
+explicitly re-enabled UAT for the target tag.
 
 ```bash
 BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-security-baseline.sh
@@ -108,9 +114,9 @@ bash scripts/local-uat-security-collect-metrics.sh /tmp/local-uat-security-<time
 
 If run dir is omitted, latest matching run folder is used.
 
-## 7) UAT release gate usage
+## 7) Historical UAT release gate usage
 
-Before promoting a UAT-validated tag to production:
+If UAT is re-enabled before promoting a UAT-validated tag to production:
 
 1. Confirm UAT deploy is on the intended tag
 2. Run E2E and performance gates
@@ -123,6 +129,9 @@ Gate rule:
 - If `release_blocker = 0`, proceed with risk review for `must_review` and backlog hardening entries
 
 ## 8) Example operator flow
+
+Historical example only. Current release validation uses
+operator-run manual release validation evidence.
 
 ```bash
 # 1) deploy tag to UAT
@@ -166,6 +175,8 @@ Use this after deploying and verifying a UAT tag when you need to classify wheth
 
 Public-only check:
 
+Only run this if UAT was operator-approved for the release.
+
 ```bash
 BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-header-forensics.sh
 ```
@@ -206,6 +217,8 @@ Use this only when UAT forensics prove that app routes have headers but public d
 Do not use this section for CSP redesign and do not force `Cross-Origin-Embedder-Policy`.
 
 ### Step A - confirm origin vs public first
+
+Only run this if UAT was operator-approved for the release.
 
 ```bash
 BASE_URL=https://uat.bookmyclass.app ORIGIN_IP=<origin_ip> bash scripts/local-uat-header-forensics.sh
@@ -252,6 +265,8 @@ nginx -t && systemctl reload nginx
 ```
 
 ### Step E - verify post-change behavior
+
+Only run this if UAT was operator-approved for the release.
 
 ```bash
 BASE_URL=https://uat.bookmyclass.app bash scripts/security-check-headers.sh

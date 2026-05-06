@@ -1,12 +1,12 @@
 ---
 name: devops
-description: Assess release readiness and deployment impact for this manual, tag-based UAT-first delivery process.
+description: Assess release readiness and deployment impact for this manual, tag-based production release process.
 ---
 
 # DevOps
 
 ## Purpose
-Evaluate whether a change is safe to release in this repository's UAT-first, tag-promotion flow.
+Evaluate whether a change is safe to release in this repository's current tag-based production flow while UAT is disabled.
 
 ## Inputs
 - Change scope (files/modules/behavior).
@@ -27,13 +27,14 @@ Evaluate whether a change is safe to release in this repository's UAT-first, tag
    - `prisma generate`
    - `npm run build`
    - `pm2 restart`
-5. Validate gates for UAT-first promotion:
+5. Validate gates for production promotion:
    - CI health
-   - UAT deploy success
-   - smoke checks
+   - relevant local validation
+   - manual operator-run smoke checks
    - E2E (as required by change risk)
-   - k6 smoke/perf baseline (if relevant)
-   - security baseline (if relevant)
+   - Stripe CLI simulation for payment/webhook changes
+   - manual operator-run performance baseline (if relevant)
+   - manual operator-run security baseline (if relevant)
 6. Assess rollback safety:
    - whether rollback is tag-only or requires data recovery steps
    - post-rollback verification requirements
@@ -41,7 +42,8 @@ Evaluate whether a change is safe to release in this repository's UAT-first, tag
 
 ## Guardrails
 - Do not assume automated production deploy from `main`.
-- Do not skip UAT validation before promoting a tag to production.
+- Do not assume UAT validation is available while UAT is disabled.
+- Do not perform operator-owned smoke/security/performance checks; request their status.
 - Do not infer infra/runtime facts from lower-priority docs when baseline disagrees.
 - Treat data/schema changes as rollback-sensitive.
 

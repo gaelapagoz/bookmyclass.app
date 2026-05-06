@@ -5,11 +5,15 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   createAdminClass,
+  createAdminClassCategory,
+  getAdminClassCategoriesData,
   getAdminClassesData,
   getAdminClassById,
   upsertAdminClassScheduleConfig,
+  updateAdminClass,
   updateAdminClassImage,
 } from "../../src/lib/admin/admin-service";
+import { getPublicCategories, getPublicServicesByCategorySlug } from "../../src/lib/public-catalogue/catalogue-service";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
 
@@ -159,6 +163,155 @@ describe("admin class schedule service", () => {
     });
 
     expect(persisted?.imageUrl).toBe("/images/classes/reformer-intro-1.jpg");
+  });
+
+  it("rejects class image paths outside service media folder", async () => {
+    const [category, admin] = await Promise.all([
+      prisma.classCategory.create({
+        data: {
+          name: "Barre",
+          slug: `barre-${Date.now()}`,
+          sortOrder: 1,
+          isActive: true,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Admin Two",
+          firstName: "Admin",
+          lastName: "Two",
+          email: `admin.two.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+    ]);
+
+    await expect(
+      createAdminClass({
+        categoryId: category.id,
+        name: "Barre Basics",
+        imageUrl: "/images/learning/barre.png",
+        defaultDurationMinutes: 45,
+        defaultCapacity: 8,
+        isActive: true,
+        isVisible: true,
+        sortOrder: 2,
+      }),
+    ).rejects.toThrow();
+
+    const classType = await createAdminClass({
+      categoryId: category.id,
+      name: "Barre Basics",
+      defaultDurationMinutes: 45,
+      defaultCapacity: 8,
+      isActive: true,
+      isVisible: true,
+      sortOrder: 2,
+    });
+
+    await expect(
+      updateAdminClassImage({
+        classTypeId: classType.id,
+        imagePath: "/images/learning/barre.png",
+        adminUserId: admin.id,
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      (async () => {
+        const created = await createAdminClass({
+          categoryId: category.id,
+          name: "Barre Basics Updated",
+          imageUrl: "/images/classes/barre.png",
+          defaultDurationMinutes: 45,
+          defaultCapacity: 8,
+          isActive: true,
+          isVisible: true,
+          sortOrder: 2,
+        });
+
+        return updateAdminClass(created.id, {
+          categoryId: category.id,
+          name: "Barre Basics Updated",
+          imageUrl: "/images/learning/barre.png",
+          defaultDurationMinutes: 45,
+          defaultCapacity: 8,
+          isActive: true,
+          isVisible: true,
+          sortOrder: 2,
+        });
+      })(),
+    ).rejects.toThrow();
+  });
+
+  it("creates categories with unique generated slugs and exposes active service categories", async () => {
+    const teacher = await prisma.user.create({
+      data: {
+        name: "Teacher One",
+        firstName: "Teacher",
+        lastName: "One",
+        email: `teacher.category.${Date.now()}@example.test`,
+        role: Role.TEACHER,
+      },
+    });
+    const first = await createAdminClassCategory({
+      name: "Mind Body",
+      description: "Calm classes",
+      isActive: true,
+      sortOrder: 1,
+    });
+    const second = await createAdminClassCategory({
+      name: "Mind Body",
+      isActive: true,
+      sortOrder: 2,
+    });
+
+    expect(first.slug).toBe("mind-body");
+    expect(second.slug).toBe("mind-body-2");
+
+    const classType = await createAdminClass({
+      categoryId: first.id,
+      name: "Restorative Flow",
+      imageUrl: "/images/classes/missing-restorative-flow.png",
+      defaultDurationMinutes: 60,
+      defaultCapacity: 10,
+      isActive: true,
+      isVisible: true,
+      sortOrder: 1,
+    });
+
+    await upsertAdminClassScheduleConfig({
+      classTypeId: classType.id,
+      className: classType.name,
+      defaultCapacity: classType.defaultCapacity,
+      defaultDurationMinutes: classType.defaultDurationMinutes,
+      defaultTeacherId: teacher.id,
+      startTime: "11:00",
+      endTime: "12:00",
+      isRecurring: false,
+      date: new Date("2026-05-06T00:00:00.000Z"),
+      weekdays: [],
+      endDate: null,
+    });
+
+    const adminCategories = await getAdminClassCategoriesData();
+    expect(adminCategories.find((category) => category.id === first.id)?.serviceCount).toBe(1);
+
+    const publicCategories = await getPublicCategories();
+    expect(publicCategories).toEqual(expect.arrayContaining([expect.objectContaining({ slug: "mind-body" })]));
+
+    const publicServices = await getPublicServicesByCategorySlug("mind-body");
+    expect(publicServices[0]).toEqual(expect.objectContaining({ slug: "restorative-flow", imageUrl: null }));
+
+    await expect(
+      prisma.classCategory.create({
+        data: {
+          name: "Duplicate",
+          slug: "mind-body",
+          isActive: true,
+        },
+      }),
+    ).rejects.toThrow();
   });
 
   it("returns teacher name from class template default teacher for booking services list", async () => {

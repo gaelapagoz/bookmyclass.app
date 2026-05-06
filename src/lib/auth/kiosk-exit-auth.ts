@@ -36,7 +36,8 @@ export async function verifyPasswordForKioskExit(
 
     // Check rate limit
     const rateLimitKey = `kiosk-exit:${session.user.id}`;
-    const rateLimitResult = (dependencies?.rateLimiter ?? KIOSK_EXIT_RATE_LIMITER).checkLimit(rateLimitKey);
+    const rateLimiter = dependencies?.rateLimiter ?? KIOSK_EXIT_RATE_LIMITER;
+    const rateLimitResult = rateLimiter.checkLimit(rateLimitKey);
 
     if (!rateLimitResult.allowed) {
       throw new Error("RATE_LIMITED");
@@ -50,12 +51,12 @@ export async function verifyPasswordForKioskExit(
 
     if (user === null) {
       // Record failed attempt
-      KIOSK_EXIT_RATE_LIMITER.recordFailure(rateLimitKey);
+      rateLimiter.recordFailure(rateLimitKey);
       return false;
     }
 
     // Success - reset rate limit counter
-    KIOSK_EXIT_RATE_LIMITER.reset(rateLimitKey);
+    rateLimiter.reset(rateLimitKey);
     return true;
   } catch (error) {
     if (error instanceof Error && error.message === "RATE_LIMITED") {

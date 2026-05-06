@@ -49,7 +49,6 @@ These rules guide the Prisma schema design and must remain consistent across the
 - Subscription / membership
 - Private session
 - Workshop / special event
-- Gift cards (planned for later implementation)
 
 ### Product type to entitlement behavior (active)
 - `CLASS_PACK` creates a credit-pack entitlement rule with configurable credit quantity for collective classes.
@@ -57,7 +56,7 @@ These rules guide the Prisma schema design and must remain consistent across the
 - `DROP_IN_CLASS` creates a single-use collective-class entitlement rule.
 - `UNLIMITED_MEMBERSHIP` creates unlimited collective access entitlement rules.
 
-Removed types: `INTRO_OFFER`, `WORKSHOP_PASS`, `GIFT_CARD` (migrated to `DROP_IN_CLASS` / `CLASS_PACK` respectively).
+Removed types: `INTRO_OFFER`, `WORKSHOP_PASS`, `GIFT_CARD` (migrated to current catalog product types).
 
 ### Admin catalog rules (active)
 - Pack scope is derived from product type and is not selected manually:
@@ -95,6 +94,13 @@ Removed types: `INTRO_OFFER`, `WORKSHOP_PASS`, `GIFT_CARD` (migrated to `DROP_IN
 ## 5. Bookings and Waitlist
 
 - A client may have only one active booking per session.
+- Active booking statuses are `PENDING` and `CONFIRMED`.
+- Booking statuses outside active uniqueness are `CANCELLED`, `EXPIRED`, `COMPLETED`, and `NO_SHOW`.
+- Phase 3 schema migration adds `BookingStatus.EXPIRED` for expired drafts.
+- `COMPLETED` and `NO_SHOW` remain historical attendance-adjacent booking states and are not part of the active partial index.
+- Cancelled and expired bookings remain rebookable historical records.
+- Rebooking creates a new booking row.
+- Expired `PENDING` drafts must not block capacity or active uniqueness.
 - When a session is full:
   - Clients may optionally join a waitlist.
 - Waitlist is ordered by creation time (FIFO).
@@ -108,8 +114,36 @@ Removed types: `INTRO_OFFER`, `WORKSHOP_PASS`, `GIFT_CARD` (migrated to `DROP_IN
     - is charged (credit or entitlement consumed)
 
 - Waitlist join does NOT consume credits.
+- Waitlist join/cancel/auto-promotion is active.
+- Before modifying capacity or booking logic, verify and preserve current waitlist behavior.
 
-> Note: automatic promotion may be implemented later, but must be supported by the schema.
+### Active booking uniqueness
+- Exact migration-owned index:
+
+```sql
+CREATE UNIQUE INDEX "Booking_active_client_session_unique"
+ON "Booking" ("clientId", "studioSessionId")
+WHERE "status" IN ('PENDING', 'CONFIRMED');
+```
+
+- Required production pre-deploy audit:
+
+```sql
+SELECT "clientId", "studioSessionId", COUNT(*)
+FROM "Booking"
+WHERE "status" IN ('PENDING', 'CONFIRMED')
+GROUP BY "clientId", "studioSessionId"
+HAVING COUNT(*) > 1;
+```
+
+- Expected result is 0 rows.
+- If non-zero, stop deploy and produce a manual cleanup plan.
+- The active booking uniqueness index is migration-owned because Prisma cannot fully represent the PostgreSQL partial unique index.
+- Do not reintroduce broad `@@unique([clientId, studioSessionId])`.
+- Rollback may recreate the original broad unique constraint only if no multiple historical rows exist.
+- Never delete booking history automatically.
+- Phase 3 schema migration resolves the `EXPIRED` status contract.
+- Expired-draft behavior must use `BookingStatus.EXPIRED`; `COMPLETED` and `NO_SHOW` must not be included in active uniqueness.
 
 ---
 
@@ -126,6 +160,15 @@ Removed types: `INTRO_OFFER`, `WORKSHOP_PASS`, `GIFT_CARD` (migrated to `DROP_IN
   - No credit or entitlement is returned.
 - Monetary/payment refunds are not accepted for purchased plans or bookings.
 - Admins can override cancellation outcomes.
+
+### Admin no-credit booking override
+- `ADMIN` and `MASTER_ADMIN` may manually add a client without valid credit/subscription only through explicit audited override.
+- `TEACHER` cannot use this override.
+- Override requires a trimmed reason of at least 10 characters.
+- Override counts toward capacity.
+- Override is visibly labelled in admin session reporting as `Manual override — no credit used`.
+- Override does not consume credit, create entitlement ownership, payment, or revenue.
+- Override reason is admin-only and preserved as audit evidence.
 
 ---
 
@@ -160,6 +203,11 @@ Removed types: `INTRO_OFFER`, `WORKSHOP_PASS`, `GIFT_CARD` (migrated to `DROP_IN
 - Self check-in is only allowed for confirmed bookings in the configured check-in window.
 - Private classes are excluded from self check-in routes.
 - Staff can finalize attendance privately from teacher/admin session detail pages.
+
+### Timezone rules
+- Timezone belongs to dedicated site settings/config.
+- `StudioSession` times remain UTC instants.
+- Public availability date keys, kiosk labels, and check-in enforcement must use the configured timezone consistently.
 
 ---
 
@@ -197,6 +245,7 @@ Removed types: `INTRO_OFFER`, `WORKSHOP_PASS`, `GIFT_CARD` (migrated to `DROP_IN
 ## 10. Entitlements
 
 - Every booking must be backed by a valid entitlement.
+- Explicit audited admin overrides are the only exception and must not create entitlement ownership.
 
 ### Types of entitlements
 - Single-use (drop-in)
@@ -237,8 +286,9 @@ Removed types: `INTRO_OFFER`, `WORKSHOP_PASS`, `GIFT_CARD` (migrated to `DROP_IN
 - Booking drafts represent temporary holds on session capacity during the booking process.
 - Drafts have PENDING status and are created before payment confirmation.
 - Drafts expire automatically after 15 minutes if not confirmed.
-- Expired drafts are cancelled and do not count towards session capacity.
-- Lifecycle: Draft → Payment → Confirmed OR Expired → Cancelled.
+- Expired drafts must move to the approved `EXPIRED` contract state after Phase 3 adds or otherwise resolves that status.
+- Expired drafts do not count towards session capacity.
+- Lifecycle target: Draft -> Payment -> Confirmed OR Expired.
 - If payment arrives after expiration, the booking is not confirmed, and payment must be rejected and escalated for operational handling.
 
 ---
@@ -284,10 +334,32 @@ Audit logs must record:
 - Order and payment changes
 - Subscription changes
 - Manual credit adjustments
+- Admin no-credit booking overrides with admin-only metadata.
+
+### Override audit metadata
+- Override reason is admin-only.
+- Override reason must not appear in client views.
+- Override reason must not be sent by email.
+- Override reason must be sanitized from public logs and Sentry payloads.
+- Override metadata is retained as audit evidence.
+- Do not delete override metadata if any override bookings exist.
 
 ---
 
-## 15. General Principles
+## 15. Media Persistence
+
+- Shared media helper must exist before new upload paths.
+- No direct upload fallback is allowed.
+- Upload validation must cover size, MIME, extension, magic bytes, safe filename, path normalization, path containment, and allowed folders.
+- Write file first, then persist DB path.
+- DB path must not persist if file write fails.
+- If DB write fails after file write, clean up the orphan file where feasible.
+- Missing local image files must render fallback UI.
+- Backups and restores must include uploaded media folders.
+
+---
+
+## 16. General Principles
 
 - Prefer explicit data over implicit logic.
 - Preserve historical data (no destructive updates).

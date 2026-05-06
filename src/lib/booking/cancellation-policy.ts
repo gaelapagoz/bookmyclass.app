@@ -4,6 +4,7 @@ const DEFAULT_BOOKING_CANCELLATION_WINDOW_HOURS = 24;
 
 export type BookingCancellationBlockCode =
   | "ALREADY_CANCELLED"
+  | "HISTORICAL_BOOKING"
   | "SESSION_NOT_ACTIVE"
   | "SESSION_STARTED"
   | "WINDOW_PASSED";
@@ -54,6 +55,15 @@ export function evaluateBookingCancellation(input: {
     };
   }
 
+  if (input.bookingStatus === BookingStatus.EXPIRED) {
+    return {
+      canCancel: false,
+      cancellationEligibleUntilAt,
+      blockCode: "HISTORICAL_BOOKING",
+      cancellationBlockedReason: "Expired booking drafts cannot be cancelled.",
+    };
+  }
+
   if (input.sessionStatus !== StudioSessionStatus.SCHEDULED) {
     return {
       canCancel: false,
@@ -88,4 +98,3 @@ export function evaluateBookingCancellation(input: {
     cancellationBlockedReason: null,
   };
 }
-

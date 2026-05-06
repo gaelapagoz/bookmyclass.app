@@ -29,7 +29,7 @@ npm run demo:screenshots
 
 | Variable              | Required | Default                          | Description |
 |-----------------------|----------|----------------------------------|-------------|
-| `DEMO_BASE_URL`       | No       | `https://uat.bookmyclass.app`    | Target environment URL |
+| `DEMO_BASE_URL`       | No       | `http://127.0.0.1:3100`          | Target environment URL |
 | `DEMO_CLIENT_EMAIL`   | No       | `client.e2e@bookmyclass.local`   | Client account email |
 | `DEMO_CLIENT_PASSWORD`| No       | `E2EPass123!`                    | Client account password |
 | `DEMO_ADMIN_EMAIL`    | No       | `admin.e2e@bookmyclass.local`    | Admin account email |
@@ -38,7 +38,7 @@ npm run demo:screenshots
 
 The defaults point at the seeded E2E accounts, which are only present when
 running against the local E2E environment (`APP_URL=http://127.0.0.1:3100`).
-When targeting UAT or another environment, always override these variables.
+UAT is disabled unless explicitly re-enabled by an operator.
 
 ---
 

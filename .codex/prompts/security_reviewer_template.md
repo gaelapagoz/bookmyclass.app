@@ -19,12 +19,13 @@ Focus on:
 - release impact (blocker vs backlog)
 
 Return:
-1. Security verdict: pass / pass_with_hardening / block_release
-2. Findings by severity with file/module references
-3. Required security fixes
-4. Non-blocking concerns
-5. Auth/AuthZ review summary
-6. Validation review summary
-7. Webhook/payment replay-idempotency review summary
-8. Safe to proceed to the next slice? yes/no
-9. Documentation conflicts found (or `none`)
+1. Decision: approve / approve with required fixes / reject
+2. Security verdict: pass / pass_with_hardening / block_release
+3. Findings by severity with file/module references
+4. Required security fixes
+5. Non-blocking concerns
+6. Auth/AuthZ review summary
+7. Validation review summary
+8. Webhook/payment replay-idempotency review summary
+9. Safe to proceed to the next slice? yes/no
+10. Documentation conflicts found (or `none`)

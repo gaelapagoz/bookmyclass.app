@@ -40,8 +40,14 @@ export default async function AdminClassCreatePage({ searchParams }: { searchPar
             <input name="name" required className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
           </label>
           <label className="block text-sm text-[#334155]">
-            Slug
-            <input name="slug" required className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
+            Service Image
+            <input
+              name="classImage"
+              type="file"
+              required
+              accept="image/jpeg,image/png,image/webp"
+              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+            />
           </label>
         </div>
 

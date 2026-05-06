@@ -1,10 +1,11 @@
-# Manual Test Campaign - UAT and Release Validation
+# Operator-Run Manual Release Validation
 
 ## Purpose
-Define the operator-led manual UAT campaign for active, production-critical and major flows across Client, Admin, and Teacher/kiosk usage in `studio.saas.platform`.
+Define operator-run manual release validation for active, production-critical and major flows across Client, Admin, and Teacher/kiosk usage in `studio.saas.platform`.
 
 ## Scope
-This campaign validates only active runtime capabilities confirmed by baseline docs and current UAT release validation scope.
+This campaign validates only active runtime capabilities confirmed by baseline docs.
+Store run evidence in `test-results/manual_test_<YYYY-MM-DD>.md`.
 
 Included personas:
 - Client
@@ -22,8 +23,8 @@ Resolution used for this campaign:
 - No-show remains excluded.
 
 ## Entry Criteria
-- UAT environment is reachable at `https://uat.bookmyclass.app`.
-- UAT tag deployment is complete and smoke endpoints respond.
+- Operator-approved target environment is reachable.
+- Release tag/build is complete and smoke endpoints respond.
 - Required seeded accounts and data are available (client/admin/teacher).
 - Stripe test mode credentials and test cards are available for operator checkout checks.
 - No critical infra incident is active (DB, app runtime, webhook endpoint).
@@ -33,7 +34,7 @@ Resolution used for this campaign:
 - No open S1 or S2 defects.
 - Any S3/S4 defects are documented with owner and target fix decision.
 - Evidence is attached for each release-blocking case.
-- Operator signoff checklist (`docs/30_09_operator_execution_checklist.md`) is completed.
+- Operator signoff checklist is completed in `test-results/manual_test_<YYYY-MM-DD>.md`.
 
 ## Severity Model
 - `S1`: System unavailable, data-loss risk, or security/access control failure in critical path. Release stop.
@@ -78,19 +79,19 @@ Resolution used for this campaign:
 ## Release-Blocking Subset
 `SMK-001`, `SMK-002`, `AUT-001`, `AUT-002`, `AUT-003`, `BKG-002`, `BKG-003`, `BKG-004`, `BKG-005`, `BKG-006`, `BKG-007`, `WTL-001`, `WTL-002`, `WTL-003`, `SUB-001`, `SUB-002`, `DBO-001`, `ADM-001`, `ADM-002`, `AOP-001`, `AOP-002`, `TCH-001`, `TCH-002`, `TCH-003`, `LRN-001`, `INB-001`, `AGD-001`, `OPC-001`
 
-## Known Baseline Risks (Must Be Watched During UAT)
+## Known Baseline Risks
 - Teacher workflow enforcement is a known risk area; execute teacher/kiosk tests with strict evidence capture and do not over-assume role gating behavior.
 - Server-side rules are authoritative; UI behavior that appears valid must still match backend enforcement outcomes.
 - Product + Price is the catalog source of truth; any mismatch between catalog display and checkout behavior is an S2.
 
 ## Manual Campaign
 
-### UAT Smoke
+### Smoke
 
 | Test ID | Persona | Priority | Release Blocking | Title | Preconditions | Steps | Expected Result |
 |---|---|---|---|---|---|---|---|
-| SMK-001 | Admin | Critical | Yes | UAT core endpoints respond | UAT deployed | Call `/api/health`, `/`, `/sign-in`, `/book-a-class`, `/subscription`, `/api/categories` | All endpoints return expected success (`200`; health ready) and pages render usable content |
-| SMK-002 | Admin | Critical | Yes | UAT smoke command pass | UAT deployed and operator shell access | Run `npm run test:uat:smoke` against `https://uat.bookmyclass.app` | Smoke command exits successfully with no failed check |
+| SMK-001 | Admin | Critical | Yes | Core endpoints respond | Target deployed | Call `/api/health`, `/`, `/sign-in`, `/book-a-class`, `/subscription`, `/api/categories` | All endpoints return expected success (`200`; health ready) and pages render usable content |
+| SMK-002 | Admin | Critical | Yes | Smoke command pass | Target deployed and operator shell access | Run `npm run test:uat:smoke` against operator-approved URL | Smoke command exits successfully with no failed check |
 
 ### Client Auth
 
@@ -197,9 +198,9 @@ Resolution used for this campaign:
 
 | Test ID | Persona | Priority | Release Blocking | Title | Preconditions | Steps | Expected Result |
 |---|---|---|---|---|---|---|---|
-| OPC-001 | Admin | Critical | Yes | Health endpoint readiness under UAT runtime | UAT app running | Call `/api/health` before and after core flow batch | Endpoint returns healthy response and no readiness regressions appear |
+| OPC-001 | Admin | Critical | Yes | Health endpoint readiness under target runtime | Target app running | Call `/api/health` before and after core flow batch | Endpoint returns healthy response and no readiness regressions appear |
 | OPC-002 | Admin | Major | No | Success page refresh idempotency | Completed booking and subscription success sessions | Refresh booking success and subscription success pages | No duplicate booking/order effects; reconciliation remains stable |
-| OPC-003 | Admin | Exploratory | No | Error observability sanity during campaign | UAT run with monitoring enabled | Execute campaign and check operator-visible error signals/log dashboard | No untriaged critical runtime error spike during validation window |
+| OPC-003 | Admin | Exploratory | No | Error observability sanity during validation | Target run with monitoring enabled | Execute validation and check operator-visible error signals/log dashboard | No untriaged critical runtime error spike during validation window |
 
 ## Exclusion Confirmation
 - No-show operational flow: excluded for this campaign.

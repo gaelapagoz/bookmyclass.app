@@ -533,7 +533,10 @@ Evidence label legend used in this file:
 
 ## 20. Environments (Canonical)
 
-The system operates with 3 environments:
+The system currently operates with production and local development/test environments.
+The previous UAT/staging environment is disabled and must not be treated as an
+active release gate unless an operator explicitly re-enables it and updates this
+baseline.
 
 ### Production
 - Hetzner VM
@@ -542,17 +545,11 @@ The system operates with 3 environments:
 - Real users
 
 ### UAT (Staging)
-- Separate Hetzner VM
-- Same architecture as production
-- Stripe test mode
-- Used for:
-  - pre-release validation
-  - E2E tests
-  - webhook validation
-  - load testing
-
-Rule:
-- No feature is production-ready without UAT validation
+- Status: disabled / retired.
+- Historical UAT runbooks and workflow references remain in the repository for
+  recovery or future reactivation only.
+- Do not require UAT validation for current feature planning unless this section
+  is updated by an operator.
 
 ### Local
 - Developer machine
@@ -560,6 +557,7 @@ Rule:
   - unit/integration tests
   - E2E dev runs
   - k6 load testing
+  - Stripe CLI webhook simulation for payment/webhook development
   
 ## Appendix A: Important files and folders
 - `package.json`: scripts and dependency versions.

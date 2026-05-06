@@ -19,10 +19,11 @@ Focus on:
 - documentation/test-plan drift if present
 
 Return:
-1. Risk classification (low/medium/high) with rationale
-2. Missing tests (with module/file references)
-3. Release blockers for this slice
-4. Non-blocking test improvements
-5. Exact test commands that should pass (ordered)
-6. Results summary if outputs were provided (pass/fail/blocked)
-7. Documentation conflicts found (or `none`)
+1. Decision: approve / approve with required fixes / reject
+2. Risk classification (low/medium/high) with rationale
+3. Missing tests (with module/file references)
+4. Release blockers for this slice
+5. Non-blocking test improvements
+6. Exact test commands that should pass (ordered)
+7. Results summary if outputs were provided (pass/fail/blocked)
+8. Documentation conflicts found (or `none`)

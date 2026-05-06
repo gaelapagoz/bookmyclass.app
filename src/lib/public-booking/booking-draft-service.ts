@@ -23,8 +23,29 @@ export async function expireStaleBookingDrafts(): Promise<{ expiredCount: number
       createdAt: { lt: cutoff },
     },
     data: {
-      status: BookingStatus.CANCELLED,
+      status: BookingStatus.EXPIRED,
       cancelledAt: new Date(),
+      cancellationReason: "Expired booking draft",
+    },
+  });
+  return { expiredCount: result.count };
+}
+
+export async function expireStaleBookingDraftsForSessionWithinTx(input: {
+  now?: Date;
+  prismaClient: Prisma.TransactionClient | typeof prisma;
+  studioSessionId: string;
+}): Promise<{ expiredCount: number }> {
+  const cutoff = getBookingDraftExpirationCutoff(input.now);
+  const result = await input.prismaClient.booking.updateMany({
+    where: {
+      studioSessionId: input.studioSessionId,
+      status: BookingStatus.PENDING,
+      createdAt: { lt: cutoff },
+    },
+    data: {
+      status: BookingStatus.EXPIRED,
+      cancelledAt: input.now ?? new Date(),
       cancellationReason: "Expired booking draft",
     },
   });
@@ -578,7 +599,7 @@ export async function createPendingBookingDraft(params: {
           },
         },
         data: {
-          status: BookingStatus.CANCELLED,
+          status: BookingStatus.EXPIRED,
           cancelledAt: now,
           cancellationReason: "Expired booking draft",
         },

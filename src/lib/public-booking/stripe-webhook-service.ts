@@ -970,6 +970,27 @@ async function handleCheckoutCompleted(
     return;
   }
 
+  if (bookingIdFromMetadata && payment.bookingId && bookingIdFromMetadata !== payment.bookingId) {
+    logWarn("checkout completion skipped: metadata booking does not match local payment", {
+      checkoutSessionId: session.id,
+      paymentId: payment.id,
+      paymentBookingId: payment.bookingId,
+      metadataBookingId: bookingIdFromMetadata,
+    });
+    return;
+  }
+
+  const expectedOrderId = payment.orderId ?? payment.booking?.orderId ?? null;
+  if (genericMetadata.orderId && expectedOrderId && genericMetadata.orderId !== expectedOrderId) {
+    logWarn("checkout completion skipped: metadata order does not match local payment", {
+      checkoutSessionId: session.id,
+      paymentId: payment.id,
+      paymentOrderId: expectedOrderId,
+      metadataOrderId: genericMetadata.orderId,
+    });
+    return;
+  }
+
   const booking = payment.booking;
   const orderId = payment.orderId ?? booking?.orderId ?? null;
   const checkoutSource = resolveCheckoutSource({

@@ -184,7 +184,105 @@ describe("booking draft service concurrency", () => {
       where: { id: staleBooking.id },
     });
 
-    expect(expiredBooking?.status).toBe(BookingStatus.CANCELLED);
+    expect(expiredBooking?.status).toBe(BookingStatus.EXPIRED);
+  });
+
+  it("creates a new pending row when rebooking after cancellation", async () => {
+    const fixture = await createCapacityOneFixture();
+
+    const cancelled = await prisma.booking.create({
+      data: {
+        clientId: fixture.userOne.id,
+        studioSessionId: fixture.studioSession.id,
+        status: BookingStatus.CANCELLED,
+        bookingIntent: BookingIntent.SINGLE_BOOKING,
+        customerName: "Client",
+        customerEmail: "client@example.test",
+        customerPhone: "+32000000000",
+        cancelledAt: new Date(),
+        cancellationReason: "Client cancelled.",
+      },
+      select: { id: true },
+    });
+
+    const result = await createPendingBookingDraft({
+      authenticatedUserId: fixture.userOne.id,
+      payload: {
+        bookingIntent: BookingIntent.SINGLE_BOOKING,
+        consentPrivacyAccepted: true,
+        consentTermsAccepted: true,
+        customerEmail: "client@example.test",
+        customerName: "Client",
+        customerPhone: "+32000000000",
+        serviceSlug: fixture.classType.slug,
+        sessionId: fixture.studioSession.id,
+      },
+    });
+
+    expect(result.created).toBe(true);
+    expect(result.bookingId).not.toBe(cancelled.id);
+
+    const bookings = await prisma.booking.findMany({
+      where: {
+        clientId: fixture.userOne.id,
+        studioSessionId: fixture.studioSession.id,
+      },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, status: true },
+    });
+    expect(bookings).toEqual([
+      { id: cancelled.id, status: BookingStatus.CANCELLED },
+      { id: result.bookingId, status: BookingStatus.PENDING },
+    ]);
+  });
+
+  it("creates a new pending row when rebooking after expiration", async () => {
+    const fixture = await createCapacityOneFixture();
+
+    const expired = await prisma.booking.create({
+      data: {
+        clientId: fixture.userOne.id,
+        studioSessionId: fixture.studioSession.id,
+        status: BookingStatus.EXPIRED,
+        bookingIntent: BookingIntent.SINGLE_BOOKING,
+        customerName: "Client",
+        customerEmail: "client@example.test",
+        customerPhone: "+32000000000",
+        cancelledAt: new Date(),
+        cancellationReason: "Expired booking draft",
+      },
+      select: { id: true },
+    });
+
+    const result = await createPendingBookingDraft({
+      authenticatedUserId: fixture.userOne.id,
+      payload: {
+        bookingIntent: BookingIntent.SINGLE_BOOKING,
+        consentPrivacyAccepted: true,
+        consentTermsAccepted: true,
+        customerEmail: "client@example.test",
+        customerName: "Client",
+        customerPhone: "+32000000000",
+        serviceSlug: fixture.classType.slug,
+        sessionId: fixture.studioSession.id,
+      },
+    });
+
+    expect(result.created).toBe(true);
+    expect(result.bookingId).not.toBe(expired.id);
+
+    const statuses = await prisma.booking.findMany({
+      where: {
+        clientId: fixture.userOne.id,
+        studioSessionId: fixture.studioSession.id,
+      },
+      orderBy: { createdAt: "asc" },
+      select: { status: true },
+    });
+    expect(statuses.map((booking) => booking.status)).toEqual([
+      BookingStatus.EXPIRED,
+      BookingStatus.PENDING,
+    ]);
   });
 
   it("retries on serialization failures and succeeds", async () => {

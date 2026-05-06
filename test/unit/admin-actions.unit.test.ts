@@ -24,13 +24,19 @@ vi.mock("next/cache", () => ({
   revalidatePath: revalidatePathMock,
 }));
 
-const { mkdirMock, writeFileMock } = vi.hoisted(() => ({
+const { accessMock, mkdirMock, readdirMock, unlinkMock, writeFileMock } = vi.hoisted(() => ({
+  accessMock: vi.fn(),
   mkdirMock: vi.fn(),
+  readdirMock: vi.fn(),
+  unlinkMock: vi.fn(),
   writeFileMock: vi.fn(),
 }));
 
 vi.mock("node:fs/promises", () => ({
+  access: accessMock,
   mkdir: mkdirMock,
+  readdir: readdirMock,
+  unlink: unlinkMock,
   writeFile: writeFileMock,
 }));
 vi.mock("@/auth", () => ({
@@ -82,7 +88,11 @@ vi.mock("@/lib/admin/admin-service", () => ({
   addSessionAttendeeByManager: vi.fn(),
   adjustAdminClientCredits: vi.fn(),
   cancelAdminClientMembership: vi.fn(),
+  cleanupAdminClassCreateFailure: vi.fn(),
+  cleanupAdminLearningProgramCreateFailure: vi.fn(),
   createAdminClass: vi.fn(),
+  createAdminClassCategory: vi.fn(),
+  createAdminLearningProgram: vi.fn(),
   upsertAdminClassScheduleConfig: vi.fn(),
   createAdminRecurringSessions: vi.fn(),
   createAdminSession: vi.fn(),
@@ -128,7 +138,11 @@ import {
   addSessionAttendeeByManager,
   adjustAdminClientCredits,
   cancelAdminClientMembership,
+  cleanupAdminClassCreateFailure,
+  cleanupAdminLearningProgramCreateFailure,
   createAdminClass,
+  createAdminClassCategory,
+  createAdminLearningProgram,
   createAdminPlan,
   createAdminSubscription,
   createAdminUser,
@@ -153,6 +167,8 @@ import {
   adjustClientCreditsAction,
   cancelClientMembershipAction,
   createClassAction,
+  createClassCategoryAction,
+  createLearningProgramAction,
   createPlanAction,
   createSiteWeeklyScheduleEntryAction,
   createSubscriptionAction,
@@ -171,6 +187,12 @@ import {
   uploadTeacherImageAction,
   updateUserAction,
 } from "../../src/app/admin/(private)/actions";
+
+function createPngFile(name = "image.png") {
+  return new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], name, {
+    type: "image/png",
+  });
+}
 function createAdminSession(role: "ADMIN" | "MASTER_ADMIN" | "CLIENT") {
   return {
     user: {
@@ -212,7 +234,7 @@ describe("admin actions", () => {
     const formData = new FormData();
     formData.set("categoryId", "cat-1");
     formData.set("name", "Vinyasa");
-    formData.set("slug", "vinyasa");
+    formData.set("classImage", createPngFile("vinyasa.png"));
     formData.set("defaultDurationMinutes", "60");
     formData.set("defaultCapacity", "12");
     formData.set("sortOrder", "1");
@@ -225,7 +247,70 @@ describe("admin actions", () => {
 
     await expect(createClassAction(formData)).rejects.toThrow("NEXT_REDIRECT:/admin/classes");
     expect(createAdminClass).toHaveBeenCalledTimes(1);
+    expect(createAdminClass).toHaveBeenCalledWith(expect.objectContaining({ imageUrl: expect.stringMatching(/^\/images\/classes\/service-vinyasa-/) }));
     expect(upsertAdminClassScheduleConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it("cleans class row and uploaded image when schedule persistence fails", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(createAdminClass).mockResolvedValue({
+      id: "class-1",
+      name: "Vinyasa",
+      slug: "vinyasa",
+      defaultCapacity: 12,
+      defaultDurationMinutes: 60,
+    });
+    vi.mocked(upsertAdminClassScheduleConfig).mockRejectedValueOnce(new Error("SCHEDULE_DATE_REQUIRED"));
+
+    const formData = new FormData();
+    formData.set("categoryId", "cat-1");
+    formData.set("name", "Vinyasa");
+    formData.set("classImage", createPngFile("vinyasa.png"));
+    formData.set("defaultDurationMinutes", "60");
+    formData.set("defaultCapacity", "12");
+    formData.set("sortOrder", "1");
+    formData.set("isActive", "on");
+    formData.set("isVisible", "on");
+    formData.set("defaultTeacherId", "teacher-1");
+    formData.set("scheduleStartTime", "18:00");
+    formData.set("scheduleEndTime", "19:00");
+    formData.set("scheduleDate", "2026-04-01");
+
+    await expect(createClassAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/classes/new?error=Choose%20a%20date%20for%20one-off%20class%20scheduling.",
+    );
+    expect(cleanupAdminClassCreateFailure).toHaveBeenCalledWith("class-1");
+    expect(unlinkMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates class category with generated service slug", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(createAdminClassCategory).mockResolvedValue({
+      id: "cat-1",
+      name: "Pilates",
+      slug: "pilates",
+      description: null,
+      isActive: true,
+      sortOrder: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const formData = new FormData();
+    formData.set("name", "Pilates");
+    formData.set("description", "Mat and reformer");
+    formData.set("sortOrder", "1");
+    formData.set("isActive", "on");
+
+    await expect(createClassCategoryAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/classes?success=Category%20created.",
+    );
+    expect(createAdminClassCategory).toHaveBeenCalledWith({
+      name: "Pilates",
+      description: "Mat and reformer",
+      sortOrder: 1,
+      isActive: true,
+    });
   });
 
   it("redirects with validation error when class payload is invalid", async () => {
@@ -246,7 +331,6 @@ describe("admin actions", () => {
     const formData = new FormData();
     formData.set("categoryId", "cat-1");
     formData.set("name", "Vinyasa");
-    formData.set("slug", "vinyasa");
     formData.set("defaultDurationMinutes", "60");
     formData.set("defaultCapacity", "12");
     formData.set("sortOrder", "1");
@@ -475,6 +559,96 @@ describe("admin actions", () => {
       expect.objectContaining({ mainTitle: "Main Program", courseType: "Yoga", title: "Program Title" }),
     );
   });
+
+  it("creates learning program with selected media library image", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(createAdminLearningProgram).mockResolvedValue({ id: "program-1" });
+
+    const formData = new FormData();
+    formData.set("mainTitle", "Main Program");
+    formData.set("courseType", "Yoga");
+    formData.set("title", "Program Title");
+    formData.set("picture1", "/images/learning/library.png");
+
+    await expect(createLearningProgramAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/learning-programs",
+    );
+    expect(createAdminLearningProgram).toHaveBeenCalledWith(
+      expect.objectContaining({ picture1: "/images/learning/library.png" }),
+    );
+  });
+
+  it("creates learning program with uploaded image before DB path persistence", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(createAdminLearningProgram).mockResolvedValue({ id: "program-1" });
+
+    const formData = new FormData();
+    formData.set("mainTitle", "Main Program");
+    formData.set("courseType", "Yoga");
+    formData.set("title", "Program Title");
+    formData.set("picture1Upload", createPngFile("lesson.png"));
+
+    await expect(createLearningProgramAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/learning-programs",
+    );
+    expect(createAdminLearningProgram).toHaveBeenCalledWith(
+      expect.objectContaining({ picture1: expect.stringMatching(/^\/images\/learning\/program-yoga-picture1-/i) }),
+    );
+  });
+
+  it("cleans uploaded learning images when create persistence fails", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(createAdminLearningProgram).mockRejectedValueOnce(new Error("PERSIST_FAILED"));
+
+    const formData = new FormData();
+    formData.set("mainTitle", "Main Program");
+    formData.set("courseType", "Yoga");
+    formData.set("title", "Program Title");
+    formData.set("picture1Upload", createPngFile("lesson.png"));
+
+    await expect(createLearningProgramAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/learning-programs/new?error=Unexpected%20server%20error.",
+    );
+    expect(cleanupAdminLearningProgramCreateFailure).not.toHaveBeenCalled();
+    expect(unlinkMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("uploads learning program image through secure media helper", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(updateAdminLearningProgram).mockResolvedValue({ id: "program-1" });
+
+    const formData = new FormData();
+    formData.set("mainTitle", "Main Program");
+    formData.set("courseType", "Yoga");
+    formData.set("title", "Program Title");
+    formData.set("picture1Upload", createPngFile("lesson.png"));
+
+    await expect(updateLearningProgramAction("program-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/learning-programs",
+    );
+    expect(writeFileMock).toHaveBeenCalledTimes(1);
+    expect(updateAdminLearningProgram).toHaveBeenLastCalledWith(
+      "program-1",
+      expect.objectContaining({ picture1: expect.stringMatching(/^\/images\/learning\/program-program-1-picture1-/) }),
+    );
+  });
+
+  it("rejects spoofed learning program image uploads", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(updateAdminLearningProgram).mockResolvedValue({ id: "program-1" });
+
+    const formData = new FormData();
+    formData.set("mainTitle", "Main Program");
+    formData.set("courseType", "Yoga");
+    formData.set("title", "Program Title");
+    formData.set("picture1Upload", new File(["not-a-png"], "lesson.png", { type: "image/png" }));
+
+    await expect(updateLearningProgramAction("program-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/learning-programs/program-1/edit?error=Only%20valid%20JPG%2C%20PNG%2C%20or%20WEBP%20images%20are%20accepted.",
+    );
+    expect(writeFileMock).not.toHaveBeenCalled();
+  });
+
   it("updates user without password and keeps happy path", async () => {
     vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
     vi.mocked(updateAdminUser).mockResolvedValue({ id: "user-1" });
@@ -696,6 +870,42 @@ describe("admin actions", () => {
       studioSessionId: "session-1",
       clientId: "client-1",
       note: "manual add",
+      overrideReason: undefined,
+      actor: {
+        userId: "admin-1",
+        role: "ADMIN",
+      },
+    });
+  });
+
+  it("passes manual override reason for admin attendee add", async () => {
+    vi.mocked(auth).mockResolvedValue({
+      ...createAdminSession("ADMIN"),
+      user: {
+        id: "admin-1",
+        email: "admin@example.test",
+        role: "ADMIN",
+      },
+    });
+    vi.mocked(addSessionAttendeeByManager).mockResolvedValue({
+      bookingId: "booking-1",
+      status: "CONFIRMED",
+      usedCreditEntitlementId: null,
+      overrideApplied: true,
+    });
+
+    const formData = new FormData();
+    formData.set("clientId", "client-1");
+    formData.set("overrideReason", "Client approved trial");
+
+    await expect(addSessionAttendeeAction("session-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/sessions/session-1/edit?success=Attendee%20added.",
+    );
+    expect(addSessionAttendeeByManager).toHaveBeenCalledWith({
+      studioSessionId: "session-1",
+      clientId: "client-1",
+      note: undefined,
+      overrideReason: "Client approved trial",
       actor: {
         userId: "admin-1",
         role: "ADMIN",
@@ -941,7 +1151,7 @@ describe("admin actions", () => {
 
     const formData = new FormData();
     formData.set("classTypeId", "../../../etc/class-1");
-    formData.set("classImage", new File(["png"], "class.png", { type: "image/png" }));
+    formData.set("classImage", createPngFile("class.png"));
 
     await expect(uploadClassImageAction(formData)).rejects.toThrow("NEXT_REDIRECT");
 

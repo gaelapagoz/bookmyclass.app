@@ -26,6 +26,8 @@ import {
   removeSessionAttendeeByManager,
 } from "../../src/lib/admin/admin-service";
 import { markBookingAttendanceByStaff } from "../../src/lib/attendance/attendance-service";
+import { createPendingBookingDraft } from "../../src/lib/public-booking/booking-draft-service";
+import { promoteWaitlistAfterCancellationWithinTx } from "../../src/lib/public-booking/waitlist-service";
 import { prisma } from "./helpers/db";
 import { createClassCategory, createClassType } from "./helpers/factories";
 import { resetDb } from "./helpers/reset-db";
@@ -84,6 +86,7 @@ async function createSessionFixture() {
   });
 
   return {
+    classType,
     session,
     teacher,
   };
@@ -372,20 +375,13 @@ describe("admin session attendee management service", () => {
     expect(consume?.amount).toBe(-1);
   });
 
-  it("ADMIN and MASTER_ADMIN cannot add attendee without eligible credit or qualifying subscription", async () => {
+  it("ADMIN can add attendee without eligible credit through audited override", async () => {
     const { session } = await createSessionFixture();
-    const [clientOne, clientTwo, admin, masterAdmin] = await Promise.all([
+    const [client, admin] = await Promise.all([
       prisma.user.create({
         data: {
-          name: "Client Four",
-          email: `client.four.${Date.now()}@example.test`,
-          role: Role.CLIENT,
-        },
-      }),
-      prisma.user.create({
-        data: {
-          name: "Client Five",
-          email: `client.five.${Date.now()}@example.test`,
+          name: "Client Override",
+          email: `client.override.${Date.now()}@example.test`,
           role: Role.CLIENT,
         },
       }),
@@ -394,6 +390,87 @@ describe("admin session attendee management service", () => {
           name: "Admin Three",
           email: `admin.three.${Date.now()}@example.test`,
           role: Role.ADMIN,
+        },
+      }),
+    ]);
+
+    const result = await addSessionAttendeeByManager({
+      studioSessionId: session.id,
+      clientId: client.id,
+      overrideReason: "Approved one-time admin exception",
+      actor: {
+        userId: admin.id,
+        role: Role.ADMIN,
+      },
+    });
+
+    expect(result.status).toBe(BookingStatus.CONFIRMED);
+    expect(result.usedCreditEntitlementId).toBeNull();
+    expect(result.overrideApplied).toBe(true);
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: result.bookingId },
+      select: {
+        orderId: true,
+        selectedEntitlementId: true,
+        selectedPriceId: true,
+        paymentSelection: true,
+        bookingIntent: true,
+      },
+    });
+    expect(booking).toMatchObject({
+      orderId: null,
+      selectedEntitlementId: null,
+      selectedPriceId: null,
+      paymentSelection: null,
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+    });
+
+    const [creditEntries, payments, auditLog] = await Promise.all([
+      prisma.creditLedgerEntry.count({ where: { bookingId: result.bookingId } }),
+      prisma.payment.count({ where: { bookingId: result.bookingId } }),
+      prisma.auditLog.findFirst({
+        where: {
+          actionType: "BOOKING_ADMIN_OVERRIDE_CREATE",
+          entityType: "Booking",
+          entityId: result.bookingId,
+        },
+      }),
+    ]);
+
+    expect(creditEntries).toBe(0);
+    expect(payments).toBe(0);
+    expect(auditLog?.metadata).toMatchObject({
+      action: "BOOKING_ADMIN_OVERRIDE_CREATE",
+      entityType: "Booking",
+      entityId: result.bookingId,
+      actorUserId: admin.id,
+      actorRole: Role.ADMIN,
+      targetClientId: client.id,
+      studioSessionId: session.id,
+      overrideType: "NO_CREDIT_MANUAL_BOOKING",
+      overrideReason: "Approved one-time admin exception",
+      entitlementBypassed: true,
+      creditLedgerEntryCreated: false,
+      paymentCreated: false,
+      revenueCreated: false,
+      capacityConsumed: true,
+      bookingStatus: BookingStatus.CONFIRMED,
+    });
+
+    const detail = await getAdminSessionById(session.id);
+    expect(detail?.attendees[0]?.manualOverrideLabel).toBe("Manual override — no credit used");
+    expect(JSON.stringify(detail)).not.toContain("Approved one-time admin exception");
+  });
+
+  it("MASTER_ADMIN can add attendee without eligible credit through audited override", async () => {
+    const { session } = await createSessionFixture();
+    const [client, masterAdmin] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Client Master Override",
+          email: `client.master.override.${Date.now()}@example.test`,
+          role: Role.CLIENT,
         },
       }),
       prisma.user.create({
@@ -405,28 +482,50 @@ describe("admin session attendee management service", () => {
       }),
     ]);
 
+    const result = await addSessionAttendeeByManager({
+      studioSessionId: session.id,
+      clientId: client.id,
+      overrideReason: "Master admin approved exception",
+      actor: {
+        userId: masterAdmin.id,
+        role: Role.MASTER_ADMIN,
+      },
+    });
+
+    expect(result.status).toBe(BookingStatus.CONFIRMED);
+    expect(result.overrideApplied).toBe(true);
+  });
+
+  it("rejects no-credit admin attendee add without a sufficiently long reason", async () => {
+    const { session } = await createSessionFixture();
+    const [client, admin] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Client Short Override",
+          email: `client.short.override.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Admin Short Override",
+          email: `admin.short.override.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+    ]);
+
     await expect(
       addSessionAttendeeByManager({
         studioSessionId: session.id,
-        clientId: clientOne.id,
+        clientId: client.id,
+        overrideReason: "short",
         actor: {
           userId: admin.id,
           role: Role.ADMIN,
         },
       }),
-    ).rejects.toThrow("SESSION_ELIGIBILITY_REQUIRED");
-
-    await expect(
-      addSessionAttendeeByManager({
-        studioSessionId: session.id,
-        clientId: clientTwo.id,
-        note: "Manual override",
-        actor: {
-          userId: masterAdmin.id,
-          role: Role.MASTER_ADMIN,
-        },
-      }),
-    ).rejects.toThrow("SESSION_ELIGIBILITY_REQUIRED");
+    ).rejects.toThrow("SESSION_OVERRIDE_REASON_REQUIRED");
   });
 
   it("allows add attendee with active qualifying subscription without consuming credit", async () => {
@@ -618,6 +717,255 @@ describe("admin session attendee management service", () => {
         },
       }),
     ).rejects.toThrow("SESSION_FULL");
+  });
+
+  it("blocks no-credit override when session is already full", async () => {
+    const { session } = await createSessionFixture();
+    const [admin, bookedClient, overrideClient] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Admin Override Full",
+          email: `admin.override.full.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Booked Override Full",
+          email: `booked.override.full.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Blocked Override Full",
+          email: `blocked.override.full.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+    ]);
+
+    await prisma.studioSession.update({
+      where: { id: session.id },
+      data: { capacity: 1 },
+    });
+    await grantCollectiveCredits({ clientId: bookedClient.id, amount: 1 });
+    await addSessionAttendeeByManager({
+      studioSessionId: session.id,
+      clientId: bookedClient.id,
+      actor: {
+        userId: admin.id,
+        role: Role.ADMIN,
+      },
+    });
+
+    await expect(
+      addSessionAttendeeByManager({
+        studioSessionId: session.id,
+        clientId: overrideClient.id,
+        overrideReason: "Approved no-credit exception",
+        actor: {
+          userId: admin.id,
+          role: Role.ADMIN,
+        },
+      }),
+    ).rejects.toThrow("SESSION_FULL");
+  });
+
+  it("prevents concurrent override attempts from overbooking capacity", async () => {
+    const { session } = await createSessionFixture();
+    const [admin, clientA, clientB] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Admin Concurrent Override",
+          email: `admin.concurrent.override.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Concurrent Override A",
+          email: `concurrent.override.a.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Concurrent Override B",
+          email: `concurrent.override.b.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+    ]);
+
+    await prisma.studioSession.update({
+      where: { id: session.id },
+      data: { capacity: 1 },
+    });
+
+    await Promise.allSettled([
+      addSessionAttendeeByManager({
+        studioSessionId: session.id,
+        clientId: clientA.id,
+        overrideReason: "Approved concurrent exception A",
+        actor: {
+          userId: admin.id,
+          role: Role.ADMIN,
+        },
+      }),
+      addSessionAttendeeByManager({
+        studioSessionId: session.id,
+        clientId: clientB.id,
+        overrideReason: "Approved concurrent exception B",
+        actor: {
+          userId: admin.id,
+          role: Role.ADMIN,
+        },
+      }),
+    ]);
+
+    const confirmedCount = await prisma.booking.count({
+      where: {
+        studioSessionId: session.id,
+        status: BookingStatus.CONFIRMED,
+      },
+    });
+    expect(confirmedCount).toBe(1);
+  });
+
+  it("prevents concurrent admin override and client draft from overbooking capacity", async () => {
+    const { classType, session } = await createSessionFixture();
+    const [admin, overrideClient, draftClient] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Admin Override Race",
+          email: `admin.override.race.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Override Race Client",
+          email: `override.race.client.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Draft Race Client",
+          email: `draft.race.client.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+    ]);
+
+    await prisma.studioSession.update({
+      where: { id: session.id },
+      data: { capacity: 1 },
+    });
+
+    await Promise.allSettled([
+      addSessionAttendeeByManager({
+        studioSessionId: session.id,
+        clientId: overrideClient.id,
+        overrideReason: "Approved race exception",
+        actor: {
+          userId: admin.id,
+          role: Role.ADMIN,
+        },
+      }),
+      createPendingBookingDraft({
+        authenticatedUserId: draftClient.id,
+        payload: {
+          bookingIntent: BookingIntent.SINGLE_BOOKING,
+          consentPrivacyAccepted: true,
+          consentTermsAccepted: true,
+          customerEmail: draftClient.email,
+          customerName: draftClient.name,
+          customerPhone: "+32000000000",
+          serviceSlug: classType.slug,
+          sessionId: session.id,
+        },
+      }),
+    ]);
+
+    const activeCount = await prisma.booking.count({
+      where: {
+        studioSessionId: session.id,
+        status: {
+          in: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
+        },
+      },
+    });
+    expect(activeCount).toBe(1);
+  });
+
+  it("waitlist promotion after override cannot overbook", async () => {
+    const { session } = await createSessionFixture();
+    const [admin, overrideClient, waitlistedClient] = await Promise.all([
+      prisma.user.create({
+        data: {
+          name: "Admin Override Waitlist",
+          email: `admin.override.waitlist.${Date.now()}@example.test`,
+          role: Role.ADMIN,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Override Waitlist Client",
+          email: `override.waitlist.client.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          name: "Waitlisted After Override",
+          email: `waitlisted.after.override.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+        },
+      }),
+    ]);
+
+    await prisma.studioSession.update({
+      where: { id: session.id },
+      data: { capacity: 1 },
+    });
+    await grantCollectiveCredits({ clientId: waitlistedClient.id, amount: 1 });
+    await addSessionAttendeeByManager({
+      studioSessionId: session.id,
+      clientId: overrideClient.id,
+      overrideReason: "Approved no-credit exception",
+      actor: {
+        userId: admin.id,
+        role: Role.ADMIN,
+      },
+    });
+    await prisma.waitlistEntry.create({
+      data: {
+        clientId: waitlistedClient.id,
+        studioSessionId: session.id,
+        status: WaitlistStatus.ACTIVE,
+        position: 1,
+      },
+    });
+
+    const promotionResult = await prisma.$transaction((tx) =>
+      promoteWaitlistAfterCancellationWithinTx(tx, {
+        actorUserId: admin.id,
+        now: new Date(),
+        studioSessionId: session.id,
+        triggerSource: "SESSION_MANAGER_BOOKING_CANCELLATION",
+      }),
+    );
+
+    expect(promotionResult.notifications).toHaveLength(0);
+    const confirmedCount = await prisma.booking.count({
+      where: {
+        studioSessionId: session.id,
+        status: BookingStatus.CONFIRMED,
+      },
+    });
+    expect(confirmedCount).toBe(1);
   });
 
   it("treats pending draft at 15-minute cutoff as expired for manager capacity and admin booked count", async () => {

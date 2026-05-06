@@ -1,5 +1,6 @@
 import prisma from "@/lib/db";
 import { normalizeLearningImagePath } from "@/lib/learning/image-paths";
+import { getLocalMediaRenderState } from "@/lib/media";
 
 export type LearningProgramView = {
   legacyId: string;
@@ -29,7 +30,13 @@ export type LearningCourseView = {
   priority: number;
 };
 
-function mapProgram(program: {
+async function resolveLearningImagePath(path: string | null): Promise<string | null> {
+  const normalized = normalizeLearningImagePath(path);
+  const renderState = await getLocalMediaRenderState(normalized, { allowedFolders: ["/images/learning"] });
+  return renderState.src;
+}
+
+async function mapProgram(program: {
   legacyId: string;
   mainTitle: string;
   mainDescription: string | null;
@@ -42,16 +49,16 @@ function mapProgram(program: {
   picture1: string | null;
   picture2: string | null;
   picture3: string | null;
-}): LearningProgramView {
+}): Promise<LearningProgramView> {
   return {
     ...program,
-    picture1: normalizeLearningImagePath(program.picture1),
-    picture2: normalizeLearningImagePath(program.picture2),
-    picture3: normalizeLearningImagePath(program.picture3),
+    picture1: await resolveLearningImagePath(program.picture1),
+    picture2: await resolveLearningImagePath(program.picture2),
+    picture3: await resolveLearningImagePath(program.picture3),
   };
 }
 
-function mapCourse(course: {
+async function mapCourse(course: {
   legacyId: string;
   title: string;
   description: string | null;
@@ -62,10 +69,10 @@ function mapCourse(course: {
   thumbnail: string | null;
   videoUrl: string | null;
   priority: number;
-}): LearningCourseView {
+}): Promise<LearningCourseView> {
   return {
     ...course,
-    thumbnail: normalizeLearningImagePath(course.thumbnail),
+    thumbnail: await resolveLearningImagePath(course.thumbnail),
   };
 }
 
@@ -103,7 +110,7 @@ export async function getLearningPrograms(): Promise<LearningProgramView[]> {
     orderBy: { legacyId: "asc" },
   });
 
-  return programs.map(mapProgram);
+  return Promise.all(programs.map(mapProgram));
 }
 
 export async function getLearningProgramByCourseType(
@@ -126,7 +133,7 @@ export async function getLearningCoursesByCourseType(
     orderBy: [{ priority: "asc" }, { title: "asc" }],
   });
 
-  return courses.map(mapCourse);
+  return Promise.all(courses.map(mapCourse));
 }
 
 export async function getLearningCourseByCourseTypeAndLegacyId(

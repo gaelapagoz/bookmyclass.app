@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx scripts/run-vitest-files.ts",
+    "test": "node scripts/run-vitest-files.mjs",
     "test:vitest": "vitest",
     "prisma:generate": "prisma generate",
     "prisma:seed": "prisma db seed",

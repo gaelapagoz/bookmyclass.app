@@ -15,7 +15,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
@@ -26,6 +26,9 @@ import {
   adjustAdminClientCredits,
   cancelAdminClientMembership,
   createAdminClass,
+  createAdminClassCategory,
+  cleanupAdminClassCreateFailure,
+  cleanupAdminLearningProgramCreateFailure,
   updateAdminClassImage,
   createAdminLearningProgram,
   createAdminLearningVideo,
@@ -57,7 +60,9 @@ import { requireAdminSession } from "@/lib/auth/require-auth";
 import { upsertActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
 import { updateClientMessageStatus } from "@/lib/client-messages/client-message-service";
 import { isLearningImagePath } from "@/lib/learning/image-paths";
+import { SecureMediaError, storeSecureImageWithPathPersistence, type SecureMediaFile } from "@/lib/media";
 import { normalizeMarketingContentJson } from "@/lib/marketing/marketing-renderer";
+import { clearPublicCatalogueCaches } from "@/lib/public-catalogue/catalogue-service";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 import { revalidatePath } from "next/cache";
 
@@ -69,6 +74,13 @@ const classSchema = z.object({
   defaultCapacity: z.coerce.number().int().positive(),
   isActive: z.boolean(),
   isVisible: z.boolean(),
+  sortOrder: z.coerce.number().int().min(0),
+});
+
+const classCategorySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  isActive: z.boolean(),
   sortOrder: z.coerce.number().int().min(0),
 });
 
@@ -165,6 +177,7 @@ const sessionBaseSchema = z.object({
 const sessionAttendeeAddSchema = z.object({
   clientId: z.string().min(1),
   note: z.string().max(400).optional(),
+  overrideReason: z.string().max(400).optional(),
 });
 
 const sessionAttendeeRemoveSchema = z.object({
@@ -349,9 +362,9 @@ const learningProgramSchema = z.object({
   description2: z.string().optional(),
   description3: z.string().optional(),
   videoPromo: z.string().optional(),
-  picture1: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/*.jpg."),
-  picture2: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/*.jpg."),
-  picture3: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/*.jpg."),
+  picture1: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/ JPG, PNG, or WEBP files."),
+  picture2: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/ JPG, PNG, or WEBP files."),
+  picture3: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/ JPG, PNG, or WEBP files."),
 });
 
 const learningVideoSchema = z.object({
@@ -361,7 +374,7 @@ const learningVideoSchema = z.object({
   category: z.string().min(1),
   categoryType: z.string().optional(),
   categoryLevel: z.string().optional(),
-  thumbnail: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/*.jpg."),
+  thumbnail: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/ JPG, PNG, or WEBP files."),
   videoUrl: z.string().optional(),
   priority: z.coerce.number().int(),
 });
@@ -396,8 +409,6 @@ const cancelClientMembershipSchema = z.object({
 
 const MAX_TEACHER_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_TEACHER_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const MAX_CLASS_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_CLASS_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_CAMPAIGN_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_CAMPAIGN_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -510,6 +521,20 @@ function getPrismaErrorMessage(error: unknown): string {
 }
 
 function getAdminActionErrorMessage(error: unknown): string {
+  if (error instanceof SecureMediaError) {
+    if (error.code === "FILE_TOO_LARGE") {
+      return "Image must be 5MB or less.";
+    }
+    if (
+      error.code === "INVALID_MIME_TYPE" ||
+      error.code === "INVALID_EXTENSION" ||
+      error.code === "INVALID_MAGIC_BYTES"
+    ) {
+      return "Only valid JPG, PNG, or WEBP images are accepted.";
+    }
+    return "Invalid image upload.";
+  }
+
   const code = error instanceof Error ? error.message : "";
 
   if (code === "INVALID_CREDIT_AMOUNT") {
@@ -610,6 +635,9 @@ function getAdminActionErrorMessage(error: unknown): string {
   }
   if (code === "SESSION_ELIGIBILITY_REQUIRED") {
     return "Client must have an eligible credit or qualifying subscription for this class.";
+  }
+  if (code === "SESSION_OVERRIDE_REASON_REQUIRED") {
+    return "Manual no-credit override requires a reason of at least 10 characters.";
   }
   if (code === "TEACHER_SESSION_FORBIDDEN") {
     return "You can only manage attendees for sessions assigned to you.";
@@ -758,6 +786,103 @@ function mapTeacherImageMimeTypeToExtension(mimeType: string): string | null {
   }
 
   return null;
+}
+
+function getOptionalImageFile(formData: FormData, fieldName: string): SecureMediaFile | null {
+  const file = formData.get(fieldName);
+  if (!(file instanceof File) || file.size < 1) {
+    return null;
+  }
+
+  return file;
+}
+
+async function storeAdminImageWithPersistence(input: {
+  file: SecureMediaFile;
+  folder: "/images/classes" | "/images/learning";
+  filenamePrefix: string;
+  persistPath: (publicPath: string) => Promise<void>;
+}) {
+  return storeSecureImageWithPathPersistence({
+    file: input.file,
+    folder: input.folder,
+    filenamePrefix: input.filenamePrefix,
+    allowedFolders: [input.folder],
+    persistPath: input.persistPath,
+  });
+}
+
+async function cleanupStoredMediaFiles(absolutePaths: readonly string[]) {
+  await Promise.all(
+    absolutePaths.map(async (absolutePath) => {
+      try {
+        await unlink(absolutePath);
+      } catch {
+        // Best effort cleanup for failed create flows.
+      }
+    }),
+  );
+}
+
+type LearningProgramPayload = z.infer<typeof learningProgramSchema>;
+type LearningProgramImageField = "picture1" | "picture2" | "picture3";
+
+async function storeLearningProgramImageUploadsForCreate(input: {
+  formData: FormData;
+  payload: LearningProgramPayload;
+}): Promise<{ payload: LearningProgramPayload; absolutePaths: string[] }> {
+  const payload: LearningProgramPayload = { ...input.payload };
+  const absolutePaths: string[] = [];
+  const fields: LearningProgramImageField[] = ["picture1", "picture2", "picture3"];
+
+  try {
+    for (const field of fields) {
+      const upload = getOptionalImageFile(input.formData, `${field}Upload`);
+      if (!upload) {
+        continue;
+      }
+
+      const stored = await storeAdminImageWithPersistence({
+        file: upload,
+        folder: "/images/learning",
+        filenamePrefix: `program-${payload.courseType}-${field}`,
+        persistPath: async () => undefined,
+      });
+      absolutePaths.push(stored.absolutePath);
+      payload[field] = stored.publicPath;
+    }
+  } catch (error) {
+    await cleanupStoredMediaFiles(absolutePaths);
+    throw error;
+  }
+
+  return { payload, absolutePaths };
+}
+
+async function persistLearningProgramImageUploads(input: {
+  formData: FormData;
+  programId: string;
+  payload: LearningProgramPayload;
+}) {
+  const payload: LearningProgramPayload = { ...input.payload };
+  const fields: LearningProgramImageField[] = ["picture1", "picture2", "picture3"];
+
+  for (const field of fields) {
+    const upload = getOptionalImageFile(input.formData, `${field}Upload`);
+    if (!upload) {
+      continue;
+    }
+
+    await storeAdminImageWithPersistence({
+      file: upload,
+      folder: "/images/learning",
+      filenamePrefix: `program-${input.programId}-${field}`,
+      persistPath: async (publicPath) => {
+        payload[field] = publicPath;
+        await updateAdminLearningProgram(input.programId, payload);
+      },
+    });
+  }
 }
 
 async function storeCampaignImageAsset(file: File, campaignId: string): Promise<string> {
@@ -945,21 +1070,48 @@ export async function createClassAction(formData: FormData) {
         redirectWithError("/admin/classes/new", "Please complete all required class schedule fields.");
       }
 
+      const classImage = getOptionalImageFile(formData, "classImage");
+      if (!classImage) {
+        redirectWithError("/admin/classes/new", "Please select a service image file.");
+      }
+
       try {
-        const createdClass = await createAdminClass(parsed.data);
-        await upsertAdminClassScheduleConfig({
-          classTypeId: createdClass.id,
-          className: createdClass.name,
-          defaultCapacity: createdClass.defaultCapacity,
-          defaultDurationMinutes: createdClass.defaultDurationMinutes,
-          defaultTeacherId: scheduleParsed.data.defaultTeacherId,
-          startTime: scheduleParsed.data.startTime,
-          endTime: scheduleParsed.data.endTime,
-          isRecurring: scheduleParsed.data.isRecurring,
-          date: scheduleParsed.data.date ?? null,
-          weekdays: scheduleParsed.data.weekdays ?? [],
-          endDate: scheduleParsed.data.endDate ?? null,
+        await storeAdminImageWithPersistence({
+          file: classImage,
+          folder: "/images/classes",
+          filenamePrefix: `service-${parsed.data.name}`,
+          persistPath: async (publicPath) => {
+            let createdClassId: string | null = null;
+            try {
+              const createdClass = await createAdminClass({ ...parsed.data, imageUrl: publicPath });
+              createdClassId = createdClass.id;
+              await upsertAdminClassScheduleConfig({
+                classTypeId: createdClass.id,
+                className: createdClass.name,
+                defaultCapacity: createdClass.defaultCapacity,
+                defaultDurationMinutes: createdClass.defaultDurationMinutes,
+                defaultTeacherId: scheduleParsed.data.defaultTeacherId,
+                startTime: scheduleParsed.data.startTime,
+                endTime: scheduleParsed.data.endTime,
+                isRecurring: scheduleParsed.data.isRecurring,
+                date: scheduleParsed.data.date ?? null,
+                weekdays: scheduleParsed.data.weekdays ?? [],
+                endDate: scheduleParsed.data.endDate ?? null,
+              });
+            } catch (error) {
+              if (createdClassId) {
+                try {
+                  await cleanupAdminClassCreateFailure(createdClassId);
+                } catch {
+                  // Preserve the original schedule/persistence failure for callers.
+                }
+              }
+              throw error;
+            }
+          },
         });
+        clearPublicCatalogueCaches();
+        revalidatePath("/admin/classes");
       } catch (error) {
         Sentry.captureException(error);
         redirectWithError("/admin/classes/new", getAdminActionErrorMessage(error));
@@ -968,6 +1120,32 @@ export async function createClassAction(formData: FormData) {
       redirect("/admin/classes");
     },
   );
+}
+
+export async function createClassCategoryAction(formData: FormData) {
+  await assertAdminAccess();
+
+  const parsed = classCategorySchema.safeParse({
+    name: formData.get("name"),
+    description: formData.get("description") ?? undefined,
+    isActive: isChecked(formData, "isActive"),
+    sortOrder: formData.get("sortOrder"),
+  });
+
+  if (!parsed.success) {
+    redirectWithError("/admin/classes", "Please complete all required category fields.");
+  }
+
+  try {
+    await createAdminClassCategory(parsed.data);
+    clearPublicCatalogueCaches();
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError("/admin/classes", getAdminActionErrorMessage(error));
+  }
+
+  revalidatePath("/admin/classes");
+  redirect(`/admin/classes?success=${encodeURIComponent("Category created.")}`);
 }
 
 export async function updateClassAction(id: string, formData: FormData) {
@@ -1020,6 +1198,8 @@ export async function updateClassAction(id: string, formData: FormData) {
       weekdays: scheduleParsed.data.weekdays ?? [],
       endDate: scheduleParsed.data.endDate ?? null,
     });
+    revalidatePath("/admin/classes");
+    clearPublicCatalogueCaches();
   } catch (error) {
     Sentry.captureException(error);
     redirectWithError(`/admin/classes/${id}/edit`, getAdminActionErrorMessage(error));
@@ -1140,6 +1320,7 @@ export async function addSessionAttendeeAction(id: string, formData: FormData) {
   const parsed = sessionAttendeeAddSchema.safeParse({
     clientId: formData.get("clientId"),
     note: toOptionalTrimmedString(formData.get("note")),
+    overrideReason: toOptionalTrimmedString(formData.get("overrideReason")),
   });
 
   if (!parsed.success) {
@@ -1151,6 +1332,7 @@ export async function addSessionAttendeeAction(id: string, formData: FormData) {
       studioSessionId: id,
       clientId: parsed.data.clientId,
       note: parsed.data.note,
+      overrideReason: parsed.data.overrideReason,
       actor: {
         userId: session.user.id,
         role: session.user.role,
@@ -1624,11 +1806,28 @@ export async function createLearningProgramAction(formData: FormData) {
     redirectWithError("/admin/learning-programs/new", "Please complete all required learning program fields.");
   }
 
+  const storedUploadPaths: string[] = [];
+  let createdProgramId: string | null = null;
   try {
-    await createAdminLearningProgram(parsed.data);
+    const prepared = await storeLearningProgramImageUploadsForCreate({
+      formData,
+      payload: parsed.data,
+    });
+    storedUploadPaths.push(...prepared.absolutePaths);
+    const created = await createAdminLearningProgram(prepared.payload);
+    createdProgramId = created.id;
   } catch (error) {
+    if (createdProgramId) {
+      try {
+        await cleanupAdminLearningProgramCreateFailure(createdProgramId);
+      } catch {
+        // Preserve the original upload/persistence failure for callers.
+      }
+    } else {
+      await cleanupStoredMediaFiles(storedUploadPaths);
+    }
     Sentry.captureException(error);
-    redirectWithError("/admin/learning-programs/new", getPrismaErrorMessage(error));
+    redirectWithError("/admin/learning-programs/new", getAdminActionErrorMessage(error));
   }
 
   redirect("/admin/learning-programs");
@@ -1657,9 +1856,14 @@ export async function updateLearningProgramAction(id: string, formData: FormData
 
   try {
     await updateAdminLearningProgram(id, parsed.data);
+    await persistLearningProgramImageUploads({
+      formData,
+      programId: id,
+      payload: parsed.data,
+    });
   } catch (error) {
     Sentry.captureException(error);
-    redirectWithError(`/admin/learning-programs/${id}/edit`, getPrismaErrorMessage(error));
+    redirectWithError(`/admin/learning-programs/${id}/edit`, getAdminActionErrorMessage(error));
   }
 
   redirect("/admin/learning-programs");
@@ -1951,38 +2155,26 @@ export async function uploadClassImageAction(formData: FormData) {
     redirectWithError(returnTo, "Booking service id is required.");
   }
 
-  const file = formData.get("classImage");
-  if (!(file instanceof File) || file.size < 1) {
+  const file = getOptionalImageFile(formData, "classImage");
+  if (!file) {
     redirectWithError(returnTo, "Please select a service image file.");
   }
 
-  if (file.size > MAX_CLASS_IMAGE_FILE_SIZE_BYTES) {
-    redirectWithError(returnTo, "Service image must be 5MB or less.");
-  }
-
-  if (!ALLOWED_CLASS_IMAGE_MIME_TYPES.has(file.type)) {
-    redirectWithError(returnTo, "Only JPG, PNG, or WEBP images are accepted.");
-  }
-
-  const extension = mapTeacherImageMimeTypeToExtension(file.type);
-  if (!extension) {
-    redirectWithError(returnTo, "Unsupported image type.");
-  }
-
-  const bytes = await file.arrayBuffer();
-  const imagesDir = join(process.cwd(), "public", "images", "classes");
-  const targetFileName = `service-${sanitizeFilenamePart(classTypeId)}-${Date.now()}.${extension}`;
-  const targetAbsolutePath = join(imagesDir, targetFileName);
-  const relativePath = `/images/classes/${targetFileName}`;
-
   try {
-    await mkdir(imagesDir, { recursive: true });
-    await writeFile(targetAbsolutePath, Buffer.from(bytes));
-    await updateAdminClassImage({
-      classTypeId,
-      imagePath: relativePath,
-      adminUserId: session.user.id,
+    await storeAdminImageWithPersistence({
+      file,
+      folder: "/images/classes",
+      filenamePrefix: `service-${classTypeId}`,
+      persistPath: async (publicPath) => {
+        await updateAdminClassImage({
+          classTypeId,
+          imagePath: publicPath,
+          adminUserId: session.user.id,
+        });
+      },
     });
+    clearPublicCatalogueCaches();
+    revalidatePath("/admin/classes");
   } catch (error) {
     Sentry.captureException(error);
     console.error("[admin/upload-class-image] failed", error);

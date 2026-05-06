@@ -18,6 +18,19 @@ vi.mock("@/lib/db", () => ({
   prisma: dbMock,
 }));
 
+vi.mock("@/lib/media", () => ({
+  assertSafeMediaPublicPath: vi.fn((path: string) => {
+    if (!path.startsWith("/images/learning/") || path.includes("..")) {
+      throw new Error("invalid");
+    }
+    return path;
+  }),
+  getLocalMediaRenderState: vi.fn(async (path: string | null) => ({
+    src: path?.includes("missing") ? null : path,
+    shouldRenderFallback: !path || path.includes("missing"),
+  })),
+}));
+
 import {
   fromCourseTypeRouteKey,
   getLearningCourseByCourseTypeAndLegacyId,
@@ -196,6 +209,26 @@ describe("learning catalogue data layer", () => {
 
     const course = await getLearningCourseByCourseTypeAndLegacyId("Yoga", "course-3");
     expect(course?.thumbnail).toBe("/images/learning/core-flow.jpg");
+  });
+
+  it("drops missing local learning images from runtime views", async () => {
+    dbMock.learningProgram.findUnique.mockResolvedValue({
+      legacyId: "program-missing",
+      mainTitle: "Backbends",
+      mainDescription: null,
+      courseType: "Backbend",
+      title: "Backbends",
+      description1: null,
+      description2: null,
+      description3: null,
+      videoPromo: null,
+      picture1: "/images/learning/missing-backbend.png",
+      picture2: null,
+      picture3: null,
+    });
+
+    const program = await getLearningProgramByCourseType("Backbend");
+    expect(program?.picture1).toBeNull();
   });
 
   it("returns null for missing program or mismatched/missing course", async () => {

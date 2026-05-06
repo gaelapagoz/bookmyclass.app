@@ -1,7 +1,7 @@
-# Operator Execution Checklist - Manual UAT Campaign
+# Operator Execution Checklist - Manual Release Validation
 
 ## Environment Confirmation
-- Target environment: `https://uat.bookmyclass.app`
+- Target environment: `_____________`
 - Confirm deployed tag/version: `_____________`
 - Confirm date/time (UTC): `_____________`
 - Confirm operator: `_____________`
@@ -37,11 +37,11 @@
 2. Confirm inbox and learning seed content exists.
 3. Confirm admin access to catalog/session/user operations.
 4. Confirm teacher/kiosk credentials and test session assignment.
-5. Confirm evidence storage location (screenshots/video/log links): `_____________`.
-6. Open manual campaign tracker and evidence log: `test/manual/manual_test_campaign.md`.
+5. Confirm evidence storage location: `test-results/manual_test_<YYYY-MM-DD>.md`.
+6. Open manual validation tracker: `test/manual/manual_test_campaign.md`.
 
 ## Execution Order
-1. UAT smoke (`SMK-*`)
+1. Smoke (`SMK-*`)
 2. Client auth (`AUT-*`)
 3. Client booking (`BKG-*`)
 4. Client waitlist (`WTL-*`)
@@ -111,7 +111,7 @@ Date/time: `_____________`
 
 ## Final Signoff
 - Operator name: `_____________`
-- QA/UAT reviewer: `_____________`
+- QA reviewer: `_____________`
 - Engineering approver: `_____________`
 - Product approver: `_____________`
 - Notes: `____________________________________________________________`

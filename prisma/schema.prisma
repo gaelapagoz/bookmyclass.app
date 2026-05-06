@@ -90,6 +90,7 @@ enum BookingStatus {
   PENDING
   CONFIRMED
   CANCELLED
+  EXPIRED
   COMPLETED
   NO_SHOW
 }
@@ -650,7 +651,6 @@ model Booking {
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
 
-  @@unique([clientId, studioSessionId])
   @@index([clientId, status, bookedAt])
   @@index([studioSessionId, status])
   @@index([orderId])

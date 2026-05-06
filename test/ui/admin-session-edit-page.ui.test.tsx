@@ -30,12 +30,17 @@ vi.mock("@/lib/admin/admin-service", () => ({
   getAdminSessionOptions: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/require-auth", () => ({
+  requireStaffSession: vi.fn(),
+}));
+
 import { getAdminSessionById, getAdminSessionOptions } from "@/lib/admin/admin-service";
+import { requireStaffSession } from "@/lib/auth/require-auth";
 
 import AdminSessionEditPage from "../../src/app/admin/(private)/sessions/[id]/edit/page";
 
 describe("admin session edit page", () => {
-  it("renders correct action row order, attendee list, and client credit visibility", async () => {
+  function mockSessionPageData() {
     vi.mocked(getAdminSessionById).mockResolvedValue({
       id: "session-1",
       classTemplateId: "template-1",
@@ -60,6 +65,7 @@ describe("admin session edit page", () => {
           attendanceStatus: "CHECKED_IN",
           attendanceSource: "KIOSK",
           checkedInAt: new Date().toISOString(),
+          manualOverrideLabel: "Manual override — no credit used",
         },
       ],
     });
@@ -88,6 +94,13 @@ describe("admin session edit page", () => {
         },
       ],
     });
+  }
+
+  it("renders correct action row order, attendee list, and client credit visibility", async () => {
+    vi.mocked(requireStaffSession).mockResolvedValue({
+      user: { id: "admin-1", role: "ADMIN" },
+    } as never);
+    mockSessionPageData();
 
     render(
       await AdminSessionEditPage({
@@ -100,6 +113,7 @@ describe("admin session edit page", () => {
     expect(screen.getByText("Saved.")).toBeInTheDocument();
     expect(screen.getByText("Client One")).toBeInTheDocument();
     expect(screen.getByText("client1@example.test")).toBeInTheDocument();
+    expect(screen.getByText("Manual override — no credit used")).toBeInTheDocument();
     expect(screen.getByTestId("session-attendees-section")).toBeInTheDocument();
     expect(screen.getByTestId("admin-attendee-booking-1")).toBeInTheDocument();
     expect(screen.getByText(/Attendance: CHECKED_IN/i)).toBeInTheDocument();
@@ -109,6 +123,7 @@ describe("admin session edit page", () => {
 
     expect(screen.getByRole("option", { name: /Client Two .*3 credits available/i })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /Client Three .*No eligible credit or subscription/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/Manual no-credit override reason/i)).toBeInTheDocument();
 
     const publishedRow = screen.getByTestId("published-row");
     const actionRow = screen.getByTestId("session-update-actions");
@@ -120,5 +135,21 @@ describe("admin session edit page", () => {
 
     expect(rowPosition & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(buttonPosition & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  });
+
+  it("hides admin-only override reason control from teacher session managers", async () => {
+    vi.mocked(requireStaffSession).mockResolvedValue({
+      user: { id: "teacher-1", role: "TEACHER" },
+    } as never);
+    mockSessionPageData();
+
+    render(
+      await AdminSessionEditPage({
+        params: Promise.resolve({ id: "session-1" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+
+    expect(screen.queryByLabelText(/Manual no-credit override reason/i)).not.toBeInTheDocument();
   });
 });

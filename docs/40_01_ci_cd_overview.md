@@ -21,7 +21,8 @@ Purpose: summarize the current CI/CD posture from repository evidence.
 ## Deployment Automation Status
 - Manual production promotion workflow exists at `.github/workflows/prod-release.yml`.
 - Production deployment remains explicit and operator-approved via GitHub Environment protection.
-- Tag-based UAT release workflow exists at `.github/workflows/uat-release.yml` and runs deployed-UAT gates.
+- Tag-based UAT release workflow references may still exist, but UAT is currently disabled/retired.
+- Current release validation relies on CI, local targeted validation, and operator-approved production deployment.
 
 ## Canonical References
 - `docs/00_02_deployment_baseline.md`

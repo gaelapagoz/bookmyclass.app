@@ -457,6 +457,61 @@ describe("dashboard-service integration", () => {
     expect(bookings.upcoming[0]?.canCancel).toBe(false);
     expect(bookings.upcoming[0]?.cancellationBlockedReason).toMatch(/less than 24 hour/i);
   });
+
+  it("does not surface expired future drafts as active dashboard bookings", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Expired Draft Client",
+        firstName: "Expired",
+        lastName: "Draft",
+        email: `expired.draft.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    const { booking } = await createSessionFixture(client.id, { startsInHours: 72 });
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: { status: BookingStatus.EXPIRED },
+    });
+
+    const bookings = await getDashboardBookingsData(client.id);
+
+    expect(bookings.upcoming).toHaveLength(0);
+    expect(bookings.past).toHaveLength(0);
+    expect(bookings.cancelled).toHaveLength(0);
+  });
+
+  it("rejects client cancellation for expired draft history", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Expired Cancel Client",
+        firstName: "Expired",
+        lastName: "Cancel",
+        email: `expired.cancel.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    const { booking } = await createSessionFixture(client.id, { startsInHours: 72 });
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: { status: BookingStatus.EXPIRED },
+    });
+
+    await expect(
+      cancelClientBooking({ bookingId: booking.id, clientId: client.id }),
+    ).rejects.toMatchObject<Partial<DashboardServiceError>>({
+      code: "BOOKING_NOT_CANCELLABLE",
+    });
+
+    const unchanged = await prisma.booking.findUnique({
+      where: { id: booking.id },
+      select: { status: true, cancelledAt: true },
+    });
+    expect(unchanged?.status).toBe(BookingStatus.EXPIRED);
+    expect(unchanged?.cancelledAt).toBeNull();
+  });
   it("updates profile and enforces verified email change flow", async () => {
     const userOne = await prisma.user.create({
       data: {

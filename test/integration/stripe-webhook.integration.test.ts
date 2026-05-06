@@ -139,7 +139,7 @@ async function createDropInBookingFixture() {
       clientId: client.id,
       orderId: order.id,
       status: BookingStatus.PENDING,
-      paymentSelection: BookingPaymentSelection.DROP_IN_CLASS,
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
       selectedPriceId: price.id,
       draftAmountMinor: price.unitAmountMinor,
       draftCurrencyCode: "EUR",
@@ -224,6 +224,185 @@ describe("processStripeWebhookEvent — checkout.session.completed", () => {
     expect(updatedPayment?.status).toBe(PaymentStatus.SUCCEEDED);
     expect(updatedOrder?.status).toBe(OrderStatus.PAID);
     expect(updatedBooking?.status).toBe(BookingStatus.CONFIRMED);
+  });
+
+  it("confirms only the intended new pending booking when cancelled history exists", async () => {
+    const { booking, payment, order, client } = await createDropInBookingFixture();
+    const cancelledHistorical = await prisma.booking.create({
+      data: {
+        studioSessionId: booking.studioSessionId,
+        clientId: client.id,
+        status: BookingStatus.CANCELLED,
+        paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+        customerName: client.name,
+        customerEmail: client.email,
+        customerPhone: "+32000000000",
+        cancelledAt: new Date(),
+        cancellationReason: "Client cancelled before rebooking.",
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+        consentAcceptedAt: new Date(),
+      },
+      select: { id: true },
+    });
+
+    const event = buildCheckoutCompletedEvent(
+      "evt_test_wh_svc_rebook_001",
+      "cs_test_wh_svc_rebook_001",
+      "pi_test_wh_svc_rebook_001",
+      payment.id,
+      booking.id,
+    );
+
+    await processStripeWebhookEvent(event as unknown as import("stripe").default.Event);
+
+    const [updatedPayment, updatedOrder, updatedBooking, historicalBooking] = await Promise.all([
+      prisma.payment.findUnique({ where: { id: payment.id }, select: { status: true } }),
+      prisma.order.findUnique({ where: { id: order.id }, select: { status: true } }),
+      prisma.booking.findUnique({ where: { id: booking.id }, select: { status: true } }),
+      prisma.booking.findUnique({ where: { id: cancelledHistorical.id }, select: { status: true } }),
+    ]);
+
+    expect(updatedPayment?.status).toBe(PaymentStatus.SUCCEEDED);
+    expect(updatedOrder?.status).toBe(OrderStatus.PAID);
+    expect(updatedBooking?.status).toBe(BookingStatus.CONFIRMED);
+    expect(historicalBooking?.status).toBe(BookingStatus.CANCELLED);
+  });
+
+  it("skips checkout completion when payment metadata points at a different booking", async () => {
+    const { booking, payment, order, client } = await createDropInBookingFixture();
+    const cancelledHistorical = await prisma.booking.create({
+      data: {
+        studioSessionId: booking.studioSessionId,
+        clientId: client.id,
+        status: BookingStatus.CANCELLED,
+        paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+        customerName: client.name,
+        customerEmail: client.email,
+        customerPhone: "+32000000000",
+        cancelledAt: new Date(),
+        cancellationReason: "Client cancelled before rebooking.",
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+        consentAcceptedAt: new Date(),
+      },
+      select: { id: true },
+    });
+
+    const event = buildCheckoutCompletedEvent(
+      "evt_test_wh_svc_rebook_mismatch_001",
+      "cs_test_wh_svc_rebook_mismatch_001",
+      "pi_test_wh_svc_rebook_mismatch_001",
+      payment.id,
+      cancelledHistorical.id,
+    );
+
+    await processStripeWebhookEvent(event as unknown as import("stripe").default.Event);
+
+    const [updatedPayment, updatedOrder, updatedBooking, historicalBooking] = await Promise.all([
+      prisma.payment.findUnique({ where: { id: payment.id }, select: { status: true } }),
+      prisma.order.findUnique({ where: { id: order.id }, select: { status: true } }),
+      prisma.booking.findUnique({ where: { id: booking.id }, select: { status: true } }),
+      prisma.booking.findUnique({ where: { id: cancelledHistorical.id }, select: { status: true } }),
+    ]);
+
+    expect(updatedPayment?.status).toBe(PaymentStatus.PENDING);
+    expect(updatedOrder?.status).toBe(OrderStatus.PLACED);
+    expect(updatedBooking?.status).toBe(BookingStatus.PENDING);
+    expect(historicalBooking?.status).toBe(BookingStatus.CANCELLED);
+  });
+
+  it("skips checkout completion when payment metadata points at a different order", async () => {
+    const { booking, payment, order } = await createDropInBookingFixture();
+    const otherClient = await prisma.user.create({
+      data: {
+        name: "Other Client",
+        email: `other-order.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+    const otherOrder = await prisma.order.create({
+      data: {
+        clientId: otherClient.id,
+        subtotalAmountMinor: 2500,
+        discountAmountMinor: 0,
+        totalAmountMinor: 2500,
+        currencyCode: "EUR",
+        status: OrderStatus.PLACED,
+      },
+      select: { id: true },
+    });
+    const event = buildCheckoutCompletedEvent(
+      "evt_test_wh_svc_order_mismatch_001",
+      "cs_test_wh_svc_order_mismatch_001",
+      "pi_test_wh_svc_order_mismatch_001",
+      payment.id,
+      booking.id,
+    ) as ReturnType<typeof buildCheckoutCompletedEvent> & {
+      data: { object: { metadata: { orderId?: string } } };
+    };
+    event.data.object.metadata.orderId = otherOrder.id;
+
+    await processStripeWebhookEvent(event as unknown as import("stripe").default.Event);
+
+    const [updatedPayment, updatedOrder, updatedBooking] = await Promise.all([
+      prisma.payment.findUnique({ where: { id: payment.id }, select: { status: true } }),
+      prisma.order.findUnique({ where: { id: order.id }, select: { status: true } }),
+      prisma.booking.findUnique({ where: { id: booking.id }, select: { status: true } }),
+    ]);
+
+    expect(updatedPayment?.status).toBe(PaymentStatus.PENDING);
+    expect(updatedOrder?.status).toBe(OrderStatus.PLACED);
+    expect(updatedBooking?.status).toBe(BookingStatus.PENDING);
+  });
+
+  it("checks booking order when payment order is missing during metadata validation", async () => {
+    const { booking, payment, order } = await createDropInBookingFixture();
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { orderId: null },
+    });
+    const otherClient = await prisma.user.create({
+      data: {
+        name: "Other Missing Payment Order Client",
+        email: `other-missing-order.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+    const otherOrder = await prisma.order.create({
+      data: {
+        clientId: otherClient.id,
+        subtotalAmountMinor: 2500,
+        discountAmountMinor: 0,
+        totalAmountMinor: 2500,
+        currencyCode: "EUR",
+        status: OrderStatus.PLACED,
+      },
+      select: { id: true },
+    });
+    const event = buildCheckoutCompletedEvent(
+      "evt_test_wh_svc_booking_order_mismatch_001",
+      "cs_test_wh_svc_booking_order_mismatch_001",
+      "pi_test_wh_svc_booking_order_mismatch_001",
+      payment.id,
+      booking.id,
+    ) as ReturnType<typeof buildCheckoutCompletedEvent> & {
+      data: { object: { metadata: { orderId?: string } } };
+    };
+    event.data.object.metadata.orderId = otherOrder.id;
+
+    await processStripeWebhookEvent(event as unknown as import("stripe").default.Event);
+
+    const [updatedPayment, updatedOrder, updatedBooking] = await Promise.all([
+      prisma.payment.findUnique({ where: { id: payment.id }, select: { status: true, orderId: true } }),
+      prisma.order.findUnique({ where: { id: order.id }, select: { status: true } }),
+      prisma.booking.findUnique({ where: { id: booking.id }, select: { status: true } }),
+    ]);
+
+    expect(updatedPayment?.status).toBe(PaymentStatus.PENDING);
+    expect(updatedPayment?.orderId).toBeNull();
+    expect(updatedOrder?.status).toBe(OrderStatus.PLACED);
+    expect(updatedBooking?.status).toBe(BookingStatus.PENDING);
   });
 
   it("records the event receipt as PROCESSED after handling", async () => {

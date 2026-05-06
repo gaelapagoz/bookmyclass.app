@@ -11,6 +11,7 @@ import {
   getStudioDateKey,
   getStudioTimeLabel,
 } from "./timezone";
+import { getLocalMediaRenderState } from "../media";
 
 export type PublicServiceDetail = {
   classSummary: {
@@ -251,13 +252,17 @@ export async function getPublicServiceDetailBySlug(slug: string): Promise<Public
     }
     foundService = true;
 
+    const imageRenderState = classType.imageUrl?.startsWith("/images/")
+      ? await getLocalMediaRenderState(classType.imageUrl, { allowedFolders: ["/images/classes"] })
+      : { src: classType.imageUrl, shouldRenderFallback: !classType.imageUrl };
+
     return {
       id: classType.id,
       slug: classType.slug,
       title: classType.name,
       description: classType.description ?? "Description coming soon.",
       shortDescription: getShortDescription(classType.description),
-      imageUrl: classType.imageUrl,
+      imageUrl: imageRenderState.src,
       classSummary: resolveClassSummary(classType),
     };
   } finally {

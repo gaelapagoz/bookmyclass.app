@@ -39,6 +39,75 @@ If a setup/runbook file conflicts with this file, treat this file as authoritati
 
 ## Deployment Flow (Canonical)
 
+Current release flow while UAT is disabled:
+
+1. Merge to main through PR with CI passing.
+2. Create release tag (vX.Y.Z).
+3. Run local/CI validation appropriate to the change:
+   - full regression suite
+   - relevant E2E tests
+   - Stripe CLI webhook simulation for payment/webhook changes
+   - operator-run smoke, security, and performance checks when relevant
+4. Promote the exact validated tag to production through the manual production workflow.
+5. Run production smoke checks and observability/log review immediately after deploy.
+
+Rules:
+- Never deploy directly to production from main.
+- Production deployment remains explicit and operator-approved.
+- UAT runbooks/workflows are historical while UAT is disabled.
+- Use "operator-run manual release validation" for current manual evidence.
+- Store manual evidence at `test-results/manual_test_<YYYY-MM-DD>.md`.
+
+## Manual Evidence Convention
+
+Manual validation evidence must use this file pattern:
+
+```text
+test-results/manual_test_<YYYY-MM-DD>.md
+```
+
+Recommended structure:
+
+```text
+# Operator-Run Manual Release Validation - YYYY-MM-DD
+
+## Environment
+- Target:
+- URL:
+- Build/tag:
+- Operator:
+- Date:
+
+## Defect Evidence
+### S1_001
+- Status:
+- Evidence:
+- Screenshot/log/video:
+- Notes:
+
+## Signoff
+- Operator:
+- Result:
+```
+
+## Source Priority
+
+Use this source order when current implementation work conflicts with older docs:
+
+1. `docs/00_*`
+2. `docs/10_*`
+3. `docs/20_*`
+4. `docs/30_*`
+5. `docs/40_*`
+6. `docs/50_*`
+7. `docs/60_*`
+8. `docs/70_*`
+9. `docs/80_*`
+10. `docs/90_*`
+11. Latest manual defect campaign
+
+## Historical UAT Flow (Disabled)
+
 1. Merge to main
 2. Create release tag (vX.Y.Z)
 3. Deploy to UAT

@@ -42,7 +42,7 @@ description: Perform repo-specific security review focused on authz, validation,
 - Generic security theater without code-path evidence.
 - Treating non-active modeled flows as active exploit paths without confirmation.
 - Suggesting large platform redesigns for targeted issues.
-- Ignoring operational constraints of manual UAT-first release flow.
+- Ignoring operator-run smoke/security/performance release gates.
 
 ## Output Contract
 Return:

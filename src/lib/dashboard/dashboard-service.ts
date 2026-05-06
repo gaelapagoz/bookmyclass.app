@@ -53,6 +53,10 @@ export class DashboardServiceError extends Error {
   }
 }
 
+function isVisibleHistoricalBookingStatus(status: BookingStatus): boolean {
+  return status !== BookingStatus.CANCELLED && status !== BookingStatus.EXPIRED;
+}
+
 export type DashboardBookingItem = {
   bookingId: string;
   status: BookingStatus;
@@ -554,13 +558,13 @@ export async function getDashboardBookingsData(clientId: string): Promise<Dashbo
   ));
   const upcoming = mapped.filter(
     (booking) =>
-      booking.status !== BookingStatus.CANCELLED &&
+      isVisibleHistoricalBookingStatus(booking.status) &&
       new Date(booking.startsAt) > now,
   );
   const cancelled = mapped.filter((booking) => booking.status === BookingStatus.CANCELLED);
   const past = mapped.filter(
     (booking) =>
-      booking.status !== BookingStatus.CANCELLED &&
+      isVisibleHistoricalBookingStatus(booking.status) &&
       new Date(booking.startsAt) <= now,
   );
 

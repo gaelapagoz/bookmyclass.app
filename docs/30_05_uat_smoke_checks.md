@@ -14,7 +14,7 @@ It is intentionally:
 
 The smoke script supports two topologies:
 
-1. UAT app-host topology (default, `BASE_URL=https://uat.bookmyclass.app`)
+1. Historical UAT app-host topology (disabled unless operator re-enables UAT)
   - `GET /api/health` returns `200`
   - `GET /` returns `200` with homepage marker
   - `GET /sign-in` returns `200`
@@ -36,7 +36,7 @@ NPM command:
 
 ## Configuration
 
-- `BASE_URL` (optional): defaults to `https://uat.bookmyclass.app`
+- `BASE_URL` (optional): set to the operator-approved validation URL
 - `UAT_SMOKE_TIMEOUT_MS` (optional): defaults to `8000`
 - `MARKETING_BASE_URL` (optional, split mode)
 - `WWW_BASE_URL` (optional, split mode)
@@ -45,7 +45,7 @@ NPM command:
 Example:
 
 ```bash
-BASE_URL=https://uat.bookmyclass.app npm run test:uat:smoke
+BASE_URL=<operator-approved-url> npm run test:uat:smoke
 
 # production split topology smoke
 BASE_URL=https://bookmyclass.app npm run test:uat:smoke
@@ -56,24 +56,19 @@ BASE_URL=https://bookmyclass.app npm run test:uat:smoke
 Expected order:
 1. `regression`
 2. `e2e`
-3. Deploy exact tag to UAT over SSH (`deploy_uat`)
-4. Run `npm run test:uat:smoke` (`smoke_uat`)
-5. Run deployed UAT release e2e (`e2e_uat`)
-6. Run k6 smoke (`k6_smoke_uat`)
-7. Run ZAP baseline (`zap_uat`)
+3. Run operator-approved smoke validation for the exact tag
+4. Record evidence in `test-results/manual_test_<YYYY-MM-DD>.md`
+5. Promote the exact validated tag through manual production approval
 
 Assumed SSH secrets for deploy step:
-- `UAT_SSH_HOST`
-- `UAT_SSH_PORT`
-- `UAT_SSH_USER`
-- `UAT_SSH_PRIVATE_KEY`
-- `UAT_SSH_KNOWN_HOSTS`
+- UAT secrets remain UAT-only if an operator re-enables UAT.
+- UAT workflows must not use PROD secrets.
 
 Example post-deploy smoke step:
 
 ```yaml
 - name: Run UAT smoke checks
   env:
-    BASE_URL: https://uat.bookmyclass.app
+    BASE_URL: <operator-approved-url>
   run: npm run test:uat:smoke
 ```

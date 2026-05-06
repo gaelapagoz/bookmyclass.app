@@ -163,16 +163,16 @@ describe("Late Stripe checkout.session.completed for an expired draft", () => {
     await resetDb();
   });
 
-  it("does not confirm a booking that was cancelled by the expiry job before the webhook arrived", async () => {
+  it("does not confirm a booking that was expired by the expiry job before the webhook arrived", async () => {
     const { booking, payment, price } = await createExpiredDraftWithPayment();
 
-    // Run the expiry job — booking moves to CANCELLED
+    // Run the expiry job - booking moves to EXPIRED
     await expireStaleBookingDrafts();
 
     const afterExpiry = await prisma.booking.findUnique({ where: { id: booking.id } });
-    expect(afterExpiry?.status).toBe(BookingStatus.CANCELLED);
+    expect(afterExpiry?.status).toBe(BookingStatus.EXPIRED);
 
-    // Simulate Stripe sending checkout.session.completed for the now-cancelled booking
+    // Simulate Stripe sending checkout.session.completed for the now-expired booking
     verifyStripeWebhookEventMock.mockReturnValue({
       type: "checkout.session.completed",
       data: {
@@ -198,8 +198,8 @@ describe("Late Stripe checkout.session.completed for an expired draft", () => {
 
     expect(response.status).toBe(200);
 
-    // Booking must remain CANCELLED — a late payment cannot resurrect an expired draft
+    // Booking must remain EXPIRED - a late payment cannot resurrect an expired draft
     const afterWebhook = await prisma.booking.findUnique({ where: { id: booking.id } });
-    expect(afterWebhook?.status).toBe(BookingStatus.CANCELLED);
+    expect(afterWebhook?.status).toBe(BookingStatus.EXPIRED);
   });
 });

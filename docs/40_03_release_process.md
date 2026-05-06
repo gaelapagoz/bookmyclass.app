@@ -4,14 +4,27 @@ Purpose: define the canonical release process for this repository.
 
 ---
 
+## Current UAT Status
+
+UAT is currently disabled/retired. Any UAT-first workflow descriptions in this
+document are historical unless an operator re-enables UAT and updates
+`docs/00_01_system_baseline.md` and `docs/00_02_deployment_baseline.md`.
+
+Current release validation relies on CI, local targeted validation, Stripe CLI
+simulation for payment/webhook changes, manual production approval, production
+smoke checks, and observability review. Smoke, security, and performance checks
+are operator-run manual gates.
+
+---
+
 ## Core Principles
 
 - main is integration state, not deployable state
 - Only git tags (vX.Y.Z) are deployable
-- UAT must validate a release before production
-- UAT security baseline (OWASP ZAP baseline) is a mandatory validation gate before promotion
-- Production must always run a previously validated tag
+- UAT is currently disabled/retired
+- Production must always run a locally/CI-validated tag
 - Never deploy directly from main to production
+- Production deployment remains manual, explicit, and approval-gated
 
 ---
 
@@ -19,20 +32,23 @@ Purpose: define the canonical release process for this repository.
 
 1. Merge changes into main (via PR, CI must pass)
 2. Create release tag (vX.Y.Z)
-3. Deploy tag to UAT
-4. Validate in UAT:
-   - manual flows
+3. Run local/CI validation appropriate to the change:
+   - full regression suite
    - e2e (if applicable)
-   - load testing (k6 smoke in workflow + operator ramp `t50` then `t100` when applicable)
-   - security baseline testing (OWASP ZAP baseline against UAT)
-5. Promote the same validated tag to production
+   - Stripe CLI webhook simulation for payment/webhook changes
+   - operator-run smoke, security, and performance checks when applicable
+4. Promote the exact validated tag to production through the manual workflow
+5. Run post-deploy production smoke and observability checks
 
 Rule:
 - Do not deploy directly from unvalidated main to production
 
 ---
 
-## GitHub Actions Tag Release (UAT only)
+## GitHub Actions Tag Release (UAT historical)
+
+UAT is currently disabled/retired. The UAT release workflow is historical unless
+an operator reactivates UAT and updates the canonical deployment baseline.
 
 For `v*` tag pushes, workflow `.github/workflows/uat-release.yml` runs:
 1. `regression` (pre-deploy build/test/validation)
@@ -43,10 +59,10 @@ For `v*` tag pushes, workflow `.github/workflows/uat-release.yml` runs:
 6. `k6_smoke_uat` (short non-booking k6 smoke profile)
 7. `zap_uat` (OWASP ZAP baseline)
 
-Flat release view:
+Historical flat release view:
 - `regression -> e2e -> deploy_uat -> smoke_uat -> e2e_uat -> k6_smoke_uat -> zap_uat`
 
-All jobs are release-blocking and stop on failure (no production deployment in this workflow).
+These jobs are not current release blockers while UAT is disabled.
 
 Regression gate includes fail-fast coverage validation before expensive e2e:
 - `npm run qa:e2e:coverage`
@@ -111,8 +127,8 @@ Optional production variables:
 - `PROD_PM2_APP_NAME`
 
 Production flat view:
-- UAT release workflow validates the tag first
-- Production promotion manually deploys the same validated tag
+- CI/local validation validates the tag first
+- Production promotion manually deploys the exact validated tag
 
 ## Git Tagging
 
@@ -243,6 +259,45 @@ Do not skip this step.
 
 ---
 
+## Booking Partial-Index Migration Gate
+
+When a release includes the booking active-uniqueness migration, run this SQL
+against the target production database before `npx prisma migrate deploy`:
+
+```sql
+SELECT "clientId", "studioSessionId", COUNT(*)
+FROM "Booking"
+WHERE "status" IN ('PENDING', 'CONFIRMED')
+GROUP BY "clientId", "studioSessionId"
+HAVING COUNT(*) > 1;
+```
+
+Expected result: 0 rows.
+
+If any rows are returned:
+- Stop the deploy.
+- Do not run the migration.
+- Produce a manual cleanup plan for the duplicate active bookings.
+- Preserve all historical cancelled/expired booking rows.
+
+The migration must create the PostgreSQL partial unique index:
+
+```sql
+CREATE UNIQUE INDEX "Booking_active_client_session_unique"
+ON "Booking" ("clientId", "studioSessionId")
+WHERE "status" IN ('PENDING', 'CONFIRMED');
+```
+
+Prisma cannot fully represent this partial unique index. The index is
+migration-owned, and broad `@@unique([clientId, studioSessionId])` must not be
+reintroduced after the migration.
+
+Rollback may recreate the original broad unique constraint only if the database
+has no multiple historical rows for a client/session pair. Never delete booking
+history automatically during rollback.
+
+---
+
 ## Rollback Procedure (Manual)
 
 Rollback to a previous tag:
@@ -284,8 +339,7 @@ Defined in:
 
 ## Known Constraints
 
-- Tag-triggered automation covers UAT deploy + smoke + release e2e + k6 smoke + ZAP baseline
-- UAT e2e/security/load validation still requires additional jobs or operator runbooks
+- UAT is disabled/retired; UAT runbooks are historical until reactivated
 - Production deployment remains manual, explicit, and approval-gated
 - Infrastructure values (host, DB name, etc.) must not be guessed
 

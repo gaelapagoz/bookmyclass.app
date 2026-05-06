@@ -19,7 +19,6 @@ description: Turn a requested change into a repo-aligned implementation plan wit
 - Use short bullets only; max 2 bullets per section.
 - Keep each bullet <= 14 words.
 - Use `none` when a section has no items.
-- Hard cap: ~220 tokens unless runtime prompt explicitly requests more.
 
 ## Use When
 - A feature, bugfix, refactor, or release change needs a concrete implementation plan.
@@ -51,6 +50,5 @@ Return a concise plan with these sections:
 - `Impacted Services/Modules`: `src/lib/*` and orchestration entry points.
 - `Impacted Tests`: unit/integration/ui/e2e updates and commands to run.
 - `Risks`: regression, data, auth/security, release risks.
-- `Rollout Notes`: UAT-first validation, deploy constraints, rollback notes.
+- `Rollout Notes`: local/CI validation, operator-run gates, deploy constraints, rollback notes.
 - `Documentation Conflicts Found`: explicit list or `none`.
-

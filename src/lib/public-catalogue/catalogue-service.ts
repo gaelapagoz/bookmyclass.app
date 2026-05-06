@@ -2,6 +2,7 @@ import { ServicePricingMode, StudioSessionStatus, Weekday, type Prisma } from "@
 import { prisma } from "../db";
 import { createPerfTrace } from "../monitoring/perf-trace";
 import { createInMemoryTtlCache } from "../cache/in-memory-ttl-cache";
+import { getLocalMediaRenderState } from "../media";
 
 export type PublicCategory = {
   name: string;
@@ -138,12 +139,21 @@ function toWeekdaySummary(classType: ClassTypeWithSchedule): string {
   return "Schedule announced soon";
 }
 
-function toService(classType: ClassTypeWithSchedule): PublicService {
+async function getPublicServiceImageUrl(imageUrl: string | null): Promise<string | null> {
+  if (!imageUrl?.startsWith("/images/")) {
+    return imageUrl;
+  }
+
+  const renderState = await getLocalMediaRenderState(imageUrl, { allowedFolders: ["/images/classes"] });
+  return renderState.src;
+}
+
+async function toService(classType: ClassTypeWithSchedule): Promise<PublicService> {
   return {
     id: classType.id,
     slug: classType.slug,
     title: classType.name,
-    imageUrl: classType.imageUrl,
+    imageUrl: await getPublicServiceImageUrl(classType.imageUrl),
     shortDescription: getShortDescription(classType.description),
     description: classType.description ?? "Description coming soon.",
     durationMinutes: classType.defaultDurationMinutes,
@@ -234,7 +244,7 @@ export async function getPublicServicesByCategorySlug(categorySlug: string): Pro
             },
           });
 
-          return classTypes.map(toService);
+          return Promise.all(classTypes.map(toService));
         }),
       PUBLIC_CATALOGUE_CACHE_TTL_MS,
     );
@@ -243,4 +253,9 @@ export async function getPublicServicesByCategorySlug(categorySlug: string): Pro
   } finally {
     trace.log({ categorySlug, serviceCount });
   }
+}
+
+export function clearPublicCatalogueCaches() {
+  categoriesCache.clear();
+  servicesByCategoryCache.clear();
 }

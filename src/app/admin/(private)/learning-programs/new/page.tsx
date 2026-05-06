@@ -1,11 +1,13 @@
 import Link from "next/link";
 
 import { createLearningProgramAction } from "@/app/admin/(private)/actions";
+import { getLearningMediaLibraryOptions } from "@/lib/admin/admin-service";
 
 type SearchParams = Promise<{ error?: string }>;
 
 export default async function AdminLearningProgramCreatePage({ searchParams }: { searchParams: SearchParams }) {
   const { error } = await searchParams;
+  const mediaLibrary = await getLearningMediaLibraryOptions();
 
   return (
     <section className="space-y-4">
@@ -62,30 +64,25 @@ export default async function AdminLearningProgramCreatePage({ searchParams }: {
             Video Promo URL
             <input name="videoPromo" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
           </label>
-          <label className="block text-sm text-[#334155]">
-            Picture1
-            <input
-              name="picture1"
-              placeholder="/images/learning/example.jpg"
-              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm text-[#334155]">
-            Picture2
-            <input
-              name="picture2"
-              placeholder="/images/learning/example.jpg"
-              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm text-[#334155]">
-            Picture3
-            <input
-              name="picture3"
-              placeholder="/images/learning/example.jpg"
-              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
-            />
-          </label>
+          {(["picture1", "picture2", "picture3"] as const).map((field) => (
+            <fieldset key={field} className="space-y-2 text-sm text-[#334155]">
+              <legend className="font-medium">{field}</legend>
+              <select name={field} className="w-full rounded-md border border-[#d3dbe5] px-3 py-2">
+                <option value="">No library image</option>
+                {mediaLibrary.map((item) => (
+                  <option key={item.path} value={item.path}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                name={`${field}Upload`}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+              />
+            </fieldset>
+          ))}
         </div>
 
         <button type="submit" className="rounded-md bg-[#1d3652] px-4 py-2 text-sm text-white">

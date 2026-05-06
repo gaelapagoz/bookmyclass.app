@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/app/admin/(private)/actions", () => ({
   uploadAgendaPdfAction: vi.fn(),
+  createClassCategoryAction: vi.fn(),
   createSiteWeeklyScheduleEntryAction: vi.fn(),
   updateSiteWeeklyScheduleEntryAction: vi.fn(),
   deleteSiteWeeklyScheduleEntryAction: vi.fn(),
@@ -38,6 +39,7 @@ vi.mock("@/lib/admin/admin-service", () => ({
   getAdminDashboardInsights: vi.fn(),  getDashboardTrendData: vi.fn(),
   getOperationalMetricCards: vi.fn(),
   getAdminClassesData: vi.fn(),
+  getAdminClassCategoriesData: vi.fn(),
   getAdminSessionsData: vi.fn(),
   getAdminPlansData: vi.fn(),
   getBookings: vi.fn(),
@@ -57,6 +59,7 @@ vi.mock("@/lib/admin/admin-service", () => ({
 import {
   getBookings,
   getAdminClassesData,
+  getAdminClassCategoriesData,
   getAdminDashboardData,
   getAdminDashboardInsights,  getDashboardTrendData,
   getOperationalMetricCards,
@@ -96,6 +99,7 @@ import AdminMarketingSegmentsPage from "../../src/app/admin/(private)/marketing/
 describe("Admin pages branching", () => {
   beforeEach(() => {
     vi.clearAllMocks();    vi.mocked(getDashboardTrendData).mockResolvedValue([]);
+    vi.mocked(getAdminClassCategoriesData).mockResolvedValue([]);
     vi.mocked(listAdminMarketingSegmentOptions).mockResolvedValue([]);
     vi.mocked(listMarketingSegments).mockResolvedValue([]);
   });
@@ -325,6 +329,8 @@ describe("Admin pages branching", () => {
 
     render(await AdminClassesPage());
 
+    expect(screen.getByRole("heading", { name: "Categories" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create category" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Name" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Category" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Teacher Name" })).toBeInTheDocument();

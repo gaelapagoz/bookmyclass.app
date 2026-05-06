@@ -2,12 +2,28 @@
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <feature-context-file> [max-rounds]" >&2
+  echo "Usage: $0 <feature-context-file> [start-phase [end-phase [max-rounds-per-phase]]]" >&2
+  echo "" >&2
+  echo "Arguments:" >&2
+  echo "  feature-context-file   Path to the roadmap/feature context file" >&2
+  echo "  start-phase            Phase number to start from (default: 0)" >&2
+  echo "  end-phase              Phase number to stop at inclusive (default: auto-detected)" >&2
+  echo "  max-rounds-per-phase   Max review rounds before giving up on a phase (default: 5, max: 5)" >&2
+  echo "" >&2
+  echo "Env var overrides: START_PHASE, END_PHASE, MAX_ROUNDS, CODEX_RUNNER" >&2
+  echo "" >&2
+  echo "Example — resume from Phase 5, auto-detect end phase:" >&2
+  echo "  $0 .roadmap/0_bug_fixes.md 5" >&2
+  echo "" >&2
+  echo "Example — run Phase 5 through 7, 3 rounds each:" >&2
+  echo "  $0 .roadmap/0_bug_fixes.md 5 7 3" >&2
   exit 1
 fi
 
 FEATURE_FILE="$1"
-MAX_ROUNDS="${2:-${MAX_ROUNDS:-5}}"
+START_PHASE="${2:-${START_PHASE:-0}}"
+END_PHASE="${3:-${END_PHASE:-}}"
+MAX_ROUNDS="${4:-${MAX_ROUNDS:-5}}"
 RUNS_DIR_BASE=".codex-workflows/runs"
 CODEX_RUNNER="${CODEX_RUNNER:-codex}"
 PROJECT_SKILLS_DIR="${PROJECT_SKILLS_DIR:-.codex/skills}"
@@ -26,6 +42,30 @@ DEVELOPER_OVERLAY=".codex-workflows/developer.md"
 REVIEWER_OVERLAY=".codex-workflows/reviewer.md"
 SECURITY_REVIEWER_OVERLAY=".codex-workflows/security-reviewer.md"
 QA_OVERLAY=".codex-workflows/qa.md"
+
+# ---------------------------------------------------------------------------
+# Phase detection helpers
+# ---------------------------------------------------------------------------
+
+detect_max_phase() {
+  local file="$1"
+  grep -oE 'Phase[[:space:]]+[0-9]+' "$file" \
+    | grep -oE '[0-9]+' \
+    | sort -n \
+    | tail -1
+}
+
+extract_phase_title() {
+  local file="$1"
+  local phase_num="$2"
+  grep -oE "Phase[[:space:]]+${phase_num}[[:space:]]*[—-][[:space:]]*[^#]+" "$file" \
+    | head -1 \
+    | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
+# ---------------------------------------------------------------------------
+# Skill resolution helpers
+# ---------------------------------------------------------------------------
 
 extract_markdown_list_section() {
   local file_path="$1"
@@ -170,6 +210,10 @@ emit_loaded_skills_markdown() {
   done
 }
 
+# ---------------------------------------------------------------------------
+# Input validation
+# ---------------------------------------------------------------------------
+
 if [[ ! -f "$FEATURE_FILE" ]]; then
   echo "Feature context file not found: $FEATURE_FILE" >&2
   exit 1
@@ -194,11 +238,43 @@ if (( MAX_ROUNDS < 1 || MAX_ROUNDS > 5 )); then
   exit 1
 fi
 
+if ! [[ "$START_PHASE" =~ ^[0-9]+$ ]]; then
+  echo "start-phase must be a non-negative integer" >&2
+  exit 1
+fi
+
+if [[ -z "$END_PHASE" ]]; then
+  END_PHASE="$(detect_max_phase "$FEATURE_FILE")"
+  if [[ -z "$END_PHASE" ]]; then
+    echo "Could not auto-detect end phase from feature context file." >&2
+    echo "Pass end-phase explicitly or ensure the file contains 'Phase N' headings." >&2
+    exit 1
+  fi
+  echo "Auto-detected end phase: $END_PHASE"
+fi
+
+if ! [[ "$END_PHASE" =~ ^[0-9]+$ ]]; then
+  echo "end-phase must be a non-negative integer" >&2
+  exit 1
+fi
+
+if (( START_PHASE > END_PHASE )); then
+  echo "start-phase ($START_PHASE) cannot be greater than end-phase ($END_PHASE)" >&2
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Run setup
+# ---------------------------------------------------------------------------
+
 ts="$(date -u +"%Y%m%dT%H%M%SZ")"
 run_dir="$RUNS_DIR_BASE/$ts"
 mkdir -p "$run_dir"
 cp "$FEATURE_FILE" "$run_dir/feature-context.md"
 echo "workflow=developer-review-security-qa-loop" > "$run_dir/workflow.txt"
+echo "start_phase=$START_PHASE" >> "$run_dir/workflow.txt"
+echo "end_phase=$END_PHASE" >> "$run_dir/workflow.txt"
+echo "max_rounds=$MAX_ROUNDS" >> "$run_dir/workflow.txt"
 skill_log="$run_dir/skill-resolution.log"
 
 declare -A role_agents=(
@@ -226,9 +302,9 @@ mapfile -t qa_skill_entries < <(resolve_skill_bundle "$QA_AGENT" "$QA_OVERLAY")
   print_skill_resolution "qa" "${qa_skill_entries[@]}"
 } | tee "$skill_log"
 
-last_reviewer_feedback="No prior reviewer feedback."
-last_security_feedback="No prior security-reviewer feedback."
-last_qa_feedback="No prior qa feedback."
+# ---------------------------------------------------------------------------
+# Runner
+# ---------------------------------------------------------------------------
 
 detected_runner=""
 
@@ -279,139 +355,228 @@ extract_verdict() {
   return 1
 }
 
-for round in $(seq 1 "$MAX_ROUNDS"); do
-  round_dir="$run_dir/round-$round"
-  mkdir -p "$round_dir"
+# ---------------------------------------------------------------------------
+# Phase loop
+# ---------------------------------------------------------------------------
 
-  developer_prompt="$round_dir/developer-prompt.md"
-  developer_output="$round_dir/developer-output.md"
-  reviewer_prompt="$round_dir/reviewer-prompt.md"
-  reviewer_output="$round_dir/reviewer-output.md"
-  security_prompt="$round_dir/security-reviewer-prompt.md"
-  security_output="$round_dir/security-reviewer-output.md"
-  qa_prompt="$round_dir/qa-prompt.md"
-  qa_output="$round_dir/qa-output.md"
+for phase in $(seq "$START_PHASE" "$END_PHASE"); do
+  phase_title="$(extract_phase_title "$FEATURE_FILE" "$phase")"
+  phase_dir="$run_dir/phase-$phase"
+  mkdir -p "$phase_dir"
 
-  {
-    echo "# Developer Agent Definition (source of truth)"
-    cat "$DEVELOPER_AGENT"
-    echo
-    emit_loaded_skills_markdown "developer" "${developer_skill_entries[@]}"
-    echo "# Developer Loop Overlay"
-    cat "$DEVELOPER_OVERLAY"
-    echo
-    echo "Runtime input:"
-    echo "## Feature context"
-    cat "$run_dir/feature-context.md"
-    echo
-    echo "## Reviewer feedback from previous round"
-    echo "$last_reviewer_feedback"
-    echo
-    echo "## Security-reviewer feedback from previous round"
-    echo "$last_security_feedback"
-    echo
-    echo "## QA feedback from previous round"
-    echo "$last_qa_feedback"
-    echo
-    echo "Instruction: produce a revised implementation handoff that resolves all required feedback while preserving scope control."
-  } > "$developer_prompt"
+  echo ""
+  echo "================================================================"
+  echo "  Phase $phase — $phase_title"
+  echo "  Rounds up to: $MAX_ROUNDS"
+  echo "================================================================"
 
-  run_codex "$developer_prompt" "$developer_output"
+  last_reviewer_feedback="No prior reviewer feedback."
+  last_security_feedback="No prior security-reviewer feedback."
+  last_qa_feedback="No prior qa feedback."
 
-  {
-    echo "# Reviewer Agent Definition (source of truth)"
-    cat "$REVIEWER_AGENT"
-    echo
-    emit_loaded_skills_markdown "reviewer" "${reviewer_skill_entries[@]}"
-    echo "# Reviewer Loop Overlay"
-    cat "$REVIEWER_OVERLAY"
-    echo
-    echo "Runtime input:"
-    echo "## Feature context"
-    cat "$run_dir/feature-context.md"
-    echo
-    echo "## Developer output to review"
-    cat "$developer_output"
-    echo
-    echo "Instruction: review this output and finish with the required verdict token."
-  } > "$reviewer_prompt"
+  reviewer_verdict="VERDICT: CHANGES_REQUIRED"
+  security_verdict="VERDICT: CHANGES_REQUIRED"
+  qa_verdict="VERDICT: CHANGES_REQUIRED"
+  phase_approved=0
 
-  run_codex "$reviewer_prompt" "$reviewer_output"
+  for round in $(seq 1 "$MAX_ROUNDS"); do
+    round_dir="$phase_dir/round-$round"
+    mkdir -p "$round_dir"
 
-  {
-    echo "# Security Reviewer Agent Definition (source of truth)"
-    cat "$SECURITY_REVIEWER_AGENT"
-    echo
-    emit_loaded_skills_markdown "security-reviewer" "${security_skill_entries[@]}"
-    echo "# Security Reviewer Loop Overlay"
-    cat "$SECURITY_REVIEWER_OVERLAY"
-    echo
-    echo "Runtime input:"
-    echo "## Feature context"
-    cat "$run_dir/feature-context.md"
-    echo
-    echo "## Developer output to review"
-    cat "$developer_output"
-    echo
-    echo "Instruction: perform focused security review and finish with the required verdict token."
-  } > "$security_prompt"
+    echo "  Phase $phase — round $round/$MAX_ROUNDS"
 
-  run_codex "$security_prompt" "$security_output"
+    developer_prompt="$round_dir/developer-prompt.md"
+    developer_output="$round_dir/developer-output.md"
+    reviewer_prompt="$round_dir/reviewer-prompt.md"
+    reviewer_output="$round_dir/reviewer-output.md"
+    security_prompt="$round_dir/security-reviewer-prompt.md"
+    security_output="$round_dir/security-reviewer-output.md"
+    qa_prompt="$round_dir/qa-prompt.md"
+    qa_output="$round_dir/qa-output.md"
 
-  {
-    echo "# QA Agent Definition (source of truth)"
-    cat "$QA_AGENT"
-    echo
-    emit_loaded_skills_markdown "qa" "${qa_skill_entries[@]}"
-    echo "# QA Loop Overlay"
-    cat "$QA_OVERLAY"
-    echo
-    echo "Runtime input:"
-    echo "## Feature context"
-    cat "$run_dir/feature-context.md"
-    echo
-    echo "## Developer output to review"
-    cat "$developer_output"
-    echo
-    echo "Instruction: review test/release confidence and finish with the required verdict token."
-  } > "$qa_prompt"
-
-  run_codex "$qa_prompt" "$qa_output"
-
-  reviewer_verdict="$(extract_verdict "$reviewer_output" || true)"
-  security_verdict="$(extract_verdict "$security_output" || true)"
-  qa_verdict="$(extract_verdict "$qa_output" || true)"
-
-  {
-    echo "reviewer=$reviewer_verdict"
-    echo "security_reviewer=$security_verdict"
-    echo "qa=$qa_verdict"
-  } > "$round_dir/verdicts.txt"
-
-  if [[ "$reviewer_verdict" == "VERDICT: APPROVED" && "$security_verdict" == "VERDICT: APPROVED" && "$qa_verdict" == "VERDICT: APPROVED" ]]; then
     {
+      echo "# Developer Agent Definition (source of truth)"
+      cat "$DEVELOPER_AGENT"
+      echo
+      emit_loaded_skills_markdown "developer" "${developer_skill_entries[@]}"
+      echo "# Developer Loop Overlay"
+      cat "$DEVELOPER_OVERLAY"
+      echo
+      echo "# Current Phase"
+      echo ""
+      if [[ -n "$phase_title" ]]; then
+        echo "You are implementing **$phase_title**."
+      else
+        echo "You are implementing **Phase $phase**."
+      fi
+      if (( phase > 0 )); then
+        echo "Phases 0 through $((phase - 1)) are already complete — do not re-implement them."
+      fi
+      echo "Implement ONLY the Phase $phase tasks listed in the feature context below."
+      echo "After completing Phase $phase, stop. The next phase will be handled in a subsequent run."
+      echo ""
+      echo "Runtime input:"
+      echo "## Feature context"
+      cat "$run_dir/feature-context.md"
+      echo
+      echo "## Reviewer feedback from previous round"
+      echo "$last_reviewer_feedback"
+      echo
+      echo "## Security-reviewer feedback from previous round"
+      echo "$last_security_feedback"
+      echo
+      echo "## QA feedback from previous round"
+      echo "$last_qa_feedback"
+      echo
+      echo "Instruction: produce a revised implementation handoff that resolves all required feedback while preserving scope control."
+    } > "$developer_prompt"
+
+    run_codex "$developer_prompt" "$developer_output"
+
+    {
+      echo "# Reviewer Agent Definition (source of truth)"
+      cat "$REVIEWER_AGENT"
+      echo
+      emit_loaded_skills_markdown "reviewer" "${reviewer_skill_entries[@]}"
+      echo "# Reviewer Loop Overlay"
+      cat "$REVIEWER_OVERLAY"
+      echo
+      echo "# Current Phase"
+      echo ""
+      if [[ -n "$phase_title" ]]; then
+        echo "Review scope: **$phase_title** only."
+      else
+        echo "Review scope: **Phase $phase** only."
+      fi
+      echo ""
+      echo "Runtime input:"
+      echo "## Feature context"
+      cat "$run_dir/feature-context.md"
+      echo
+      echo "## Developer output to review"
+      cat "$developer_output"
+      echo
+      echo "Instruction: review this output and finish with the required verdict token."
+    } > "$reviewer_prompt"
+
+    run_codex "$reviewer_prompt" "$reviewer_output"
+
+    {
+      echo "# Security Reviewer Agent Definition (source of truth)"
+      cat "$SECURITY_REVIEWER_AGENT"
+      echo
+      emit_loaded_skills_markdown "security-reviewer" "${security_skill_entries[@]}"
+      echo "# Security Reviewer Loop Overlay"
+      cat "$SECURITY_REVIEWER_OVERLAY"
+      echo
+      echo "# Current Phase"
+      echo ""
+      if [[ -n "$phase_title" ]]; then
+        echo "Review scope: **$phase_title** only."
+      else
+        echo "Review scope: **Phase $phase** only."
+      fi
+      echo ""
+      echo "Runtime input:"
+      echo "## Feature context"
+      cat "$run_dir/feature-context.md"
+      echo
+      echo "## Developer output to review"
+      cat "$developer_output"
+      echo
+      echo "Instruction: perform focused security review and finish with the required verdict token."
+    } > "$security_prompt"
+
+    run_codex "$security_prompt" "$security_output"
+
+    {
+      echo "# QA Agent Definition (source of truth)"
+      cat "$QA_AGENT"
+      echo
+      emit_loaded_skills_markdown "qa" "${qa_skill_entries[@]}"
+      echo "# QA Loop Overlay"
+      cat "$QA_OVERLAY"
+      echo
+      echo "# Current Phase"
+      echo ""
+      if [[ -n "$phase_title" ]]; then
+        echo "Review scope: **$phase_title** only."
+      else
+        echo "Review scope: **Phase $phase** only."
+      fi
+      echo ""
+      echo "Runtime input:"
+      echo "## Feature context"
+      cat "$run_dir/feature-context.md"
+      echo
+      echo "## Developer output to review"
+      cat "$developer_output"
+      echo
+      echo "Instruction: review test/release confidence and finish with the required verdict token."
+    } > "$qa_prompt"
+
+    run_codex "$qa_prompt" "$qa_output"
+
+    reviewer_verdict="$(extract_verdict "$reviewer_output" || true)"
+    security_verdict="$(extract_verdict "$security_output" || true)"
+    qa_verdict="$(extract_verdict "$qa_output" || true)"
+
+    {
+      echo "phase=$phase"
       echo "round=$round"
-      echo "verdict=VERDICT: APPROVED"
       echo "reviewer=$reviewer_verdict"
       echo "security_reviewer=$security_verdict"
       echo "qa=$qa_verdict"
-    } > "$run_dir/final-status.txt"
-    echo "Approved in round $round"
-    exit 0
-  fi
+    } > "$round_dir/verdicts.txt"
 
-  last_reviewer_feedback="$(cat "$reviewer_output")"
-  last_security_feedback="$(cat "$security_output")"
-  last_qa_feedback="$(cat "$qa_output")"
+    echo "    reviewer=$reviewer_verdict  security=$security_verdict  qa=$qa_verdict"
+
+    if [[ "$reviewer_verdict" == "VERDICT: APPROVED" && \
+          "$security_verdict" == "VERDICT: APPROVED" && \
+          "$qa_verdict"       == "VERDICT: APPROVED" ]]; then
+      {
+        echo "phase=$phase"
+        echo "round=$round"
+        echo "verdict=VERDICT: APPROVED"
+        echo "reviewer=$reviewer_verdict"
+        echo "security_reviewer=$security_verdict"
+        echo "qa=$qa_verdict"
+      } > "$phase_dir/phase-status.txt"
+      echo "  Phase $phase approved in round $round."
+      phase_approved=1
+      break
+    fi
+
+    last_reviewer_feedback="$(cat "$reviewer_output")"
+    last_security_feedback="$(cat "$security_output")"
+    last_qa_feedback="$(cat "$qa_output")"
+  done
+
+  if (( phase_approved == 0 )); then
+    {
+      echo "phase=$phase"
+      echo "round=$MAX_ROUNDS"
+      echo "verdict=VERDICT: CHANGES_REQUIRED"
+      echo "reviewer=$reviewer_verdict"
+      echo "security_reviewer=$security_verdict"
+      echo "qa=$qa_verdict"
+    } > "$phase_dir/phase-status.txt"
+    {
+      echo "stopped_at_phase=$phase"
+      echo "verdict=VERDICT: CHANGES_REQUIRED"
+    } > "$run_dir/final-status.txt"
+    echo "Phase $phase: stopped after $MAX_ROUNDS rounds without full approval." >&2
+    echo "Logs: $phase_dir" >&2
+    exit 2
+  fi
 done
 
 {
-  echo "round=$MAX_ROUNDS"
-  echo "verdict=VERDICT: CHANGES_REQUIRED"
-  echo "reviewer=$reviewer_verdict"
-  echo "security_reviewer=$security_verdict"
-  echo "qa=$qa_verdict"
+  echo "start_phase=$START_PHASE"
+  echo "end_phase=$END_PHASE"
+  echo "verdict=VERDICT: APPROVED"
 } > "$run_dir/final-status.txt"
 
-echo "Stopped after $MAX_ROUNDS rounds without full approval."
-exit 2
+echo ""
+echo "All phases $START_PHASE-$END_PHASE approved."
+exit 0

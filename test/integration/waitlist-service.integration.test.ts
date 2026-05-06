@@ -409,6 +409,204 @@ describe("waitlist runtime integration", () => {
     expect(capturedEmails[0]?.to).toContain(waitlistFirst.email);
   });
 
+  it("preserves cancelled history and creates a new booking during waitlist promotion", async () => {
+    const { session } = await createSessionFixture({
+      capacity: 2,
+      categorySlug: "collective",
+      categoryName: "Collective",
+      classSlug: "collective-rebook",
+      className: "Collective Rebook",
+    });
+    const fillers = await fillSessionToCapacity(session.id, 2);
+
+    const waitlistedClient = await createClient("cancelled-history");
+    const entitlement = await grantCollectiveCredits({ clientId: waitlistedClient.id, amount: 1 });
+    const cancelledBooking = await prisma.booking.create({
+      data: {
+        clientId: waitlistedClient.id,
+        studioSessionId: session.id,
+        status: BookingStatus.CANCELLED,
+        selectedEntitlementId: entitlement.id,
+        bookedAt: new Date(Date.now() - 60 * 60 * 1000),
+        cancelledAt: new Date(Date.now() - 30 * 60 * 1000),
+        cancellationReason: "Client cancelled before joining waitlist.",
+        customerName: waitlistedClient.name,
+        customerEmail: waitlistedClient.email,
+        customerPhone: "+32000000000",
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+        consentAcceptedAt: new Date(Date.now() - 60 * 60 * 1000),
+      },
+      select: { id: true },
+    });
+
+    const joined = await joinSessionWaitlist({
+      clientId: waitlistedClient.id,
+      studioSessionId: session.id,
+    });
+
+    await cancelClientBooking({
+      bookingId: fillers[0]!.booking.id,
+      clientId: fillers[0]!.booking.clientId!,
+    });
+
+    const promotedEntry = await prisma.waitlistEntry.findUnique({
+      where: { id: joined.waitlistEntryId },
+      select: { status: true },
+    });
+    expect(promotedEntry?.status).toBe(WaitlistStatus.PROMOTED);
+
+    const bookings = await prisma.booking.findMany({
+      where: {
+        clientId: waitlistedClient.id,
+        studioSessionId: session.id,
+      },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, status: true, cancelledAt: true },
+    });
+
+    expect(bookings).toHaveLength(2);
+    expect(bookings[0]?.id).toBe(cancelledBooking.id);
+    expect(bookings[0]?.status).toBe(BookingStatus.CANCELLED);
+    expect(bookings[0]?.cancelledAt).not.toBeNull();
+    expect(bookings[1]?.id).not.toBe(cancelledBooking.id);
+    expect(bookings[1]?.status).toBe(BookingStatus.CONFIRMED);
+  });
+
+  it("expires stale pending history before waitlist promotion creates a new booking", async () => {
+    const { session } = await createSessionFixture({
+      capacity: 2,
+      categorySlug: "collective",
+      categoryName: "Collective",
+      classSlug: "collective-stale-pending",
+      className: "Collective Stale Pending",
+    });
+    const fillers = await fillSessionToCapacity(session.id, 2);
+
+    const waitlistedClient = await createClient("stale-pending-history");
+    await grantCollectiveCredits({ clientId: waitlistedClient.id, amount: 1 });
+    const stalePending = await prisma.booking.create({
+      data: {
+        clientId: waitlistedClient.id,
+        studioSessionId: session.id,
+        status: BookingStatus.PENDING,
+        bookedAt: new Date(Date.now() - 60 * 60 * 1000),
+        createdAt: new Date(Date.now() - 60 * 60 * 1000),
+        customerName: waitlistedClient.name,
+        customerEmail: waitlistedClient.email,
+        customerPhone: "+32000000000",
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+        consentAcceptedAt: new Date(Date.now() - 60 * 60 * 1000),
+      },
+      select: { id: true },
+    });
+
+    const joined = await joinSessionWaitlist({
+      clientId: waitlistedClient.id,
+      studioSessionId: session.id,
+    });
+
+    await cancelClientBooking({
+      bookingId: fillers[0]!.booking.id,
+      clientId: fillers[0]!.booking.clientId!,
+    });
+
+    const promotedEntry = await prisma.waitlistEntry.findUnique({
+      where: { id: joined.waitlistEntryId },
+      select: { status: true },
+    });
+    expect(promotedEntry?.status).toBe(WaitlistStatus.PROMOTED);
+
+    const bookings = await prisma.booking.findMany({
+      where: {
+        clientId: waitlistedClient.id,
+        studioSessionId: session.id,
+      },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, status: true },
+    });
+
+    expect(bookings).toHaveLength(2);
+    expect(bookings[0]).toEqual({ id: stalePending.id, status: BookingStatus.EXPIRED });
+    expect(bookings[1]?.id).not.toBe(stalePending.id);
+    expect(bookings[1]?.status).toBe(BookingStatus.CONFIRMED);
+  });
+
+  it("ignores completed and no-show history during waitlist promotion", async () => {
+    const { session } = await createSessionFixture({
+      capacity: 2,
+      categorySlug: "collective",
+      categoryName: "Collective",
+      classSlug: "collective-attendance-history",
+      className: "Collective Attendance History",
+    });
+    const fillers = await fillSessionToCapacity(session.id, 2);
+
+    const waitlistedClient = await createClient("attendance-history");
+    await grantCollectiveCredits({ clientId: waitlistedClient.id, amount: 1 });
+    await prisma.booking.createMany({
+      data: [
+        {
+          clientId: waitlistedClient.id,
+          studioSessionId: session.id,
+          status: BookingStatus.COMPLETED,
+          customerName: waitlistedClient.name,
+          customerEmail: waitlistedClient.email,
+          customerPhone: "+32000000000",
+          consentTermsAccepted: true,
+          consentPrivacyAccepted: true,
+          consentAcceptedAt: new Date(),
+        },
+        {
+          clientId: waitlistedClient.id,
+          studioSessionId: session.id,
+          status: BookingStatus.NO_SHOW,
+          customerName: waitlistedClient.name,
+          customerEmail: waitlistedClient.email,
+          customerPhone: "+32000000000",
+          consentTermsAccepted: true,
+          consentPrivacyAccepted: true,
+          consentAcceptedAt: new Date(),
+        },
+      ],
+    });
+
+    const joined = await joinSessionWaitlist({
+      clientId: waitlistedClient.id,
+      studioSessionId: session.id,
+    });
+
+    await cancelClientBooking({
+      bookingId: fillers[0]!.booking.id,
+      clientId: fillers[0]!.booking.clientId!,
+    });
+
+    const promotedEntry = await prisma.waitlistEntry.findUnique({
+      where: { id: joined.waitlistEntryId },
+      select: { status: true },
+    });
+    expect(promotedEntry?.status).toBe(WaitlistStatus.PROMOTED);
+
+    const statuses = await prisma.booking.findMany({
+      where: {
+        clientId: waitlistedClient.id,
+        studioSessionId: session.id,
+      },
+      orderBy: { createdAt: "asc" },
+      select: { status: true },
+    });
+
+    expect(statuses.map((booking) => booking.status)).toEqual(
+      expect.arrayContaining([
+        BookingStatus.COMPLETED,
+        BookingStatus.NO_SHOW,
+        BookingStatus.CONFIRMED,
+      ]),
+    );
+    expect(statuses).toHaveLength(3);
+  });
+
   it("removes ineligible first waitlist client and promotes next eligible client", async () => {
     const { session } = await createSessionFixture({
       capacity: 4,

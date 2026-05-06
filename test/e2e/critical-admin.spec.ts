@@ -35,7 +35,6 @@ test("critical admin CRUD flows", async ({ page }) => {
   const teacherName = `E2E Teacher ${unique}`;
   const teacherEmail = `teacher.${unique}@example.test`;
   const className = `E2E Service ${unique}`;
-  const classSlug = `e2e-service-${unique}`;
   const updatedClassName = `${className} Updated`;
   const sessionTitle = `E2E Session ${unique}`;
   const updatedSessionTitle = `${sessionTitle} Updated`;
@@ -63,7 +62,11 @@ test("critical admin CRUD flows", async ({ page }) => {
 
   await page.goto("/admin/classes/new");
   await page.getByLabel("Name").fill(className);
-  await page.getByLabel("Slug").fill(classSlug);
+  await page.getByLabel("Service Image").setInputFiles({
+    name: "service.png",
+    mimeType: "image/png",
+    buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  });
   await page.getByLabel("Date").fill(toDateInput(tomorrow));
   await page.getByRole("button", { name: "Save class" }).click();
 
@@ -72,6 +75,7 @@ test("critical admin CRUD flows", async ({ page }) => {
 
   const classRow = page.locator("tr").filter({ hasText: className }).first();
   await classRow.getByRole("link", { name: "Edit" }).click();
+  await expect(page).toHaveURL(/\/admin\/classes\/[^/]+\/edit$/);
   await page.getByLabel("Name").fill(updatedClassName);
   await page.getByRole("button", { name: "Update class" }).click();
 

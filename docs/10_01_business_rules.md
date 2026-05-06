@@ -148,6 +148,13 @@ Teachers can only reserve a class for a client if the client has:
 
 Teachers cannot bypass credit and subscription rules.
 
+### 7.2 Admin Override
+ADMIN and MASTER_ADMIN may manually add a client without valid credit or subscription only through an explicit audited override.
+The override requires a reason, counts toward class capacity, and is labelled in admin session reporting as `Manual override — no credit used`.
+The override must not consume credit, create entitlement ownership, create payment, or create revenue.
+The override reason is admin-only and preserved as audit evidence.
+TEACHER users cannot use this override.
+
 ---
 
 ## 8. Loyalty Program
@@ -238,6 +245,8 @@ Examples:
 - Subscription validity = active billing period dates
 
 Server time is authoritative.
+StudioSession times remain UTC instants.
+Availability date keys, kiosk labels, and check-in enforcement must use the configured site timezone consistently.
 
 ---
 

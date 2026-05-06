@@ -39,6 +39,14 @@ These flags gate the staged migration from the legacy booking flow to the new ca
 - `CATALOG_PRE_CUTOVER_VALIDATOR_ENFORCED` — when set to `"1"`, runs pre-cutover invariant assertions and throws on violations rather than logging. Default: unset (log-only). Risk if enabled prematurely: valid catalog checkouts may be rejected by overly strict invariant checks.
 - `CATALOG_BACKFILL_WRITES_ENABLED` — when set to `"1"`, allows the catalog backfill script to write `serviceScope` to existing `ClassType` records. Default: unset (disabled). Risk if left enabled in production after backfill: ongoing writes may unexpectedly mutate service-scope data.
 
+## Store / Gift Card Feature Flags
+These flags gate staged Store and gift-card rollout. All default to disabled
+(unset = false). They must remain disabled until local/CI validation and required
+operator setup are complete.
+- `STORE_ENABLED` - enables the customer-facing Store surface. Default: unset (disabled).
+- `GIFT_CARD_PURCHASE_ENABLED` - enables gift-card purchase/activation flows. Default: unset (disabled).
+- `GIFT_CARD_REDEMPTION_ENABLED` - enables gift-card wallet redemption in supported checkout flows. Default: unset (disabled).
+
 ## Seed/Test Helpers
 - `.env.test.example` defines integration-test baseline.
 - Seed currently expects Stripe price IDs for seeded catalog mapping.

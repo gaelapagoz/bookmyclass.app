@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { updateLearningProgramAction } from "@/app/admin/(private)/actions";
-import { getAdminLearningProgramById } from "@/lib/admin/admin-service";
+import { getAdminLearningProgramById, getLearningMediaLibraryOptions } from "@/lib/admin/admin-service";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ error?: string }>;
@@ -15,7 +15,7 @@ export default async function AdminLearningProgramEditPage({
   searchParams: SearchParams;
 }) {
   const { id } = await params;
-  const record = await getAdminLearningProgramById(id);
+  const [record, mediaLibrary] = await Promise.all([getAdminLearningProgramById(id), getLearningMediaLibraryOptions()]);
 
   if (!record) {
     notFound();
@@ -98,33 +98,32 @@ export default async function AdminLearningProgramEditPage({
             Video Promo URL
             <input name="videoPromo" defaultValue={record.videoPromo ?? ""} className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
           </label>
-          <label className="block text-sm text-[#334155]">
-            Picture1
-            <input
-              name="picture1"
-              placeholder="/images/learning/example.jpg"
-              defaultValue={record.picture1 ?? ""}
-              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm text-[#334155]">
-            Picture2
-            <input
-              name="picture2"
-              placeholder="/images/learning/example.jpg"
-              defaultValue={record.picture2 ?? ""}
-              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm text-[#334155]">
-            Picture3
-            <input
-              name="picture3"
-              placeholder="/images/learning/example.jpg"
-              defaultValue={record.picture3 ?? ""}
-              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
-            />
-          </label>
+          {(["picture1", "picture2", "picture3"] as const).map((field) => {
+            const current = record[field];
+            const options = current && !mediaLibrary.some((item) => item.path === current)
+              ? [{ path: current, name: current.split("/").at(-1) ?? current }, ...mediaLibrary]
+              : mediaLibrary;
+
+            return (
+              <fieldset key={field} className="space-y-2 text-sm text-[#334155]">
+                <legend className="font-medium">{field}</legend>
+                <select name={field} defaultValue={current ?? ""} className="w-full rounded-md border border-[#d3dbe5] px-3 py-2">
+                  <option value="">No library image</option>
+                  {options.map((item) => (
+                    <option key={item.path} value={item.path}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  name={`${field}Upload`}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+                />
+              </fieldset>
+            );
+          })}
         </div>
 
         <button type="submit" className="rounded-md bg-[#1d3652] px-4 py-2 text-sm text-white">
