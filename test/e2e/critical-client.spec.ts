@@ -414,7 +414,16 @@ test.describe("critical client flows", () => {
   // @covers cross-password-reset-security-flow
   // @covers customer-reset-password
   test("password reset completes and token is single-use", async ({ page }) => {
-    const resetEmail = SEEDED_CLIENT_NO_CREDITS.email;
+    const resetEmail = `e2e.pwreset.${Date.now()}@example.test`;
+    await signUpPublicUser(page, {
+      firstName: "Reset",
+      lastName: "Test",
+      email: resetEmail,
+      password: E2E_PASSWORD,
+    });
+    await verifyTestEmail(page, resetEmail);
+    await page.context().clearCookies();
+
     await clearCapturedPasswordResetOutboxForTest(page.request, resetEmail);
 
     const resetToken = await getPasswordResetTokenForTest(page.request, resetEmail, {
