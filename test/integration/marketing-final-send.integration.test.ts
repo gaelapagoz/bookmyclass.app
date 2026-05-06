@@ -18,10 +18,12 @@ describe("marketing final send", () => {
   const originalResendApiKey = process.env.RESEND_API_KEY;
   const originalE2eMode = process.env.E2E_TEST_MODE;
   const originalTrackingSecret = process.env.MARKETING_TRACKING_SECRET;
+  const originalEmailFrom = process.env.EMAIL_FROM;
 
   beforeEach(async () => {
     await resetDb();
     delete process.env.RESEND_API_KEY;
+    delete process.env.EMAIL_FROM;
     process.env.NODE_ENV = "test";
     delete process.env.E2E_TEST_MODE;
     process.env.MARKETING_TRACKING_SECRET = process.env.MARKETING_TRACKING_SECRET || "test-marketing-tracking-secret";
@@ -32,6 +34,11 @@ describe("marketing final send", () => {
     process.env.RESEND_API_KEY = originalResendApiKey;
     process.env.E2E_TEST_MODE = originalE2eMode;
     process.env.MARKETING_TRACKING_SECRET = originalTrackingSecret;
+    if (originalEmailFrom === undefined) {
+      delete process.env.EMAIL_FROM;
+    } else {
+      process.env.EMAIL_FROM = originalEmailFrom;
+    }
   });
 
   it("sends from Step 4 using persisted block content and phase-3 recipient resolution", async () => {
