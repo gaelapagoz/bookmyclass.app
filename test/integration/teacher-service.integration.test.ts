@@ -21,6 +21,7 @@ import {
   getTeacherSelfProfile,
   getTeacherSessionRosterData,
   removeTeacherSessionAttendee,
+  updateTeacherSelfImage,
   updateTeacherSelfProfile,
 } from "../../src/lib/teacher/teacher-service";
 
@@ -239,6 +240,26 @@ describe("teacher service", () => {
         requestedTeacherUserId: "different-teacher-id",
         firstName: "Blocked",
         lastName: "Update",
+      }),
+    ).rejects.toThrow("TEACHER_SELF_SCOPE_FORBIDDEN");
+  });
+
+  it("allows teacher own image update and blocks cross-teacher image edit", async () => {
+    const { teacherA, teacherB } = await seedTeacherSessionFixture();
+
+    const updated = await updateTeacherSelfImage({
+      teacherUserId: teacherA.id,
+      requestedTeacherUserId: teacherA.id,
+      imagePath: "/images/instructors/teacher-own.png",
+    });
+
+    expect(updated.image).toBe("/images/instructors/teacher-own.png");
+
+    await expect(
+      updateTeacherSelfImage({
+        teacherUserId: teacherA.id,
+        requestedTeacherUserId: teacherB.id,
+        imagePath: "/images/instructors/teacher-cross.png",
       }),
     ).rejects.toThrow("TEACHER_SELF_SCOPE_FORBIDDEN");
   });

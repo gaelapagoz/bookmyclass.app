@@ -13,6 +13,7 @@ import {
 import { checkInBooking } from "@/lib/attendance/attendance-service";
 import { AttendanceSource } from "@prisma/client";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
+import CancelBookingConfirmationForm from "@/components/dashboard/CancelBookingConfirmationForm";
 
 type SearchParams = Promise<{
   error?: string;
@@ -65,22 +66,16 @@ function renderBookingCard(booking: DashboardBookingItem, showCancel: boolean) {
             </form>
           )}
           {showCancel && (
-            <form action={cancelBookingAction}>
-              <input type="hidden" name="bookingId" value={booking.bookingId} />
-              <button
-                type="submit"
-                data-testid={`dashboard-cancel-${booking.bookingId}`}
-                disabled={!booking.canCancel}
-                aria-describedby={
-                  !booking.canCancel && booking.cancellationBlockedReason
-                    ? `cancel-reason-${booking.bookingId}`
-                    : undefined
-                }
-                className="rounded-md border border-[#7b2d2d] px-3 py-1 text-sm text-[#7b2d2d] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Cancel booking
-              </button>
-            </form>
+            <CancelBookingConfirmationForm
+              bookingId={booking.bookingId}
+              action={cancelBookingAction}
+              disabled={!booking.canCancel}
+              describedBy={
+                !booking.canCancel && booking.cancellationBlockedReason
+                  ? `cancel-reason-${booking.bookingId}`
+                  : undefined
+              }
+            />
           )}
         </div>
         {!booking.canCheckIn && !booking.isCheckedIn && booking.checkInBlockedReason && (

@@ -150,6 +150,8 @@ describe("admin edit pages", () => {
     vi.mocked(getAdminClientActivityData).mockResolvedValue({
       plansBought: [],
       classesBooked: 2,
+      collectiveClassesBooked: 1,
+      privateClassesBooked: 1,
       classesCancelled: 1,
       outstandingMemberships: [],
       creditEntitlements: [
@@ -174,6 +176,7 @@ describe("admin edit pages", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Client Activity" })).toBeInTheDocument();
+    expect(screen.getByText("Collective: 1 · Private: 1")).toBeInTheDocument();
 
     const adjustForm = screen.getByTestId("client-credits-adjust-form");
     expect(within(adjustForm).getByDisplayValue("client-1")).toHaveAttribute("name", "userId");

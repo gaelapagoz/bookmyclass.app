@@ -9,6 +9,7 @@ import {
   removeSessionAttendeeByManager,
 } from "@/lib/admin/admin-service";
 import { assertTeacherSelfScope, assertTeacherSessionScope } from "@/lib/teacher/teacher-helpers";
+import { assertSafeMediaPublicPath } from "@/lib/media";
 
 export type TeacherProfileData = {
   id: string;
@@ -124,6 +125,38 @@ export async function updateTeacherSelfProfile(input: {
   });
 }
 
+export async function updateTeacherSelfImage(input: {
+  teacherUserId: string;
+  requestedTeacherUserId: string;
+  imagePath: string;
+}) {
+  assertTeacherSelfScope({
+    teacherUserId: input.teacherUserId,
+    requestedTeacherUserId: input.requestedTeacherUserId,
+  });
+
+  const imagePath = assertSafeMediaPublicPath(input.imagePath, ["/images/instructors"]);
+  const existing = await prisma.user.findUnique({
+    where: { id: input.teacherUserId },
+    select: {
+      id: true,
+      role: true,
+    },
+  });
+  if (!existing || existing.role !== Role.TEACHER) {
+    throw new Error("TEACHER_NOT_FOUND");
+  }
+
+  return prisma.user.update({
+    where: { id: existing.id },
+    data: { image: imagePath },
+    select: {
+      id: true,
+      image: true,
+    },
+  });
+}
+
 export async function getTeacherAssignedSessions(input: {
   teacherUserId: string;
   weekStart?: Date;
@@ -190,4 +223,3 @@ export async function removeTeacherSessionAttendee(input: {
     },
   });
 }
-

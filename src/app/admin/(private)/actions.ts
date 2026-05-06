@@ -408,8 +408,6 @@ const cancelClientMembershipSchema = z.object({
   subscriptionContractId: z.string().min(1),
 });
 
-const MAX_TEACHER_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_TEACHER_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_CAMPAIGN_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_CAMPAIGN_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -804,7 +802,7 @@ function getOptionalImageFile(formData: FormData, fieldName: string): SecureMedi
 
 async function storeAdminImageWithPersistence(input: {
   file: SecureMediaFile;
-  folder: "/images/classes" | "/images/learning";
+  folder: "/images/classes" | "/images/instructors" | "/images/learning";
   filenamePrefix: string;
   persistPath: (publicPath: string) => Promise<void>;
 }) {
@@ -2134,37 +2132,23 @@ export async function uploadTeacherImageAction(formData: FormData) {
     redirectWithError(returnTo, "Teacher user id is required.");
   }
 
-  const file = formData.get("teacherImage");
-  if (!(file instanceof File) || file.size < 1) {
+  const file = getOptionalImageFile(formData, "teacherImage");
+  if (!file) {
     redirectWithError(returnTo, "Please select a teacher image file.");
   }
 
-  if (file.size > MAX_TEACHER_IMAGE_FILE_SIZE_BYTES) {
-    redirectWithError(returnTo, "Teacher image must be 5MB or less.");
-  }
-
-  if (!ALLOWED_TEACHER_IMAGE_MIME_TYPES.has(file.type)) {
-    redirectWithError(returnTo, "Only JPG, PNG, or WEBP images are accepted.");
-  }
-
-  const extension = mapTeacherImageMimeTypeToExtension(file.type);
-  if (!extension) {
-    redirectWithError(returnTo, "Unsupported image type.");
-  }
-
-  const bytes = await file.arrayBuffer();
-  const imagesDir = join(process.cwd(), "public", "images", "instructors");
-  const targetFileName = `teacher-${sanitizeFilenamePart(userId)}-${Date.now()}.${extension}`;
-  const targetAbsolutePath = join(imagesDir, targetFileName);
-  const relativePath = `/images/instructors/${targetFileName}`;
-
   try {
-    await mkdir(imagesDir, { recursive: true });
-    await writeFile(targetAbsolutePath, Buffer.from(bytes));
-    await updateAdminTeacherImage({
-      userId,
-      imagePath: relativePath,
-      adminUserId: session.user.id,
+    await storeAdminImageWithPersistence({
+      file,
+      folder: "/images/instructors",
+      filenamePrefix: `teacher-${userId}`,
+      persistPath: async (publicPath) => {
+        await updateAdminTeacherImage({
+          userId,
+          imagePath: publicPath,
+          adminUserId: session.user.id,
+        });
+      },
     });
   } catch (error) {
     Sentry.captureException(error);

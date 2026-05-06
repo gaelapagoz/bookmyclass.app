@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth/require-auth", () => ({
@@ -75,6 +75,16 @@ describe("DashboardBookingsPage", () => {
     expect(screen.getByTestId("dashboard-waitlist-waitlist-1")).toBeInTheDocument();
     expect(screen.getByTestId("dashboard-waitlist-cancel-waitlist-1")).toBeInTheDocument();
     expect(screen.queryByText(/position/i)).not.toBeInTheDocument();
+  });
+
+  it("requires confirmation before submitting booking cancellation", async () => {
+    render(await DashboardBookingsPage({ searchParams: Promise.resolve({}) }));
+
+    fireEvent.click(screen.getByTestId("dashboard-cancel-booking-1"));
+
+    expect(screen.getByRole("dialog", { name: "Cancel booking?" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Keep booking" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirm cancellation" })).toBeInTheDocument();
   });
 
   it("shows waitlist empty state when there are no active entries", async () => {

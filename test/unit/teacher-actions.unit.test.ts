@@ -16,6 +16,19 @@ vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
 
+const { mkdirMock, unlinkMock, writeFileMock } = vi.hoisted(() => ({
+  mkdirMock: vi.fn(),
+  unlinkMock: vi.fn(),
+  writeFileMock: vi.fn(),
+}));
+
+vi.mock("node:fs/promises", () => ({
+  access: vi.fn(),
+  mkdir: mkdirMock,
+  unlink: unlinkMock,
+  writeFile: writeFileMock,
+}));
+
 vi.mock("@/lib/security/same-origin", () => ({
   assertSameOriginServerAction: vi.fn(async () => undefined),
 }));
@@ -26,6 +39,7 @@ vi.mock("@/lib/auth/require-auth", () => ({
 
 vi.mock("@/lib/teacher/teacher-service", () => ({
   updateTeacherSelfProfile: vi.fn(),
+  updateTeacherSelfImage: vi.fn(),
   addTeacherSessionAttendee: vi.fn(),
   removeTeacherSessionAttendee: vi.fn(),
 }));
@@ -36,10 +50,11 @@ vi.mock("@/lib/auth/password-service", () => ({
 
 import { requireTeacherSession } from "@/lib/auth/require-auth";
 import { changeAuthenticatedUserPassword } from "@/lib/auth/password-service";
-import { addTeacherSessionAttendee } from "@/lib/teacher/teacher-service";
+import { addTeacherSessionAttendee, updateTeacherSelfImage } from "@/lib/teacher/teacher-service";
 import {
   addTeacherSessionAttendeeAction,
   changeTeacherPasswordAction,
+  uploadTeacherSelfImageAction,
   updateTeacherProfileAction,
 } from "../../src/app/teacher/actions";
 
@@ -52,6 +67,12 @@ function teacherSession() {
     },
     expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
   };
+}
+
+function createPngFile(name = "teacher.png") {
+  return new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], name, {
+    type: "image/png",
+  });
 }
 
 describe("teacher actions", () => {
@@ -110,5 +131,42 @@ describe("teacher actions", () => {
     await expect(changeTeacherPasswordAction(formData)).rejects.toThrow(
       "NEXT_REDIRECT:/teacher/profile?error=Password%20error%3A%20invalid_current",
     );
+  });
+
+  it("uploads own teacher image through the shared media helper", async () => {
+    vi.mocked(requireTeacherSession).mockResolvedValue(teacherSession() as never);
+    vi.mocked(updateTeacherSelfImage).mockResolvedValue({
+      id: "teacher-1",
+      image: "/images/instructors/teacher-teacher-1-test.png",
+    });
+
+    const formData = new FormData();
+    formData.set("teacherImage", createPngFile());
+
+    await expect(uploadTeacherSelfImageAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/teacher/profile?success=Teacher%20picture%20updated.",
+    );
+
+    expect(mkdirMock).toHaveBeenCalledTimes(1);
+    expect(writeFileMock).toHaveBeenCalledTimes(1);
+    expect(updateTeacherSelfImage).toHaveBeenCalledWith({
+      teacherUserId: "teacher-1",
+      requestedTeacherUserId: "teacher-1",
+      imagePath: expect.stringMatching(/^\/images\/instructors\/teacher-teacher-1-/),
+    });
+  });
+
+  it("rejects spoofed own teacher image uploads before persistence", async () => {
+    vi.mocked(requireTeacherSession).mockResolvedValue(teacherSession() as never);
+
+    const formData = new FormData();
+    formData.set("teacherImage", new File(["not-a-png"], "teacher.png", { type: "image/png" }));
+
+    await expect(uploadTeacherSelfImageAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/teacher/profile?error=Only%20valid%20JPG%2C%20PNG%2C%20or%20WEBP%20images%20are%20accepted.",
+    );
+
+    expect(updateTeacherSelfImage).not.toHaveBeenCalled();
+    expect(writeFileMock).not.toHaveBeenCalled();
   });
 });

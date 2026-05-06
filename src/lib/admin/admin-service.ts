@@ -228,6 +228,14 @@ export type AdminSessionAttendeeItem = {
   manualOverrideLabel: string | null;
 };
 
+export type AdminSessionWaitlistItem = {
+  waitlistEntryId: string;
+  clientId: string;
+  clientName: string;
+  clientEmail: string;
+  joinedAt: string;
+};
+
 export type AdminSessionDetail = {
   id: string;
   classTemplateId: string;
@@ -241,6 +249,7 @@ export type AdminSessionDetail = {
   status: StudioSessionStatus;
   isPublished: boolean;
   attendees: AdminSessionAttendeeItem[];
+  waitlistEntries: AdminSessionWaitlistItem[];
 };
 
 const MANUAL_OVERRIDE_LABEL = "Manual override — no credit used";
@@ -368,6 +377,8 @@ export type AdminClientActivityData = {
     purchasedAt: string;
   }>;
   classesBooked: number;
+  collectiveClassesBooked: number;
+  privateClassesBooked: number;
   classesCancelled: number;
   outstandingMemberships: Array<{
     id: string;
@@ -2343,6 +2354,23 @@ export async function getAdminSessionById(id: string): Promise<AdminSessionDetai
           },
         },
       },
+      waitlistEntries: {
+        where: {
+          status: WaitlistStatus.ACTIVE,
+        },
+        orderBy: [{ joinedAt: "asc" }],
+        select: {
+          id: true,
+          clientId: true,
+          joinedAt: true,
+          client: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -2393,6 +2421,13 @@ export async function getAdminSessionById(id: string): Promise<AdminSessionDetai
       attendanceSource: booking.attendanceRecord?.source ?? null,
       checkedInAt: booking.attendanceRecord?.markedAt?.toISOString() ?? null,
       manualOverrideLabel: manualOverrideBookingIds.has(booking.id) ? MANUAL_OVERRIDE_LABEL : null,
+    })),
+    waitlistEntries: session.waitlistEntries.map((entry) => ({
+      waitlistEntryId: entry.id,
+      clientId: entry.clientId,
+      clientName: entry.client.name,
+      clientEmail: entry.client.email,
+      joinedAt: entry.joinedAt.toISOString(),
     })),
   };
 }
@@ -4602,7 +4637,7 @@ export async function getAdminUserById(id: string): Promise<AdminUserDetail | nu
 
 export async function getAdminClientActivityData(clientId: string): Promise<AdminClientActivityData> {
   const now = new Date();
-  const [plansBought, classesBooked, classesCancelled, outstandingMemberships, creditEntitlements, creditProducts] =
+  const [plansBought, bookedClassRows, classesCancelled, outstandingMemberships, creditEntitlements, creditProducts] =
     await prisma.$transaction([
       prisma.orderItem.findMany({
         where: {
@@ -4635,11 +4670,27 @@ export async function getAdminClientActivityData(clientId: string): Promise<Admi
           },
         },
       }),
-      prisma.booking.count({
+      prisma.booking.findMany({
         where: {
           clientId,
           status: {
             in: [BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.NO_SHOW],
+          },
+        },
+        select: {
+          studioSession: {
+            select: {
+              classType: {
+                select: {
+                  serviceScope: true,
+                  category: {
+                    select: {
+                      slug: true,
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       }),
@@ -4739,6 +4790,21 @@ export async function getAdminClientActivityData(clientId: string): Promise<Admi
     .filter((entitlement) => entitlement.remainingCredits > 0);
 
   const creditsRemaining = entitlementRows.reduce((sum, row) => sum + row.remainingCredits, 0);
+  const bookedTotals = bookedClassRows.reduce(
+    (totals, booking) => {
+      const scope = resolveEntitlementScope({
+        serviceScope: booking.studioSession.classType.serviceScope,
+        categorySlug: booking.studioSession.classType.category.slug,
+      });
+      if (scope === EntitlementScope.PRIVATE_CLASSES) {
+        totals.private += 1;
+      } else if (scope === EntitlementScope.COLLECTIVE_CLASSES) {
+        totals.collective += 1;
+      }
+      return totals;
+    },
+    { collective: 0, private: 0 },
+  );
   const nextCreditExpiration =
     entitlementRows
       .map((row) => row.expiresAt)
@@ -4754,7 +4820,9 @@ export async function getAdminClientActivityData(clientId: string): Promise<Admi
       currencyCode: entry.currencyCode,
       purchasedAt: entry.order.placedAt.toISOString(),
     })),
-    classesBooked,
+    classesBooked: bookedClassRows.length,
+    collectiveClassesBooked: bookedTotals.collective,
+    privateClassesBooked: bookedTotals.private,
     classesCancelled,
     outstandingMemberships: outstandingMemberships.map((subscription) => ({
       id: subscription.id,
@@ -5309,6 +5377,7 @@ export async function updateAdminTeacherImage(input: {
   imagePath: string;
   adminUserId: string;
 }) {
+  const imagePath = assertSafeMediaPublicPath(input.imagePath, ["/images/instructors"]);
   const [teacherRecord, adminRecord] = await prisma.$transaction([
     prisma.user.findUnique({
       where: { id: input.userId },
@@ -5331,7 +5400,7 @@ export async function updateAdminTeacherImage(input: {
   return prisma.user.update({
     where: { id: teacherRecord.id },
     data: {
-      image: input.imagePath.trim(),
+      image: imagePath,
     },
     select: {
       id: true,

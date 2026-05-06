@@ -1,6 +1,6 @@
 import { requireTeacherSession } from "@/lib/auth/require-auth";
 import { getTeacherSelfProfile } from "@/lib/teacher/teacher-service";
-import { updateTeacherProfileAction, changeTeacherPasswordAction } from "@/app/teacher/actions";
+import { updateTeacherProfileAction, changeTeacherPasswordAction, uploadTeacherSelfImageAction } from "@/app/teacher/actions";
 
 type SearchParams = Promise<{
   error?: string;
@@ -41,6 +41,37 @@ export default async function TeacherProfilePage({
 
       <section className="space-y-3 rounded-xl border border-[#d3dbe5] bg-white p-5">
         <h2 className="text-lg font-semibold text-[#1f2735]">Profile Information</h2>
+
+        <div className="space-y-3">
+          {profile.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={profile.image}
+              alt={`${profile.fullName} picture`}
+              className="h-32 w-32 rounded-md border border-[#d3dbe5] object-cover"
+              data-testid="teacher-self-image-preview"
+            />
+          ) : (
+            <p className="text-sm text-[#4b5a72]">No teacher picture uploaded yet.</p>
+          )}
+          <form action={uploadTeacherSelfImageAction} className="flex flex-col gap-3 md:max-w-md">
+            <label className="block text-sm text-[#334155]">
+              Upload picture (JPG, PNG, WEBP, max 5MB)
+              <input
+                name="teacherImage"
+                type="file"
+                required
+                accept="image/jpeg,image/png,image/webp"
+                className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+              />
+            </label>
+            <div>
+              <button type="submit" className="rounded-md border border-[#d3dbe5] px-4 py-2 text-sm hover:bg-[#f3f6fb]">
+                Upload picture
+              </button>
+            </div>
+          </form>
+        </div>
 
         <form action={updateTeacherProfileAction} className="space-y-3">
           <div className="grid gap-3 md:grid-cols-2">

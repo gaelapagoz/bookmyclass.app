@@ -68,6 +68,15 @@ describe("admin session edit page", () => {
           manualOverrideLabel: "Manual override — no credit used",
         },
       ],
+      waitlistEntries: [
+        {
+          waitlistEntryId: "waitlist-1",
+          clientId: "client-wait-1",
+          clientName: "Waitlist Client",
+          clientEmail: "waitlist@example.test",
+          joinedAt: new Date().toISOString(),
+        },
+      ],
     });
 
     vi.mocked(getAdminSessionOptions).mockResolvedValue({
@@ -115,6 +124,9 @@ describe("admin session edit page", () => {
     expect(screen.getByText("client1@example.test")).toBeInTheDocument();
     expect(screen.getByText("Manual override — no credit used")).toBeInTheDocument();
     expect(screen.getByTestId("session-attendees-section")).toBeInTheDocument();
+    expect(screen.getByTestId("session-waitlist-section")).toBeInTheDocument();
+    expect(screen.getByText("Waitlist Client")).toBeInTheDocument();
+    expect(screen.getByText("waitlist@example.test")).toBeInTheDocument();
     expect(screen.getByTestId("admin-attendee-booking-1")).toBeInTheDocument();
     expect(screen.getByText(/Attendance: CHECKED_IN/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mark attended" })).toBeInTheDocument();
@@ -125,13 +137,13 @@ describe("admin session edit page", () => {
     expect(screen.getByRole("option", { name: /Client Three .*No eligible credit or subscription/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/Manual no-credit override reason/i)).toBeInTheDocument();
 
-    const publishedRow = screen.getByTestId("published-row");
     const actionRow = screen.getByTestId("session-update-actions");
-    const publishedCheckbox = screen.getByRole("checkbox", { name: /published/i });
+    const formFooter = screen.getByTestId("admin-form-footer");
+    const footerCheckbox = screen.getByTestId("admin-form-footer-checkbox");
     const updateButton = screen.getByTestId("session-update-button");
 
-    const rowPosition = publishedRow.compareDocumentPosition(actionRow);
-    const buttonPosition = publishedCheckbox.compareDocumentPosition(updateButton);
+    const rowPosition = actionRow.compareDocumentPosition(formFooter);
+    const buttonPosition = footerCheckbox.compareDocumentPosition(updateButton);
 
     expect(rowPosition & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(buttonPosition & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);

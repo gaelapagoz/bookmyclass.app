@@ -94,10 +94,6 @@ export default async function SubscriptionSuccessPage({
               <dt className="font-medium">Reconciliation</dt>
               <dd>{successState.reconciliationState}</dd>
             </div>
-            <div className="flex justify-between gap-3 md:block">
-              <dt className="font-medium">Cart Clear Eligible</dt>
-              <dd>{successState.cartClearEligible ? "Yes" : "No"}</dd>
-            </div>
           </dl>
 
           {successState.items.length > 0 ? (

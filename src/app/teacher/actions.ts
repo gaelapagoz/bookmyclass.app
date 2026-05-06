@@ -10,12 +10,14 @@ import { normalizeTeacherTagList, assertTeacherSelfScope } from "@/lib/teacher/t
 import {
   addTeacherSessionAttendee,
   removeTeacherSessionAttendee,
+  updateTeacherSelfImage,
   updateTeacherSelfProfile,
 } from "@/lib/teacher/teacher-service";
 import {
   changeAuthenticatedUserPassword,
   type PasswordServiceError,
 } from "@/lib/auth/password-service";
+import { SecureMediaError, storeSecureImageWithPathPersistence, type SecureMediaFile } from "@/lib/media";
 
 const profileSchema = z.object({
   firstName: z.string().trim().min(1),
@@ -78,6 +80,20 @@ function mapPasswordActionError(error: unknown): string | null {
 }
 
 function mapTeacherActionError(error: unknown): string {
+  if (error instanceof SecureMediaError) {
+    if (error.code === "FILE_TOO_LARGE") {
+      return "Image must be 5MB or less.";
+    }
+    if (
+      error.code === "INVALID_MIME_TYPE" ||
+      error.code === "INVALID_EXTENSION" ||
+      error.code === "INVALID_MAGIC_BYTES"
+    ) {
+      return "Only valid JPG, PNG, or WEBP images are accepted.";
+    }
+    return "Invalid image upload.";
+  }
+
   const code = error instanceof Error ? error.message : "";
   if (code === "INVALID_TEACHER_PROFILE_INPUT") {
     return "First and last name are required.";
@@ -122,6 +138,15 @@ function mapTeacherActionError(error: unknown): string {
   return "Unexpected server error.";
 }
 
+function getOptionalImageFile(formData: FormData, fieldName: string): SecureMediaFile | null {
+  const file = formData.get(fieldName);
+  if (!(file instanceof File) || file.size < 1) {
+    return null;
+  }
+
+  return file;
+}
+
 export async function updateTeacherProfileAction(formData: FormData) {
   await assertSameOriginServerAction();
   const session = await requireTeacherSession({ throwOnFailure: true });
@@ -156,6 +181,38 @@ export async function updateTeacherProfileAction(formData: FormData) {
 
   revalidatePath(returnTo);
   redirect(`${returnTo}?success=${encodeURIComponent("Profile updated.")}`);
+}
+
+export async function uploadTeacherSelfImageAction(formData: FormData) {
+  await assertSameOriginServerAction();
+  const session = await requireTeacherSession({ throwOnFailure: true });
+  const returnTo = "/teacher/profile";
+  const file = getOptionalImageFile(formData, "teacherImage");
+
+  if (!file) {
+    redirectWithError(returnTo, "Please select a teacher image file.");
+  }
+
+  try {
+    await storeSecureImageWithPathPersistence({
+      file,
+      folder: "/images/instructors",
+      filenamePrefix: `teacher-${session.user.id}`,
+      allowedFolders: ["/images/instructors"],
+      persistPath: async (publicPath) => {
+        await updateTeacherSelfImage({
+          teacherUserId: session.user.id,
+          requestedTeacherUserId: session.user.id,
+          imagePath: publicPath,
+        });
+      },
+    });
+  } catch (error) {
+    redirectWithError(returnTo, mapTeacherActionError(error));
+  }
+
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?success=${encodeURIComponent("Teacher picture updated.")}`);
 }
 
 export async function addTeacherSessionAttendeeAction(sessionId: string, formData: FormData) {

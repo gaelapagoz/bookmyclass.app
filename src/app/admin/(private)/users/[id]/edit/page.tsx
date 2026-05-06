@@ -7,6 +7,7 @@ import {
   uploadTeacherImageAction,
   updateUserAction,
 } from "@/app/admin/(private)/actions";
+import AdminFormFooter from "@/components/admin/AdminFormFooter";
 import { getAdminClientActivityData, getAdminUserById, listAdminMarketingSegmentOptions } from "@/lib/admin/admin-service";
 import { requireAdminSession } from "@/lib/auth/require-auth";
 
@@ -232,17 +233,13 @@ export default async function AdminUserEditPage({
           </div>
         )}
 
-        <div className="pt-2">
-          <label className="inline-flex items-center gap-2 text-sm text-[#334155]">
-            <input type="checkbox" name="isActive" defaultChecked={record.isActive} /> Active
-          </label>
-        </div>
-
-        <div className="pt-2">
-          <button type="submit" className="rounded-md bg-[#1d3652] px-4 py-2 text-sm text-white">
-            Update user
-          </button>
-        </div>
+        <AdminFormFooter
+          checkboxName="isActive"
+          checkboxLabel="Active"
+          defaultChecked={record.isActive}
+          buttonLabel="Update user"
+          disabled={isMasterAdminRestricted}
+        />
         </fieldset>
       </form>
       </section>
@@ -291,6 +288,9 @@ export default async function AdminUserEditPage({
             <div className="rounded-md bg-[#f3f6fb] px-3 py-2">
               <p className="text-xs uppercase tracking-wide text-[#5a6d86]">Classes Booked</p>
               <p className="mt-1 text-xl font-semibold text-[#1f2735]">{clientActivity.classesBooked}</p>
+              <p className="mt-1 text-xs text-[#5a6d86]">
+                Collective: {clientActivity.collectiveClassesBooked} · Private: {clientActivity.privateClassesBooked}
+              </p>
             </div>
             <div className="rounded-md bg-[#f3f6fb] px-3 py-2">
               <p className="text-xs uppercase tracking-wide text-[#5a6d86]">Classes Cancelled</p>

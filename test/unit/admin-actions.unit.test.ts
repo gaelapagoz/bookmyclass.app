@@ -971,7 +971,7 @@ describe("admin actions", () => {
     formData.set("teacherImage", new File(["bad"], "teacher.gif", { type: "image/gif" }));
 
     await expect(uploadTeacherImageAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/users/teacher-1/edit?error=Only%20JPG%2C%20PNG%2C%20or%20WEBP%20images%20are%20accepted.",
+      "NEXT_REDIRECT:/admin/users/teacher-1/edit?error=Only%20valid%20JPG%2C%20PNG%2C%20or%20WEBP%20images%20are%20accepted.",
     );
     expect(updateAdminTeacherImage).not.toHaveBeenCalled();
   });
@@ -982,11 +982,10 @@ describe("admin actions", () => {
       id: "teacher-1",
       image: "/images/instructors/teacher-teacher-1-1.png",
     });
-    vi.spyOn(Date, "now").mockReturnValue(1);
 
     const formData = new FormData();
     formData.set("userId", "teacher-1");
-    formData.set("teacherImage", new File(["png"], "teacher.png", { type: "image/png" }));
+    formData.set("teacherImage", createPngFile("teacher.png"));
 
     await expect(uploadTeacherImageAction(formData)).rejects.toThrow(
       "NEXT_REDIRECT:/admin/users/teacher-1/edit?success=Teacher%20picture%20updated.",
@@ -996,7 +995,7 @@ describe("admin actions", () => {
     expect(writeFileMock).toHaveBeenCalledTimes(1);
     expect(updateAdminTeacherImage).toHaveBeenCalledWith({
       userId: "teacher-1",
-      imagePath: "/images/instructors/teacher-teacher-1-1.png",
+      imagePath: expect.stringMatching(/^\/images\/instructors\/teacher-teacher-1-/),
       adminUserId: "user-1",
     });
     expect(revalidatePathMock).toHaveBeenCalledWith("/admin/users/teacher-1/edit");
@@ -1156,11 +1155,10 @@ describe("admin actions", () => {
       id: "teacher-1",
       image: "/images/instructors/teacher-teacher-1-1.png",
     });
-    vi.spyOn(Date, "now").mockReturnValue(1);
 
     const formData = new FormData();
     formData.set("userId", "../../../etc/teacher-1");
-    formData.set("teacherImage", new File(["png"], "teacher.png", { type: "image/png" }));
+    formData.set("teacherImage", createPngFile("teacher.png"));
 
     await expect(uploadTeacherImageAction(formData)).rejects.toThrow("NEXT_REDIRECT");
 

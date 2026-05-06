@@ -202,6 +202,8 @@ test.describe("critical client flows", () => {
     const cancelButton = page.getByTestId(`dashboard-cancel-${prepared.bookingId}`);
     await expect(cancelButton).toBeEnabled();
     await cancelButton.click();
+    await expect(page.getByRole("dialog", { name: "Cancel booking?" })).toBeVisible();
+    await page.getByRole("button", { name: "Confirm cancellation" }).click();
     await expect(page.getByText("Booking cancelled.")).toBeVisible();
   });
 

@@ -110,7 +110,7 @@ describe("Subscription success page", () => {
     expect(screen.getByText("SUCCEEDED")).toBeInTheDocument();
     expect(screen.getByText("PAID")).toBeInTheDocument();
     expect(screen.getByText("CONFIRMED")).toBeInTheDocument();
-    expect(screen.getByText("Yes")).toBeInTheDocument();
+    expect(screen.queryByText("Cart Clear Eligible")).not.toBeInTheDocument();
     expect(screen.getAllByText(/110\.00/)).toHaveLength(2);
 
     await waitFor(() => {
@@ -140,7 +140,7 @@ describe("Subscription success page", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Payment Processing" })).toBeInTheDocument();
-    expect(screen.getByText("No")).toBeInTheDocument();
+    expect(screen.queryByText("Cart Clear Eligible")).not.toBeInTheDocument();
     expect(screen.getByText("No order items found for this checkout session.")).toBeInTheDocument();
     expect(window.localStorage.getItem(CART_STORAGE_KEY)).not.toBeNull();
   });
@@ -168,7 +168,7 @@ describe("Subscription success page", () => {
     expect(screen.getByRole("heading", { name: "Payment Failed" })).toBeInTheDocument();
     expect(screen.getAllByText("FAILED")).toHaveLength(2);
     expect(screen.getByText("CANCELLED")).toBeInTheDocument();
-    expect(screen.getByText("No")).toBeInTheDocument();
+    expect(screen.queryByText("Cart Clear Eligible")).not.toBeInTheDocument();
     expect(window.localStorage.getItem(CART_STORAGE_KEY)).not.toBeNull();
   });
 
@@ -193,7 +193,7 @@ describe("Subscription success page", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Payment Confirmed" })).toBeInTheDocument();
-    expect(screen.getByText("No")).toBeInTheDocument();
+    expect(screen.queryByText("Cart Clear Eligible")).not.toBeInTheDocument();
     expect(window.localStorage.getItem(CART_STORAGE_KEY)).not.toBeNull();
   });
 

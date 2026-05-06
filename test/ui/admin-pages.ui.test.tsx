@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/app/admin/(private)/actions", () => ({
@@ -587,6 +587,56 @@ describe("Admin pages branching", () => {
     expect(screen.getByRole("button", { name: "Set subscription status" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add segments" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove segments" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select all clients on this page" })).toBeInTheDocument();
+  });
+
+  it("selects only rendered clients for current-page bulk actions", async () => {
+    vi.mocked(getAdminClientsPageData).mockResolvedValue({
+      page: 2,
+      pageSize: 2,
+      totalItems: 3,
+      totalPages: 2,
+      items: [
+        {
+          id: "c2",
+          name: "Client Two",
+          email: "client2@example.test",
+          role: "CLIENT",
+          isActive: true,
+          lastLoginAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          marketingSubscriptionStatus: "SUBSCRIBED",
+          marketingSegmentNames: [],
+        },
+        {
+          id: "c3",
+          name: "Client Three",
+          email: "client3@example.test",
+          role: "CLIENT",
+          isActive: true,
+          lastLoginAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          marketingSubscriptionStatus: "UNSUBSCRIBED",
+          marketingSegmentNames: [],
+        },
+      ],
+    });
+    vi.mocked(getAdminClientStats).mockResolvedValue({
+      totalClients: 3,
+      neverSubscribedClients: 1,
+      subscribedClients: 1,
+      unsubscribedClients: 1,
+      totalSubscriptions: 2,
+    });
+    vi.mocked(listAdminMarketingSegmentOptions).mockResolvedValue([]);
+
+    render(await AdminUsersClientsPage({ searchParams: Promise.resolve({ page: "2" }) }));
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select all clients on this page" }));
+
+    expect(screen.getByRole("checkbox", { name: "Select client2@example.test" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Select client3@example.test" })).toBeChecked();
+    expect(screen.queryByRole("checkbox", { name: "Select client1@example.test" })).not.toBeInTheDocument();
   });
 
   it("renders marketing segments CRUD page", async () => {

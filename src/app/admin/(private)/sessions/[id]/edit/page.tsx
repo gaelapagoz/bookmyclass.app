@@ -9,6 +9,7 @@ import {
   updateSessionAction,
 } from "@/app/admin/(private)/actions";
 import { StaffAttendanceControls } from "@/components/attendance/StaffAttendanceControls";
+import AdminFormFooter from "@/components/admin/AdminFormFooter";
 import { isAdminRole } from "@/lib/auth/admin-access";
 import { requireStaffSession } from "@/lib/auth/require-auth";
 import { getAdminSessionById, getAdminSessionOptions } from "@/lib/admin/admin-service";
@@ -167,20 +168,14 @@ export default async function AdminSessionEditPage({
           </select>
         </label>
 
-        <div className="pt-2" data-testid="published-row">
-          <label className="inline-flex items-center gap-2 text-sm text-[#334155]">
-            <input type="checkbox" name="isPublished" defaultChecked={record.isPublished} /> Published
-          </label>
-        </div>
-
-        <div className="pt-2" data-testid="session-update-actions">
-          <button
-            type="submit"
-            className="rounded-md bg-[#1d3652] px-4 py-2 text-sm text-white"
-            data-testid="session-update-button"
-          >
-            Update session
-          </button>
+        <div data-testid="session-update-actions">
+          <AdminFormFooter
+            checkboxName="isPublished"
+            checkboxLabel="Published"
+            defaultChecked={record.isPublished}
+            buttonLabel="Update session"
+            buttonTestId="session-update-button"
+          />
         </div>
       </form>
 
@@ -238,6 +233,25 @@ export default async function AdminSessionEditPage({
         ) : (
           <p className="text-sm text-[#4a5b73]">No attendees booked yet.</p>
         )}
+
+        <section className="space-y-2" data-testid="session-waitlist-section">
+          <h3 className="text-sm font-semibold text-[#1f2735]">Active Waitlist</h3>
+          {record.waitlistEntries.length > 0 ? (
+            <ul className="space-y-2">
+              {record.waitlistEntries.map((entry) => (
+                <li key={entry.waitlistEntryId} className="rounded-md border border-[#d3dbe5] p-3 text-sm text-[#334155]">
+                  <p className="font-medium">{entry.clientName}</p>
+                  <p className="text-xs text-[#4a5b73]">{entry.clientEmail}</p>
+                  <p className="mt-1 text-xs text-[#4a5b73]">
+                    Joined {new Date(entry.joinedAt).toLocaleString()}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-[#4a5b73]">No active waitlist clients.</p>
+          )}
+        </section>
 
         <form action={addSessionAttendeeAction.bind(null, id)} className="space-y-2 rounded-md border border-[#d3dbe5] p-3">
           <h3 className="text-sm font-semibold text-[#1f2735]">Add attendee</h3>
