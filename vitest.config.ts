@@ -21,7 +21,7 @@ export default defineConfig({
     globals: true,
     fileParallelism: false,
     setupFiles: ["./test/setup-env.ts"],
-    exclude: [...configDefaults.exclude, "test/e2e/**"],
+    exclude: [...configDefaults.exclude, "test/e2e/**", "test/manual/**"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],

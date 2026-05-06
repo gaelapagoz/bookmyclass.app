@@ -85,6 +85,20 @@ export type CartValidationResult =
       rejection: CartValidationRejection;
     };
 
+export type CartReconciliationRemovedLine = CartNormalizedLine & {
+  reason: Exclude<
+    CartValidationRejectionCode,
+    "EMPTY_CART" | "MIXED_PRICE_TYPES_NOT_ALLOWED" | "RECURRING_QUANTITY_MUST_BE_ONE" | "ACTIVE_SUBSCRIPTION_ALREADY_EXISTS"
+  >;
+};
+
+export type CartReconciliationResult = {
+  cartHash: string;
+  normalizedLines: CartNormalizedLine[];
+  repricedLines: CartRepricedLine[];
+  removedLines: CartReconciliationRemovedLine[];
+};
+
 export type CartSubscriptionSnapshot = {
   status: SubscriptionStatus;
   currentPeriodEnd: Date;

@@ -369,6 +369,32 @@ describe("dashboard-service integration", () => {
     expect(bookings.upcoming[0]?.isCheckedIn).toBe(false);
   });
 
+  it("marks dashboard self check-in blocked outside window with configured site timezone", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Checkin Blocked Client",
+        firstName: "Checkin",
+        lastName: "Blocked",
+        email: `checkin.blocked.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await prisma.siteSettings.create({
+      data: {
+        scope: "GLOBAL",
+        timeZone: "America/New_York",
+      },
+    });
+    await createSessionFixture(client.id, { startsInHours: 1 });
+
+    const bookings = await getDashboardBookingsData(client.id);
+
+    expect(bookings.upcoming).toHaveLength(1);
+    expect(bookings.upcoming[0]?.canCheckIn).toBe(false);
+    expect(bookings.upcoming[0]?.checkInBlockedReason).toBe("Outside check-in window");
+  });
+
   it("marks booking as already checked in when attendance record exists", async () => {
     const client = await prisma.user.create({
       data: {

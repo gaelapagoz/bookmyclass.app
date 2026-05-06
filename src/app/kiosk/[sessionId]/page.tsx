@@ -41,15 +41,7 @@ export default async function KioskSessionPage({ params }: KioskSessionPageProps
             <h1 className="text-2xl font-semibold text-[#1f2735]">{session.title}</h1>
             <p className="mt-1 text-lg text-[#4b5a72]">{session.className}</p>
             <div className="mt-3 space-y-1 text-sm text-[#4b5a72]">
-              <p>
-                {session.startsAt.toLocaleString("en-US", {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </p>
+              <p>{session.dateTimeLabel}</p>
               <p>{bookings.length} confirmed bookings</p>
             </div>
           </div>
@@ -111,7 +103,7 @@ async function BookingRow({ booking, sessionId }: BookingRowProps) {
         : !eligibility.isSessionScheduled
           ? "Session is not scheduled."
           : eligibility.isBeforeWindow
-            ? `Check-in opens at ${eligibility.window.opensAt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}.`
+            ? `Check-in opens at ${eligibility.window.opensAtLabel}.`
             : eligibility.isAfterWindow
               ? "Check-in window has closed."
               : "Outside check-in window.";

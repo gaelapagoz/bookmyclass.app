@@ -1,5 +1,10 @@
-import { validateCartAgainstCatalog } from "@/lib/cart/cart-validation";
+import {
+  reconcileCartLinesAgainstCatalog,
+  validateCartAgainstCatalog,
+} from "@/lib/cart/cart-validation";
 import type {
+  CartLineInput,
+  CartReconciliationResult,
   CartResolvedCatalogPrice,
   CartSubscriptionSnapshot,
   CartValidationServiceDependencies,
@@ -110,11 +115,25 @@ export function createCartValidationService(
         now: deps.now(),
       });
     },
+    async reconcile(input: { lines: CartLineInput[] }): Promise<CartReconciliationResult> {
+      const priceIds = [...new Set(input.lines.map((line) => line.priceId.trim()))];
+      const catalogPrices = await deps.getCatalogPricesByIds(priceIds);
+
+      return reconcileCartLinesAgainstCatalog({
+        rawLines: input.lines,
+        catalogPricesById: new Map(catalogPrices.map((price) => [price.priceId, price])),
+        now: deps.now(),
+      });
+    },
   };
 }
 
 export async function validateCart(input: CartValidationServiceInput) {
   return createCartValidationService().validate(input);
+}
+
+export async function reconcileCart(input: { lines: CartLineInput[] }) {
+  return createCartValidationService().reconcile(input);
 }
 
 export async function hasActiveSubscriptionForCartConstraint(clientId: string): Promise<boolean> {

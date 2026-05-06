@@ -48,9 +48,50 @@ function seedCart(lines: Array<{
   );
 }
 
+function createNoopReconcileResponse() {
+  const raw = window.localStorage.getItem(CART_STORAGE_KEY);
+  const parsed = raw ? JSON.parse(raw) as { lines?: unknown[] } : {};
+  return new Response(
+    JSON.stringify({
+      lines: Array.isArray(parsed.lines) ? parsed.lines : [],
+      removedCount: 0,
+      removedLines: [],
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}
+
+function mockCartFetch(checkoutResponses: Response[] = []) {
+  const pendingCheckoutResponses = [...checkoutResponses];
+  const fetchMock = vi.isMockFunction(global.fetch)
+    ? vi.mocked(global.fetch)
+    : vi.spyOn(global, "fetch");
+
+  return fetchMock.mockImplementation(async (input) => {
+    const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
+    if (url.includes("/api/cart/reconcile")) {
+      return createNoopReconcileResponse();
+    }
+
+    const next = pendingCheckoutResponses.shift();
+    if (next) {
+      return next;
+    }
+
+    return new Response(
+      JSON.stringify({
+        code: "CHECKOUT_CREATE_FAILED",
+        message: "Could not start checkout.",
+      }),
+      { status: 500, headers: { "content-type": "application/json" } },
+    );
+  });
+}
+
 beforeEach(() => {
   vi.restoreAllMocks();
   window.localStorage.clear();
+  mockCartFetch();
 });
 
 afterEach(() => {
@@ -58,6 +99,46 @@ afterEach(() => {
 });
 
 describe("Cart page", () => {
+  it("removes stale server-rejected cart lines and shows the empty cart", async () => {
+    seedCart([
+      {
+        productId: "prod_deleted",
+        priceId: "price_deleted",
+        productName: "Deleted Pack",
+        priceName: "Old Price",
+        priceType: PriceType.ONE_TIME,
+        quantity: 1,
+        unitAmountMinor: 2500,
+      },
+    ]);
+
+    vi.mocked(global.fetch).mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
+      if (url.includes("/api/cart/reconcile")) {
+        return new Response(
+          JSON.stringify({
+            lines: [],
+            removedCount: 1,
+            removedLines: [{ productId: "prod_deleted", priceId: "price_deleted", quantity: 1, reason: "PRICE_NOT_ACTIVE" }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+
+      return new Response("{}", { status: 500 });
+    });
+
+    render(<CartPageClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Unavailable cart items were removed.")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Your cart is empty.")).toHaveLength(2);
+    expect(JSON.parse(window.localStorage.getItem(CART_STORAGE_KEY) ?? "{}")).toMatchObject({
+      lines: [],
+    });
+  });
+
   it("supports quantity controls for one-time products, remove action, subtotal, and disabled checkout when invalid", async () => {
     seedCart([
       {
@@ -150,7 +231,7 @@ describe("Cart page", () => {
       },
     ]);
 
-    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+    mockCartFetch([
       new Response(
         JSON.stringify({
           code: "AUTH_REQUIRED",
@@ -158,7 +239,7 @@ describe("Cart page", () => {
         }),
         { status: 401, headers: { "content-type": "application/json" } },
       ),
-    );
+    ]);
 
     render(<CartPageClient />);
     await waitFor(() => {
@@ -182,7 +263,7 @@ describe("Cart page", () => {
       },
     ]);
 
-    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+    mockCartFetch([
       new Response(
         JSON.stringify({
           code: "EMAIL_VERIFICATION_REQUIRED",
@@ -190,7 +271,7 @@ describe("Cart page", () => {
         }),
         { status: 403, headers: { "content-type": "application/json" } },
       ),
-    );
+    ]);
 
     render(<CartPageClient />);
     await waitFor(() => {
@@ -215,26 +296,22 @@ describe("Cart page", () => {
       },
     ]);
 
-    const fetchSpy = vi.spyOn(global, "fetch");
-    fetchSpy
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            code: "IDEMPOTENCY_IN_PROGRESS",
-            message: "Checkout request is being processed.",
-          }),
-          { status: 202, headers: { "content-type": "application/json" } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            code: "CHECKOUT_SESSION_CREATED",
-            checkoutUrl: "https://checkout.stripe.test/session_123",
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        ),
-      );
+    const fetchSpy = mockCartFetch([
+      new Response(
+        JSON.stringify({
+          code: "IDEMPOTENCY_IN_PROGRESS",
+          message: "Checkout request is being processed.",
+        }),
+        { status: 202, headers: { "content-type": "application/json" } },
+      ),
+      new Response(
+        JSON.stringify({
+          code: "CHECKOUT_SESSION_CREATED",
+          checkoutUrl: "https://checkout.stripe.test/session_123",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    ]);
 
     render(<CartPageClient />);
     await waitFor(() => {
@@ -244,11 +321,12 @@ describe("Cart page", () => {
     await userEvent.click(screen.getByRole("button", { name: "Checkout" }));
 
     await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      expect(fetchSpy.mock.calls.filter((call) => String(call[0]).includes("/api/cart/checkout"))).toHaveLength(2);
     });
 
-    const firstKey = (fetchSpy.mock.calls[0]?.[1]?.headers as Record<string, string>)?.["Idempotency-Key"];
-    const secondKey = (fetchSpy.mock.calls[1]?.[1]?.headers as Record<string, string>)?.["Idempotency-Key"];
+    const checkoutCalls = fetchSpy.mock.calls.filter((call) => String(call[0]).includes("/api/cart/checkout"));
+    const firstKey = (checkoutCalls[0]?.[1]?.headers as Record<string, string>)?.["Idempotency-Key"];
+    const secondKey = (checkoutCalls[1]?.[1]?.headers as Record<string, string>)?.["Idempotency-Key"];
     expect(firstKey).toBe(secondKey);
     expect(screen.queryByText("Checkout request is being processed.")).not.toBeInTheDocument();
   });
@@ -280,7 +358,11 @@ describe("Cart page", () => {
       ]);
 
       const seenKeys: string[] = [];
-      vi.spyOn(global, "fetch").mockImplementation(async (_input, init) => {
+      mockCartFetch().mockImplementation(async (input, init) => {
+        const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
+        if (url.includes("/api/cart/reconcile")) {
+          return createNoopReconcileResponse();
+        }
         const headers = init?.headers as Record<string, string> | undefined;
         const key = headers?.["Idempotency-Key"];
         if (typeof key === "string") {
@@ -330,8 +412,12 @@ describe("Cart page", () => {
       },
     ]);
 
-    vi.spyOn(global, "fetch").mockImplementation(async () =>
-      new Response(
+    mockCartFetch().mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
+      if (url.includes("/api/cart/reconcile")) {
+        return createNoopReconcileResponse();
+      }
+      return new Response(
         JSON.stringify({
           code: "IDEMPOTENCY_IN_PROGRESS",
           message: "Checkout request is being processed.",
@@ -341,8 +427,8 @@ describe("Cart page", () => {
           },
         }),
         { status: 202, headers: { "content-type": "application/json" } },
-      ),
-    );
+      );
+    });
 
     render(<CartPageClient />);
     await waitFor(() => {
@@ -374,7 +460,11 @@ describe("Cart page", () => {
     ]);
 
     const seenKeys: string[] = [];
-    vi.spyOn(global, "fetch").mockImplementation(async (_input, init) => {
+    mockCartFetch().mockImplementation(async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
+      if (url.includes("/api/cart/reconcile")) {
+        return createNoopReconcileResponse();
+      }
       const headers = init?.headers as Record<string, string> | undefined;
       const key = headers?.["Idempotency-Key"];
       if (typeof key === "string") {
@@ -430,7 +520,11 @@ describe("Cart page", () => {
     ]);
 
     const seenKeys: string[] = [];
-    vi.spyOn(global, "fetch").mockImplementation(async (_input, init) => {
+    mockCartFetch().mockImplementation(async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
+      if (url.includes("/api/cart/reconcile")) {
+        return createNoopReconcileResponse();
+      }
       const headers = init?.headers as Record<string, string> | undefined;
       const key = headers?.["Idempotency-Key"];
       if (typeof key === "string") {

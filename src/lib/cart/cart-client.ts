@@ -150,6 +150,27 @@ export function writeClientCart(lines: ClientCartLine[]): ClientCartState {
   return next;
 }
 
+export function replaceClientCartWithServerLines(
+  lines: Array<Omit<ClientCartLine, "lineSubtotalAmountMinor">>,
+): ClientCartState {
+  return writeClientCart(
+    lines.map((line) => ({
+      productId: line.productId,
+      priceId: line.priceId,
+      productName: line.productName,
+      productDescription: line.productDescription,
+      productType: line.productType,
+      priceName: line.priceName,
+      priceType: line.priceType,
+      quantity: line.quantity,
+      unitAmountMinor: line.unitAmountMinor,
+      currencyCode: line.currencyCode,
+      billingInterval: line.billingInterval,
+      billingIntervalCount: line.billingIntervalCount,
+    })),
+  );
+}
+
 export function clearClientCart() {
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(CART_STORAGE_KEY);

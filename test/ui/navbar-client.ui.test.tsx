@@ -55,6 +55,14 @@ describe("NavbarClient", () => {
     expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
   });
 
+  it("hides Dashboard in mobile navigation when logged out", () => {
+    render(<NavbarClient isAuthenticated={false} onSignOutAction={vi.fn(async () => undefined)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle navigation menu" }));
+
+    expect(screen.queryByRole("link", { name: "Dashboard" })).not.toBeInTheDocument();
+  });
+
   it("shows Dashboard when logged in", () => {
     render(<NavbarClient isAuthenticated={true} onSignOutAction={vi.fn(async () => undefined)} />);
 

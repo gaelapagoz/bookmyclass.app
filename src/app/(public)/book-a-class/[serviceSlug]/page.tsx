@@ -6,7 +6,8 @@ import {
   getServiceMonthAvailability,
   getServiceSlotsByDate,
 } from "../../../../lib/public-catalogue/availability-service";
-import { getStudioMonthKey } from "../../../../lib/public-catalogue/timezone";
+import { getSiteDateKey, getSiteMonthKey } from "../../../../lib/public-catalogue/timezone";
+import { getSiteTimeZone } from "../../../../lib/site-settings/site-settings-service";
 
 export default async function ServiceBookingPage({
   params,
@@ -21,7 +22,10 @@ export default async function ServiceBookingPage({
     notFound();
   }
 
-  const currentMonthKey = getStudioMonthKey(new Date());
+  const siteTimeZone = await getSiteTimeZone();
+  const now = new Date();
+  const currentMonthKey = getSiteMonthKey(now, siteTimeZone);
+  const todayDateKey = getSiteDateKey(now, siteTimeZone);
   const monthAvailability = await getServiceMonthAvailability({
     slug: serviceSlug,
     monthKey: currentMonthKey,
@@ -40,6 +44,7 @@ export default async function ServiceBookingPage({
       initialAvailabilityDays={monthAvailability?.days ?? []}
       initialSelectedDate={initialSelectedDate}
       initialSlots={slotsResponse?.slots ?? []}
+      todayDateKey={todayDateKey}
     />
   );
 }

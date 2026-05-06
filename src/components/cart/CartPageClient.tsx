@@ -10,6 +10,7 @@ import {
   getCheckoutSubmissionFingerprint,
   getClientCartSubtotalMinor,
   rememberClientCartSnapshotForCheckoutSession,
+  replaceClientCartWithServerLines,
   readClientCart,
   removeClientCartLine,
   subscribeToClientCart,
@@ -34,6 +35,11 @@ type CheckoutApiPayload = {
   idempotency?: {
     state?: string;
   };
+};
+
+type CartReconcileApiPayload = {
+  lines?: ClientCartLine[];
+  removedCount?: number;
 };
 
 const IN_PROGRESS_RETRY_DELAY_MS = 150;
@@ -79,6 +85,60 @@ export function CartPageClient() {
     setIsHydrated(true);
     return subscribeToClientCart(sync);
   }, []);
+
+  useEffect(() => {
+    if (!isHydrated || lines.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    const currentFingerprint = getCheckoutSubmissionFingerprint(lines);
+
+    async function reconcileCart() {
+      try {
+        const response = await fetch("/api/cart/reconcile", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            lines: lines.map((line) => ({
+              productId: line.productId,
+              priceId: line.priceId,
+              quantity: line.quantity,
+            })),
+          }),
+        });
+
+        if (!response.ok || cancelled) {
+          return;
+        }
+
+        const payload = (await response.json()) as CartReconcileApiPayload;
+        if (!Array.isArray(payload.lines)) {
+          return;
+        }
+
+        const nextFingerprint = getCheckoutSubmissionFingerprint(payload.lines);
+        if (nextFingerprint !== currentFingerprint) {
+          const next = replaceClientCartWithServerLines(payload.lines);
+          setLines(next.lines);
+          setClientCartVersion(next.version);
+        }
+
+        if ((payload.removedCount ?? 0) > 0) {
+          setFeedback("Unavailable cart items were removed.");
+          setSubmissionState(null);
+        }
+      } catch {
+        // Keep the local cart usable if reconciliation is temporarily unavailable.
+      }
+    }
+
+    void reconcileCart();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isHydrated, lines]);
 
   const subtotalMinor = useMemo(() => getClientCartSubtotalMinor(lines), [lines]);
   const subtotalCurrency = lines[0]?.currencyCode ?? "EUR";

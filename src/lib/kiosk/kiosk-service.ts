@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 import { StudioSessionStatus } from "@prisma/client";
+import { getDateRangeUtc, getSiteDateKey, getSiteDateTimeLabel, getSiteTimeLabel } from "@/lib/public-catalogue/timezone";
+import { getSiteTimeZone } from "@/lib/site-settings/site-settings-service";
 
 export type KioskSelectableSession = {
   id: string;
@@ -10,6 +12,8 @@ export type KioskSelectableSession = {
   confirmedBookingsCount: number;
   className: string;
   categorySlug: string;
+  dateTimeLabel: string;
+  timeLabel: string;
 };
 
 /**
@@ -21,12 +25,14 @@ export async function getKioskSelectableSessions(
   options?: {
     limit?: number;
     fromDate?: Date;
+    timeZone?: string;
     toDate?: Date;
   },
 ): Promise<KioskSelectableSession[]> {
   const now = new Date();
   const limit = options?.limit ?? 20;
   const fromDate = options?.fromDate ?? now;
+  const timeZone = options?.timeZone ?? (await getSiteTimeZone());
 
   const startsAt: Record<string, unknown> = {
     gte: fromDate,
@@ -91,26 +97,27 @@ export async function getKioskSelectableSessions(
     confirmedBookingsCount: session.bookings.length,
     className: session.classType.name,
     categorySlug: session.classType.category.slug,
+    dateTimeLabel: getSiteDateTimeLabel(session.startsAt, timeZone),
+    timeLabel: getSiteTimeLabel(session.startsAt, timeZone),
   }));
 }
 
-function buildTodayRange(now: Date) {
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
+function buildTodayRange(now: Date, timeZone: string) {
+  const dateKey = getSiteDateKey(now, timeZone);
+  const { fromUtc, toUtc } = getDateRangeUtc(dateKey, timeZone);
 
-  const tomorrowStart = new Date(todayStart);
-  tomorrowStart.setDate(todayStart.getDate() + 1);
-
-  return { todayStart, tomorrowStart };
+  return { todayStart: fromUtc, tomorrowStart: toUtc };
 }
 
 export async function getKioskTodaySelectableSessions(now: Date = new Date()): Promise<KioskSelectableSession[]> {
-  const { todayStart, tomorrowStart } = buildTodayRange(now);
+  const timeZone = await getSiteTimeZone();
+  const { todayStart, tomorrowStart } = buildTodayRange(now, timeZone);
 
   return getKioskSelectableSessions({
     fromDate: todayStart,
     toDate: tomorrowStart,
     limit: 30,
+    timeZone,
   });
 }
 
@@ -128,6 +135,7 @@ export async function getNextUpcomingKioskSelectableSession(now: Date = new Date
  * Verifies session exists and is eligible for check-in operations.
  */
 export async function getKioskSessionContext(sessionId: string) {
+  const timeZone = await getSiteTimeZone();
   const session = await prisma.studioSession.findUnique({
     where: { id: sessionId },
     select: {
@@ -187,6 +195,7 @@ export async function getKioskSessionContext(sessionId: string) {
       endsAt: session.endsAt,
       status: session.status,
       className: session.classType.name,
+      dateTimeLabel: getSiteDateTimeLabel(session.startsAt, timeZone),
     },
     bookings: session.bookings,
   };

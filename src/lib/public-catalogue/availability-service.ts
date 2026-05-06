@@ -5,13 +5,13 @@ import { createInMemoryTtlCache } from "../cache/in-memory-ttl-cache";
 import { bookingDraftActiveBookingFilter } from "../public-booking/booking-draft-service";
 import { getPublicTeacherName } from "../public-content/teacher-display";
 import {
-  STUDIO_TIMEZONE,
   getDateRangeUtc,
   getMonthRangeUtc,
-  getStudioDateKey,
-  getStudioTimeLabel,
+  getSiteDateKey,
+  getSiteTimeLabel,
 } from "./timezone";
 import { getLocalMediaRenderState } from "../media";
+import { getSiteTimeZone } from "@/lib/site-settings/site-settings-service";
 
 export type PublicServiceDetail = {
   classSummary: {
@@ -97,7 +97,7 @@ function getShortDescription(description: string | null): string {
   return `${trimmed.slice(0, 137).trimEnd()}...`;
 }
 
-function toSlot(session: SessionWithBookings): SessionSlot {
+function toSlot(session: SessionWithBookings, timeZone: string): SessionSlot {
   const usedSpots = session._count.bookings;
   const availableSpots = Math.max(0, session.capacity - usedSpots);
   const categorySlug = session.classType.category.slug.toLowerCase();
@@ -108,9 +108,9 @@ function toSlot(session: SessionWithBookings): SessionSlot {
 
   return {
     id: session.id,
-    date: getStudioDateKey(session.startsAt),
-    startTime: getStudioTimeLabel(session.startsAt),
-    endTime: getStudioTimeLabel(session.endsAt),
+    date: getSiteDateKey(session.startsAt, timeZone),
+    startTime: getSiteTimeLabel(session.startsAt, timeZone),
+    endTime: getSiteTimeLabel(session.endsAt, timeZone),
     capacity: session.capacity,
     availableSpots,
     isAvailable: availableSpots > 0,
@@ -271,15 +271,16 @@ export async function getPublicServiceDetailBySlug(slug: string): Promise<Public
 }
 
 export async function getServiceMonthAvailability(params: { monthKey: string; slug: string }) {
+  const timeZone = await getSiteTimeZone();
   return monthAvailabilityCache.getOrLoad(
-    `${params.slug.toLowerCase()}:${params.monthKey}`,
-    () => getServiceMonthAvailabilityRaw(params),
+    `${params.slug.toLowerCase()}:${params.monthKey}:${timeZone}`,
+    () => getServiceMonthAvailabilityRaw({ ...params, timeZone }),
     AVAILABILITY_RESPONSE_CACHE_TTL_MS,
   );
 }
 
-async function getServiceMonthAvailabilityRaw(params: { monthKey: string; slug: string }) {
-  const { monthKey, slug } = params;
+async function getServiceMonthAvailabilityRaw(params: { monthKey: string; slug: string; timeZone: string }) {
+  const { monthKey, slug, timeZone } = params;
   const trace = createPerfTrace("public-catalogue.getServiceMonthAvailability", {
     monthKey,
     slug,
@@ -294,7 +295,7 @@ async function getServiceMonthAvailabilityRaw(params: { monthKey: string; slug: 
     }
     foundService = true;
 
-    const { fromUtc, toUtc } = getMonthRangeUtc(monthKey);
+    const { fromUtc, toUtc } = getMonthRangeUtc(monthKey, timeZone);
 
     const sessions = await trace.db("studioSession.findMany.monthAvailability", () =>
       prisma.studioSession.findMany({
@@ -343,7 +344,7 @@ async function getServiceMonthAvailabilityRaw(params: { monthKey: string; slug: 
 
     const byDate = new Map<string, { availableSlots: number; totalSlots: number }>();
     for (const session of sessions) {
-      const slot = toSlot(session);
+      const slot = toSlot(session, timeZone);
       const current = byDate.get(slot.date) ?? { availableSlots: 0, totalSlots: 0 };
       current.totalSlots += 1;
       if (slot.isAvailable) {
@@ -363,7 +364,7 @@ async function getServiceMonthAvailabilityRaw(params: { monthKey: string; slug: 
 
     return {
       month: monthKey,
-      timezone: STUDIO_TIMEZONE,
+      timezone: timeZone,
       days,
     };
   } finally {
@@ -372,15 +373,16 @@ async function getServiceMonthAvailabilityRaw(params: { monthKey: string; slug: 
 }
 
 export async function getServiceSlotsByDate(params: { dateKey: string; slug: string }) {
+  const timeZone = await getSiteTimeZone();
   return slotsByDateCache.getOrLoad(
-    `${params.slug.toLowerCase()}:${params.dateKey}`,
-    () => getServiceSlotsByDateRaw(params),
+    `${params.slug.toLowerCase()}:${params.dateKey}:${timeZone}`,
+    () => getServiceSlotsByDateRaw({ ...params, timeZone }),
     AVAILABILITY_RESPONSE_CACHE_TTL_MS,
   );
 }
 
-async function getServiceSlotsByDateRaw(params: { dateKey: string; slug: string }) {
-  const { dateKey, slug } = params;
+async function getServiceSlotsByDateRaw(params: { dateKey: string; slug: string; timeZone: string }) {
+  const { dateKey, slug, timeZone } = params;
   const trace = createPerfTrace("public-catalogue.getServiceSlotsByDate", { dateKey, slug });
   let sessionCount = 0;
   let foundService = false;
@@ -392,7 +394,7 @@ async function getServiceSlotsByDateRaw(params: { dateKey: string; slug: string 
     }
     foundService = true;
 
-    const { fromUtc, toUtc } = getDateRangeUtc(dateKey);
+    const { fromUtc, toUtc } = getDateRangeUtc(dateKey, timeZone);
     const now = new Date();
 
     const sessions = await trace.db("studioSession.findMany.slotsByDate", () =>
@@ -440,10 +442,10 @@ async function getServiceSlotsByDateRaw(params: { dateKey: string; slug: string 
     );
     sessionCount = sessions.length;
 
-    const slots = sessions.map(toSlot);
+    const slots = sessions.map((session) => toSlot(session, timeZone));
     return {
       date: dateKey,
-      timezone: STUDIO_TIMEZONE,
+      timezone: timeZone,
       slots,
     };
   } finally {
@@ -452,15 +454,16 @@ async function getServiceSlotsByDateRaw(params: { dateKey: string; slug: string 
 }
 
 export async function getNextAvailability(params: { fromDateKey: string; slug: string }) {
+  const timeZone = await getSiteTimeZone();
   return nextAvailabilityCache.getOrLoad(
-    `${params.slug.toLowerCase()}:${params.fromDateKey}`,
-    () => getNextAvailabilityRaw(params),
+    `${params.slug.toLowerCase()}:${params.fromDateKey}:${timeZone}`,
+    () => getNextAvailabilityRaw({ ...params, timeZone }),
     AVAILABILITY_RESPONSE_CACHE_TTL_MS,
   );
 }
 
-async function getNextAvailabilityRaw(params: { fromDateKey: string; slug: string }) {
-  const { fromDateKey, slug } = params;
+async function getNextAvailabilityRaw(params: { fromDateKey: string; slug: string; timeZone: string }) {
+  const { fromDateKey, slug, timeZone } = params;
   const trace = createPerfTrace("public-catalogue.getNextAvailability", { fromDateKey, slug });
   let sessionCount = 0;
   let foundService = false;
@@ -473,7 +476,7 @@ async function getNextAvailabilityRaw(params: { fromDateKey: string; slug: strin
     }
     foundService = true;
 
-    const { fromUtc } = getDateRangeUtc(fromDateKey);
+    const { fromUtc } = getDateRangeUtc(fromDateKey, timeZone);
     const now = new Date();
     const queryFrom = fromUtc > now ? fromUtc : now;
 
@@ -522,17 +525,17 @@ async function getNextAvailabilityRaw(params: { fromDateKey: string; slug: strin
     );
     sessionCount = sessions.length;
 
-    const firstAvailable = sessions.map(toSlot).find((slot) => slot.isAvailable);
+    const firstAvailable = sessions.map((session) => toSlot(session, timeZone)).find((slot) => slot.isAvailable);
     if (!firstAvailable) {
       return {
         next: null,
-        timezone: STUDIO_TIMEZONE,
+        timezone: timeZone,
       };
     }
     nextFound = true;
 
     return {
-      timezone: STUDIO_TIMEZONE,
+      timezone: timeZone,
       next: {
         ...firstAvailable,
         month: firstAvailable.date.slice(0, 7),

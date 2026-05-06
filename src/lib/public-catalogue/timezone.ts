@@ -1,29 +1,37 @@
-export const STUDIO_TIMEZONE = "Europe/Brussels";
+import { DEFAULT_SITE_TIME_ZONE } from "@/lib/site-settings/site-timezone";
 
-const dateFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: STUDIO_TIMEZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
+export const STUDIO_TIMEZONE = DEFAULT_SITE_TIME_ZONE;
 
-const dateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
-  timeZone: STUDIO_TIMEZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
+function getDateFormatter(timeZone: string): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
 
-const timeFormatter = new Intl.DateTimeFormat("en-GB", {
-  timeZone: STUDIO_TIMEZONE,
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
+function getDateTimeFormatter(timeZone: string): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+function getTimeFormatter(timeZone: string): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
 
 type DateParts = {
   day: number;
@@ -52,8 +60,8 @@ function toParts(formatter: Intl.DateTimeFormat, date: Date): DateParts {
   };
 }
 
-function getTimeZoneOffsetMs(utcDate: Date): number {
-  const localParts = toParts(dateTimeFormatter, utcDate);
+function getTimeZoneOffsetMs(utcDate: Date, timeZone: string): number {
+  const localParts = toParts(getDateTimeFormatter(timeZone), utcDate);
   const asUtc = Date.UTC(
     localParts.year,
     localParts.month - 1,
@@ -72,15 +80,16 @@ function zonedDateTimeToUtcDate(params: {
   minute: number;
   month: number;
   second?: number;
+  timeZone?: string;
   year: number;
 }): Date {
-  const { year, month, day, hour, minute, second = 0 } = params;
+  const { year, month, day, hour, minute, second = 0, timeZone = STUDIO_TIMEZONE } = params;
   const naiveUtc = Date.UTC(year, month - 1, day, hour, minute, second);
   const firstGuess = new Date(naiveUtc);
-  const firstOffset = getTimeZoneOffsetMs(firstGuess);
+  const firstOffset = getTimeZoneOffsetMs(firstGuess, timeZone);
   const adjustedTime = naiveUtc - firstOffset;
   const secondGuess = new Date(adjustedTime);
-  const secondOffset = getTimeZoneOffsetMs(secondGuess);
+  const secondOffset = getTimeZoneOffsetMs(secondGuess, timeZone);
 
   if (secondOffset !== firstOffset) {
     return new Date(naiveUtc - secondOffset);
@@ -90,18 +99,41 @@ function zonedDateTimeToUtcDate(params: {
 }
 
 export function getStudioDateKey(date: Date): string {
-  return dateFormatter.format(date);
+  return getDateFormatter(STUDIO_TIMEZONE).format(date);
+}
+
+export function getSiteDateKey(date: Date, timeZone: string): string {
+  return getDateFormatter(timeZone).format(date);
 }
 
 export function getStudioMonthKey(date: Date): string {
   return getStudioDateKey(date).slice(0, 7);
 }
 
-export function getStudioTimeLabel(date: Date): string {
-  return timeFormatter.format(date);
+export function getSiteMonthKey(date: Date, timeZone: string): string {
+  return getSiteDateKey(date, timeZone).slice(0, 7);
 }
 
-export function getMonthRangeUtc(monthKey: string): { fromUtc: Date; toUtc: Date } {
+export function getStudioTimeLabel(date: Date): string {
+  return getTimeFormatter(STUDIO_TIMEZONE).format(date);
+}
+
+export function getSiteTimeLabel(date: Date, timeZone: string): string {
+  return getTimeFormatter(timeZone).format(date);
+}
+
+export function getSiteDateTimeLabel(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+export function getMonthRangeUtc(monthKey: string, timeZone: string = STUDIO_TIMEZONE): { fromUtc: Date; toUtc: Date } {
   const [yearRaw, monthRaw] = monthKey.split("-");
   const year = Number(yearRaw);
   const month = Number(monthRaw);
@@ -114,6 +146,7 @@ export function getMonthRangeUtc(monthKey: string): { fromUtc: Date; toUtc: Date
     day: 1,
     hour: 0,
     minute: 0,
+    timeZone,
   });
   const toUtc = zonedDateTimeToUtcDate({
     year: nextMonthYear,
@@ -121,12 +154,13 @@ export function getMonthRangeUtc(monthKey: string): { fromUtc: Date; toUtc: Date
     day: 1,
     hour: 0,
     minute: 0,
+    timeZone,
   });
 
   return { fromUtc, toUtc };
 }
 
-export function getDateRangeUtc(dateKey: string): { fromUtc: Date; toUtc: Date } {
+export function getDateRangeUtc(dateKey: string, timeZone: string = STUDIO_TIMEZONE): { fromUtc: Date; toUtc: Date } {
   const [yearRaw, monthRaw, dayRaw] = dateKey.split("-");
   const year = Number(yearRaw);
   const month = Number(monthRaw);
@@ -137,6 +171,7 @@ export function getDateRangeUtc(dateKey: string): { fromUtc: Date; toUtc: Date }
     day,
     hour: 0,
     minute: 0,
+    timeZone,
   });
   const base = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
   base.setUTCDate(base.getUTCDate() + 1);
@@ -146,6 +181,7 @@ export function getDateRangeUtc(dateKey: string): { fromUtc: Date; toUtc: Date }
     day: base.getUTCDate(),
     hour: 0,
     minute: 0,
+    timeZone,
   });
 
   return { fromUtc, toUtc };

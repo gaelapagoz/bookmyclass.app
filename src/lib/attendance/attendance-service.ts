@@ -9,6 +9,9 @@ import { prisma } from "@/lib/db";
 import {
   getStaffAttendanceTransitionAvailability,
 } from "@/lib/attendance/attendance-transitions";
+import { getSiteTimeLabel } from "@/lib/public-catalogue/timezone";
+import { DEFAULT_SITE_TIME_ZONE } from "@/lib/site-settings/site-timezone";
+import { getSiteTimeZone } from "@/lib/site-settings/site-settings-service";
 
 export type AttendanceWindowPolicy = {
   checkInOpensMinutesBefore: number;
@@ -17,16 +20,20 @@ export type AttendanceWindowPolicy = {
 
 export type AttendanceCheckInWindow = {
   opensAt: Date;
+  opensAtLabel: string;
   closesAt: Date;
+  closesAtLabel: string;
 };
 
 export type AttendanceEligibilityResult = {
+  attendanceStatus: AttendanceStatus | null;
   isPrivateClass: boolean;
   isConfirmedBooking: boolean;
   isSessionScheduled: boolean;
   isWithinWindow: boolean;
   isBeforeWindow: boolean;
   isAfterWindow: boolean;
+  timeZone: string;
   window: AttendanceCheckInWindow;
 };
 
@@ -79,10 +86,15 @@ export async function getAttendanceWindowPolicy(): Promise<AttendanceWindowPolic
 export function getSessionCheckInWindow(
   sessionStartsAt: Date,
   policy: AttendanceWindowPolicy,
+  timeZone?: string,
 ): AttendanceCheckInWindow {
+  const opensAt = new Date(sessionStartsAt.getTime() - policy.checkInOpensMinutesBefore * 60 * 1000);
+  const closesAt = new Date(sessionStartsAt.getTime() + policy.checkInClosesMinutesAfter * 60 * 1000);
   return {
-    opensAt: new Date(sessionStartsAt.getTime() - policy.checkInOpensMinutesBefore * 60 * 1000),
-    closesAt: new Date(sessionStartsAt.getTime() + policy.checkInClosesMinutesAfter * 60 * 1000),
+    opensAt,
+    opensAtLabel: getSiteTimeLabel(opensAt, timeZone ?? DEFAULT_SITE_TIME_ZONE),
+    closesAt,
+    closesAtLabel: getSiteTimeLabel(closesAt, timeZone ?? DEFAULT_SITE_TIME_ZONE),
   };
 }
 
@@ -165,7 +177,7 @@ export async function assertBookingNotCheckedInForCancellation(bookingId: string
 
 export async function getBookingSelfCheckInEligibility(bookingId: string, _clientId: string) {
   const now = new Date();
-  const policy = await getAttendanceWindowPolicy();
+  const [policy, timeZone] = await Promise.all([getAttendanceWindowPolicy(), getSiteTimeZone()]);
 
   const booking = await prisma.booking.findUnique({
     where: { id: bookingId },
@@ -202,7 +214,7 @@ export async function getBookingSelfCheckInEligibility(bookingId: string, _clien
   }
 
   const isPrivateClass = isPrivateClassCategorySlug(booking.studioSession.classType.category?.slug);
-  const window = getSessionCheckInWindow(booking.studioSession.startsAt, policy);
+  const window = getSessionCheckInWindow(booking.studioSession.startsAt, policy, timeZone);
 
   return {
     isPrivateClass,
@@ -214,6 +226,7 @@ export async function getBookingSelfCheckInEligibility(bookingId: string, _clien
     isBeforeWindow: isBeforeCheckInWindow(booking.studioSession.startsAt, now, policy),
     isAfterWindow: isAfterCheckInWindow(booking.studioSession.startsAt, now, policy),
     window,
+    timeZone,
     attendanceStatus: booking.attendanceRecord?.status ?? null,
   };
 }
@@ -229,7 +242,7 @@ export async function checkInBooking(input: {
   source: AttendanceSource;
 }> {
   const now = new Date();
-  const policy = await getAttendanceWindowPolicy();
+  const [policy, timeZone] = await Promise.all([getAttendanceWindowPolicy(), getSiteTimeZone()]);
   const markedById = input.markedById ?? input.clientId;
 
   const booking = await prisma.booking.findUnique({
@@ -283,7 +296,8 @@ export async function checkInBooking(input: {
     throw new Error("PRIVATE_CLASSES_NOT_ELIGIBLE_FOR_CHECKIN");
   }
 
-  if (!isWithinCheckInWindow(booking.studioSession.startsAt, now, policy)) {
+  const checkInWindow = getSessionCheckInWindow(booking.studioSession.startsAt, policy, timeZone);
+  if (now < checkInWindow.opensAt || now > checkInWindow.closesAt) {
     throw new Error("CHECKIN_WINDOW_CLOSED");
   }
 

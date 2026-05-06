@@ -31,9 +31,10 @@ export async function signInAction(formData: FormData) {
       const email = String(formData.get("email") ?? "").trim().toLowerCase();
       const password = String(formData.get("password") ?? "");
       const explicitCallbackUrl = String(formData.get("callbackUrl") ?? "");
+      const sanitizedCallbackUrl = getSafeCallbackPath(explicitCallbackUrl, "/dashboard");
 
       if (!email || !password) {
-        redirect(`/sign-in?error=invalid_input&callbackUrl=${encodeURIComponent(explicitCallbackUrl ?? "/dashboard")}`);
+        redirect(`/sign-in?error=invalid_input&callbackUrl=${encodeURIComponent(sanitizedCallbackUrl)}`);
       }
 
       const user = await prisma.user.findFirst({
@@ -53,14 +54,14 @@ export async function signInAction(formData: FormData) {
       // Check user activation status (required for all roles)
       if (user && user.activationStatus !== UserActivationStatus.ACTIVE) {
         redirect(
-          `/sign-in?error=email_not_verified&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(explicitCallbackUrl ?? "/dashboard")}`,
+          `/sign-in?error=email_not_verified&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(sanitizedCallbackUrl)}`,
         );
       }
 
       // Check email verification (required only for CLIENT users)
       if (user && user.role === "CLIENT" && !user.emailVerified) {
         redirect(
-          `/sign-in?error=email_not_verified&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(explicitCallbackUrl ?? "/dashboard")}`,
+          `/sign-in?error=email_not_verified&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(sanitizedCallbackUrl)}`,
         );
       }
 
@@ -205,4 +206,3 @@ export default async function SignInPage({
     </main>
   );
 }
-

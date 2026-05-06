@@ -11,6 +11,7 @@ vi.mock("@/app/admin/(private)/actions", () => ({
   updateSiteWeeklyScheduleEntryAction: vi.fn(),
   deleteSiteWeeklyScheduleEntryAction: vi.fn(),
   updateCancellationPeriodAction: vi.fn(),
+  updateSiteTimeZoneAction: vi.fn(),
   updateClientMessageStatusAction: vi.fn(),
   createMarketingSegmentAction: vi.fn(),
   updateMarketingSegmentAction: vi.fn(),
@@ -52,6 +53,7 @@ vi.mock("@/lib/admin/admin-service", () => ({
   listAdminSiteWeeklyScheduleEntries: vi.fn(),
   listAdminSiteScheduleServiceOptions: vi.fn(),
   getAdminCancellationPeriodHours: vi.fn(),
+  getAdminSiteTimeZone: vi.fn(),
   getAdminOrdersPageData: vi.fn(),
   getAdminOnlineLearningData: vi.fn(),
 }));
@@ -76,6 +78,7 @@ import {
   listAdminSiteWeeklyScheduleEntries,
   listAdminSiteScheduleServiceOptions,
   getAdminCancellationPeriodHours,
+  getAdminSiteTimeZone,
 } from "@/lib/admin/admin-service";
 import { listMarketingSegments } from "@/lib/marketing/marketing-service";
 import { listClientMessages } from "@/lib/client-messages/client-message-service";
@@ -792,12 +795,14 @@ describe("Admin pages branching", () => {
     vi.mocked(listAdminSiteWeeklyScheduleEntries).mockResolvedValue([]);
     vi.mocked(listAdminSiteScheduleServiceOptions).mockResolvedValue([]);
     vi.mocked(getAdminCancellationPeriodHours).mockResolvedValue(24);
+    vi.mocked(getAdminSiteTimeZone).mockResolvedValue("Europe/Brussels");
 
     render(await AdminManageSitePage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByRole("heading", { name: "Manage Site" })).toBeInTheDocument();
     expect(screen.getAllByText("No service").length).toBeGreaterThan(0);
     expect(screen.getByDisplayValue("24")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Site timezone" })).toHaveValue("Europe/Brussels");
     expect(
       screen.getByText("No booking services exist yet. Create a booking service first, then add agenda schedule rows."),
     ).toBeInTheDocument();
@@ -833,6 +838,7 @@ describe("Admin pages branching", () => {
       { id: "service-2", name: "Functional Strength" },
     ]);
     vi.mocked(getAdminCancellationPeriodHours).mockResolvedValue(24);
+    vi.mocked(getAdminSiteTimeZone).mockResolvedValue("America/New_York");
 
     render(await AdminManageSitePage({ searchParams: Promise.resolve({}) }));
 
@@ -840,12 +846,14 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Agenda PDF")).toBeInTheDocument();
     expect(screen.getByText("Agenda Schedule")).toBeInTheDocument();
     expect(screen.getByText("Configure Cancellation Period")).toBeInTheDocument();
+    expect(screen.getByText("Configure Site Timezone")).toBeInTheDocument();
     const serviceSelects = screen.getAllByRole("combobox", { name: "Service" });
     expect(serviceSelects.length).toBeGreaterThan(0);
     expect((serviceSelects[0] as HTMLSelectElement).value).toBe("service-1");
     expect(screen.getAllByRole("option", { name: "Functional Strength" }).length).toBeGreaterThan(0);
     expect(screen.queryByPlaceholderText("Functional Strength")).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("24")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Site timezone" })).toHaveValue("America/New_York");
   });
 
   it("renders automations placeholder page copy", async () => {

@@ -207,7 +207,7 @@ Evidence label legend used in this file:
   - Credit/Loyalty ledgers reference user and optional entitlement/booking/order.
   - Evidence status: Confirmed from repo (`prisma/schema.prisma`).
 - Constraints / uniqueness:
-  - `Booking(clientId, studioSessionId)` unique.
+  - Active bookings use migration-owned partial uniqueness on `Booking(clientId, studioSessionId)` where status is `PENDING` or `CONFIRMED`.
   - `Price.lookupKey` unique, `Price.stripePriceId` unique when present.
   - `Payment.stripeCheckoutSessionId` unique.
   - `CreditLedgerEntry.idempotencyKey` unique.

@@ -8,6 +8,8 @@ import type {
   CartComposition,
   CartNormalizedLine,
   CartPricingSummary,
+  CartReconciliationRemovedLine,
+  CartReconciliationResult,
   CartRepricedLine,
   CartResolvedCatalogPrice,
   CartValidationResult,
@@ -87,6 +89,87 @@ function hasAnyActiveSubscription(input: {
   now: Date;
 }): boolean {
   return input.snapshots.some((snapshot) => isActiveSubscriptionForCartConstraint(snapshot, input.now));
+}
+
+function resolveLineCatalogRejection(input: {
+  line: CartNormalizedLine;
+  catalogPrice: CartResolvedCatalogPrice | undefined;
+  now: Date;
+}): CartReconciliationRemovedLine["reason"] | null {
+  if (!input.catalogPrice || input.catalogPrice.productId !== input.line.productId) {
+    return "PRICE_NOT_ACTIVE";
+  }
+
+  if (!input.catalogPrice.productIsActive || input.catalogPrice.productIsArchived) {
+    return "PRODUCT_NOT_ACTIVE";
+  }
+
+  if (
+    !input.catalogPrice.priceIsActive ||
+    input.catalogPrice.priceIsArchived ||
+    !isActivePriceWindow({
+      now: input.now,
+      startsAt: input.catalogPrice.priceStartsAt,
+      endsAt: input.catalogPrice.priceEndsAt,
+    })
+  ) {
+    return "PRICE_NOT_ACTIVE";
+  }
+
+  if (!input.catalogPrice.checkoutEnabled) {
+    return "CHECKOUT_NOT_ENABLED";
+  }
+
+  return null;
+}
+
+export function reconcileCartLinesAgainstCatalog(input: {
+  rawLines: Array<{ productId: string; priceId: string; quantity: number }>;
+  catalogPricesById: Map<string, CartResolvedCatalogPrice>;
+  now: Date;
+}): CartReconciliationResult {
+  const canonical = buildCartHashCanonicalInput(input.rawLines);
+  const cartHash = computeCartHash(input.rawLines);
+  const normalizedLines: CartNormalizedLine[] = canonical.normalizedLines.map((line) => ({
+    productId: line.productId,
+    priceId: line.priceId,
+    quantity: line.quantity,
+  }));
+
+  const repricedLines: CartRepricedLine[] = [];
+  const removedLines: CartReconciliationRemovedLine[] = [];
+
+  for (const line of normalizedLines) {
+    const catalogPrice = input.catalogPricesById.get(line.priceId);
+    const rejection = resolveLineCatalogRejection({
+      line,
+      catalogPrice,
+      now: input.now,
+    });
+
+    if (rejection) {
+      removedLines.push({ ...line, reason: rejection });
+      continue;
+    }
+
+    if (!catalogPrice) {
+      continue;
+    }
+
+    repricedLines.push(
+      toRepricedLine({
+        line,
+        catalogPrice,
+      }),
+    );
+  }
+
+  return {
+    cartHash,
+    normalizedLines,
+    repricedLines,
+    removedLines,
+  };
 }
 
 export function validateCartAgainstCatalog(input: {

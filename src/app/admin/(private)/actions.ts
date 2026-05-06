@@ -42,6 +42,7 @@ import {
   upsertAdminClassScheduleConfig,
   updateAdminClass,
   updateAdminCancellationPeriodHours,
+  updateAdminSiteTimeZone,
   updateAdminLearningProgram,
   updateAdminLearningVideo,
   updateAdminPlan,
@@ -488,6 +489,10 @@ const siteWeeklyScheduleSchema = z
 
 const cancellationPeriodSchema = z.object({
   cancellationPeriodHours: z.coerce.number().int().positive(),
+});
+
+const siteTimeZoneSchema = z.object({
+  timeZone: z.string().trim().min(1),
 });
 
 function isChecked(formData: FormData, name: string): boolean {
@@ -2093,6 +2098,31 @@ export async function updateCancellationPeriodAction(formData: FormData) {
   revalidatePath(returnTo);
   revalidatePath("/");
   redirect(`${returnTo}?success=${encodeURIComponent("Cancellation period updated.")}`);
+}
+
+export async function updateSiteTimeZoneAction(formData: FormData) {
+  await assertAdminAccess();
+  const returnTo = "/admin/manage-site";
+
+  const parsed = siteTimeZoneSchema.safeParse({
+    timeZone: formData.get("timeZone"),
+  });
+
+  if (!parsed.success) {
+    redirectWithError(returnTo, "Select a valid site timezone.");
+  }
+
+  try {
+    await updateAdminSiteTimeZone(parsed.data.timeZone);
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(returnTo, "Select a valid site timezone.");
+  }
+
+  revalidatePath(returnTo);
+  revalidatePath("/");
+  revalidatePath("/kiosk");
+  redirect(`${returnTo}?success=${encodeURIComponent("Site timezone updated.")}`);
 }
 
 export async function uploadTeacherImageAction(formData: FormData) {

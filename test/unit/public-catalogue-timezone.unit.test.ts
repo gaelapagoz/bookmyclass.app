@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { addMonths, isValidDateKey, isValidMonthKey } from "../../src/lib/public-catalogue/timezone";
+import {
+  addMonths,
+  getDateRangeUtc,
+  getSiteDateKey,
+  getSiteTimeLabel,
+  isValidDateKey,
+  isValidMonthKey,
+} from "../../src/lib/public-catalogue/timezone";
+import { isValidIanaTimeZone, normalizeSiteTimeZone } from "../../src/lib/site-settings/site-timezone";
 
 describe("public catalogue timezone helpers", () => {
   it("validates month and date keys", () => {
@@ -13,5 +21,26 @@ describe("public catalogue timezone helpers", () => {
   it("adds months across year boundaries", () => {
     expect(addMonths("2026-12", 1)).toBe("2027-01");
     expect(addMonths("2026-01", -1)).toBe("2025-12");
+  });
+
+  it("validates IANA site timezones", () => {
+    expect(isValidIanaTimeZone("Europe/Brussels")).toBe(true);
+    expect(isValidIanaTimeZone("America/New_York")).toBe(true);
+    expect(() => normalizeSiteTimeZone("Not/AZone")).toThrow("INVALID_SITE_TIME_ZONE");
+  });
+
+  it("uses Brussels DST when converting local date boundaries", () => {
+    const range = getDateRangeUtc("2026-03-29", "Europe/Brussels");
+
+    expect(range.fromUtc.toISOString()).toBe("2026-03-28T23:00:00.000Z");
+    expect(range.toUtc.toISOString()).toBe("2026-03-29T22:00:00.000Z");
+  });
+
+  it("uses configured timezone for date keys around midnight", () => {
+    const instant = new Date("2026-04-15T22:30:00.000Z");
+
+    expect(getSiteDateKey(instant, "Europe/Brussels")).toBe("2026-04-16");
+    expect(getSiteDateKey(instant, "America/New_York")).toBe("2026-04-15");
+    expect(getSiteTimeLabel(instant, "America/New_York")).toBe("18:30");
   });
 });

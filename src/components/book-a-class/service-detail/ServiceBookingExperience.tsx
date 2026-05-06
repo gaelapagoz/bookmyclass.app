@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { addMonths, getStudioDateKey } from "../../../lib/public-catalogue/timezone";
+import { addMonths } from "../../../lib/public-catalogue/timezone";
 import { AvailabilityCalendar } from "./AvailabilityCalendar";
 import { SignInModal } from "./SignInModal";
 import { SlotList } from "./SlotList";
@@ -67,6 +67,7 @@ type ServiceBookingExperienceProps = {
   initialSelectedDate: string | null;
   initialSlots: Slot[];
   service: PublicServiceDetail;
+  todayDateKey: string;
 };
 
 export function ServiceBookingExperience({
@@ -76,6 +77,7 @@ export function ServiceBookingExperience({
   initialAvailabilityDays,
   initialSelectedDate,
   initialSlots,
+  todayDateKey,
 }: ServiceBookingExperienceProps) {
   const router = useRouter();
   const [monthKey, setMonthKey] = useState(initialMonthKey);
@@ -89,8 +91,6 @@ export function ServiceBookingExperience({
   const [joiningSlotId, setJoiningSlotId] = useState<string | null>(null);
   const [joinedWaitlistSlotIds, setJoinedWaitlistSlotIds] = useState<string[]>([]);
   const [signInTargetHref, setSignInTargetHref] = useState<string | null>(null);
-  const todayDateKey = getStudioDateKey(new Date());
-
   const fetchMonthAvailability = async (nextMonthKey: string) => {
     setIsCalendarLoading(true);
     setErrorMessage(null);

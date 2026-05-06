@@ -40,6 +40,7 @@ describe("ServiceBookingExperience", () => {
         initialAvailabilityDays={[]}
         initialSelectedDate={null}
         initialSlots={[]}
+        todayDateKey="2026-04-01"
       />,
     );
 
@@ -126,6 +127,7 @@ describe("ServiceBookingExperience", () => {
             waitlistSpotsLeft: 6,
           },
         ]}
+        todayDateKey="2099-04-01"
       />,
     );
 
@@ -214,7 +216,8 @@ describe("ServiceBookingExperience", () => {
         initialMonthKey="2026-04"
         initialAvailabilityDays={[]}
         initialSelectedDate={null}
-      initialSlots={[]}
+        initialSlots={[]}
+        todayDateKey="2026-04-10"
       />,
     );
 
@@ -224,9 +227,7 @@ describe("ServiceBookingExperience", () => {
       expect(screen.getByRole("heading", { name: "Availability for 2026-04-12" })).toBeInTheDocument();
     });
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining("/api/services/vinyasa-yoga/next-availability?from="),
-    );
+    expect(fetchSpy).toHaveBeenCalledWith("/api/services/vinyasa-yoga/next-availability?from=2026-04-10");
     expect(fetchSpy).toHaveBeenCalledWith("/api/services/vinyasa-yoga/slots?date=2026-04-12");
   });
 
@@ -308,6 +309,7 @@ describe("ServiceBookingExperience", () => {
             waitlistSpotsLeft: 1,
           },
         ]}
+        todayDateKey="2026-04-10"
       />,
     );
 
@@ -361,6 +363,7 @@ describe("ServiceBookingExperience", () => {
             waitlistSpotsLeft: 0,
           },
         ]}
+        todayDateKey="2026-04-10"
       />,
     );
 

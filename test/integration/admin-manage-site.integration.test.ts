@@ -7,10 +7,12 @@ import {
   createAdminSiteWeeklyScheduleEntry,
   deleteAdminSiteWeeklyScheduleEntry,
   getAdminCancellationPeriodHours,
+  getAdminSiteTimeZone,
   getAdminClientStats,
   listAdminSiteScheduleServiceOptions,
   listAdminSiteWeeklyScheduleEntries,
   updateAdminCancellationPeriodHours,
+  updateAdminSiteTimeZone,
   updateAdminSiteWeeklyScheduleEntry,
 } from "../../src/lib/admin/admin-service";
 import { prisma } from "./helpers/db";
@@ -184,13 +186,20 @@ describe("admin manage-site service", () => {
     expect(await getAdminCancellationPeriodHours()).toBe(36);
 
     await expect(updateAdminCancellationPeriodHours(0)).rejects.toThrow("INVALID_CANCELLATION_CUTOFF_HOURS");
+
+    const updatedTimeZone = await updateAdminSiteTimeZone("America/New_York");
+    expect(updatedTimeZone).toBe("America/New_York");
+    expect(await getAdminSiteTimeZone()).toBe("America/New_York");
+    await expect(updateAdminSiteTimeZone("Not/AZone")).rejects.toThrow("INVALID_SITE_TIME_ZONE");
   });
 
-  it("returns empty schedule and default cancellation period when config rows are missing", async () => {
+  it("returns empty schedule and default site settings when config rows are missing", async () => {
     const rows = await listAdminSiteWeeklyScheduleEntries();
     expect(rows).toEqual([]);
 
     await prisma.bookingPolicy.deleteMany({ where: { scope: "GLOBAL" } });
     await expect(getAdminCancellationPeriodHours()).resolves.toBe(24);
+    await prisma.siteSettings.deleteMany({ where: { scope: "GLOBAL" } });
+    await expect(getAdminSiteTimeZone()).resolves.toBe("Europe/Brussels");
   });
 });

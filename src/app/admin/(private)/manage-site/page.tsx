@@ -4,15 +4,18 @@ import {
   createSiteWeeklyScheduleEntryAction,
   deleteSiteWeeklyScheduleEntryAction,
   updateCancellationPeriodAction,
+  updateSiteTimeZoneAction,
   updateSiteWeeklyScheduleEntryAction,
   uploadAgendaPdfAction,
 } from "@/app/admin/(private)/actions";
 import {
   getAdminCancellationPeriodHours,
+  getAdminSiteTimeZone,
   listAdminSiteScheduleServiceOptions,
   listAdminSiteWeeklyScheduleEntries,
 } from "@/lib/admin/admin-service";
 import { getActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
+import { SITE_TIME_ZONE_OPTIONS } from "@/lib/site-settings/site-settings-service";
 
 type SearchParams = Promise<{ error?: string; success?: string }>;
 export const dynamic = "force-dynamic";
@@ -31,10 +34,11 @@ export default async function AdminManageSitePage({ searchParams }: { searchPara
   const { error, success } = await searchParams;
 
   try {
-    const [agendaPdf, scheduleEntries, cancellationPeriodHours, serviceOptions] = await Promise.all([
+    const [agendaPdf, scheduleEntries, cancellationPeriodHours, siteTimeZone, serviceOptions] = await Promise.all([
       getActiveAgendaPdfDocument(),
       listAdminSiteWeeklyScheduleEntries(),
       getAdminCancellationPeriodHours(),
+      getAdminSiteTimeZone(),
       listAdminSiteScheduleServiceOptions(),
     ]);
     const hasServiceOptions = serviceOptions.length > 0;
@@ -252,6 +256,32 @@ export default async function AdminManageSitePage({ searchParams }: { searchPara
                 defaultValue={cancellationPeriodHours}
                 className="mt-1 block w-40 rounded-md border border-[#d3dbe5] bg-white px-3 py-2 text-sm"
               />
+            </label>
+            <button type="submit" className="rounded-md bg-[#1d3652] px-4 py-2 text-sm text-white hover:opacity-90">
+              Save
+            </button>
+          </form>
+        </section>
+
+        <section className="rounded-xl border border-[#d3dbe5] bg-white p-4">
+          <h2 className="text-lg font-semibold text-[#1f2735]">Configure Site Timezone</h2>
+          <p className="mt-1 text-sm text-[#4b5a72]">Set the timezone used for availability dates, kiosk labels, and check-in windows.</p>
+
+          <form action={updateSiteTimeZoneAction} className="mt-3 flex flex-wrap items-end gap-3">
+            <label className="text-sm text-[#334155]">
+              Site timezone
+              <select
+                name="timeZone"
+                required
+                defaultValue={siteTimeZone}
+                className="mt-1 block w-64 rounded-md border border-[#d3dbe5] bg-white px-3 py-2 text-sm"
+              >
+                {SITE_TIME_ZONE_OPTIONS.map((timeZone) => (
+                  <option key={timeZone} value={timeZone}>
+                    {timeZone}
+                  </option>
+                ))}
+              </select>
             </label>
             <button type="submit" className="rounded-md bg-[#1d3652] px-4 py-2 text-sm text-white hover:opacity-90">
               Save

@@ -216,4 +216,48 @@ describe("cart validation service", () => {
     expect(result.rejection.code).toBe("ACTIVE_SUBSCRIPTION_ALREADY_EXISTS");
     expect(result.rejection.message).toBe("You already have an active subscription.");
   });
+
+  it("reconciles stale cart lines from server catalog truth", async () => {
+    const service = createCartValidationService({
+      getCatalogPricesByIds: async () => [
+        buildCatalogPrice({
+          priceId: "price_active",
+          productId: "prod_active",
+          priceType: PriceType.ONE_TIME,
+          productName: "Fresh Pack",
+          priceName: "Fresh Price",
+          unitAmountMinor: 4200,
+        }),
+        buildCatalogPrice({
+          priceId: "price_expired",
+          productId: "prod_expired",
+          priceType: PriceType.ONE_TIME,
+          priceEndsAt: new Date("2026-04-18T10:00:00.000Z"),
+        }),
+      ],
+      getClientSubscriptionSnapshots: async () => [],
+      now: () => new Date("2026-04-19T10:00:00.000Z"),
+    });
+
+    const result = await service.reconcile({
+      lines: [
+        { productId: "prod_active", priceId: "price_active", quantity: 1 },
+        { productId: "prod_deleted", priceId: "price_deleted", quantity: 1 },
+        { productId: "prod_expired", priceId: "price_expired", quantity: 1 },
+      ],
+    });
+
+    expect(result.repricedLines).toEqual([
+      expect.objectContaining({
+        productId: "prod_active",
+        priceId: "price_active",
+        productName: "Fresh Pack",
+        unitAmountMinor: 4200,
+      }),
+    ]);
+    expect(result.removedLines).toEqual([
+      expect.objectContaining({ productId: "prod_deleted", priceId: "price_deleted", reason: "PRICE_NOT_ACTIVE" }),
+      expect.objectContaining({ productId: "prod_expired", priceId: "price_expired", reason: "PRICE_NOT_ACTIVE" }),
+    ]);
+  });
 });

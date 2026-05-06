@@ -59,7 +59,9 @@
       "PowerShell(python \"c:\\\\Dev\\\\studio.saas.platform\\\\convert_images.py\")",
       "Bash(ssh root@bookmyclass-prod \"cd /var/www/public/images/homesite && mogrify -format jpg -quality 85 *.png && ls -lh *.jpg | awk '{print \\\\$5, \\\\$9}'\")",
       "Bash(scp c:/Dev/studio.saas.platform/homesite/client-experience.html c:/Dev/studio.saas.platform/homesite/studio-operations.html root@bookmyclass-prod:/var/www/bookmyclass-homesite/)",
-      "Bash(ssh root@bookmyclass-prod \"rm /var/www/public/images/homesite/*.png && ls /var/www/public/images/homesite/\")"
+      "Bash(ssh root@bookmyclass-prod \"rm /var/www/public/images/homesite/*.png && ls /var/www/public/images/homesite/\")",
+      "Bash(Get-Content \"C:\\\\Users\\\\gaela\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Dev-studio-saas-platform\\\\1e2a6ecc-c44f-42a0-94a4-1f91e3a021a1\\\\tasks\\\\bltu0navk.output\")",
+      "Bash(Select-Object -Last 15)"
     ],
     "additionalDirectories": [
       "c:\\Dev\\studio.saas.platform\\public\\images\\homesite"

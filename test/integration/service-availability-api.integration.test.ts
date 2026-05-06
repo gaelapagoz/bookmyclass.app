@@ -6,6 +6,7 @@ import { GET as getServiceAvailability } from "../../src/app/api/services/[slug]
 import { GET as getServiceSlots } from "../../src/app/api/services/[slug]/slots/route";
 import { GET as getNextAvailability } from "../../src/app/api/services/[slug]/next-availability/route";
 import { getStudioDateKey, getStudioMonthKey } from "../../src/lib/public-catalogue/timezone";
+import { clearPublicCatalogueAvailabilityCaches } from "../../src/lib/public-catalogue/availability-service";
 import { prisma } from "./helpers/db";
 import { createClassCategory, createClassType, createClient } from "./helpers/factories";
 import { resetDb } from "./helpers/reset-db";
@@ -168,6 +169,7 @@ async function createAvailabilityFixture() {
 describe("service availability api", () => {
   beforeEach(async () => {
     await resetDb();
+    clearPublicCatalogueAvailabilityCaches();
   });
 
   it("returns service details by slug", async () => {
@@ -219,6 +221,68 @@ describe("service availability api", () => {
     expect(body.days.length).toBeGreaterThanOrEqual(2);
     expect(body.days.some((day) => day.date === fixture.firstDateKey && day.hasAvailability)).toBe(true);
     expect(body.days.some((day) => day.date === fixture.secondDateKey && !day.hasAvailability)).toBe(true);
+  });
+
+  it("uses configured timezone for public availability date keys around midnight", async () => {
+    const fixture = await createAvailabilityFixture();
+    await prisma.siteSettings.create({
+      data: {
+        scope: "GLOBAL",
+        timeZone: "America/New_York",
+      },
+    });
+    clearPublicCatalogueAvailabilityCaches();
+
+    const category = await prisma.classCategory.findFirstOrThrow({ where: { slug: "yoga" } });
+    const service = await prisma.classType.findFirstOrThrow({ where: { slug: fixture.serviceSlug } });
+    const teacher = await prisma.user.findFirstOrThrow({ where: { role: Role.TEACHER } });
+    const template = await prisma.classTemplate.findFirstOrThrow({ where: { classTypeId: service.id } });
+    const startsAt = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 2, 10, 1, 30, 0));
+    const previousLocalDateKey = getStudioDateKey(new Date(startsAt.getTime() - 24 * 60 * 60 * 1000));
+
+    expect(category.id).toBeTruthy();
+    await prisma.studioSession.create({
+      data: {
+        classTemplateId: template.id,
+        classTypeId: service.id,
+        teacherId: teacher.id,
+        title: "New York Late Flow",
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
+        capacity: 8,
+        isPublished: true,
+        status: StudioSessionStatus.SCHEDULED,
+      },
+    });
+
+    const response = await getServiceSlots(
+      new Request(`http://localhost/api/services/${fixture.serviceSlug}/slots?date=${previousLocalDateKey}`),
+      { params: Promise.resolve({ slug: fixture.serviceSlug }) },
+    );
+    const body = (await response.json()) as {
+      slots: Array<{ date: string; startTime: string }>;
+      timezone: string;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.timezone).toBe("America/New_York");
+    expect(body.slots.some((slot) => slot.date === previousLocalDateKey && slot.startTime === "21:30")).toBe(true);
+
+    const nextResponse = await getNextAvailability(
+      new Request(`http://localhost/api/services/${fixture.serviceSlug}/next-availability?from=${previousLocalDateKey}`),
+      { params: Promise.resolve({ slug: fixture.serviceSlug }) },
+    );
+    const nextBody = (await nextResponse.json()) as {
+      next: { date: string; startTime: string } | null;
+      timezone: string;
+    };
+
+    expect(nextResponse.status).toBe(200);
+    expect(nextBody.timezone).toBe("America/New_York");
+    expect(nextBody.next).toMatchObject({
+      date: previousLocalDateKey,
+      startTime: "21:30",
+    });
   });
 
   it("returns slots for an available day and empty list for a day without sessions", async () => {

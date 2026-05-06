@@ -103,6 +103,7 @@ vi.mock("@/lib/admin/admin-service", () => ({
   updateAdminSiteWeeklyScheduleEntry: vi.fn(),
   deleteAdminSiteWeeklyScheduleEntry: vi.fn(),
   updateAdminCancellationPeriodHours: vi.fn(),
+  updateAdminSiteTimeZone: vi.fn(),
   removeSessionAttendeeByManager: vi.fn(),
   resolveAdminActorUser: vi.fn(),
   updateAdminClassImage: vi.fn(),
@@ -150,6 +151,7 @@ import {
   updateAdminSiteWeeklyScheduleEntry,
   deleteAdminSiteWeeklyScheduleEntry,
   updateAdminCancellationPeriodHours,
+  updateAdminSiteTimeZone,
   upsertAdminClassScheduleConfig,
   removeSessionAttendeeByManager,
   resolveAdminActorUser,
@@ -177,6 +179,7 @@ import {
   removeSessionAttendeeAction,
   saveMarketingCampaignFlowDraftAction,
   updateCancellationPeriodAction,
+  updateSiteTimeZoneAction,
   updateLearningProgramAction,
   updateLearningVideoAction,
   updatePlanAction,
@@ -1097,6 +1100,32 @@ describe("admin actions", () => {
       "NEXT_REDIRECT:/admin/manage-site?success=Cancellation%20period%20updated.",
     );
     expect(updateAdminCancellationPeriodHours).toHaveBeenCalledWith(36);
+  });
+
+  it("updates site timezone when payload is valid", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(updateAdminSiteTimeZone).mockResolvedValue("America/New_York");
+
+    const formData = new FormData();
+    formData.set("timeZone", "America/New_York");
+
+    await expect(updateSiteTimeZoneAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/manage-site?success=Site%20timezone%20updated.",
+    );
+    expect(updateAdminSiteTimeZone).toHaveBeenCalledWith("America/New_York");
+  });
+
+  it("rejects invalid site timezone payload", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(updateAdminSiteTimeZone).mockRejectedValue(new Error("INVALID_SITE_TIME_ZONE"));
+
+    const formData = new FormData();
+    formData.set("timeZone", "Not/AZone");
+
+    await expect(updateSiteTimeZoneAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/manage-site?error=Select%20a%20valid%20site%20timezone.",
+    );
+    expect(updateAdminSiteTimeZone).toHaveBeenCalledWith("Not/AZone");
   });
 
   it("rejects addSessionAttendeeAction when CSRF check fails", async () => {

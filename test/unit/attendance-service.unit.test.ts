@@ -7,6 +7,9 @@ const { dbMock } = vi.hoisted(() => ({
       findFirst: vi.fn(),
       create: vi.fn(),
     },
+    siteSettings: {
+      findUnique: vi.fn(),
+    },
     booking: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
@@ -42,6 +45,7 @@ import {
 describe("attendance service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dbMock.siteSettings.findUnique.mockResolvedValue({ timeZone: "Europe/Brussels" });
   });
 
   it("returns allowed staff transitions from current attendance status", () => {
@@ -88,6 +92,22 @@ describe("attendance service", () => {
       checkInOpensMinutesBefore: 15,
       checkInClosesMinutesAfter: 10,
     })).toBe(true);
+  });
+
+  it("labels check-in windows with the configured timezone", () => {
+    const start = new Date("2026-04-15T22:30:00.000Z");
+
+    const brusselsWindow = getSessionCheckInWindow(start, {
+      checkInOpensMinutesBefore: 15,
+      checkInClosesMinutesAfter: 10,
+    }, "Europe/Brussels");
+    const newYorkWindow = getSessionCheckInWindow(start, {
+      checkInOpensMinutesBefore: 15,
+      checkInClosesMinutesAfter: 10,
+    }, "America/New_York");
+
+    expect(brusselsWindow.opensAtLabel).toBe("00:15");
+    expect(newYorkWindow.opensAtLabel).toBe("18:15");
   });
 
   it("creates a check-in on first valid self check-in", async () => {
@@ -226,6 +246,40 @@ describe("attendance service", () => {
         }),
       }),
     );
+  });
+
+  it("rejects self check-in outside the window with configured site timezone loaded", async () => {
+    dbMock.siteSettings.findUnique.mockResolvedValue({ timeZone: "America/New_York" });
+    dbMock.bookingPolicy.findFirst.mockResolvedValue({
+      checkInOpensMinutesBefore: 15,
+      checkInClosesMinutesAfter: 10,
+    });
+
+    dbMock.booking.findUnique.mockResolvedValue({
+      id: "booking-1",
+      clientId: "client-1",
+      status: "CONFIRMED",
+      studioSession: {
+        startsAt: new Date(Date.now() + 60 * 60 * 1000),
+        status: "SCHEDULED",
+        classType: {
+          category: { slug: "collective-classes" },
+        },
+      },
+      attendanceRecord: null,
+    });
+
+    await expect(checkInBooking({
+      bookingId: "booking-1",
+      clientId: "client-1",
+      source: AttendanceSource.DASHBOARD,
+    })).rejects.toThrow("CHECKIN_WINDOW_CLOSED");
+
+    expect(dbMock.siteSettings.findUnique).toHaveBeenCalledWith({
+      where: { scope: "GLOBAL" },
+      select: { timeZone: true },
+    });
+    expect(dbMock.attendanceRecord.create).not.toHaveBeenCalled();
   });
 
   it("blocks cancellation when an attendance record exists", async () => {

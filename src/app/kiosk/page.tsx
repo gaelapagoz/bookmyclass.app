@@ -57,11 +57,6 @@ export default async function KioskPage() {
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {upcomingSessions.map((session) => {
-              const displayTime = session.startsAt.toLocaleString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-              });
-
               return (
                 <Link
                   key={session.id}
@@ -73,7 +68,7 @@ export default async function KioskPage() {
                     <p className="mt-1 text-sm text-[#4b5a72]">{session.className}</p>
                   </div>
                   <div className="mt-3 space-y-1 text-sm text-[#4b5a72]">
-                    <p>{displayTime}</p>
+                    <p>{session.timeLabel}</p>
                     <p>{session.confirmedBookingsCount} bookings</p>
                   </div>
                 </Link>
@@ -98,12 +93,7 @@ export default async function KioskPage() {
               </div>
               <div className="mt-3 space-y-1 text-sm text-[#4b5a72]">
                 <p>
-                  {nextUpcomingSession.startsAt.toLocaleString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                  {nextUpcomingSession.dateTimeLabel}
                 </p>
                 <p>{nextUpcomingSession.confirmedBookingsCount} bookings</p>
               </div>

@@ -40,6 +40,7 @@ import {
 import { normalizeBookingCancellationWindowHours } from "@/lib/booking/cancellation-policy";
 import { assertLearningImagePath } from "@/lib/learning/image-paths";
 import { assertSafeMediaPublicPath, getLocalMediaRenderState, listLearningMediaLibraryImages } from "@/lib/media";
+import { getSiteTimeZone, updateSiteTimeZone } from "@/lib/site-settings/site-settings-service";
 import {
   bookingDraftActiveBookingFilter,
   countActiveBookingsForSession,
@@ -4437,6 +4438,14 @@ export async function updateAdminCancellationPeriodHours(hours: number): Promise
   });
 
   return normalizeBookingCancellationWindowHours(policy.cancellationCutoffHours);
+}
+
+export async function getAdminSiteTimeZone(): Promise<string> {
+  return getSiteTimeZone();
+}
+
+export async function updateAdminSiteTimeZone(timeZone: string): Promise<string> {
+  return updateSiteTimeZone(timeZone);
 }
 
 export type AdminAttendanceWindowPolicy = {

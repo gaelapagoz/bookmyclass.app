@@ -1,6 +1,28 @@
 import type { Role } from "@prisma/client";
 
 const DEFAULT_AUTH_CALLBACK_PATH = "/dashboard";
+const LOCALHOST_CALLBACK_PATTERN = /(?:https?:)?\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:[/?#]|$)/i;
+
+function decodeCallbackCandidate(value: string): string {
+  let current = value;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const decoded = decodeURIComponent(current);
+      if (decoded === current) {
+        return current;
+      }
+      current = decoded;
+    } catch {
+      return current;
+    }
+  }
+
+  return current;
+}
+
+function containsLocalhostCallback(value: string): boolean {
+  return LOCALHOST_CALLBACK_PATTERN.test(decodeCallbackCandidate(value));
+}
 
 export function getSafeCallbackPath(
   rawValue: unknown,
@@ -16,6 +38,10 @@ export function getSafeCallbackPath(
   }
 
   if (candidate.startsWith("//")) {
+    return fallback;
+  }
+
+  if (containsLocalhostCallback(candidate)) {
     return fallback;
   }
 
@@ -42,4 +68,3 @@ export function getPostSignInRedirectUrl(role?: Role): string {
       return DEFAULT_AUTH_CALLBACK_PATH;
   }
 }
-
