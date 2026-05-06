@@ -23,6 +23,7 @@ test.describe("staff entry via /admin", () => {
     await expect(page.getByText("does not have staff access", { exact: false })).toBeVisible();
   });
 
+  // @covers admin-non-admin-denied
   test("teacher cannot access admin private area", async ({ page }) => {
     await signInTeacher(page, SEEDED_TEACHER);
     await page.goto("/admin/dashboard");

@@ -38,7 +38,12 @@ Notes:
 
 ## Run E2E
 
+- `npm run qa:e2e:coverage`: validate matrix coverage tags before running the expensive browser suite
 - `npm run test:e2e`
+
+`qa:e2e:coverage` scans `test/e2e/**/*.spec.ts` for `@covers` and `@covers-partial`
+tags and validates them against `qa/e2e-coverage-matrix.json`. Unknown or malformed
+tags fail the command.
 
 ## Test-Only Helpers
 

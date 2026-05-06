@@ -139,7 +139,7 @@ test("admin list pages load with stable headings", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Automations" })).toBeVisible();
 });
 
-// @covers-partial admin-session-edit-persists
+// @covers admin-manual-attendee-add-eligible
 test("admin can manually add an eligible client from session edit roster", async ({ page }) => {
   await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_WITH_CREDITS.email);
   await signInAdmin(page, SEEDED_ADMIN);
@@ -163,7 +163,34 @@ test("admin can manually add an eligible client from session edit roster", async
   await expect(page.getByTestId(/admin-attendee-/).getByText("E2E Client Credits")).toBeVisible();
 });
 
-// @covers-partial admin-sessions-list-loads
+// @covers admin-manual-attendee-override
+test("admin can manually add a client using audited no-credit override", async ({ page }) => {
+  await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_NO_CREDITS.email);
+  await signInAdmin(page, SEEDED_ADMIN);
+
+  await page.goto("/admin/sessions");
+  const sessionLink = page.getByRole("link", { name: /E2E Flow Class - E2E Session/ }).first();
+  if ((await sessionLink.count()) === 0) {
+    await page.getByRole("link", { name: "Next week" }).click();
+  }
+  await expect(sessionLink).toBeVisible();
+  await sessionLink.click();
+
+  const clientOptionValue = await page
+    .getByRole("option", { name: /client\.nocredits\.e2e@bookmyclass\.local/i })
+    .getAttribute("value");
+  expect(clientOptionValue).toBeTruthy();
+  await page.getByRole("combobox", { name: "Client" }).selectOption(clientOptionValue as string);
+  await page.getByLabel(/Manual no-credit override reason/i).fill("E2E audited override reason");
+  await page.getByRole("button", { name: "Add attendee" }).click();
+
+  await expect(page.getByText("Attendee added.")).toBeVisible();
+  const attendee = page.getByTestId(/admin-attendee-/).filter({ hasText: "E2E Client No Credits" });
+  await expect(attendee).toBeVisible();
+  await expect(attendee.getByText(/Manual override.*no credit used/i)).toBeVisible();
+});
+
+// @covers admin-waitlist-count-readonly
 test("admin calendar shows waitlist count without manual waitlist controls", async ({ page }) => {
   await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_NO_CREDITS.email);
   const prepared = await prepareWaitlistSessionForTest(page.request, {

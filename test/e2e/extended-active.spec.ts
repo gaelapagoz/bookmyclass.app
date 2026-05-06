@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { signInAdmin } from "./support/auth";
 import { SEEDED_ADMIN } from "./support/constants";
 
-// @covers-partial customer-protected-learning-access
+// @covers public-learning-course-preview
 test("online learning navigation flow", async ({ page }) => {
   await page.goto("/learning");
   await expect(page.getByRole("heading", { name: "Online Learning Programs" })).toBeVisible();
@@ -48,7 +48,7 @@ test("inbox review flow", async ({ page }) => {
   await expect(firstRow.getByRole("combobox")).toHaveValue("READ");
 });
 
-// @covers customer-contact-form-submit
+// @covers public-contact-form-submit
 test("public contact form submit succeeds", async ({ page }) => {
   await page.goto("/");
   await page.getByPlaceholder("Name").fill("E2E Contact");

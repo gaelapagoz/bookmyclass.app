@@ -113,34 +113,22 @@ test.describe("critical client flows", () => {
 
   // @covers customer-booking-draft-creation
   // @covers customer-payment-options-shown
-  // @covers customer-booking-checkout-starts
-  // @covers customer-booking-success-return-flow
-  // @covers-partial customer-browse-class-catalogue
-  // @covers-partial customer-service-detail-loads
-  // @covers-partial customer-availability-browsing
-  // @covers cross-stripe-reconciliation-works
-  // @covers cross-webhook-final-state-visible
+  // @covers customer-apply-plan-entitlement
+  // @covers customer-booking-confirmed-screen
+  // @covers-partial public-class-catalogue-loads
+  // @covers-partial public-service-detail-availability
   test("book class with entitlement", async ({ page }) => {
     await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_WITH_CREDITS.email);
     await signInClient(page, SEEDED_CLIENT_WITH_CREDITS);
 
     await openBookingFormFromFirstAvailableSlot(page, SEEDED_SERVICE_SLUG, 0);
-    await submitBookingWithPaymentOption(page, /Single Session/i);
+    await submitBookingWithPaymentOption(page, /Use Existing Plan/i);
 
-    await expect(page).toHaveURL(new RegExp(`/book-a-class/${SEEDED_SERVICE_SLUG}/payment/success\\?bookingId=.*&session_id=`));
-
-    const successUrl = new URL(page.url());
-    const bookingId = successUrl.searchParams.get("bookingId");
-    const checkoutSessionId = successUrl.searchParams.get("session_id");
+    await expect(page).toHaveURL(new RegExp(`/book-a-class/${SEEDED_SERVICE_SLUG}/confirmed\\?bookingId=`));
+    const bookingId = new URL(page.url()).searchParams.get("bookingId");
     expect(bookingId).toBeTruthy();
-    expect(checkoutSessionId).toBeTruthy();
-
-    await completeStripeCheckoutForTest(page.request, checkoutSessionId as string);
-    await page.goto(
-      `/book-a-class/${SEEDED_SERVICE_SLUG}/payment/success?bookingId=${encodeURIComponent(bookingId as string)}&session_id=${encodeURIComponent(checkoutSessionId as string)}`,
-    );
-
-    await expect(page.getByRole("heading", { name: "Payment Confirmed" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Booking Confirmed" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Booking Summary" })).toBeVisible();
   });
 
   // @covers customer-booking-draft-creation
@@ -148,9 +136,10 @@ test.describe("critical client flows", () => {
   // @covers customer-booking-checkout-starts
   // @covers customer-booking-success-return-flow
   // @covers customer-booking-confirmed-screen
-  // @covers-partial customer-browse-class-catalogue
-  // @covers-partial customer-service-detail-loads
-  // @covers-partial customer-availability-browsing
+  // @covers-partial public-class-catalogue-loads
+  // @covers-partial public-service-detail-availability
+  // @covers cross-stripe-reconciliation-works
+  // @covers cross-webhook-final-state-visible
   test("book class via Stripe checkout", async ({ page }) => {
     await signInClient(page, { email: signupEmail, password: E2E_PASSWORD });
 
@@ -174,6 +163,7 @@ test.describe("critical client flows", () => {
     await expect(page.getByRole("heading", { name: "Booking Summary" })).toBeVisible();
   });
 
+  // @covers customer-dashboard-booking-membership-state
   test("dashboard shows booking and subscription state", async ({ page }) => {
     await signInClient(page, { email: signupEmail, password: E2E_PASSWORD });
     await page.goto("/dashboard/membership");
@@ -261,6 +251,7 @@ test.describe("critical client flows", () => {
     await expect(page.getByText("Waitlist entry cancelled.")).toBeVisible();
   });
 
+  // @covers customer-dashboard-check-in
   test("dashboard self check-in succeeds within window", async ({ page }) => {
     await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_WITH_CREDITS.email);
     const prepared = await prepareCheckInWindowBookingForTest(page.request, {

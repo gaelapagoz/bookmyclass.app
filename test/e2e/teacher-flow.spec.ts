@@ -6,9 +6,17 @@ import {
   createUnassignedTeacherSessionForTest,
   deactivateUserForTest,
   prepareCheckInWindowBookingForTest,
+  prepareWaitlistSessionForTest,
   reactivateUserForTest,
 } from "./support/e2e-api";
-import { E2E_PASSWORD, SEEDED_ADMIN, SEEDED_CLIENT_NO_CREDITS, SEEDED_CLIENT_WITH_CREDITS, SEEDED_TEACHER } from "./support/constants";
+import {
+  E2E_PASSWORD,
+  SEEDED_ADMIN,
+  SEEDED_CLIENT_NO_CREDITS,
+  SEEDED_CLIENT_WITH_CREDITS,
+  SEEDED_SERVICE_SLUG,
+  SEEDED_TEACHER,
+} from "./support/constants";
 
 test.describe("teacher flow", () => {
   test.describe.configure({ mode: "serial" });
@@ -71,6 +79,7 @@ test.describe("teacher flow", () => {
     await expect(page.getByText("Attendee added.")).toHaveCount(0);
   });
 
+  // @covers teacher-kiosk-checkin
   test("teacher can check in a client from kiosk for a selected session", async ({ page }) => {
     const isolatedClientEmail = `e2e.kiosk.${Date.now()}@example.test`;
     const prepared = await prepareCheckInWindowBookingForTest(page.request, {
@@ -164,6 +173,7 @@ test.describe("teacher flow", () => {
     await expect(attendeeRow.getByText("Attendance: ATTENDED")).toBeVisible();
   });
 
+  // @covers teacher-assigned-session-boundary
   test("teacher cannot manage another teacher class roster", async ({ page }) => {
     await signInTeacher(page, SEEDED_TEACHER);
     const unassignedSessionId = await createUnassignedTeacherSessionForTest(page.request);
@@ -171,6 +181,39 @@ test.describe("teacher flow", () => {
     await page.goto(`/teacher/sessions/${encodeURIComponent(unassignedSessionId)}`);
     await expect(page).toHaveURL(/\/teacher\/sessions\?error=/);
     await expect(page.getByRole("heading", { name: "My Sessions" })).toBeVisible();
+  });
+
+  // @covers teacher-waitlist-count-readonly
+  test("teacher calendar shows waitlist count without manual waitlist controls", async ({ page }) => {
+    await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_NO_CREDITS.email);
+    const prepared = await prepareWaitlistSessionForTest(page.request, {
+      clientEmail: SEEDED_CLIENT_NO_CREDITS.email,
+      serviceSlug: SEEDED_SERVICE_SLUG,
+    });
+
+    await signInClient(page, SEEDED_CLIENT_NO_CREDITS);
+    await page.goto(`/book-a-class/${prepared.serviceSlug}`);
+    const selectPreparedDateButton = page.getByRole("button", { name: `Select ${prepared.dateKey}` });
+    if ((await selectPreparedDateButton.count()) === 0) {
+      await page.getByRole("button", { name: "Show next month" }).click();
+    }
+    await page.getByRole("button", { name: `Select ${prepared.dateKey}` }).click();
+    await page.getByTestId(`service-slot-${prepared.sessionId}`).getByRole("button", { name: /Join waitlist/i }).click();
+    await expect(page.getByText("You have been added to the waitlist.")).toBeVisible();
+
+    await page.context().clearCookies();
+    await signInTeacher(page, SEEDED_TEACHER);
+    await page.goto(`/teacher/sessions?week=${prepared.dateKey}`);
+
+    const sessionLink = page
+      .locator("a[href*='/teacher/sessions/']")
+      .filter({ has: page.getByText("Waitlist: 1") })
+      .first();
+
+    await expect(sessionLink).toBeVisible();
+    await expect(sessionLink.getByText("Waitlist: 1")).toBeVisible();
+    await expect(page.getByRole("button", { name: /join waitlist/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /cancel waitlist/i })).toHaveCount(0);
   });
 
   // @covers teacher-client-blocked

@@ -1,61 +1,100 @@
 # E2E Inventory (Production-Critical)
 
-This inventory defines the production-launch Playwright scope for release-blocking and safety-critical flows.
+This inventory defines the local Playwright coverage matrix for active, launch-relevant runtime flows.
 
 ## Scope Rules
 
-- Include only active runtime flows confirmed in `docs/00_01_system_baseline.md`.
-- Exclude modeled-but-inactive flows for this pass.
-- No-show is explicitly out of scope for this pass.
+- Use current code as the primary source of truth.
+- Include active public, customer, admin, teacher, and cross-app flows that are deterministic enough for local Playwright.
+- Exclude roadmap, operator-only, UAT-only, manual runbook, and schema-only behavior.
+- Do not add `@covers` tags unless a spec genuinely exercises the matrix item.
+- Keep no-show runtime operations out of the matrix until active runtime code exposes a deterministic flow.
+- Keep broad spam/rate-limit behavior out of the matrix unless the specific flow is deterministic and low-maintenance in E2E.
 
-## Smoke
+## Matrix Source
 
-1. Public homepage loads.
-2. Admin sign-in works.
-3. Client sign-in works.
+The executable matrix lives in `qa/e2e-coverage-matrix.json`.
 
-## Critical
+Each item has:
 
-### Client
+- stable `id`
+- `area`: `public`, `customer`, `admin`, `teacher`, or `cross`
+- `risk`: `critical`, `high`, `medium`, or `low`
+- `description`
 
-1. Sign up -> verify email -> first login.
-2. Buy subscription product via Stripe checkout handoff and completion.
-3. Book class using existing entitlement.
-4. Book class via Stripe checkout handoff and completion.
-5. Dashboard shows booking and membership state.
-6. Cancel booking when cancellation window allows it.
-7. Dashboard self check-in within check-in window.
-8. Client blocked from staff-only kiosk routes.
-9. Full class waitlist join from public booking UI and waitlist cancellation from dashboard.
+Coverage tags are parsed from `test/e2e/**/*.spec.ts` by `scripts/e2e-coverage-report.ts`.
+
+## Active Matrix Areas
+
+### Public
+
+- Homepage entry points.
+- Public class catalogue.
+- Public service detail and availability.
+- Public learning catalogue/course preview with anonymous video gate.
+- Public contact form submit.
+
+### Customer
+
+- Sign up, email verification, sign in, and protected dashboard guard.
+- Booking draft, payment options, existing-entitlement confirmation, Stripe checkout, success reconciliation, and confirmation screens.
+- Subscription/product catalogue, cart checkout, success reconciliation, membership state, and billing portal initiation.
+- Dashboard booking and membership state.
+- Booking cancellation before and after cutoff.
+- Waitlist join/cancel from customer UI.
+- Dashboard self check-in.
+- Password reset initiation and single-use token completion.
+- Profile page.
+- Customer block from staff kiosk routes.
 
 ### Admin
 
-1. Create teacher user.
-2. Create booking service.
-3. Update booking service.
-4. Create calendar session.
-5. Update calendar session.
-6. Kiosk access for staff check-in oversight.
-7. Attendance finalization from session detail.
-8. Calendar shows active waitlist count when present (read-only, no manual waitlist controls).
-9. Manual attendee add from session detail requires eligible credit or qualifying subscription.
+- Staff sign-in, private-route guard, and non-admin denial.
+- Dashboard and operational list pages.
+- User, service/class, and session create/update flows.
+- Booking, plan/product, subscription, online learning, inbox, and marketing surfaces.
+- Kiosk access and attendance finalization.
+- Read-only waitlist count visibility.
+- Manual attendee add for eligible clients.
+- Audited manual no-credit attendee override.
 
 ### Teacher
 
-1. Kiosk session selection and check-in for collective classes.
-2. Kiosk exit requires password re-entry.
-3. Kiosk check-in blocked outside window.
-4. Private class sessions excluded from kiosk self check-in flow.
-5. Session calendar shows active waitlist count when present (read-only).
-6. Session roster add is allowed only on assigned sessions and still enforces eligible credit or qualifying subscription.
+- Teacher route guard for anonymous/client users.
+- Teacher sign-in and route access.
+- DB-backed teacher access revocation.
+- Assigned sessions calendar and session roster detail.
+- Assigned-session roster mutation.
+- Cross-teacher session boundary enforcement.
+- Read-only waitlist count visibility.
+- Staff attendance marking.
+- Kiosk check-in, check-in-window blocks, private-class exclusion, exit password re-entry, and exit lockout.
+- Profile page.
 
-## Extended (active + stable only)
+### Cross-App
 
-1. Online learning navigation from listing to course detail.
-2. Marketing campaign active flow (step flow to sent confirmation).
-3. Inbox review flow (update message status).
+- Duplicate active booking safety.
+- Ineligible entitlement application rejection.
+- Payment failure and expired checkout safe outcomes.
+- Stripe reconciliation and webhook-backed final state visibility.
+- Cancellation policy enforcement.
+- Password reset security flow.
+- Health endpoint readiness.
 
-## Out Of Scope (This Pass)
+## Current Partial Coverage
 
-1. No-show runtime behavior.
-2. Any cleanup-only destructive admin feature.
+These matrix items are intentionally partial because the existing deterministic specs cover the launch-relevant surface but not full CRUD/provider behavior:
+
+- `public-service-detail-availability`: covered through booking journeys that open a service detail and use available slots.
+- `customer-billing-portal-access`: covered through portal initiation UI, not a real Stripe portal round trip.
+- `admin-user-edit-persists`: covered through teacher user creation, not every edit variant.
+- `admin-marketing-campaign-draft-flow`: covered through deterministic confirm/send outcome, not full campaign authoring.
+- `admin-online-learning-crud`: covered by admin learning surface load, not full program/video CRUD.
+
+## Intentionally Excluded
+
+- No-show runtime workflow: modeled, not active as an end-to-end operational flow.
+- General spam/rate-limit matrix item: rate limits exist, but broad E2E coverage would be high-churn unless scoped to a deterministic flow such as kiosk exit lockout.
+- UAT release checks and operator runbook tasks.
+- Historical teacher/waitlist/manual items not backed by active runtime code.
+- Schema-only capabilities without active route/action/service usage.

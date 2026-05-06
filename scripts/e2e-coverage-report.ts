@@ -2,13 +2,14 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 type Risk = "critical" | "high" | "medium" | "low";
-type Area = "customer" | "admin" | "teacher" | "cross";
+type Area = "public" | "customer" | "admin" | "teacher" | "cross";
 
 type MatrixItem = {
   id: string;
   area: Area;
   risk: Risk;
-  title: string;
+  description: string;
+  title?: string;
 };
 
 type Matrix = {
@@ -163,7 +164,7 @@ async function main(): Promise<void> {
     return { key: risk, coverage: max === 0 ? 0 : got / max, total: items.length };
   });
 
-  const byArea = (["customer", "admin", "teacher", "cross"] as const).map((area) => {
+  const byArea = (["public", "customer", "admin", "teacher", "cross"] as const).map((area) => {
     const items = matrix.items.filter((item) => item.area === area);
     const max = items.length;
     const got = items.reduce((sum, item) => sum + (scoreByItemId.get(item.id) ?? 0), 0);
@@ -198,13 +199,13 @@ async function main(): Promise<void> {
 
   console.log(`Partially covered items (${partiallyCovered.length}):`);
   for (const item of partiallyCovered) {
-    console.log(`- ${item.id} (${item.area}/${item.risk}): ${item.title}`);
+    console.log(`- ${item.id} (${item.area}/${item.risk}): ${item.description ?? item.title}`);
   }
   console.log("");
 
   console.log(`Uncovered items (${uncovered.length}):`);
   for (const item of uncovered) {
-    console.log(`- ${item.id} (${item.area}/${item.risk}): ${item.title}`);
+    console.log(`- ${item.id} (${item.area}/${item.risk}): ${item.description ?? item.title}`);
   }
   console.log("");
 
