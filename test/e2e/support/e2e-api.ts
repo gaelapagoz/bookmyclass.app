@@ -158,6 +158,19 @@ export async function prepareWaitlistSessionForTest(
   };
 }
 
+export async function createVerifiedClientForTest(
+  request: APIRequestContext,
+  input: { email: string; password: string },
+): Promise<void> {
+  const response = await request.post("/api/test/e2e/users/create-verified-client", {
+    headers: testHeaders(),
+    data: input,
+  });
+  expect(response.ok()).toBeTruthy();
+  const payload = (await response.json()) as { created?: boolean };
+  expect(payload.created).toBe(true);
+}
+
 export async function deactivateUserForTest(request: APIRequestContext, email: string) {
   const response = await request.post("/api/test/e2e/users/deactivate", {
     headers: testHeaders(),

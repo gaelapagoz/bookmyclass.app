@@ -6,6 +6,7 @@ import {
   cleanSeededClientBookingsForTest,
   clearCapturedPasswordResetOutboxForTest,
   completeStripeCheckoutForTest,
+  createVerifiedClientForTest,
   failStripeCheckoutForTest,
   getPasswordResetTokenForTest,
   prepareCheckInWindowBookingForTest,
@@ -415,13 +416,7 @@ test.describe("critical client flows", () => {
   // @covers customer-reset-password
   test("password reset completes and token is single-use", async ({ page }) => {
     const resetEmail = `e2e.pwreset.${Date.now()}@example.test`;
-    await signUpPublicUser(page, {
-      firstName: "Reset",
-      lastName: "Test",
-      email: resetEmail,
-      password: E2E_PASSWORD,
-    });
-    await verifyTestEmail(page, resetEmail);
+    await createVerifiedClientForTest(page.request, { email: resetEmail, password: E2E_PASSWORD });
     await page.context().clearCookies();
 
     await clearCapturedPasswordResetOutboxForTest(page.request, resetEmail);
