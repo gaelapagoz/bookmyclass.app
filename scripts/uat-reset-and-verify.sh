@@ -30,7 +30,7 @@ fail() {
 is_uat_like() {
   local value
   value="$(echo "$1" | tr '[:upper:]' '[:lower:]')"
-  [[ "$value" == *"uat"* || "$value" == *"staging"* || "$value" == *"localhost"* || "$value" == *"127.0.0.1"* ]]
+  [[ "$value" == *"uat"* || "$value" == *"staging"* || "$value" == *"demo.bookmyclass.app"* || "$value" == *"localhost"* || "$value" == *"127.0.0.1"* ]]
 }
 
 read_db_url() {
@@ -52,7 +52,7 @@ if [[ "$CONFIRM_UAT_DB_RESET" != "YES" ]]; then
 fi
 
 if ! is_uat_like "$BASE_URL"; then
-  fail "BASE_URL='$BASE_URL' does not look like UAT/staging/local."
+  fail "BASE_URL='$BASE_URL' does not look like UAT/staging/demo/local."
 fi
 
 cd "$APP_DIR"

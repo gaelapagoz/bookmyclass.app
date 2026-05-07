@@ -81,15 +81,17 @@ function assertUatOnlyGuard() {
   }
 
   const urlLower = databaseUrl.toLowerCase();
+  const allowDemoProductionHostSeed = process.env.CONFIRM_PROD_DEMO_K6_SEED === "YES";
   const isUatLike =
     urlLower.includes("uat") ||
     urlLower.includes("staging") ||
     urlLower.includes("localhost") ||
-    urlLower.includes("127.0.0.1");
+    urlLower.includes("127.0.0.1") ||
+    allowDemoProductionHostSeed;
 
   if (!isUatLike) {
     throw new Error(
-      "DATABASE_URL does not look like UAT/staging/local. This seed command is UAT-only and intentionally blocked.",
+      "DATABASE_URL does not look like UAT/staging/local. This seed command is UAT-only and intentionally blocked. Set CONFIRM_PROD_DEMO_K6_SEED=YES only for operator-approved demo-host validation.",
     );
   }
 }

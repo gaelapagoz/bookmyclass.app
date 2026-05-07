@@ -22,7 +22,7 @@ fail() {
 is_uat_like() {
   local value
   value="$(echo "$1" | tr '[:upper:]' '[:lower:]')"
-  [[ "$value" == *"uat"* || "$value" == *"staging"* || "$value" == *"localhost"* || "$value" == *"127.0.0.1"* ]]
+  [[ "$value" == *"uat"* || "$value" == *"staging"* || "$value" == *"demo.bookmyclass.app"* || "$value" == *"localhost"* || "$value" == *"127.0.0.1"* ]]
 }
 
 resolve_host_work_dir() {
@@ -40,7 +40,7 @@ resolve_host_work_dir() {
 }
 
 if ! is_uat_like "$BASE_URL"; then
-  fail "BASE_URL='$BASE_URL' does not look like UAT/staging/local. Refusing to run."
+  fail "BASE_URL='$BASE_URL' does not look like UAT/staging/demo/local. Refusing to run."
 fi
 
 if ! command -v docker >/dev/null 2>&1; then

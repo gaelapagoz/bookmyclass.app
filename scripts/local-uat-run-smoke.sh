@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-https://uat.bookmyclass.app}"
-STAGE_PROFILE="${STAGE_PROFILE:-smoke}"
+STAGE_PROFILE="${STAGE_PROFILE:-smoke_booking_safe}"
 K6_SCENARIO_SET="${K6_SCENARIO_SET:-full_smoke}"
 EVIDENCE_ROOT="${EVIDENCE_ROOT:-/tmp}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

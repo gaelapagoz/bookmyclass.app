@@ -9,7 +9,7 @@ Production-usable k6 load testing for UAT/staging only, aligned with active runt
 
 ## UAT-only guard
 
-This suite fails fast if `BASE_URL` does not look like UAT/staging/local (`uat`, `staging`, `localhost`, or `127.0.0.1`).
+This suite fails fast if `BASE_URL` does not look like UAT/staging/demo/local (`uat`, `staging`, `demo.bookmyclass.app`, `localhost`, or `127.0.0.1`).
 
 ## Files
 

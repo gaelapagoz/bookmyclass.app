@@ -13,12 +13,13 @@ function normalizeBaseUrl() {
   const isUatLike =
     lower.includes("uat") ||
     lower.includes("staging") ||
+    lower.includes("demo.bookmyclass.app") ||
     lower.includes("127.0.0.1") ||
     lower.includes("localhost");
 
   if (!isUatLike) {
     throw new Error(
-      `BASE_URL='${normalized}' does not look like UAT/staging/local. This load suite is UAT-only.`,
+      `BASE_URL='${normalized}' does not look like UAT/staging/demo/local. This load suite is UAT-only.`,
     );
   }
 
