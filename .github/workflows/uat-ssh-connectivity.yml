@@ -8,13 +8,13 @@ jobs:
     runs-on: ubuntu-latest
     environment: uat
     env:
-      REMOTE_HOST: ${{ secrets.PROD_SSH_HOST }}
-      REMOTE_PORT: ${{ secrets.PROD_SSH_PORT }}
-      REMOTE_USER: ${{ secrets.PROD_SSH_USER }}
-      CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.PROD_CLOUDFLARE_ACCESS_CLIENT_ID }}
-      CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.PROD_CLOUDFLARE_ACCESS_CLIENT_SECRET }}
-      SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-      SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+      REMOTE_HOST: ${{ secrets.UAT_SSH_HOST }}
+      REMOTE_PORT: ${{ secrets.UAT_SSH_PORT }}
+      REMOTE_USER: ${{ secrets.UAT_SSH_USER }}
+      CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_ID }}
+      CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+      SSH_PRIVATE_KEY: ${{ secrets.UAT_SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.UAT_SSH_KNOWN_HOSTS }}
 
     steps:
       - name: Install cloudflared
