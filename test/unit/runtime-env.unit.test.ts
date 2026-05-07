@@ -48,6 +48,24 @@ describe("validateRuntimeEnv", () => {
     expect(() => validateRuntimeEnv()).toThrow(/E2E_TEST_MODE/);
   });
 
+  it("allows E2E test mode for local isolated E2E runtime", () => {
+    setProductionEnv({ MARKETING_TRACKING_SECRET: "", CRON_SECRET: "" });
+    process.env.E2E_TEST_MODE = "1";
+    process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/studio_e2e_test";
+    process.env.APP_URL = "http://127.0.0.1:3100";
+
+    expect(() => validateRuntimeEnv()).not.toThrow();
+  });
+
+  it("refuses E2E test mode when the database is not an E2E database", () => {
+    setProductionEnv();
+    process.env.E2E_TEST_MODE = "1";
+    process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/studio_dev";
+    process.env.APP_URL = "http://127.0.0.1:3100";
+
+    expect(() => validateRuntimeEnv()).toThrow(/E2E_TEST_MODE/);
+  });
+
   it("passes when all required production vars are present", () => {
     setProductionEnv();
     expect(() => validateRuntimeEnv()).not.toThrow();

@@ -119,7 +119,16 @@ export async function POST(request: Request) {
   const mode = parsed.data.mode ?? "in_window";
 
   const referenceSession = await prisma.studioSession.findFirst({
-    where: { status: StudioSessionStatus.SCHEDULED, isPublished: true },
+    where: {
+      status: StudioSessionStatus.SCHEDULED,
+      isPublished: true,
+      teacher: {
+        email: {
+          equals: "teacher.e2e@bookmyclass.local",
+          mode: "insensitive",
+        },
+      },
+    },
     orderBy: { startsAt: "asc" },
     select: {
       classTypeId: true,

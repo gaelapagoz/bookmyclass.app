@@ -100,11 +100,11 @@ test("critical admin CRUD flows", async ({ page }) => {
   await expect(sessionLink).toHaveCount(1);
   await sessionLink.click();
 
-  await page.getByLabel("Title").fill(updatedSessionTitle);
+  await page.getByRole("textbox", { name: "Title" }).fill(updatedSessionTitle);
   await page.getByTestId("session-update-button").click();
 
   await expect(page.getByText("Session updated.")).toBeVisible();
-  await expect(page.getByLabel("Title")).toHaveValue(updatedSessionTitle);
+  await expect(page.getByRole("textbox", { name: "Title" })).toHaveValue(updatedSessionTitle);
 });
 
 // @covers admin-bookings-list-loads

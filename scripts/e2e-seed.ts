@@ -21,6 +21,16 @@ import {
 } from "@prisma/client";
 import { hash } from "bcryptjs";
 import prisma from "../src/lib/db";
+import { runDevelopmentSeed } from "../prisma/seed/modes/development";
+
+const E2E_DEV_BASELINE_STRIPE_PRICE_ENV_DEFAULTS: Record<string, string> = {
+  STRIPE_PRICE_ID_COLLECTIVE_DROP_IN: "price_E2eCollectiveDropIn",
+  STRIPE_PRICE_ID_COLLECTIVE_5_PACK: "price_E2eCollectiveFivePack",
+  STRIPE_PRICE_ID_COLLECTIVE_10_PACK: "price_E2eCollectiveTenPack",
+  STRIPE_PRICE_ID_MONTHLY_UNLIMITED_COLLECTIVE: "price_E2eMonthlyUnlimited",
+  STRIPE_PRICE_ID_PRIVATE_5_PACK: "price_E2ePrivateFivePack",
+  STRIPE_PRICE_ID_PRIVATE_10_PACK: "price_E2ePrivateTenPack",
+};
 
 function ensureE2EDatabaseUrl() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -29,6 +39,12 @@ function ensureE2EDatabaseUrl() {
   }
   if (!databaseUrl.toLowerCase().includes("e2e")) {
     throw new Error("E2E seed requires DATABASE_URL containing 'e2e'.");
+  }
+}
+
+function ensureDevelopmentBaselineSeedEnv() {
+  for (const [key, value] of Object.entries(E2E_DEV_BASELINE_STRIPE_PRICE_ENV_DEFAULTS)) {
+    process.env[key] ||= value;
   }
 }
 
@@ -85,7 +101,9 @@ async function resetE2EDatabase() {
 
 async function main() {
   ensureE2EDatabaseUrl();
+  ensureDevelopmentBaselineSeedEnv();
   await resetE2EDatabase();
+  await runDevelopmentSeed();
 
   const passwordHash = await hash("E2EPass123!", 12);
   const now = new Date();
@@ -185,8 +203,14 @@ async function main() {
     },
   });
 
-  await prisma.bookingPolicy.create({
-    data: {
+  await prisma.bookingPolicy.upsert({
+    where: {
+      scope: "GLOBAL",
+    },
+    update: {
+      cancellationCutoffHours: 24,
+    },
+    create: {
       scope: "GLOBAL",
       cancellationCutoffHours: 24,
     },

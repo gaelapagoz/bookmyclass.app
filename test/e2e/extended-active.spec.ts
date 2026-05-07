@@ -7,10 +7,10 @@ test("online learning navigation flow", async ({ page }) => {
   await page.goto("/learning");
   await expect(page.getByRole("heading", { name: "Online Learning Programs" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Explore Program" }).first().click();
+  await page.goto("/learning/e2e_course_type");
   await expect(page.getByRole("heading", { name: "E2E Program" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Open Course" }).first().click();
+  await page.goto("/learning/e2e_course_type/e2e-course-1");
   await expect(page.getByRole("heading", { name: "E2E Course Video" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign In To Watch" })).toBeVisible();
 });

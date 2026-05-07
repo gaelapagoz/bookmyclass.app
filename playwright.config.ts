@@ -1,4 +1,9 @@
 import { defineConfig } from "@playwright/test";
+import { config as loadEnvFile } from "dotenv";
+
+loadEnvFile({ path: ".env.e2e", override: true });
+
+const appUrl = process.env.APP_URL ?? "http://127.0.0.1:3100";
 
 export default defineConfig({
   testDir: "./test/e2e",
@@ -10,15 +15,14 @@ export default defineConfig({
     timeout: 10_000,
   },
   use: {
-    baseURL: process.env.APP_URL ?? "http://127.0.0.1:3000",
+    baseURL: appUrl,
     trace: "retain-on-failure",
   },
   webServer: {
-    command:
-      "dotenv -e .env.e2e -- npm run db:e2e:setup && dotenv -e .env.e2e -- npm run build && dotenv -e .env.e2e -- npm run start",
-    url: process.env.APP_URL ?? "http://127.0.0.1:3000",
+    command: "node scripts/start-e2e-server.mjs",
+    url: `${appUrl}/api/health`,
     reuseExistingServer: false,
-    timeout: 240_000,
+    timeout: 120_000,
   },
   projects: [
     {
