@@ -1,15 +1,16 @@
-# Historical UAT Security Baseline + Manual CD Runbook
+# UAT Security Baseline + Manual CD Runbook
 
-Status: historical while UAT is disabled. Current releases use operator-run
-manual release validation with evidence in `test-results/manual_test_<YYYY-MM-DD>.md`.
+Status: operational for operator-run manual validation. Current releases use
+operator-run UAT/manual release validation with evidence in
+`test-results/manual_test_<YYYY-MM-DD>.md`.
 
-Purpose: define the archived local, repo-owned UAT security baseline flow using Dockerized OWASP ZAP.
+Purpose: define the local, repo-owned UAT security baseline flow using Dockerized OWASP ZAP.
 
 ## 0) Scope and hard rules
 
-- Target: UAT only if an operator re-enables UAT
+- Target: operator-approved UAT/demo validation URL only
 - Local machine executes ZAP scan and normalization
-- Any re-enabled UAT validation must run from a git tag (`git describe --tags --exact-match`)
+- UAT validation must run from a git tag (`git describe --tags --exact-match`)
 - Never deploy directly from `main` to UAT or production
 - Never target production in this flow
 
@@ -21,8 +22,8 @@ Purpose: define the archived local, repo-owned UAT security baseline flow using 
 
 ## 2) Local baseline run
 
-Do not run this UAT example as a current release gate unless an operator has
-explicitly re-enabled UAT for the target tag.
+Run this UAT example only when the operator approves security validation for the
+target tag.
 
 ```bash
 BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-security-baseline.sh
@@ -114,9 +115,9 @@ bash scripts/local-uat-security-collect-metrics.sh /tmp/local-uat-security-<time
 
 If run dir is omitted, latest matching run folder is used.
 
-## 7) Historical UAT release gate usage
+## 7) UAT release validation usage
 
-If UAT is re-enabled before promoting a UAT-validated tag to production:
+Before promoting a UAT-validated tag to production:
 
 1. Confirm UAT deploy is on the intended tag
 2. Run E2E and performance gates

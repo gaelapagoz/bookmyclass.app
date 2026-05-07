@@ -1,7 +1,8 @@
 # Security Testing Checklist
 
 Use this checklist for operator-run manual release validation security evidence.
-UAT is disabled unless explicitly re-enabled by an operator.
+UAT is operational and manually triggered by the operator when release scope
+requires security evidence.
 
 ## Before running
 

@@ -904,6 +904,7 @@ describe("Admin pages branching", () => {
     expect(screen.queryByPlaceholderText("Functional Strength")).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("24")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Site timezone" })).toHaveValue("America/New_York");
+    expect(screen.getByRole("option", { name: /\(UTC-0[45]:00\) New York/ })).toHaveValue("America/New_York");
   });
 
   it("renders automations placeholder page copy", async () => {

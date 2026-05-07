@@ -1,14 +1,15 @@
-# Historical UAT Release E2E Checks
+# UAT Release E2E Checks
 
 ## Purpose
 
-This suite validates a deployed UAT release tag only if an operator re-enables UAT.
-Current release validation uses local/CI E2E plus operator-run manual release validation.
+This suite validates a deployed UAT release tag when the operator manually
+triggers UAT release validation. Current release validation uses local/CI E2E
+plus operator-run UAT/manual release validation.
 
 It is intentionally narrow:
-- historical while UAT is disabled
+- operator-triggered
 - non-destructive
-- stable against deployed UAT if UAT is re-enabled
+- stable against deployed UAT
 - separate from local/dev e2e coverage
 
 ## Scope
@@ -22,7 +23,7 @@ Playwright config:
 NPM command:
 - `npm run test:e2e:uat`
 
-Historical release scope:
+Release scope:
 1. Public home page loads
 2. Public `/book-a-class` page loads
 3. Public `/subscription` page loads
@@ -48,7 +49,8 @@ Required:
 
 ## GitHub Actions order
 
-If UAT is re-enabled, `.github/workflows/uat-release.yml` release-tag sequence is:
+When the operator runs UAT validation, `.github/workflows/uat-release.yml`
+release-tag sequence is:
 1. `regression`
 2. `e2e`
 3. `deploy_uat`
@@ -58,7 +60,8 @@ If UAT is re-enabled, `.github/workflows/uat-release.yml` release-tag sequence i
 7. `zap_uat`
 
 If `e2e_uat` fails, the workflow fails and Playwright artifacts are uploaded.
-These jobs are not current release blockers while UAT is disabled.
+These jobs are operator-run validation steps and are not automatic release
+blockers.
 
 Pre-deploy CI e2e and deployed-UAT release e2e are distinct:
 - `e2e` in `.github/workflows/ci.yml` is pre-deploy CI e2e

@@ -6,9 +6,9 @@ Purpose: define the canonical release process for this repository.
 
 ## Current UAT Status
 
-UAT is currently disabled/retired. Any UAT-first workflow descriptions in this
-document are historical unless an operator re-enables UAT and updates
-`docs/00_01_system_baseline.md` and `docs/00_02_deployment_baseline.md`.
+UAT is operational for operator-run manual validation. UAT checks are triggered
+by the operator when release scope requires deployed-environment smoke,
+security, performance, or E2E evidence; UAT is not an automatic release gate.
 
 Current release validation relies on CI, local targeted validation, Stripe CLI
 simulation for payment/webhook changes, manual production approval, production
@@ -21,7 +21,7 @@ are operator-run manual gates.
 
 - main is integration state, not deployable state
 - Only git tags (vX.Y.Z) are deployable
-- UAT is currently disabled/retired
+- UAT is operational for manual operator validation
 - Production must always run a locally/CI-validated tag
 - Never deploy directly from main to production
 - Production deployment remains manual, explicit, and approval-gated
@@ -37,18 +37,19 @@ are operator-run manual gates.
    - e2e (if applicable)
    - Stripe CLI webhook simulation for payment/webhook changes
    - operator-run smoke, security, and performance checks when applicable
-4. Promote the exact validated tag to production through the manual workflow
-5. Run post-deploy production smoke and observability checks
+4. Run operator-approved UAT validation when release scope requires it
+5. Promote the exact validated tag to production through the manual workflow
+6. Run post-deploy production smoke and observability checks
 
 Rule:
 - Do not deploy directly from unvalidated main to production
 
 ---
 
-## GitHub Actions Tag Release (UAT historical)
+## GitHub Actions Tag Release (Operator-Run UAT)
 
-UAT is currently disabled/retired. The UAT release workflow is historical unless
-an operator reactivates UAT and updates the canonical deployment baseline.
+The UAT release workflow is available for operator-run validation and should be
+triggered only when the operator approves UAT validation for the target tag.
 
 For `v*` tag pushes, workflow `.github/workflows/uat-release.yml` runs:
 1. `regression` (pre-deploy build/test/validation)
@@ -59,10 +60,11 @@ For `v*` tag pushes, workflow `.github/workflows/uat-release.yml` runs:
 6. `k6_smoke_uat` (short non-booking k6 smoke profile)
 7. `zap_uat` (OWASP ZAP baseline)
 
-Historical flat release view:
+Flat release view:
 - `regression -> e2e -> deploy_uat -> smoke_uat -> e2e_uat -> k6_smoke_uat -> zap_uat`
 
-These jobs are not current release blockers while UAT is disabled.
+These jobs are operator-run validation steps and are not automatic release
+blockers.
 
 Regression gate includes fail-fast coverage validation before expensive e2e:
 - `npm run qa:e2e:coverage`
@@ -339,7 +341,7 @@ Defined in:
 
 ## Known Constraints
 
-- UAT is disabled/retired; UAT runbooks are historical until reactivated
+- UAT is operational for operator-run manual validation
 - Production deployment remains manual, explicit, and approval-gated
 - Infrastructure values (host, DB name, etc.) must not be guessed
 

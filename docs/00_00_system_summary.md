@@ -31,8 +31,8 @@ BOOK MY CLASS SAAS — COMPLETE CURRENT ARCHITECTURE
                      |                                            |
                      v                                            v
       +----------------------------------+         +----------------------------------+
-      |     bookmyclass.app / www        |         |       local / CI validation      |
-      |          Production              |         | UAT disabled unless re-enabled  |
+      |     bookmyclass.app / www        |         |   local / manual UAT validation  |
+      |          Production              |         | operator-triggered smoke/perf    |
       +----------------------------------+         +----------------------------------+
 
 ======================================================================
@@ -296,7 +296,7 @@ Stripe for payments, subscription checkout, billing portal, and webhook event pr
 ## 7. Environments
 Local: Developer machine with local Next.js execution, local Docker/PostgreSQL, unit/integration tests, and local load/test tooling. Local environment is for development and does not reflect prod Stripe mode.
 
-UAT: Disabled unless explicitly re-enabled by an operator. Historical UAT runbooks remain for recovery only and are not active release gates.
+UAT: Operational for operator-run manual validation. The operator triggers UAT smoke, security, performance, and E2E checks when release scope requires them; UAT is not an automatic release gate.
 
 Production: Hetzner VM with public domain and real Stripe live mode. Architecture is intended to match UAT, but exact host topology and some container naming are marked as operator confirmation needed.
 
@@ -311,11 +311,11 @@ Production: Hetzner VM with public domain and real Stripe live mode. Architectur
 +----------------------------------------------------------------------------------+
 
 +----------------------------------------------------------------------------------+
-| UAT (DISABLED)                                                                   |
+| UAT (OPERATOR-RUN)                                                              |
 |----------------------------------------------------------------------------------|
-| Historical runbooks only                                                         |
-| - not an active release gate unless operator re-enables it                       |
-| - use operator-run manual release validation instead                             |
+| Manual UAT validation                                                            |
+| - operator triggers smoke/security/performance/E2E checks as needed              |
+| - not an automatic release gate                                                  |
 | - evidence stored under test-results/manual_test_<YYYY-MM-DD>.md                 |
 +----------------------------------------------------------------------------------+
 
@@ -352,7 +352,7 @@ Health endpoint exists for runtime readiness checks. The Next.js app runs under 
        +---------------------+ 
 
 ## 9. Deployment & Delivery
-Deployments are tag-based only. The current flow is: merge to main, create release tag, run local/CI validation, collect operator-run manual release validation evidence, then manually promote the exact validated tag to production. UAT validation is disabled unless an operator re-enables it. Deployment is manual rather than a fully automated continuous delivery pipeline.
+Deployments are tag-based only. The current flow is: merge to main, create release tag, run local/CI validation, collect operator-run UAT/manual release validation evidence when relevant, then manually promote the exact validated tag to production. UAT is operational and manually triggered by the operator; it is not a fully automated continuous delivery gate.
 
 +-------------------+      +----------------------+      +----------------------+ 
 | GitHub            | ---> | GitHub Actions CI    | ---> | Manual release flow  |
@@ -736,11 +736,11 @@ Confirmed:
 +----------------------------------------------------------------------------------+
 
 +----------------------------------------------------------------------------------+
-| UAT (DISABLED)                                                                   |
+| UAT (OPERATOR-RUN)                                                              |
 |----------------------------------------------------------------------------------|
-| Historical runbooks only                                                         |
-| - not an active release gate unless operator re-enables it                       |
-| - use operator-run manual release validation instead                             |
+| Manual UAT validation                                                            |
+| - operator triggers smoke/security/performance/E2E checks as needed              |
+| - not an automatic release gate                                                  |
 | - evidence stored under test-results/manual_test_<YYYY-MM-DD>.md                 |
 +----------------------------------------------------------------------------------+
 
@@ -754,7 +754,7 @@ Confirmed:
 | - exact host topology still needs operator confirmation                          |
 +----------------------------------------------------------------------------------+
 
-Canonical environment split documents UAT as disabled unless explicitly re-enabled by an operator. :contentReference[oaicite:19]{index=19} :contentReference[oaicite:20]{index=20}
+Canonical environment split documents UAT as operational for operator-run manual validation. :contentReference[oaicite:19]{index=19} :contentReference[oaicite:20]{index=20}
 
 ## Deployment & Delivery
 

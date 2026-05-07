@@ -39,7 +39,7 @@ If a setup/runbook file conflicts with this file, treat this file as authoritati
 
 ## Deployment Flow (Canonical)
 
-Current release flow while UAT is disabled:
+Current release flow with operator-run UAT available:
 
 1. Merge to main through PR with CI passing.
 2. Create release tag (vX.Y.Z).
@@ -48,14 +48,16 @@ Current release flow while UAT is disabled:
    - relevant E2E tests
    - Stripe CLI webhook simulation for payment/webhook changes
    - operator-run smoke, security, and performance checks when relevant
-4. Promote the exact validated tag to production through the manual production workflow.
-5. Run production smoke checks and observability/log review immediately after deploy.
+4. When release scope requires it, the operator runs UAT smoke, security,
+   performance, or E2E validation against the approved UAT/demo target.
+5. Promote the exact validated tag to production through the manual production workflow.
+6. Run production smoke checks and observability/log review immediately after deploy.
 
 Rules:
 - Never deploy directly to production from main.
 - Production deployment remains explicit and operator-approved.
-- UAT runbooks/workflows are historical while UAT is disabled.
-- Use "operator-run manual release validation" for current manual evidence.
+- UAT is operational for manual operator validation and is not an automatic gate.
+- Use "operator-run UAT/manual release validation" for current manual evidence.
 - Store manual evidence at `test-results/manual_test_<YYYY-MM-DD>.md`.
 
 ## Manual Evidence Convention
@@ -106,16 +108,16 @@ Use this source order when current implementation work conflicts with older docs
 10. `docs/90_*`
 11. Latest manual defect campaign
 
-## Historical UAT Flow (Disabled)
+## Operator-Run UAT Flow
 
 1. Merge to main
 2. Create release tag (vX.Y.Z)
-3. Deploy to UAT
+3. Deploy to UAT when the operator approves UAT validation for the release.
 4. Run:
    - E2E tests
    - load testing (k6)
    - security baseline testing (local OWASP ZAP baseline against UAT)
-5. If successful → deploy SAME tag to production
+5. If successful, deploy the same tag to production.
 
 Rule:
 - Never deploy directly to production from main

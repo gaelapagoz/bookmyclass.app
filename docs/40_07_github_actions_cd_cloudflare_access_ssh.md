@@ -2,15 +2,15 @@
 
 **Purpose:** Explain the complete GitHub Actions continuous deployment setup for Book my Class UAT and PROD environments, including Cloudflare Access SSH tunnel configuration, GitHub secrets/variables/environments, server-side setup, and troubleshooting history.
 
-**Current Status:** UAT is disabled unless an operator explicitly re-enables it
-and updates `docs/00_02_deployment_baseline.md`. UAT examples in this document
-are historical setup references, not current release gates.
+**Current Status:** UAT is operational for operator-run manual validation.
+UAT checks are triggered by the operator when release scope requires them; they
+are not automatic release gates.
 
 **Scope:** GitHub-hosted runners → Cloudflare Access SSH → private servers over SSH with strict host key checking, PM2 deployments, and post-deploy validation.
 
 **Canonical Source Priority:**
 - `docs/00_02_deployment_baseline.md` for canonical runtime and release facts
-- This file for historical CD architecture and configuration procedures
+- This file for CD architecture and configuration procedures
 - `.github/workflows/uat-release.yml`, `.github/workflows/prod-release.yml`, `.github/workflows/uat-ssh-connectivity.yml`, `.github/workflows/prod-ssh-connectivity.yml` for exact execution patterns
 - `docs/40_03_release_process.md` for deployment command ordering
 - `scripts/uat-deploy-tag.sh`, `scripts/prod-deploy-tag.sh` for remote execution details
@@ -19,7 +19,7 @@ are historical setup references, not current release gates.
 
 ## 1. Purpose
 
-This document explains how Book my Class historically automated deployment to UAT and production environments using:
+This document explains how Book my Class deploys to UAT and production environments using:
 1. **GitHub-hosted runners** (not self-hosted) as the CD orchestrator
 2. **Cloudflare Access SSH** as the bridge from public GitHub-hosted runners to private server networks
 3. **SSH keys and known_hosts** for Linux authentication and host key verification
@@ -135,8 +135,8 @@ The key insight: **GitHub runners run in public AWS/Azure environments and canno
 ### UAT Deployment
 - **Trigger:** Tag push (e.g., `git tag -a v1.2.3 && git push origin v1.2.3`)
 - **Workflow:** `.github/workflows/uat-release.yml`
-- **Automatic:** Disabled unless an operator explicitly re-enables UAT
-- **Gate:** Operator-approved only while UAT remains disabled
+- **Automatic:** No; the operator runs UAT validation manually when needed
+- **Gate:** Operator-approved manual validation
 - **Environment:** `uat` (GitHub Environment)
 - **Post-deploy validations:**
   - Smoke tests (HTTP health checks)
@@ -155,10 +155,10 @@ The key insight: **GitHub runners run in public AWS/Azure environments and canno
   - Optional operator-run validation on prod
 
 ### The Rule
-- **UAT** is historical/disabled unless explicitly re-enabled by an operator
+- **UAT** is operational for operator-run manual validation
 - **Production** is manual; operators promote an exact validated tag
 - **Never deploy from `main`; always deploy from a tag**
-- **Do not treat UAT as a release gate unless it is operator-approved**
+- **Do not treat UAT as an automatic release gate**
 
 ---
 
@@ -1821,8 +1821,8 @@ pm2 describe bookmyclass-app
 
 ### Never Skip Testing
 
-- UAT is disabled unless explicitly re-enabled by an operator.
-- Current releases use local/CI validation plus operator-run manual release validation.
+- UAT is operational for operator-run manual validation.
+- Current releases use local/CI validation plus operator-run UAT/manual release validation.
 - Store manual evidence at `test-results/manual_test_<YYYY-MM-DD>.md`.
 - Never map UAT workflows to production secrets.
 - Never deploy directly to production from main or from an unvalidated commit.

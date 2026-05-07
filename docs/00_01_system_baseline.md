@@ -533,10 +533,9 @@ Evidence label legend used in this file:
 
 ## 20. Environments (Canonical)
 
-The system currently operates with production and local development/test environments.
-The previous UAT/staging environment is disabled and must not be treated as an
-active release gate unless an operator explicitly re-enables it and updates this
-baseline.
+The system currently operates with production, UAT/staging, and local
+development/test environments. UAT is operational for operator-run manual
+validation and must not be treated as an automatic release gate.
 
 ### Production
 - Hetzner VM
@@ -545,11 +544,11 @@ baseline.
 - Real users
 
 ### UAT (Staging)
-- Status: disabled / retired.
-- Historical UAT runbooks and workflow references remain in the repository for
-  recovery or future reactivation only.
-- Do not require UAT validation for current feature planning unless this section
-  is updated by an operator.
+- Status: operational for manual operator validation.
+- The operator runs UAT smoke, security, performance, or E2E checks when release
+  scope requires them.
+- UAT evidence is collected as manual release validation and does not imply an
+  automatic deployment or promotion gate.
 
 ### Local
 - Developer machine

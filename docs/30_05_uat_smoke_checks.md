@@ -14,7 +14,7 @@ It is intentionally:
 
 The smoke script supports two topologies:
 
-1. Historical UAT app-host topology (disabled unless operator re-enables UAT)
+1. UAT/demo app-host topology (operator-run manual validation)
   - `GET /api/health` returns `200`
   - `GET /` returns `200` with homepage marker
   - `GET /sign-in` returns `200`
@@ -61,7 +61,7 @@ Expected order:
 5. Promote the exact validated tag through manual production approval
 
 Assumed SSH secrets for deploy step:
-- UAT secrets remain UAT-only if an operator re-enables UAT.
+- UAT secrets remain UAT-only.
 - UAT workflows must not use PROD secrets.
 
 Example post-deploy smoke step:

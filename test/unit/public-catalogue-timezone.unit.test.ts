@@ -7,7 +7,12 @@ import {
   isValidDateKey,
   isValidMonthKey,
 } from "../../src/lib/public-catalogue/timezone";
-import { isValidIanaTimeZone, normalizeSiteTimeZone } from "../../src/lib/site-settings/site-timezone";
+import {
+  formatTimeZoneOptionLabel,
+  getSiteTimeZoneOptions,
+  isValidIanaTimeZone,
+  normalizeSiteTimeZone,
+} from "../../src/lib/site-settings/site-timezone";
 
 describe("public catalogue timezone helpers", () => {
   it("validates month and date keys", () => {
@@ -27,6 +32,23 @@ describe("public catalogue timezone helpers", () => {
     expect(isValidIanaTimeZone("Europe/Brussels")).toBe(true);
     expect(isValidIanaTimeZone("America/New_York")).toBe(true);
     expect(() => normalizeSiteTimeZone("Not/AZone")).toThrow("INVALID_SITE_TIME_ZONE");
+  });
+
+  it("formats timezone option labels with UTC offset and city", () => {
+    const referenceDate = new Date("2026-04-15T12:00:00.000Z");
+
+    expect(formatTimeZoneOptionLabel("Europe/Brussels", referenceDate)).toBe("(UTC+02:00) Brussels");
+    expect(formatTimeZoneOptionLabel("America/New_York", referenceDate)).toBe("(UTC-04:00) New York");
+  });
+
+  it("lists runtime-supported IANA timezone options with canonical stored values", () => {
+    const options = getSiteTimeZoneOptions(new Date("2026-04-15T12:00:00.000Z"));
+    const brussels = options.find((option) => option.value === "Europe/Brussels");
+    const newYork = options.find((option) => option.value === "America/New_York");
+
+    expect(options.length).toBeGreaterThan(100);
+    expect(brussels).toEqual({ value: "Europe/Brussels", label: "(UTC+02:00) Brussels" });
+    expect(newYork).toEqual({ value: "America/New_York", label: "(UTC-04:00) New York" });
   });
 
   it("uses Brussels DST when converting local date boundaries", () => {

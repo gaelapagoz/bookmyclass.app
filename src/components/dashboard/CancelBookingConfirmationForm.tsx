@@ -39,7 +39,7 @@ export default function CancelBookingConfirmationForm({ bookingId, action, disab
         ref={dialogRef}
         open={open}
         aria-labelledby={`cancel-booking-title-${bookingId}`}
-        className="rounded-md border border-[#d8cec6] bg-white p-4 text-[#5f4040] shadow-lg backdrop:bg-black/30"
+        className="fixed inset-0 m-auto w-[calc(100vw-2rem)] max-w-sm rounded-md border border-[#d8cec6] bg-white p-4 text-[#5f4040] shadow-lg backdrop:bg-black/30"
       >
         <form action={action} className="space-y-3">
           <input type="hidden" name="bookingId" value={bookingId} />

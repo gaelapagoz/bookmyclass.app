@@ -15,7 +15,7 @@ import {
   listAdminSiteWeeklyScheduleEntries,
 } from "@/lib/admin/admin-service";
 import { getActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
-import { SITE_TIME_ZONE_OPTIONS } from "@/lib/site-settings/site-settings-service";
+import { getSiteTimeZoneOptions } from "@/lib/site-settings/site-settings-service";
 
 type SearchParams = Promise<{ error?: string; success?: string }>;
 export const dynamic = "force-dynamic";
@@ -41,6 +41,7 @@ export default async function AdminManageSitePage({ searchParams }: { searchPara
       getAdminSiteTimeZone(),
       listAdminSiteScheduleServiceOptions(),
     ]);
+    const siteTimeZoneOptions = getSiteTimeZoneOptions();
     const hasServiceOptions = serviceOptions.length > 0;
     const serviceOptionIds = new Set(serviceOptions.map((option) => option.id));
 
@@ -274,11 +275,11 @@ export default async function AdminManageSitePage({ searchParams }: { searchPara
                 name="timeZone"
                 required
                 defaultValue={siteTimeZone}
-                className="mt-1 block w-64 rounded-md border border-[#d3dbe5] bg-white px-3 py-2 text-sm"
+                className="mt-1 block w-full min-w-64 rounded-md border border-[#d3dbe5] bg-white px-3 py-2 text-sm"
               >
-                {SITE_TIME_ZONE_OPTIONS.map((timeZone) => (
-                  <option key={timeZone} value={timeZone}>
-                    {timeZone}
+                {siteTimeZoneOptions.map((timeZone) => (
+                  <option key={timeZone.value} value={timeZone.value}>
+                    {timeZone.label}
                   </option>
                 ))}
               </select>

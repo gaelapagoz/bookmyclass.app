@@ -38,7 +38,8 @@ npm run demo:screenshots
 
 The defaults point at the seeded E2E accounts, which are only present when
 running against the local E2E environment (`APP_URL=http://127.0.0.1:3100`).
-UAT is disabled unless explicitly re-enabled by an operator.
+For UAT/demo validation, the operator supplies the approved deployed URL and
+matching seeded credentials manually.
 
 ---
 

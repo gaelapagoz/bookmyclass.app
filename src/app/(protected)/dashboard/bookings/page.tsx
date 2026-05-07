@@ -13,6 +13,7 @@ import {
 import { checkInBooking } from "@/lib/attendance/attendance-service";
 import { AttendanceSource } from "@prisma/client";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
+import { getSiteTimeZone } from "@/lib/site-settings/site-settings-service";
 import CancelBookingConfirmationForm from "@/components/dashboard/CancelBookingConfirmationForm";
 
 type SearchParams = Promise<{
@@ -23,14 +24,15 @@ type SearchParams = Promise<{
   checked_in?: string;
 }>;
 
-function formatDateTime(iso: string) {
+function formatDateTime(iso: string, timeZone: string) {
   return new Intl.DateTimeFormat("en-BE", {
+    timeZone,
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(iso));
 }
 
-function renderBookingCard(booking: DashboardBookingItem, showCancel: boolean) {
+function renderBookingCard(booking: DashboardBookingItem, showCancel: boolean, timeZone: string) {
   return (
     <li
       key={booking.bookingId}
@@ -41,7 +43,7 @@ function renderBookingCard(booking: DashboardBookingItem, showCancel: boolean) {
         <p className="font-medium text-[#6f2b2b]">{booking.serviceTitle}</p>
         <p className="text-xs uppercase tracking-wide text-[#8a5959]">{booking.status}</p>
       </div>
-      <p className="mt-1 text-sm text-[#5f4040]">{formatDateTime(booking.startsAt)}</p>
+      <p className="mt-1 text-sm text-[#5f4040]">{formatDateTime(booking.startsAt, timeZone)}</p>
       {booking.location ? <p className="text-sm text-[#5f4040]">{booking.location}</p> : null}
       {booking.isCheckedIn && (
         <p
@@ -93,7 +95,7 @@ function renderBookingCard(booking: DashboardBookingItem, showCancel: boolean) {
   );
 }
 
-function renderWaitlistCard(entry: DashboardWaitlistItem) {
+function renderWaitlistCard(entry: DashboardWaitlistItem, timeZone: string) {
   return (
     <li
       key={entry.waitlistEntryId}
@@ -104,7 +106,7 @@ function renderWaitlistCard(entry: DashboardWaitlistItem) {
         <p className="font-medium text-[#6f2b2b]">{entry.serviceTitle}</p>
         <p className="text-xs uppercase tracking-wide text-[#8a5959]">WAITLIST</p>
       </div>
-      <p className="mt-1 text-sm text-[#5f4040]">{formatDateTime(entry.startsAt)}</p>
+      <p className="mt-1 text-sm text-[#5f4040]">{formatDateTime(entry.startsAt, timeZone)}</p>
       {entry.location ? <p className="text-sm text-[#5f4040]">{entry.location}</p> : null}
       <form action={cancelWaitlistAction} className="mt-3">
         <input type="hidden" name="waitlistEntryId" value={entry.waitlistEntryId} />
@@ -331,8 +333,9 @@ export default async function DashboardBookingsPage({
   searchParams: SearchParams;
 }) {
   const session = await requireAuth();
-  const [data, params] = await Promise.all([
+  const [data, siteTimeZone, params] = await Promise.all([
     getDashboardBookingsData(session.user.id),
+    getSiteTimeZone(),
     searchParams,
   ]);
   const message = getMessage(params);
@@ -357,7 +360,7 @@ export default async function DashboardBookingsPage({
             <p className="text-sm text-[#5f4040]">No active waitlist entries.</p>
           ) : (
             <ul className="space-y-2">
-              {data.waitlist.map((entry) => renderWaitlistCard(entry))}
+              {data.waitlist.map((entry) => renderWaitlistCard(entry, siteTimeZone))}
             </ul>
           )}
         </section>
@@ -367,7 +370,7 @@ export default async function DashboardBookingsPage({
           {data.upcoming.length === 0 ? (
             <p className="text-sm text-[#5f4040]">No upcoming bookings.</p>
           ) : (
-            <ul className="space-y-2">{data.upcoming.map((booking) => renderBookingCard(booking, true))}</ul>
+            <ul className="space-y-2">{data.upcoming.map((booking) => renderBookingCard(booking, true, siteTimeZone))}</ul>
           )}
         </section>
 
@@ -376,7 +379,7 @@ export default async function DashboardBookingsPage({
           {data.past.length === 0 ? (
             <p className="text-sm text-[#5f4040]">No past bookings.</p>
           ) : (
-            <ul className="space-y-2">{data.past.map((booking) => renderBookingCard(booking, false))}</ul>
+            <ul className="space-y-2">{data.past.map((booking) => renderBookingCard(booking, false, siteTimeZone))}</ul>
           )}
         </section>
 
@@ -386,7 +389,7 @@ export default async function DashboardBookingsPage({
             <p className="text-sm text-[#5f4040]">No cancelled bookings.</p>
           ) : (
             <ul className="space-y-2">
-              {data.cancelled.map((booking) => renderBookingCard(booking, false))}
+              {data.cancelled.map((booking) => renderBookingCard(booking, false, siteTimeZone))}
             </ul>
           )}
         </section>
