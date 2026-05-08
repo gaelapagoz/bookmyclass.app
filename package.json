@@ -23,7 +23,7 @@
     "db:e2e:reset": "npm run db:e2e:migrate && npm run db:e2e:seed",
     "db:e2e:setup": "npm run db:e2e:migrate && npm run db:e2e:seed",
     "test:e2e": "npm run db:e2e:reset && npm run build:e2e && playwright test",
-    "test:e2e:ci": "playwright test --reporter=line",
+    "test:e2e:ci": "npm run db:e2e:reset && npm run build:e2e && playwright test --reporter=line",
     "test:e2e:uat": "playwright test -c playwright.uat.config.ts --reporter=line",
     "db:verify:dashboard-seed": "tsx scripts/verify-dashboard-seed-db.ts",
     "db:verify:dashboard-trend-seed": "tsx scripts/verify-dashboard-trend-seed-db.ts",

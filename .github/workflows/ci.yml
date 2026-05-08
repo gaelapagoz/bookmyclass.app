@@ -141,10 +141,7 @@ jobs:
           E2E_TEST_SECRET=${E2E_TEST_SECRET}
           EOF
 
-      - name: Reset and seed e2e database
-        run: npm run db:e2e:reset
-
-      - name: Run e2e suite
+      - name: Reset DB, build, and run e2e suite
         run: npm run test:e2e:ci
 
       - name: Upload Playwright artifacts on failure
