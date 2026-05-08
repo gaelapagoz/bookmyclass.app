@@ -47,6 +47,13 @@ jobs:
           node-version: 20.19.0
           cache: npm
 
+      - name: Show regression diagnostics
+        run: |
+          echo "head_sha=$(git rev-parse HEAD)"
+          echo "node_version=$(node --version)"
+          echo "npm_version=$(npm --version)"
+          echo "vitest_command=npm test -- --run"
+
       - name: Install dependencies
         run: npm ci
 
@@ -169,6 +176,7 @@ jobs:
       BASE_URL: ${{ secrets.UAT_BASE_URL }}
       APP_DIR: ${{ secrets.UAT_APP_DIR }}
       APP_NAME: ${{ secrets.UAT_PM2_APP_NAME }}
+      EXPECTED_SHA: ${{ github.sha }}
       EVIDENCE_ROOT: artifacts/uat-deploy
 
     steps:
@@ -215,6 +223,8 @@ jobs:
             IdentitiesOnly yes
             StrictHostKeyChecking yes
             UserKnownHostsFile ~/.ssh/known_hosts
+            ServerAliveInterval 30
+            ServerAliveCountMax 6
             ProxyCommand /usr/bin/cloudflared access ssh --hostname %h
           EOF
           chmod 600 "${HOME}/.ssh/config"
@@ -228,6 +238,7 @@ jobs:
           echo "app_dir=${APP_DIR:-<default from script>}"
           echo "app_name=${APP_NAME:-<default from script>}"
           echo "base_url=${BASE_URL}"
+          echo "expected_sha=${EXPECTED_SHA}"
 
       - name: Test SSH connectivity via Cloudflare Access
         run: |
