@@ -1,26 +1,22 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { StripeSyncStatus } from "@prisma/client";
+
 import { requireAdminSession } from "@/lib/auth/require-auth";
 import {
   archiveStoreMerchandiseAction,
   updateStoreMerchandiseAction,
+  retryStoreMerchandiseSyncAction,
 } from "@/app/admin/(private)/store-actions";
 import {
   getAdminStoreMerchandiseById,
   getStorePriceCheckoutReadinessLabel,
 } from "@/lib/store/store-admin-catalog-service";
-import { STORE_CURRENCY_CODE, STORE_PICKUP_WORDING } from "@/lib/store/store-constants";
+import { STORE_PICKUP_WORDING } from "@/lib/store/store-constants";
 
 type Params = Promise<{ id: string }>;
-type SearchParams = Promise<{ error?: string }>;
-
-function formatMoney(amountMinor: number) {
-  return new Intl.NumberFormat("en-BE", {
-    style: "currency",
-    currency: STORE_CURRENCY_CODE,
-  }).format(amountMinor / 100);
-}
+type SearchParams = Promise<{ error?: string; success?: string }>;
 
 export default async function AdminStoreMerchandiseEditPage({
   params,
@@ -31,7 +27,7 @@ export default async function AdminStoreMerchandiseEditPage({
 }) {
   await requireAdminSession();
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, success } = await searchParams;
 
   const record = await getAdminStoreMerchandiseById(id);
   if (!record) notFound();
@@ -51,6 +47,9 @@ export default async function AdminStoreMerchandiseEditPage({
       </header>
 
       {error ? <p className="text-sm text-[#7b2d2d]">{error}</p> : null}
+      {success === "STRIPE_SYNCED" ? (
+        <p className="text-sm text-[#1a6b3a]">Stripe sync successful. Product is now checkout-ready.</p>
+      ) : null}
 
       <form
         action={updateStoreMerchandiseAction.bind(null, id)}
@@ -101,10 +100,42 @@ export default async function AdminStoreMerchandiseEditPage({
           </span>
         </label>
 
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="block text-sm text-[#334155]">
+            Price (EUR)
+            <input
+              name="unitAmount"
+              type="number"
+              step="0.01"
+              min="0.01"
+              required
+              defaultValue={
+                record.primaryPrice
+                  ? (record.primaryPrice.unitAmountMinor / 100).toFixed(2)
+                  : ""
+              }
+              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+            />
+            <span className="mt-1 block text-xs text-[#64748b]">
+              Changing price creates a new price entry; old price is deactivated.
+            </span>
+          </label>
+          <label className="block text-sm text-[#334155]">
+            Price Label
+            <input
+              name="priceName"
+              defaultValue={record.primaryPrice?.name ?? record.name}
+              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+            />
+          </label>
+        </div>
+
         <div className="rounded-md border border-[#d3dbe5] bg-[#f8fafc] px-3 py-2 text-xs text-[#64748b]">
-          Current price:{" "}
-          {record.primaryPrice ? formatMoney(record.primaryPrice.unitAmountMinor) : "None"} —
-          Checkout: {priceLabel}
+          Stripe ID:{" "}
+          {record.primaryPrice?.stripePriceId ?? "Not synced"} — Checkout: {priceLabel}
+          {record.primaryPrice?.stripeSyncError ? (
+            <span className="ml-2 text-[#7b2d2d]">({record.primaryPrice.stripeSyncError})</span>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-between gap-3 pt-2">
@@ -116,6 +147,18 @@ export default async function AdminStoreMerchandiseEditPage({
           </button>
         </div>
       </form>
+
+      {record.primaryPrice &&
+      record.primaryPrice.stripeSyncStatus !== StripeSyncStatus.SYNCED ? (
+        <form action={retryStoreMerchandiseSyncAction.bind(null, id)}>
+          <button
+            type="submit"
+            className="rounded-md border border-[#d3dbe5] bg-white px-3 py-2 text-sm text-[#2a4f78]"
+          >
+            Retry Stripe sync
+          </button>
+        </form>
+      ) : null}
 
       {!record.isArchived ? (
         <form action={archiveStoreMerchandiseAction.bind(null, id)}>

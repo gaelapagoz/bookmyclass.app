@@ -68,12 +68,26 @@ export default async function StoreSuccessPage({
         ? "Your checkout did not complete. Please retry from your cart."
         : "We are processing your order. Refresh in a few seconds.";
 
+  const showGiftCardCopy =
+    successState?.reconciliationState === "CONFIRMED" && successState.hasGiftCardItems;
+
   const clearKey = checkoutSessionId ?? successOrderId ?? null;
 
   return (
     <section className="mx-auto w-full max-w-3xl px-6 py-14">
       <h1 className="text-3xl font-semibold text-[#6f2b2b]">{heading}</h1>
       <p className="mt-3 text-sm text-[#7f5a5a]">{statusMessage}</p>
+
+      {showGiftCardCopy ? (
+        <div className="mt-4 rounded-xl border border-[#d8cec6] bg-[#faf5f2] p-4 space-y-1" data-testid="gift-card-success-copy">
+          <p className="text-sm text-[#5f4040]">
+            Your gift card code has been sent to your email.
+          </p>
+          <p className="text-sm text-[#5f4040]">
+            Use the code to add funds to your wallet from the Dashboard.
+          </p>
+        </div>
+      ) : null}
 
       <CartClearOnSuccess
         checkoutSessionId={clearKey}

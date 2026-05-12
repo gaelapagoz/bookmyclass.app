@@ -1455,7 +1455,7 @@ describe("getClientStoreOrderHistory", () => {
 
     const result = await getClientStoreOrderHistory(client.id);
 
-    expect(result[0]?.fulfillmentNote).toBe("Pickup at studio");
+    expect(result[0]?.fulfillmentNote).toBe("Pickup at studio.");
   });
 
   it("sets fulfillmentNote to null for gift-card-only orders", async () => {

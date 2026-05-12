@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
   createAdminStoreGiftCardProduct: vi.fn(),
   updateAdminStoreMerchandise: vi.fn(),
   updateAdminStoreGiftCardProduct: vi.fn(),
+  getAdminStoreMerchandiseById: vi.fn(),
+  getAdminStoreGiftCardById: vi.fn(),
+  attemptStorePriceSyncFromEnv: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -36,6 +39,12 @@ vi.mock("@/lib/store/store-admin-catalog-service", () => ({
   createAdminStoreGiftCardProduct: mocks.createAdminStoreGiftCardProduct,
   updateAdminStoreMerchandise: mocks.updateAdminStoreMerchandise,
   updateAdminStoreGiftCardProduct: mocks.updateAdminStoreGiftCardProduct,
+  getAdminStoreMerchandiseById: mocks.getAdminStoreMerchandiseById,
+  getAdminStoreGiftCardById: mocks.getAdminStoreGiftCardById,
+}));
+
+vi.mock("@/lib/store/store-stripe-sync-service", () => ({
+  attemptStorePriceSyncFromEnv: mocks.attemptStorePriceSyncFromEnv,
 }));
 
 import {
@@ -43,6 +52,8 @@ import {
   createStoreMerchandiseAction,
   updateStoreGiftCardAction,
   updateStoreMerchandiseAction,
+  retryStoreMerchandiseSyncAction,
+  retryStoreGiftCardSyncAction,
 } from "../../src/app/admin/(private)/store-actions";
 
 function makeForm(input: Record<string, string>) {
@@ -71,6 +82,9 @@ describe("admin store actions", () => {
     mocks.createAdminStoreGiftCardProduct.mockReset();
     mocks.updateAdminStoreMerchandise.mockReset();
     mocks.updateAdminStoreGiftCardProduct.mockReset();
+    mocks.getAdminStoreMerchandiseById.mockReset();
+    mocks.getAdminStoreGiftCardById.mockReset();
+    mocks.attemptStorePriceSyncFromEnv.mockReset();
     mocks.requireAdminSession.mockResolvedValue({ user: { id: "admin-1", role: "ADMIN" } });
     mocks.assertSameOriginServerAction.mockResolvedValue(undefined);
   });
@@ -94,8 +108,28 @@ describe("admin store actions", () => {
 
     expect(mocks.updateAdminStoreMerchandise).toHaveBeenCalledWith(
       "merch-1",
-      expect.objectContaining({ name: "Store Item", isArchived: false }),
+      expect.objectContaining({ name: "Store Item", unitAmountMinor: 2500, isArchived: false }),
     );
+  });
+
+  it("merchandise edit rejects missing price and redirects with error", async () => {
+    const formWithoutPrice = makeForm({ ...baseForm, unitAmount: "" });
+
+    await expect(updateStoreMerchandiseAction("merch-1", formWithoutPrice)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store/merchandise/merch-1/edit",
+    );
+
+    expect(mocks.updateAdminStoreMerchandise).not.toHaveBeenCalled();
+  });
+
+  it("merchandise edit surfaces service error as redirect with error code", async () => {
+    mocks.updateAdminStoreMerchandise.mockRejectedValue(new Error("INVALID_AMOUNT"));
+
+    await expect(
+      updateStoreMerchandiseAction("merch-1", makeForm(baseForm)),
+    ).rejects.toThrow("NEXT_REDIRECT:/admin/store/merchandise/merch-1/edit");
+
+    expect(mocks.updateAdminStoreMerchandise).toHaveBeenCalledOnce();
   });
 
   it("keeps gift-card create flow and returns to unified Store", async () => {
@@ -119,5 +153,171 @@ describe("admin store actions", () => {
       "gift-1",
       expect.objectContaining({ name: "Store Item", unitAmountMinor: 2500, isArchived: false }),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Retry Stripe sync actions
+// ---------------------------------------------------------------------------
+
+const pendingPriceRow = {
+  id: "price-pending-1",
+  name: "Test Item",
+  lookupKey: "store-merch-test-abc",
+  priceType: "ONE_TIME",
+  currencyCode: "EUR",
+  unitAmountMinor: 2500,
+  billingInterval: null,
+  billingIntervalCount: null,
+  stripePriceId: null,
+  stripeSyncStatus: "PENDING",
+  stripeSyncError: null,
+  isActive: true,
+  isArchived: false,
+};
+
+describe("retryStoreMerchandiseSyncAction", () => {
+  beforeEach(() => {
+    redirectMock.mockClear();
+    mocks.requireAdminSession.mockResolvedValue({ user: { id: "admin-1", role: "ADMIN" } });
+    mocks.assertSameOriginServerAction.mockResolvedValue(undefined);
+    mocks.getAdminStoreMerchandiseById.mockReset();
+    mocks.attemptStorePriceSyncFromEnv.mockReset();
+  });
+
+  it("redirects with success=STRIPE_SYNCED on successful sync", async () => {
+    mocks.getAdminStoreMerchandiseById.mockResolvedValue({
+      id: "merch-1",
+      primaryPrice: pendingPriceRow,
+      isCheckoutReady: false,
+    });
+    mocks.attemptStorePriceSyncFromEnv.mockResolvedValue({
+      synced: true,
+      stripePriceId: "price_test_synced",
+      created: true,
+    });
+
+    await expect(retryStoreMerchandiseSyncAction("merch-1")).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store/merchandise/merch-1/edit?success=STRIPE_SYNCED",
+    );
+    expect(mocks.attemptStorePriceSyncFromEnv).toHaveBeenCalledWith("price-pending-1");
+  });
+
+  it("redirects with error on sync failure", async () => {
+    mocks.getAdminStoreMerchandiseById.mockResolvedValue({
+      id: "merch-1",
+      primaryPrice: pendingPriceRow,
+      isCheckoutReady: false,
+    });
+    mocks.attemptStorePriceSyncFromEnv.mockResolvedValue({
+      synced: false,
+      reason: "Stripe network error",
+    });
+
+    await expect(retryStoreMerchandiseSyncAction("merch-1")).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store/merchandise/merch-1/edit",
+    );
+    expect(redirectMock.mock.calls[0][0]).toContain("error=");
+  });
+
+  it("redirects with STRIPE_NOT_CONFIGURED when Stripe key is absent", async () => {
+    mocks.getAdminStoreMerchandiseById.mockResolvedValue({
+      id: "merch-1",
+      primaryPrice: pendingPriceRow,
+      isCheckoutReady: false,
+    });
+    mocks.attemptStorePriceSyncFromEnv.mockResolvedValue(null);
+
+    await expect(retryStoreMerchandiseSyncAction("merch-1")).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store/merchandise/merch-1/edit",
+    );
+    expect(redirectMock.mock.calls[0][0]).toContain("STRIPE_NOT_CONFIGURED");
+  });
+
+  it("redirects with NO_ACTIVE_PRICE when product has no price", async () => {
+    mocks.getAdminStoreMerchandiseById.mockResolvedValue({
+      id: "merch-1",
+      primaryPrice: null,
+      isCheckoutReady: false,
+    });
+
+    await expect(retryStoreMerchandiseSyncAction("merch-1")).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store/merchandise/merch-1/edit",
+    );
+    expect(redirectMock.mock.calls[0][0]).toContain("NO_ACTIVE_PRICE");
+    expect(mocks.attemptStorePriceSyncFromEnv).not.toHaveBeenCalled();
+  });
+});
+
+describe("retryStoreGiftCardSyncAction", () => {
+  beforeEach(() => {
+    redirectMock.mockClear();
+    mocks.requireAdminSession.mockResolvedValue({ user: { id: "admin-1", role: "ADMIN" } });
+    mocks.assertSameOriginServerAction.mockResolvedValue(undefined);
+    mocks.getAdminStoreGiftCardById.mockReset();
+    mocks.attemptStorePriceSyncFromEnv.mockReset();
+  });
+
+  it("redirects with success=STRIPE_SYNCED on successful sync", async () => {
+    mocks.getAdminStoreGiftCardById.mockResolvedValue({
+      id: "gc-1",
+      activePrice: pendingPriceRow,
+      isCheckoutReady: false,
+    });
+    mocks.attemptStorePriceSyncFromEnv.mockResolvedValue({
+      synced: true,
+      stripePriceId: "price_test_synced_gc",
+      created: true,
+    });
+
+    await expect(retryStoreGiftCardSyncAction("gc-1")).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store/gift-cards/gc-1/edit?success=STRIPE_SYNCED",
+    );
+    expect(mocks.attemptStorePriceSyncFromEnv).toHaveBeenCalledWith("price-pending-1");
+  });
+
+  it("redirects with error on sync failure", async () => {
+    mocks.getAdminStoreGiftCardById.mockResolvedValue({
+      id: "gc-1",
+      activePrice: pendingPriceRow,
+      isCheckoutReady: false,
+    });
+    mocks.attemptStorePriceSyncFromEnv.mockResolvedValue({
+      synced: false,
+      reason: "Stripe validation error",
+    });
+
+    await expect(retryStoreGiftCardSyncAction("gc-1")).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store/gift-cards/gc-1/edit",
+    );
+    expect(redirectMock.mock.calls[0][0]).toContain("error=");
+  });
+
+  it("redirects with NO_ACTIVE_PRICE when gift card has no price", async () => {
+    mocks.getAdminStoreGiftCardById.mockResolvedValue({
+      id: "gc-1",
+      activePrice: null,
+      isCheckoutReady: false,
+    });
+
+    await expect(retryStoreGiftCardSyncAction("gc-1")).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store/gift-cards/gc-1/edit",
+    );
+    expect(redirectMock.mock.calls[0][0]).toContain("NO_ACTIVE_PRICE");
+    expect(mocks.attemptStorePriceSyncFromEnv).not.toHaveBeenCalled();
+  });
+
+  it("redirects with STRIPE_NOT_CONFIGURED when Stripe key is absent", async () => {
+    mocks.getAdminStoreGiftCardById.mockResolvedValue({
+      id: "gc-1",
+      activePrice: pendingPriceRow,
+      isCheckoutReady: false,
+    });
+    mocks.attemptStorePriceSyncFromEnv.mockResolvedValue(null);
+
+    await expect(retryStoreGiftCardSyncAction("gc-1")).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store/gift-cards/gc-1/edit",
+    );
+    expect(redirectMock.mock.calls[0][0]).toContain("STRIPE_NOT_CONFIGURED");
   });
 });

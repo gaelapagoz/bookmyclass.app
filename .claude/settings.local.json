@@ -99,7 +99,11 @@
       "Bash(Remove-Item \"c:\\\\Dev\\\\studio.saas.platform\\\\src\\\\lib\\\\store\\\\store-feature-flags.ts\")",
       "Bash(New-Item -ItemType Directory -Path \"c:\\\\Dev\\\\studio.saas.platform\\\\prisma\\\\migrations\\\\20260512000001_fix_price_immutability_no_remediation_table\" -Force)",
       "Bash(Write-Output \"created\")",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); scripts=d.get\\('scripts',{}\\); [print\\(k,'=',v\\) for k,v in scripts.items\\(\\) if 'migrate' in k or 'db' in k or 'prisma' in k or 'test' in v[:30] if 'migrate' in v or 'db:' in v]\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); scripts=d.get\\('scripts',{}\\); [print\\(k,'=',v\\) for k,v in scripts.items\\(\\) if 'migrate' in k or 'db' in k or 'prisma' in k or 'test' in v[:30] if 'migrate' in v or 'db:' in v]\")",
+      "Bash(Select-String -Pattern \"\\(passed|failed|Tests|Test Files\\)\")",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/next/package.json'\\).version\\)\")",
+      "Bash(node -e \"const { PrismaClient } = require\\('@prisma/client'\\); const p = new PrismaClient\\(\\); console.log\\(typeof p.giftCardCode\\);\")",
+      "Bash(node -e \"const c = require\\('@prisma/client'\\); console.log\\(Object.keys\\(c\\).filter\\(k => k.includes\\('GiftCard'\\)\\).join\\('\\\\n'\\)\\);\")"
     ],
     "additionalDirectories": [
       "c:\\Dev\\studio.saas.platform\\public\\images\\homesite",

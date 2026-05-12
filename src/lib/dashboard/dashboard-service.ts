@@ -11,6 +11,7 @@ import {
   WaitlistStatus,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { STORE_PICKUP_WORDING } from "@/lib/store/store-constants";
 import { requestEmailChange, UserIdentityError } from "@/lib/auth/user-identity-service";
 import { sendWaitlistPromotionNotification } from "@/lib/public-booking/waitlist-notification-service";
 import {
@@ -1322,7 +1323,7 @@ export async function getClientStoreOrderHistory(clientId: string): Promise<Stor
         lineTotalAmountMinor: item.lineTotalAmountMinor,
         currencyCode: item.currencyCode,
       })),
-      fulfillmentNote: hasMerchandise ? "Pickup at studio" : null,
+      fulfillmentNote: hasMerchandise ? STORE_PICKUP_WORDING : null,
     };
   });
 }

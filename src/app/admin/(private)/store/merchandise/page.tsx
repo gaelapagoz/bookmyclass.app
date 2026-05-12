@@ -5,7 +5,7 @@ import {
   getStorePriceCheckoutReadinessLabel,
   listAdminStoreMerchandise,
 } from "@/lib/store/store-admin-catalog-service";
-import { STORE_CURRENCY_CODE } from "@/lib/store/store-constants";
+import { STORE_CURRENCY_CODE, STORE_PICKUP_WORDING } from "@/lib/store/store-constants";
 
 function formatMoney(amountMinor: number) {
   return new Intl.NumberFormat("en-BE", {
@@ -73,7 +73,7 @@ export default async function AdminStoreMerchandisePage() {
                       ? formatMoney(item.primaryPrice.unitAmountMinor)
                       : "-"}
                   </td>
-                  <td className="px-3 py-2 text-[#5a6d86]">Pickup at studio</td>
+                  <td className="px-3 py-2 text-[#5a6d86]">{STORE_PICKUP_WORDING}</td>
                   <td className="px-3 py-2">
                     {item.isArchived
                       ? "Archived"

@@ -276,73 +276,16 @@ async function getReservedAmount(tx: Tx, walletId: string): Promise<number> {
   return result._sum.reservedAmountMinor ?? 0;
 }
 
-export type GiftCardLedgerHistoryEntry = {
-  readonly id: string;
-  readonly entryType: GiftCardLedgerEntry["entryType"];
-  readonly amountMinor: number;
-  readonly currencyCode: string;
-  readonly happenedAt: Date;
-  readonly orderId: string | null;
-};
-
-export type GiftCardWalletWithHistory = GiftCardWalletBalance & {
-  readonly ledgerEntries: GiftCardLedgerHistoryEntry[];
-};
-
-export async function getGiftCardWalletWithHistory(
-  clientId: string,
-  currencyCode = GIFT_CARD_CURRENCY_CODE,
-): Promise<GiftCardWalletWithHistory | null> {
-  assertCurrency(currencyCode);
-
-  const wallet = await prisma.giftCardWallet.findUnique({
-    where: { clientId_currencyCode: { clientId, currencyCode } },
-    include: {
-      ledgerEntries: {
-        orderBy: { happenedAt: "desc" },
-        take: 50,
-        select: { id: true, entryType: true, amountMinor: true, currencyCode: true, happenedAt: true, orderId: true },
-      },
-    },
-  });
-
-  if (!wallet) {
-    return null;
-  }
-
-  const reservedAmountMinor = await getReservedAmount(prisma, wallet.id);
-
-  return {
-    walletId: wallet.id,
-    balanceMinor: wallet.balanceMinor,
-    reservedAmountMinor,
-    availableBalanceMinor: wallet.balanceMinor - reservedAmountMinor,
-    currencyCode: wallet.currencyCode,
-    ledgerEntries: wallet.ledgerEntries,
-  };
-}
-
-export async function getGiftCardWalletBalance(clientId: string, currencyCode = GIFT_CARD_CURRENCY_CODE): Promise<GiftCardWalletBalance | null> {
-  assertCurrency(currencyCode);
-
-  const wallet = await prisma.giftCardWallet.findUnique({
-    where: { clientId_currencyCode: { clientId, currencyCode } },
-  });
-
-  if (!wallet) {
-    return null;
-  }
-
-  const reservedAmountMinor = await getReservedAmount(prisma, wallet.id);
-
-  return {
-    walletId: wallet.id,
-    balanceMinor: wallet.balanceMinor,
-    reservedAmountMinor,
-    availableBalanceMinor: wallet.balanceMinor - reservedAmountMinor,
-    currencyCode: wallet.currencyCode,
-  };
-}
+// Re-exported from gift-card-wallet-read-service so callers outside the page layer
+// can still import from here without pulling the node:crypto chain into client bundles.
+export type {
+  GiftCardLedgerHistoryEntry,
+  GiftCardWalletWithHistory,
+} from "./gift-card-wallet-read-service";
+export {
+  getGiftCardWalletWithHistory,
+  getGiftCardWalletBalance,
+} from "./gift-card-wallet-read-service";
 
 export async function assertGiftCardWalletInvariant(walletId: string): Promise<GiftCardWalletBalance> {
   const wallet = await prisma.giftCardWallet.findUniqueOrThrow({ where: { id: walletId } });

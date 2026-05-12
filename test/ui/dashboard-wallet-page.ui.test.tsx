@@ -14,7 +14,7 @@ vi.mock("@/lib/auth/require-auth", () => ({
   requireAuth: mocks.requireAuth,
 }));
 
-vi.mock("@/lib/gift-cards/gift-card-wallet-service", () => ({
+vi.mock("@/lib/gift-cards/gift-card-wallet-read-service", () => ({
   getGiftCardWalletWithHistory: mocks.getGiftCardWalletWithHistory,
 }));
 

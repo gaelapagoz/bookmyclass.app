@@ -222,7 +222,17 @@ async function main(): Promise<void> {
     }
   }
 
-  if (unknownRefs.length > 0 || malformed.length > 0) {
+  const storeArea = byArea.find((a) => a.key === "store");
+  const storeFlowsExecuted = (storeArea?.coverage ?? 0) > 0;
+
+  console.log(`Store flows executed: ${storeFlowsExecuted ? "yes" : "NO — zero store coverage"}`);
+  console.log("");
+
+  if (!storeFlowsExecuted) {
+    console.error("[e2e-coverage] FAIL: store area has 0% coverage. Store E2E flows are mandatory.");
+  }
+
+  if (unknownRefs.length > 0 || malformed.length > 0 || !storeFlowsExecuted) {
     process.exit(1);
   }
 }

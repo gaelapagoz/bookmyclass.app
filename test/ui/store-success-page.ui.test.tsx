@@ -29,7 +29,7 @@ vi.mock("@/lib/cart/cart-success-state", () => ({
 
 import StoreSuccessPage from "../../src/app/(protected)/store/success/page";
 
-const confirmedState = {
+const confirmedGiftCardState = {
   paymentStatus: "SUCCEEDED",
   orderStatus: "PAID",
   reconciliationState: "CONFIRMED" as const,
@@ -37,6 +37,7 @@ const confirmedState = {
   subtotalAmountMinor: 2500,
   totalAmountMinor: 2500,
   currencyCode: "EUR",
+  hasGiftCardItems: true,
   items: [
     {
       productId: "prod-gc-1",
@@ -47,6 +48,31 @@ const confirmedState = {
       unitAmountMinor: 2500,
       lineTotalAmountMinor: 2500,
       currencyCode: "EUR",
+      productType: "GIFT_CARD",
+    },
+  ],
+};
+
+const confirmedMerchandiseState = {
+  paymentStatus: "SUCCEEDED",
+  orderStatus: "PAID",
+  reconciliationState: "CONFIRMED" as const,
+  cartClearEligible: true,
+  subtotalAmountMinor: 1500,
+  totalAmountMinor: 1500,
+  currencyCode: "EUR",
+  hasGiftCardItems: false,
+  items: [
+    {
+      productId: "prod-merch-1",
+      priceId: "price-merch-1",
+      productNameSnapshot: "Studio T-Shirt",
+      priceNameSnapshot: "Studio T-Shirt",
+      quantity: 1,
+      unitAmountMinor: 1500,
+      lineTotalAmountMinor: 1500,
+      currencyCode: "EUR",
+      productType: "MERCHANDISE",
     },
   ],
 };
@@ -58,8 +84,8 @@ describe("Store success page", () => {
     reconcileCatalogCheckoutSessionAfterReturnMock.mockReset();
   });
 
-  it("renders confirmed state for full-wallet checkout using orderId (no session_id)", async () => {
-    getCartCheckoutSuccessStateForOrderMock.mockResolvedValue(confirmedState);
+  it("renders confirmed state for gift card order using orderId (no session_id)", async () => {
+    getCartCheckoutSuccessStateForOrderMock.mockResolvedValue(confirmedGiftCardState);
 
     render(
       await StoreSuccessPage({
@@ -78,8 +104,8 @@ describe("Store success page", () => {
     expect(reconcileCatalogCheckoutSessionAfterReturnMock).not.toHaveBeenCalled();
   });
 
-  it("renders confirmed state for stripe-based partial wallet using session_id", async () => {
-    getCartCheckoutSuccessStateMock.mockResolvedValue(confirmedState);
+  it("renders confirmed state for stripe-based checkout using session_id", async () => {
+    getCartCheckoutSuccessStateMock.mockResolvedValue(confirmedGiftCardState);
 
     render(
       await StoreSuccessPage({
@@ -120,6 +146,7 @@ describe("Store success page", () => {
       subtotalAmountMinor: null,
       totalAmountMinor: null,
       currencyCode: null,
+      hasGiftCardItems: false,
       items: [],
     });
 
@@ -134,7 +161,7 @@ describe("Store success page", () => {
   });
 
   it("renders dashboard wallet and back to store links", async () => {
-    getCartCheckoutSuccessStateForOrderMock.mockResolvedValue(confirmedState);
+    getCartCheckoutSuccessStateForOrderMock.mockResolvedValue(confirmedGiftCardState);
 
     render(
       await StoreSuccessPage({
@@ -147,5 +174,53 @@ describe("Store success page", () => {
       "/dashboard/wallet",
     );
     expect(screen.getByRole("link", { name: "Back to Store" })).toHaveAttribute("href", "/store");
+  });
+
+  describe("gift-card success copy", () => {
+    it("shows gift-card email copy when order contains gift card items and is CONFIRMED", async () => {
+      getCartCheckoutSuccessStateForOrderMock.mockResolvedValue(confirmedGiftCardState);
+
+      render(
+        await StoreSuccessPage({
+          searchParams: Promise.resolve({ orderId: "order_gc" }),
+        }),
+      );
+
+      const copyBlock = screen.getByTestId("gift-card-success-copy");
+      expect(copyBlock).toBeInTheDocument();
+      expect(screen.getByText(/your gift card code has been sent to your email/i)).toBeInTheDocument();
+      expect(screen.getByText(/use the code to add funds to your wallet/i)).toBeInTheDocument();
+    });
+
+    it("does NOT show gift-card email copy for merchandise-only orders", async () => {
+      getCartCheckoutSuccessStateForOrderMock.mockResolvedValue(confirmedMerchandiseState);
+
+      render(
+        await StoreSuccessPage({
+          searchParams: Promise.resolve({ orderId: "order_merch" }),
+        }),
+      );
+
+      expect(screen.getByRole("heading", { name: "Purchase Confirmed" })).toBeInTheDocument();
+      expect(screen.queryByTestId("gift-card-success-copy")).not.toBeInTheDocument();
+      expect(screen.queryByText(/your gift card code has been sent/i)).not.toBeInTheDocument();
+    });
+
+    it("does NOT show gift-card email copy when order is PENDING", async () => {
+      getCartCheckoutSuccessStateForOrderMock.mockResolvedValue({
+        ...confirmedGiftCardState,
+        reconciliationState: "PENDING" as const,
+        cartClearEligible: false,
+      });
+
+      render(
+        await StoreSuccessPage({
+          searchParams: Promise.resolve({ orderId: "order_pending" }),
+        }),
+      );
+
+      expect(screen.getByRole("heading", { name: "Purchase Processing" })).toBeInTheDocument();
+      expect(screen.queryByTestId("gift-card-success-copy")).not.toBeInTheDocument();
+    });
   });
 });

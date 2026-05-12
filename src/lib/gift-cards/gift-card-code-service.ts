@@ -136,6 +136,23 @@ export async function issueGiftCardCodesForOrder(input: {
       });
 
       if (result.alreadyIssued) {
+        // Plaintext code is not stored — email cannot be resent on replay. Create a
+        // reconciliation note so ops can confirm the email was sent on first issuance.
+        await createGiftCardManualReviewCase({
+          orderId: input.orderId,
+          clientId: input.clientId,
+          paymentId: input.paymentId ?? null,
+          reason: "GIFT_CARD_CODE_EMAIL_NOT_RESENT_ON_REPLAY",
+          idempotencyKey: `gift-card:email-not-resent:order:${input.orderId}:item:${item.orderItemId}`,
+          metadata: {
+            orderItemId: item.orderItemId,
+            amountMinor: item.amountMinor,
+            source: "gift-card-code-service",
+            note: "Code already issued; plaintext unavailable for resend. Verify email was sent on first issuance.",
+          },
+        }).catch(() => {
+          // reconciliation note failure must never block fulfillment
+        });
         continue;
       }
 
@@ -167,17 +184,37 @@ export async function issueGiftCardCodesForOrder(input: {
         });
       }
     } catch (issueError) {
-      console.error("[gift-card-code] code issuance failed", issueError instanceof Error ? issueError.message : String(issueError));
+      // Detect missing-table error (P2021) separately for actionable ops output.
+      const isSchemaMissing =
+        issueError instanceof Prisma.PrismaClientKnownRequestError &&
+        issueError.code === "P2021";
+
+      const errorCode = isSchemaMissing ? "GIFT_CARD_CODE_TABLE_MISSING" : "GIFT_CARD_CODE_ISSUANCE_FAILED";
+
+      if (isSchemaMissing) {
+        console.error(
+          "[gift-card-code] GiftCardCode table not found. Run: npx prisma migrate deploy && npx prisma generate",
+          { orderId: input.orderId, orderItemId: item.orderItemId },
+        );
+      } else {
+        const safeMessage = issueError instanceof Error ? issueError.name : "UnknownError";
+        console.error("[gift-card-code] code issuance failed", safeMessage, {
+          orderId: input.orderId,
+          orderItemId: item.orderItemId,
+        });
+      }
+
       await createGiftCardManualReviewCase({
         orderId: input.orderId,
         clientId: input.clientId,
         paymentId: input.paymentId ?? null,
-        reason: "GIFT_CARD_CODE_ISSUANCE_FAILED",
+        reason: errorCode,
         idempotencyKey: `gift-card:code-issuance-failed:order:${input.orderId}:item:${item.orderItemId}`,
         metadata: {
           orderItemId: item.orderItemId,
           amountMinor: item.amountMinor,
           source: "gift-card-code-service",
+          errorCode,
         },
       });
       await emitGiftCardAlertEvent({
@@ -188,6 +225,7 @@ export async function issueGiftCardCodesForOrder(input: {
           orderId: input.orderId,
           clientId: input.clientId,
           orderItemId: item.orderItemId,
+          errorCode,
         },
         error: issueError,
       });

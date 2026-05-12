@@ -170,6 +170,7 @@ describe("cart success summary read model", () => {
         lineTotalAmountMinor: 6000,
       }),
     ]);
+    expect(state.hasGiftCardItems).toBe(false);
   });
 
   it("keeps cart clear ineligible until reconciliation is confirmed", async () => {
@@ -383,7 +384,9 @@ describe("cart success state — full-wallet orderId path (Phase 2.1)", () => {
       productNameSnapshot: "Gift Card Snapshot",
       quantity: 1,
       lineTotalAmountMinor: 2500,
+      productType: ProductType.GIFT_CARD,
     });
+    expect(state.hasGiftCardItems).toBe(true);
   });
 
   it("returns PENDING and cartClearEligible:false when full-wallet order payment is not yet captured", async () => {

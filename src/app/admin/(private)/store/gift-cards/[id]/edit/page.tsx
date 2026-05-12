@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { StripeSyncStatus } from "@prisma/client";
 
 import { requireAdminSession } from "@/lib/auth/require-auth";
 import {
   archiveStoreGiftCardAction,
   updateStoreGiftCardAction,
+  retryStoreGiftCardSyncAction,
 } from "@/app/admin/(private)/store-actions";
 import {
   getAdminStoreGiftCardById,
@@ -12,7 +14,7 @@ import {
 } from "@/lib/store/store-admin-catalog-service";
 
 type Params = Promise<{ id: string }>;
-type SearchParams = Promise<{ error?: string }>;
+type SearchParams = Promise<{ error?: string; success?: string }>;
 
 export default async function AdminStoreGiftCardEditPage({
   params,
@@ -23,7 +25,7 @@ export default async function AdminStoreGiftCardEditPage({
 }) {
   await requireAdminSession();
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, success } = await searchParams;
 
   const record = await getAdminStoreGiftCardById(id);
   if (!record) notFound();
@@ -43,6 +45,9 @@ export default async function AdminStoreGiftCardEditPage({
       </header>
 
       {error ? <p className="text-sm text-[#7b2d2d]">{error}</p> : null}
+      {success === "STRIPE_SYNCED" ? (
+        <p className="text-sm text-[#1a6b3a]">Stripe sync successful. Product is now checkout-ready.</p>
+      ) : null}
 
       <form
         action={updateStoreGiftCardAction.bind(null, id)}
@@ -124,6 +129,9 @@ export default async function AdminStoreGiftCardEditPage({
         <div className="rounded-md border border-[#d3dbe5] bg-[#f8fafc] px-3 py-2 text-xs text-[#64748b]">
           Stripe ID:{" "}
           {record.activePrice?.stripePriceId ?? "Not synced"} — Checkout: {priceLabel}
+          {record.activePrice?.stripeSyncError ? (
+            <span className="ml-2 text-[#7b2d2d]">({record.activePrice.stripeSyncError})</span>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-between gap-3 pt-2">
@@ -135,6 +143,18 @@ export default async function AdminStoreGiftCardEditPage({
           </button>
         </div>
       </form>
+
+      {record.activePrice &&
+      record.activePrice.stripeSyncStatus !== StripeSyncStatus.SYNCED ? (
+        <form action={retryStoreGiftCardSyncAction.bind(null, id)}>
+          <button
+            type="submit"
+            className="rounded-md border border-[#d3dbe5] bg-white px-3 py-2 text-sm text-[#2a4f78]"
+          >
+            Retry Stripe sync
+          </button>
+        </form>
+      ) : null}
 
       {!record.isArchived ? (
         <form action={archiveStoreGiftCardAction.bind(null, id)}>

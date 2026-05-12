@@ -1,4 +1,4 @@
-import { OrderStatus, PaymentProvider, PaymentStatus } from "@prisma/client";
+import { OrderStatus, PaymentProvider, PaymentStatus, ProductType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getCheckoutSessionReconciliationState } from "@/lib/public-booking/stripe-webhook-service";
 
@@ -11,6 +11,7 @@ export type CartSuccessLineItem = {
   unitAmountMinor: number;
   lineTotalAmountMinor: number;
   currencyCode: string;
+  productType: ProductType | null;
 };
 
 export type CartSuccessState = {
@@ -22,6 +23,7 @@ export type CartSuccessState = {
   totalAmountMinor: number | null;
   currencyCode: string | null;
   items: CartSuccessLineItem[];
+  hasGiftCardItems: boolean;
 };
 
 type CartSuccessAccessInput = {
@@ -127,6 +129,7 @@ async function readOrderSuccessState(input: {
           unitAmountMinor: true,
           lineTotalAmountMinor: true,
           currencyCode: true,
+          product: { select: { productType: true } },
         },
       },
     },
@@ -137,6 +140,21 @@ async function readOrderSuccessState(input: {
     input.orderStatus === OrderStatus.PAID &&
     (input.paymentStatus === PaymentStatus.SUCCEEDED || input.paymentStatus === null);
 
+  const items =
+    order?.items.map((item) => ({
+      productId: item.productId,
+      priceId: item.priceId,
+      productNameSnapshot: item.productNameSnapshot,
+      priceNameSnapshot: item.priceNameSnapshot,
+      quantity: item.quantity,
+      unitAmountMinor: item.unitAmountMinor,
+      lineTotalAmountMinor: item.lineTotalAmountMinor,
+      currencyCode: item.currencyCode,
+      productType: item.product.productType,
+    })) ?? [];
+
+  const hasGiftCardItems = items.some((item) => item.productType === ProductType.GIFT_CARD);
+
   return {
     paymentStatus: input.paymentStatus,
     orderStatus: input.orderStatus,
@@ -145,17 +163,8 @@ async function readOrderSuccessState(input: {
     subtotalAmountMinor: order?.subtotalAmountMinor ?? null,
     totalAmountMinor: order?.totalAmountMinor ?? null,
     currencyCode: order?.currencyCode ?? null,
-    items:
-      order?.items.map((item) => ({
-        productId: item.productId,
-        priceId: item.priceId,
-        productNameSnapshot: item.productNameSnapshot,
-        priceNameSnapshot: item.priceNameSnapshot,
-        quantity: item.quantity,
-        unitAmountMinor: item.unitAmountMinor,
-        lineTotalAmountMinor: item.lineTotalAmountMinor,
-        currencyCode: item.currencyCode,
-      })) ?? [],
+    items,
+    hasGiftCardItems,
   };
 }
 
@@ -177,6 +186,7 @@ export async function getCartCheckoutSuccessStateForOrder(input: {
       totalAmountMinor: null,
       currencyCode: null,
       items: [],
+      hasGiftCardItems: false,
     };
   }
 
@@ -279,6 +289,7 @@ export async function getCartCheckoutSuccessState(input: {
       totalAmountMinor: null,
       currencyCode: null,
       items: [],
+      hasGiftCardItems: false,
     };
   }
 

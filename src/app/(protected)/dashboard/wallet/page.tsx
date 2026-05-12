@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireAuth } from "@/lib/auth/require-auth";
-import { getGiftCardWalletWithHistory } from "@/lib/gift-cards/gift-card-wallet-service";
+import { getGiftCardWalletWithHistory } from "@/lib/gift-cards/gift-card-wallet-read-service";
 import { GiftCardLedgerEntryType } from "@prisma/client";
 import { GiftCardRedeemForm } from "@/components/dashboard/GiftCardRedeemForm";
 

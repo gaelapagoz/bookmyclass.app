@@ -8,6 +8,7 @@ import {
   STORE_PICKUP_WORDING,
 } from "@/lib/store/store-constants";
 import { isStorePriceCheckoutReady } from "@/lib/store/store-catalog";
+import { attemptStorePriceSyncFromEnv } from "@/lib/store/store-stripe-sync-service";
 
 function generateSlug(name: string): string {
   return name
@@ -83,6 +84,7 @@ type AdminStorePriceRow = {
   billingIntervalCount: null;
   stripePriceId: string | null;
   stripeSyncStatus: StripeSyncStatus;
+  stripeSyncError: string | null;
   isActive: boolean;
   isArchived: boolean;
 };
@@ -145,6 +147,7 @@ export async function listAdminStoreMerchandise(): Promise<AdminStoreMerchandise
           billingIntervalCount: true,
           stripePriceId: true,
           stripeSyncStatus: true,
+          stripeSyncError: true,
           isActive: true,
           isArchived: true,
         },
@@ -221,18 +224,22 @@ export async function createAdminStoreMerchandise(input: {
           isArchived: false,
           stripeSyncStatus: StripeSyncStatus.PENDING,
           stripeSyncCorrelation: correlation,
-          stripeSyncLastAttempt: new Date(),
         },
       },
     },
-    select: { id: true },
+    select: { id: true, prices: { select: { id: true } } },
   });
+
+  const newPriceId = created.prices[0]?.id;
+  if (newPriceId) {
+    await attemptStorePriceSyncFromEnv(newPriceId);
+  }
 
   return { id: created.id };
 }
 
 // ---------------------------------------------------------------------------
-// Merchandise — update product metadata
+// Merchandise — update product metadata and optionally replace active price
 // ---------------------------------------------------------------------------
 
 export async function updateAdminStoreMerchandise(
@@ -243,29 +250,93 @@ export async function updateAdminStoreMerchandise(
     sortOrder: number;
     isActive: boolean;
     isArchived: boolean;
+    priceName?: string;
+    unitAmountMinor: number;
   },
 ): Promise<void> {
+  const amountResult = validateMerchandisePriceInput({ unitAmountMinor: input.unitAmountMinor });
+  if (!amountResult.ok) throw new Error(amountResult.code);
+
   const name = input.name.trim();
   if (!name) throw new Error("NAME_REQUIRED");
 
   const product = await prisma.product.findUnique({
     where: { id: productId },
-    select: { productType: true },
+    select: {
+      productType: true,
+      slug: true,
+      prices: {
+        where: { isActive: true, isArchived: false },
+        select: { id: true, unitAmountMinor: true },
+      },
+    },
   });
   if (!product || product.productType !== ProductType.MERCHANDISE) {
     throw new Error("PRODUCT_NOT_FOUND");
   }
 
-  await prisma.product.update({
-    where: { id: productId },
-    data: {
-      name,
-      description: input.description?.trim() || STORE_PICKUP_WORDING,
-      sortOrder: input.sortOrder,
-      isActive: input.isActive,
-      isArchived: input.isArchived,
-    },
+  const priceName = input.priceName?.trim() || name;
+  const priceChanged =
+    product.prices.length === 0 ||
+    product.prices[0]!.unitAmountMinor !== input.unitAmountMinor;
+
+  let newPriceId: string | undefined;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.product.update({
+      where: { id: productId },
+      data: {
+        name,
+        description: input.description?.trim() || STORE_PICKUP_WORDING,
+        sortOrder: input.sortOrder,
+        isActive: input.isActive,
+        isArchived: input.isArchived,
+      },
+    });
+
+    if (priceChanged) {
+      if (product.prices.length > 0) {
+        await tx.price.updateMany({
+          where: { productId, isActive: true, isArchived: false },
+          data: { isActive: false },
+        });
+      }
+
+      const correlation = buildStoreCorrelation("store-update", [
+        productId, product.slug, String(input.unitAmountMinor), priceName,
+      ]);
+      const lookupKey = buildStorePriceLookupKey(product.slug, correlation);
+
+      const createdPrice = await tx.price.create({
+        data: {
+          productId,
+          lookupKey,
+          name: priceName,
+          priceType: PriceType.ONE_TIME,
+          currencyCode: STORE_CURRENCY_CODE,
+          unitAmountMinor: input.unitAmountMinor,
+          billingInterval: null,
+          billingIntervalCount: null,
+          isActive: true,
+          isArchived: false,
+          stripeSyncStatus: StripeSyncStatus.PENDING,
+          stripeSyncCorrelation: correlation,
+          stripeSyncLastAttempt: new Date(),
+        },
+        select: { id: true },
+      });
+      newPriceId = createdPrice.id;
+    } else if (product.prices.length > 0) {
+      await tx.price.update({
+        where: { id: product.prices[0]!.id },
+        data: { name: priceName },
+      });
+    }
   });
+
+  if (newPriceId) {
+    await attemptStorePriceSyncFromEnv(newPriceId);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -301,6 +372,7 @@ export async function getAdminStoreMerchandiseById(
           billingIntervalCount: true,
           stripePriceId: true,
           stripeSyncStatus: true,
+          stripeSyncError: true,
           isActive: true,
           isArchived: true,
         },
@@ -357,6 +429,7 @@ export async function listAdminStoreGiftCardProducts(): Promise<AdminStoreGiftCa
           billingIntervalCount: true,
           stripePriceId: true,
           stripeSyncStatus: true,
+          stripeSyncError: true,
           isActive: true,
           isArchived: true,
         },
@@ -433,12 +506,16 @@ export async function createAdminStoreGiftCardProduct(input: {
           isArchived: false,
           stripeSyncStatus: StripeSyncStatus.PENDING,
           stripeSyncCorrelation: correlation,
-          stripeSyncLastAttempt: new Date(),
         },
       },
     },
-    select: { id: true },
+    select: { id: true, prices: { select: { id: true } } },
   });
+
+  const newPriceId = created.prices[0]?.id;
+  if (newPriceId) {
+    await attemptStorePriceSyncFromEnv(newPriceId);
+  }
 
   return { id: created.id };
 }
@@ -476,6 +553,7 @@ export async function getAdminStoreGiftCardById(
           billingIntervalCount: true,
           stripePriceId: true,
           stripeSyncStatus: true,
+          stripeSyncError: true,
           isActive: true,
           isArchived: true,
         },
@@ -542,6 +620,8 @@ export async function updateAdminStoreGiftCardProduct(
     product.prices.length === 0 ||
     product.prices[0].unitAmountMinor !== input.unitAmountMinor;
 
+  let newPriceId: string | undefined;
+
   await prisma.$transaction(async (tx) => {
     await tx.product.update({
       where: { id: productId },
@@ -567,7 +647,7 @@ export async function updateAdminStoreGiftCardProduct(
       ]);
       const lookupKey = buildStorePriceLookupKey(product.slug, correlation);
 
-      await tx.price.create({
+      const createdPrice = await tx.price.create({
         data: {
           productId,
           lookupKey,
@@ -583,7 +663,9 @@ export async function updateAdminStoreGiftCardProduct(
           stripeSyncCorrelation: correlation,
           stripeSyncLastAttempt: new Date(),
         },
+        select: { id: true },
       });
+      newPriceId = createdPrice.id;
     } else if (product.prices.length > 0) {
       await tx.price.update({
         where: { id: product.prices[0].id },
@@ -591,6 +673,10 @@ export async function updateAdminStoreGiftCardProduct(
       });
     }
   });
+
+  if (newPriceId) {
+    await attemptStorePriceSyncFromEnv(newPriceId);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -652,6 +738,7 @@ export function getStorePriceCheckoutReadinessLabel(
   product: { productType: ProductType; isActive: boolean; isArchived: boolean },
 ): string {
   if (!price) return "No active price";
+  if (price.stripeSyncStatus === StripeSyncStatus.FAILED) return "Stripe sync failed";
   if (!price.stripePriceId) return "Needs Stripe sync";
   if (price.stripeSyncStatus !== StripeSyncStatus.SYNCED) return "Stripe sync pending";
   if (!isStorePriceCheckoutReady({ productType: product.productType, productIsActive: product.isActive, productIsArchived: product.isArchived, price })) return "Not ready";

@@ -237,14 +237,43 @@ docker exec -it <db-container-from-deployment-baseline> psql -U <db-user-from-de
 
 ---
 
-## 14. Quick Checklist
+## 14. Store and Gift Card Schema
+
+The Store and Gift Card feature introduces additional tables that must be present after migration:
+- `GiftCardWallet`, `GiftCardLedgerEntry`, `GiftCardRedemption`, `GiftCardReconciliationCase`, `GiftCardCode`
+
+**After pulling Store/Gift Card changes, developers must run:**
+
+```bash
+npx prisma migrate deploy
+npx prisma generate
+```
+
+For local dev environments (with schema drift):
+```bash
+npx prisma migrate dev
+npx prisma generate
+```
+
+To verify the schema is current:
+```bash
+npm run verify:db:schema
+```
+
+If `GiftCardCode` or other required tables are missing, gift card code issuance will fail with a `GIFT_CARD_CODE_TABLE_MISSING` error in the server logs.
+
+---
+
+## 15. Quick Checklist
 
 - [ ] Docker is installed
 - [ ] PostgreSQL container exists
 - [ ] Persistent volume is configured
 - [ ] DB port is bound only to `127.0.0.1`
 - [ ] `DATABASE_URL` is correct
-- [ ] Prisma migrations applied
+- [ ] Prisma migrations applied (`npx prisma migrate deploy`)
+- [ ] Prisma client regenerated (`npx prisma generate`)
+- [ ] Store/Gift Card schema verified (`npm run verify:db:schema`)
 - [ ] Prisma Studio started on `127.0.0.1:<prisma-studio-port-from-deployment-baseline>`
 - [ ] SSH tunnel works locally
 
