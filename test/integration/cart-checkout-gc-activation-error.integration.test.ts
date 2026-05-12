@@ -11,7 +11,7 @@ import {
   StripeSyncStatus,
   UserActivationStatus,
 } from "@prisma/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createGiftCardManualReviewCase } from "../../src/lib/gift-cards/gift-card-reconciliation-service";
 
 const issueGiftCardCodesForOrderMock = vi.fn();
@@ -90,15 +90,6 @@ describe("cart checkout service — gift card code issuance failure (Phase 4.5C)
   beforeEach(async () => {
     await resetDb();
     issueGiftCardCodesForOrderMock.mockReset();
-    process.env.STORE_ENABLED = "1";
-    process.env.GIFT_CARD_PURCHASE_ENABLED = "1";
-    process.env.GIFT_CARD_REDEMPTION_ENABLED = "1";
-  });
-
-  afterEach(() => {
-    delete process.env.STORE_ENABLED;
-    delete process.env.GIFT_CARD_PURCHASE_ENABLED;
-    delete process.env.GIFT_CARD_REDEMPTION_ENABLED;
   });
 
   it("code issuance failure after capture: review case created, order PAID, idempotency SUCCEEDED, response completed, no wallet credit", async () => {

@@ -18,6 +18,7 @@ import {
   redeemGiftCardCode,
   GiftCardCodeRedemptionError,
 } from "../../src/lib/gift-cards/gift-card-code-service";
+import { hashRateLimitKey } from "../../src/lib/security/db-rate-limit";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
 
@@ -202,7 +203,6 @@ describe("lookupGiftCardCodeForRedemption", () => {
 describe("redeemGiftCardCode", () => {
   beforeEach(async () => {
     await resetDb();
-    process.env.GIFT_CARD_REDEMPTION_ENABLED = "1";
   });
 
   it("redeems a valid code and credits the redeemer's wallet", async () => {
@@ -293,5 +293,140 @@ describe("redeemGiftCardCode", () => {
         plaintextCode: issued.plaintextCode,
       }),
     ).rejects.toMatchObject({ errorCode: "INVALID_OR_USED" });
+  });
+
+  it("throws INVALID_OR_USED for an expired code (expiresAt in the past)", async () => {
+    const { user, order } = await seedClientAndOrder(1500);
+    const orderItemId = order.items[0]!.id;
+
+    const issued = await issueGiftCardCode({
+      orderId: order.id,
+      orderItemId,
+      purchasedById: user.id,
+      amountMinor: 1500,
+    });
+    if (issued.alreadyIssued) throw new Error("unexpected");
+
+    await prisma.giftCardCode.update({
+      where: { orderItemId },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+
+    await expect(
+      redeemGiftCardCode({
+        redeemerUserId: user.id,
+        redeemerClientId: user.id,
+        plaintextCode: issued.plaintextCode,
+      }),
+    ).rejects.toMatchObject({ errorCode: "INVALID_OR_USED" });
+  });
+
+  it("throws INVALID_OR_USED for a voided code", async () => {
+    const { user, order } = await seedClientAndOrder(1500);
+    const orderItemId = order.items[0]!.id;
+
+    const issued = await issueGiftCardCode({
+      orderId: order.id,
+      orderItemId,
+      purchasedById: user.id,
+      amountMinor: 1500,
+    });
+    if (issued.alreadyIssued) throw new Error("unexpected");
+
+    await prisma.giftCardCode.update({
+      where: { orderItemId },
+      data: { status: GiftCardCodeStatus.VOIDED },
+    });
+
+    await expect(
+      redeemGiftCardCode({
+        redeemerUserId: user.id,
+        redeemerClientId: user.id,
+        plaintextCode: issued.plaintextCode,
+      }),
+    ).rejects.toMatchObject({ errorCode: "INVALID_OR_USED" });
+  });
+
+  it("concurrent redemption — exactly one succeeds and the other gets INVALID_OR_USED", async () => {
+    const { user, order } = await seedClientAndOrder(2500);
+    const orderItemId = order.items[0]!.id;
+
+    const issued = await issueGiftCardCode({
+      orderId: order.id,
+      orderItemId,
+      purchasedById: user.id,
+      amountMinor: 2500,
+    });
+    if (issued.alreadyIssued) throw new Error("unexpected");
+
+    const makeRedeemer = async (label: string) =>
+      prisma.user.create({
+        data: {
+          name: `Concurrent Redeemer ${label}`,
+          email: `gc.concurrent.${label}.${Date.now()}@example.test`,
+          role: Role.CLIENT,
+          activationStatus: UserActivationStatus.ACTIVE,
+          emailVerified: new Date(),
+          isActive: true,
+        },
+        select: { id: true },
+      });
+
+    // Two different users racing to redeem the same code — different payloadHash
+    // ensures the second request cannot succeed via the idempotency replay path.
+    const [redeemerA, redeemerB] = await Promise.all([makeRedeemer("a"), makeRedeemer("b")]);
+
+    const results = await Promise.allSettled([
+      redeemGiftCardCode({
+        redeemerUserId: redeemerA.id,
+        redeemerClientId: redeemerA.id,
+        plaintextCode: issued.plaintextCode,
+      }),
+      redeemGiftCardCode({
+        redeemerUserId: redeemerB.id,
+        redeemerClientId: redeemerB.id,
+        plaintextCode: issued.plaintextCode,
+      }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({ errorCode: "INVALID_OR_USED" });
+
+    const code = await prisma.giftCardCode.findUnique({ where: { orderItemId } });
+    expect(code?.status).toBe(GiftCardCodeStatus.REDEEMED);
+  });
+
+  it("rate-limit — 6th redemption attempt within window is rejected", async () => {
+    const { user, order } = await seedClientAndOrder(1000);
+    const orderItemId = order.items[0]!.id;
+
+    const issued = await issueGiftCardCode({
+      orderId: order.id,
+      orderItemId,
+      purchasedById: user.id,
+      amountMinor: 1000,
+    });
+    if (issued.alreadyIssued) throw new Error("unexpected");
+
+    await prisma.rateLimitCounter.upsert({
+      where: { keyHash: hashRateLimitKey("gift-card-code-redemption", user.id) },
+      create: {
+        keyHash: hashRateLimitKey("gift-card-code-redemption", user.id),
+        windowStartedAt: new Date(),
+        requestCount: 5,
+      },
+      update: { requestCount: 5 },
+    });
+
+    await expect(
+      redeemGiftCardCode({
+        redeemerUserId: user.id,
+        redeemerClientId: user.id,
+        plaintextCode: issued.plaintextCode,
+      }),
+    ).rejects.toMatchObject({ errorCode: "RATE_LIMITED" });
   });
 });

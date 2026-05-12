@@ -128,6 +128,32 @@ npm run stripe:catalog:sync -- --scope=all --confirm-live
 - After a successful sync, store products appear on `/store` immediately (no restart needed).
 - After a successful sync, subscription/class prices appear in checkout immediately.
 
+## Store and Gift Card — Always-On Capabilities (No Feature Flags)
+
+Store browsing, gift-card purchase, gift-card redemption, and gift-card maintenance are **permanently enabled product capabilities**. They are not feature-flagged.
+
+### Forbidden env vars — do not introduce or reinstate
+
+The following env vars are **deprecated and forbidden** across all environments, code, CI, scripts, and docs:
+
+- `STORE_ENABLED`
+- `GIFT_CARD_PURCHASE_ENABLED`
+- `GIFT_CARD_REDEMPTION_ENABLED`
+- `GIFT_CARD_MAINTENANCE_ENABLED`
+
+No runtime guard, validator check, CI variable, or documentation reference may use these names. Any reviewer instruction to add them back contradicts this decision and must be rejected.
+
+`scripts/verify-e2e-config.ts` must never include these names in `REQUIRED_FLAGS`. E2E readiness for Store/Gift Card is validated by the required `STRIPE_PRICE_ID_STORE_*` vars and by the E2E test suite passing — not by feature flags.
+
+### Operational readiness for Store / Gift Card depends on
+
+- Correctly seeded catalog (Products + Prices with `StripeSyncStatus.SYNCED`)
+- Store Stripe price IDs (`STRIPE_PRICE_ID_STORE_*`) present in production and E2E environments
+- E2E and integration coverage passing
+- Webhook validation functioning
+- `CRON_SECRET` protecting the maintenance route
+- Audit/reconciliation checks via `GiftCardManualReview`
+
 ## Canonical References
 - `docs/00_01_system_baseline.md`
 - `docs/00_02_deployment_baseline.md`

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { activateGiftCardValue } from "./gift-card-wallet-service";
 import { createGiftCardManualReviewCase } from "./gift-card-reconciliation-service";
 import { emitGiftCardAlertEvent } from "./gift-card-events";
+import { GiftCardError, GiftCardIdempotencyConflictError, giftCardErrorCodes } from "./gift-card-errors";
 import { GIFT_CARD_CURRENCY_CODE } from "./gift-card-types";
 
 const GIFT_CARD_CODE_EXPIRY_DAYS =
@@ -275,21 +276,6 @@ export async function redeemGiftCardCode(input: RedeemGiftCardCodeInput): Promis
     throw genericError;
   }
 
-  // Mark the code as REDEEMED first; idempotency on wallet activation prevents double-credit
-  const updated = await prisma.giftCardCode.updateMany({
-    where: { id: record.id, status: GiftCardCodeStatus.ISSUED },
-    data: {
-      status: GiftCardCodeStatus.REDEEMED,
-      redeemedById: input.redeemerUserId,
-      redeemedAt: new Date(),
-    },
-  });
-
-  if (updated.count === 0) {
-    // Race: another concurrent request already redeemed it
-    throw genericError;
-  }
-
   try {
     const activation = await activateGiftCardValue({
       actor: { type: "USER", userId: input.redeemerUserId, role: Role.CLIENT },
@@ -300,6 +286,7 @@ export async function redeemGiftCardCode(input: RedeemGiftCardCodeInput): Promis
       currencyCode: record.currencyCode,
       idempotencyKey: `redeem:${record.id}`,
       metadata: { source: "gift-card-code-redemption", redeemerUserId: input.redeemerUserId },
+      atomicMarkCodeRedeemed: { codeId: record.id, redeemerUserId: input.redeemerUserId },
     });
 
     return {
@@ -308,15 +295,13 @@ export async function redeemGiftCardCode(input: RedeemGiftCardCodeInput): Promis
       amountRedeemedMinor: record.amountMinor,
     };
   } catch (walletError) {
-    // Rollback the status update so the code can be retried
-    await prisma.giftCardCode.update({
-      where: { id: record.id },
-      data: {
-        status: GiftCardCodeStatus.ISSUED,
-        redeemedById: null,
-        redeemedAt: null,
-      },
-    });
+    if (
+      walletError instanceof GiftCardIdempotencyConflictError ||
+      (walletError instanceof GiftCardError &&
+        walletError.code === giftCardErrorCodes.giftCardCodeConcurrentRedemption)
+    ) {
+      throw genericError;
+    }
     console.error("[gift-card-code] wallet activation failed during redemption", walletError instanceof Error ? walletError.message : String(walletError));
     throw new GiftCardCodeRedemptionError("WALLET_ERROR", "Gift card redemption could not be completed. Please try again.");
   }

@@ -86,6 +86,6 @@ describe("sendStorePurchaseConfirmationEmail", () => {
     });
 
     const emails = getCapturedTestEmails();
-    expect(emails[0]?.html.toLowerCase()).toContain("studio");
+    expect(emails[0]?.html).toContain("Pickup at studio.");
   });
 });

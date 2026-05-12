@@ -1,5 +1,6 @@
 import {
   type GiftCardLedgerEntry,
+  GiftCardCodeStatus,
   GiftCardLedgerEntryType,
   type GiftCardRedemption,
   GiftCardRedemptionStatus,
@@ -37,6 +38,7 @@ type ActivateGiftCardInput = {
   readonly currencyCode?: string;
   readonly idempotencyKey: string;
   readonly metadata?: Metadata;
+  readonly atomicMarkCodeRedeemed?: { codeId: string; redeemerUserId: string };
 };
 
 type ActivatePaidGiftCardOrderInput = {
@@ -420,6 +422,21 @@ export async function activateGiftCardValue(input: ActivateGiftCardInput): Promi
     if (lockedDuplicateActivation) {
       throw giftCardError(giftCardErrorCodes.activationOrderItemAlreadyExists);
     }
+
+    if (input.atomicMarkCodeRedeemed) {
+      const updated = await tx.giftCardCode.updateMany({
+        where: { id: input.atomicMarkCodeRedeemed.codeId, status: GiftCardCodeStatus.ISSUED },
+        data: {
+          status: GiftCardCodeStatus.REDEEMED,
+          redeemedById: input.atomicMarkCodeRedeemed.redeemerUserId,
+          redeemedAt: new Date(),
+        },
+      });
+      if (updated.count === 0) {
+        throw giftCardError(giftCardErrorCodes.giftCardCodeConcurrentRedemption);
+      }
+    }
+
     if (wallet.balanceMinor + input.amountMinor > GIFT_CARD_MAX_WALLET_BALANCE_MINOR) {
       throw giftCardError(giftCardErrorCodes.walletCapExceeded);
     }

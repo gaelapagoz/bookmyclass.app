@@ -146,6 +146,12 @@ jobs:
           EMAIL_FROM=${EMAIL_FROM}
           E2E_TEST_MODE=${E2E_TEST_MODE}
           E2E_TEST_SECRET=${E2E_TEST_SECRET}
+          STRIPE_PRICE_ID_STORE_GIFT_CARD_25_EUR=price_ci_store_gift_card_25_eur
+          STRIPE_PRICE_ID_STORE_GIFT_CARD_50_EUR=price_ci_store_gift_card_50_eur
+          STRIPE_PRICE_ID_STORE_GIFT_CARD_100_EUR=price_ci_store_gift_card_100_eur
+          STRIPE_PRICE_ID_STORE_MERCH_YOGA_MAT=price_ci_store_merch_yoga_mat
+          STRIPE_PRICE_ID_STORE_MERCH_RESISTANCE_BANDS=price_ci_store_merch_resistance_bands
+          STRIPE_PRICE_ID_STORE_MERCH_STUDIO_TOTE=price_ci_store_merch_studio_tote
           EOF
 
       - name: Reset DB, build, and run e2e suite

@@ -68,7 +68,7 @@ export async function sendStorePurchaseConfirmationEmail(
       </tbody>
     </table>
     <p style="color:#8a5959;font-size:12px;margin:0">
-      Merchandise items can be collected at the studio. Please bring this confirmation when you collect your order.
+      Pickup at studio. Please bring this confirmation when you collect your order.
     </p>
   </div>
 </body>

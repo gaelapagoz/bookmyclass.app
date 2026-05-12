@@ -409,4 +409,54 @@ test.describe("Gift-card code redemption", () => {
       await cleanupStoreTest(user.id, [gcProduct.id]);
     }
   });
+
+  // @store @covers store-gift-card-redeem-invalid-code
+  test("entering an invalid gift card code shows a generic error @store", async ({ page }) => {
+    const { user, credentials } = await createVerifiedClient();
+    const { product: gcProduct } = await createCheckoutReadyGiftCardProduct(1_000);
+
+    try {
+      await signInClient(page, credentials);
+      await page.goto("/dashboard/wallet");
+
+      await expect(page.getByTestId("gift-card-code-input")).toBeVisible();
+      await page.getByTestId("gift-card-code-input").fill("INVALID-CODE-DOES-NOT-EXIST-AT-ALL");
+      await page.getByTestId("redeem-submit").click();
+
+      await expect(page.getByTestId("redeem-error")).toBeVisible({ timeout: 10_000 });
+      const errorText = await page.getByTestId("redeem-error").textContent();
+      expect(errorText).toBeTruthy();
+    } finally {
+      await cleanupStoreTest(user.id, [gcProduct.id]);
+    }
+  });
+
+  // @store @covers store-gift-card-redeem-rate-limited
+  test("redemption rate limit — 6th attempt within window shows rate-limited error @store", async ({ page }) => {
+    const { user, credentials } = await createVerifiedClient();
+    const { product: gcProduct } = await createCheckoutReadyGiftCardProduct(1_000);
+
+    const rateLimitKeyHash = createHash("sha256")
+      .update(`gift-card-code-redemption:${user.id}`)
+      .digest("hex");
+    await prisma.rateLimitCounter.create({
+      data: { keyHash: rateLimitKeyHash, windowStartedAt: new Date(), requestCount: 5 },
+    });
+
+    try {
+      await signInClient(page, credentials);
+      await page.goto("/dashboard/wallet");
+
+      await expect(page.getByTestId("gift-card-code-input")).toBeVisible();
+      await page.getByTestId("gift-card-code-input").fill("AAAAAAAA-BBBBBBBB-CCCCCCCC-DDDDDDDD");
+      await page.getByTestId("redeem-submit").click();
+
+      await expect(page.getByTestId("redeem-error")).toBeVisible({ timeout: 10_000 });
+      const errorText = await page.getByTestId("redeem-error").textContent();
+      expect(errorText?.toLowerCase()).toMatch(/too many|rate.?limit/i);
+    } finally {
+      await prisma.rateLimitCounter.deleteMany({ where: { keyHash: rateLimitKeyHash } });
+      await cleanupStoreTest(user.id, [gcProduct.id]);
+    }
+  });
 });

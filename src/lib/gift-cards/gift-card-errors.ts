@@ -24,6 +24,7 @@ export const giftCardErrorCodes = {
   walletCapExceeded: "GIFT_CARD_WALLET_CAP_EXCEEDED",
   walletInvariantFailed: "GIFT_CARD_WALLET_INVARIANT_FAILED",
   walletSuspended: "GIFT_CARD_WALLET_SUSPENDED",
+  giftCardCodeConcurrentRedemption: "GIFT_CARD_CODE_CONCURRENT_REDEMPTION",
 } as const;
 
 export function giftCardError(code: string): GiftCardError {

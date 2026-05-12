@@ -11,7 +11,7 @@ import {
   StripeSyncStatus,
   UserActivationStatus,
 } from "@prisma/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { startCartCheckout } from "../../src/lib/cart/cart-checkout-service";
 import { prisma } from "./helpers/db";
