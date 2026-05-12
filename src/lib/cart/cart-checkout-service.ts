@@ -1,16 +1,20 @@
 import {
   CartCheckoutIdempotencyState,
+  CartCheckoutResponseType as PrismaCartCheckoutResponseType,
   CheckoutSource,
   OrderStatus,
   PaymentMethod,
   PaymentProvider,
   PaymentStatus,
   Prisma,
+  ProductType,
   Role,
   UserActivationStatus,
 } from "@prisma/client";
 import {
+  CART_CHECKOUT_MAX_WALLET_AMOUNT_MINOR,
   CART_CHECKOUT_IDEMPOTENCY_STATES,
+  CART_CHECKOUT_RESPONSE_TYPES,
   CART_CHECKOUT_SOURCE,
 } from "@/lib/cart/cart-contract";
 import type { CartLineInput, CartValidationResult } from "@/lib/cart/cart-types";
@@ -22,6 +26,25 @@ import {
   getStripeServerEnv,
 } from "@/lib/payments/stripe";
 import { isCatalogPriceCheckoutReady } from "@/lib/catalog/checkout-readiness";
+import { assertGiftCardWalletCapPrecheck } from "@/lib/store/store-catalog";
+import { checkAndRecordDbRateLimit } from "@/lib/security/db-rate-limit";
+import {
+  captureGiftCardRedemption,
+  reserveGiftCardValue,
+} from "@/lib/gift-cards/gift-card-wallet-service";
+import { issueGiftCardCodesForOrder } from "@/lib/gift-cards/gift-card-code-service";
+import { GIFT_CARD_CURRENCY_CODE } from "@/lib/gift-cards/gift-card-types";
+import { GiftCardError, giftCardErrorCodes } from "@/lib/gift-cards/gift-card-errors";
+
+const GIFT_CARD_CHECKOUT_RATE_LIMIT = {
+  maxAttempts: 10,
+  windowMs: 10 * 60 * 1000,
+} as const;
+
+const GIFT_CARD_REDEMPTION_RATE_LIMIT = {
+  maxAttempts: 5,
+  windowMs: 10 * 60 * 1000,
+} as const;
 
 const RETRY_AFTER_MS = 1500;
 const STALE_IN_PROGRESS_MS = 30_000;
@@ -40,6 +63,9 @@ type IdempotencyAcquireResult =
         id: string;
         orderId: string | null;
         paymentId: string | null;
+        redemptionId: string | null;
+        giftCardPaymentId: string | null;
+        stripePaymentId: string | null;
         stripeRequestPayload: Prisma.JsonValue | null;
       };
     }
@@ -53,6 +79,9 @@ type IdempotencyAcquireResult =
         state: CartCheckoutIdempotencyState;
         orderId: string | null;
         paymentId: string | null;
+        redemptionId: string | null;
+        giftCardPaymentId: string | null;
+        stripePaymentId: string | null;
         stripeRequestPayload: Prisma.JsonValue | null;
         responseStatus: number | null;
         responseBody: Prisma.JsonValue | null;
@@ -66,6 +95,16 @@ type CartCheckoutStartInput = {
   idempotencyKey: string;
   lines: CartLineInput[];
   clientCartVersion: string;
+  walletAmountMinor?: number;
+};
+
+type CartCheckoutPaymentRefs = {
+  orderId: string;
+  paymentId: string;
+  stripePaymentId: string | null;
+  giftCardPaymentId: string | null;
+  redemptionId: string | null;
+  stripeAmountMinor: number;
 };
 
 function debugLog(event: string, payload: Record<string, unknown>) {
@@ -242,6 +281,7 @@ function createSuccessResponse(input: {
   return {
     status: 200,
     body: {
+      type: CART_CHECKOUT_RESPONSE_TYPES.STRIPE_REDIRECT,
       status: "CHECKOUT_SESSION_CREATED",
       orderId: input.orderId,
       paymentId: input.paymentId,
@@ -254,6 +294,36 @@ function createSuccessResponse(input: {
       }),
     },
   };
+}
+
+function createCompletedResponse(input: {
+  key: string;
+  replayed: boolean;
+  orderId: string;
+  giftCardPaymentId: string;
+}): CartCheckoutResponse {
+  return {
+    status: 200,
+    body: {
+      type: CART_CHECKOUT_RESPONSE_TYPES.COMPLETED,
+      status: "CHECKOUT_COMPLETED",
+      orderId: input.orderId,
+      paymentMethod: PaymentMethod.GIFT_CARD,
+      redirectUrl: `/store/success?orderId=${encodeURIComponent(input.orderId)}`,
+      paymentId: input.giftCardPaymentId,
+      idempotency: withIdempotency({
+        key: input.key,
+        state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,
+        replayed: input.replayed,
+      }),
+    },
+  };
+}
+
+function sumGiftCardOrderTotalMinor(validation: Extract<CartValidationResult, { ok: true }>): number {
+  return validation.repricedLines
+    .filter((line) => line.productType === ProductType.GIFT_CARD)
+    .reduce((sum, line) => sum + line.lineSubtotalAmountMinor, 0);
 }
 
 async function isEligibleCheckoutClient(userId: string): Promise<boolean> {
@@ -297,8 +367,16 @@ function replayBodyWithReplayFlag(body: unknown): Record<string, unknown> {
 async function persistTerminalResponse(input: {
   id: string;
   response: CartCheckoutResponse;
+  giftCardPaymentId?: string | null;
+  redemptionId?: string | null;
 }) {
   const responseBody = input.response.body as Record<string, unknown>;
+  const responseType =
+    responseBody.type === CART_CHECKOUT_RESPONSE_TYPES.COMPLETED
+      ? PrismaCartCheckoutResponseType.COMPLETED
+      : responseBody.type === CART_CHECKOUT_RESPONSE_TYPES.STRIPE_REDIRECT
+        ? PrismaCartCheckoutResponseType.STRIPE_REDIRECT
+        : undefined;
   debugLog("persist_terminal_response", {
     idempotencyRecordId: input.id,
     responseStatus: input.response.status,
@@ -312,6 +390,16 @@ async function persistTerminalResponse(input: {
       responseCode: typeof responseBody.code === "string" ? responseBody.code : null,
       responseMessage: typeof responseBody.message === "string" ? responseBody.message : null,
       responseBody: responseBody as Prisma.InputJsonValue,
+      ...(responseType ? { responseType } : {}),
+      ...(responseType === PrismaCartCheckoutResponseType.STRIPE_REDIRECT
+        ? {
+            stripePaymentId: typeof responseBody.paymentId === "string" ? responseBody.paymentId : null,
+            checkoutSessionId:
+              typeof responseBody.checkoutSessionId === "string" ? responseBody.checkoutSessionId : null,
+          }
+        : {}),
+      ...(input.giftCardPaymentId != null ? { giftCardPaymentId: input.giftCardPaymentId } : {}),
+      ...(input.redemptionId != null ? { redemptionId: input.redemptionId } : {}),
     },
   });
 }
@@ -335,6 +423,9 @@ async function acquireIdempotencyRecord(input: {
       state: true,
       orderId: true,
       paymentId: true,
+      redemptionId: true,
+      giftCardPaymentId: true,
+      stripePaymentId: true,
       stripeRequestPayload: true,
       responseStatus: true,
       responseBody: true,
@@ -358,6 +449,9 @@ async function acquireIdempotencyRecord(input: {
           state: true,
           orderId: true,
           paymentId: true,
+          redemptionId: true,
+          giftCardPaymentId: true,
+          stripePaymentId: true,
           stripeRequestPayload: true,
           responseStatus: true,
           responseBody: true,
@@ -383,6 +477,9 @@ async function acquireIdempotencyRecord(input: {
           state: true,
           orderId: true,
           paymentId: true,
+          redemptionId: true,
+          giftCardPaymentId: true,
+          stripePaymentId: true,
           stripeRequestPayload: true,
           responseStatus: true,
           responseBody: true,
@@ -408,6 +505,9 @@ async function acquireIdempotencyRecord(input: {
         id: existing.id,
         orderId: existing.orderId,
         paymentId: existing.paymentId,
+        redemptionId: existing.redemptionId,
+        giftCardPaymentId: existing.giftCardPaymentId,
+        stripePaymentId: existing.stripePaymentId,
         stripeRequestPayload: existing.stripeRequestPayload,
       },
     };
@@ -447,6 +547,9 @@ async function acquireIdempotencyRecord(input: {
         state: recoveredState,
         orderId: existing.orderId,
         paymentId: existing.paymentId,
+        redemptionId: existing.redemptionId,
+        giftCardPaymentId: existing.giftCardPaymentId,
+        stripePaymentId: existing.stripePaymentId,
         stripeRequestPayload: existing.stripeRequestPayload,
         responseStatus: existing.responseStatus,
         responseBody: existing.responseBody,
@@ -473,6 +576,9 @@ async function acquireIdempotencyRecord(input: {
       state: existing.state,
       orderId: existing.orderId,
       paymentId: existing.paymentId,
+      redemptionId: existing.redemptionId,
+      giftCardPaymentId: existing.giftCardPaymentId,
+      stripePaymentId: existing.stripePaymentId,
       stripeRequestPayload: existing.stripeRequestPayload,
       responseStatus: existing.responseStatus,
       responseBody: existing.responseBody,
@@ -550,10 +656,14 @@ async function resolveOrCreateOrderPayment(input: {
   idempotencyRecordId: string;
   existingOrderId: string | null;
   existingPaymentId: string | null;
+  existingRedemptionId: string | null;
+  existingGiftCardPaymentId: string | null;
+  existingStripePaymentId: string | null;
   validation: Extract<CartValidationResult, { ok: true }>;
-}) {
+  walletAmountMinor: number;
+}): Promise<CartCheckoutPaymentRefs> {
   try {
-    const resolved = await prisma.$transaction(async (tx) => {
+    const orderContext = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`
         SELECT id
         FROM "CartCheckoutIdempotency"
@@ -566,31 +676,34 @@ async function resolveOrCreateOrderPayment(input: {
         select: {
           orderId: true,
           paymentId: true,
+          redemptionId: true,
+          giftCardPaymentId: true,
+          stripePaymentId: true,
         },
       });
 
       const existingOrderId = idempotency?.orderId ?? input.existingOrderId;
-      const existingPaymentId = idempotency?.paymentId ?? input.existingPaymentId;
+      const existingStripePaymentId = idempotency?.stripePaymentId ?? input.existingStripePaymentId ?? input.existingPaymentId;
+      const existingGiftCardPaymentId = idempotency?.giftCardPaymentId ?? input.existingGiftCardPaymentId;
+      const existingRedemptionId = idempotency?.redemptionId ?? input.existingRedemptionId;
 
-      if (existingOrderId && existingPaymentId) {
-        const existing = await tx.payment.findUnique({
-          where: { id: existingPaymentId },
+      if (existingOrderId) {
+        const existingOrder = await tx.order.findFirst({
+          where: {
+            id: existingOrderId,
+            clientId: input.userId,
+          },
           select: {
             id: true,
-            orderId: true,
-            order: {
-              select: {
-                id: true,
-                clientId: true,
-              },
-            },
           },
         });
 
-        if (existing?.orderId === existingOrderId && existing.order?.clientId === input.userId) {
+        if (existingOrder) {
           return {
-            orderId: existing.orderId,
-            paymentId: existing.id,
+            orderId: existingOrder.id,
+            redemptionId: existingRedemptionId,
+            giftCardPaymentId: existingGiftCardPaymentId,
+            stripePaymentId: existingStripePaymentId,
           };
         }
       }
@@ -624,34 +737,173 @@ async function resolveOrCreateOrderPayment(input: {
         })),
       });
 
-      const payment = await tx.payment.create({
-        data: {
-          orderId: order.id,
-          status: PaymentStatus.PENDING,
-          method: PaymentMethod.CARD,
-          provider: PaymentProvider.STRIPE,
-          amountMinor: input.validation.pricing.subtotalAmountMinor,
-          currencyCode: input.validation.pricing.currencyCode,
-          checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
-        },
-        select: { id: true },
-      });
-
       await tx.cartCheckoutIdempotency.update({
         where: { id: input.idempotencyRecordId },
         data: {
           orderId: order.id,
-          paymentId: payment.id,
         },
       });
 
       return {
         orderId: order.id,
-        paymentId: payment.id,
+        redemptionId: null,
+        giftCardPaymentId: null,
+        stripePaymentId: null,
       };
     });
 
-    return resolved;
+    const walletAmountMinor = input.walletAmountMinor;
+    const subtotalAmountMinor = input.validation.pricing.subtotalAmountMinor;
+    const stripeAmountMinor = subtotalAmountMinor - walletAmountMinor;
+
+    if (walletAmountMinor <= 0) {
+      const stripePaymentId =
+        orderContext.stripePaymentId ??
+        (
+          await prisma.payment.findFirst({
+            where: {
+              orderId: orderContext.orderId,
+              provider: PaymentProvider.STRIPE,
+              status: PaymentStatus.PENDING,
+            },
+            orderBy: { createdAt: "desc" },
+            select: { id: true },
+          })
+        )?.id ??
+        (
+          await prisma.payment.create({
+            data: {
+              orderId: orderContext.orderId,
+              status: PaymentStatus.PENDING,
+              method: PaymentMethod.CARD,
+              provider: PaymentProvider.STRIPE,
+              amountMinor: subtotalAmountMinor,
+              currencyCode: input.validation.pricing.currencyCode,
+              checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+            },
+            select: { id: true },
+          })
+        ).id;
+
+      await prisma.cartCheckoutIdempotency.update({
+        where: { id: input.idempotencyRecordId },
+        data: {
+          paymentId: stripePaymentId,
+          stripePaymentId,
+        },
+      });
+
+      return {
+        orderId: orderContext.orderId,
+        paymentId: stripePaymentId,
+        stripePaymentId,
+        giftCardPaymentId: null,
+        redemptionId: null,
+        stripeAmountMinor: subtotalAmountMinor,
+      };
+    }
+
+    const redemptionId =
+      orderContext.redemptionId ??
+      (
+        await reserveGiftCardValue({
+          actor: { type: "USER", userId: input.userId, role: Role.CLIENT },
+          clientId: input.userId,
+          orderId: orderContext.orderId,
+          amountMinor: walletAmountMinor,
+          currencyCode: GIFT_CARD_CURRENCY_CODE,
+          expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+          idempotencyKey: `gift-card:reserve:order:${orderContext.orderId}`,
+          metadata: { source: CART_CHECKOUT_SOURCE, idempotencyRecordId: input.idempotencyRecordId },
+        })
+      ).redemption.id;
+
+    const paymentRefs = await prisma.$transaction(async (tx) => {
+      const existingGiftCardPaymentId =
+        orderContext.giftCardPaymentId ??
+        (
+          await tx.payment.findFirst({
+            where: {
+              orderId: orderContext.orderId,
+              provider: PaymentProvider.INTERNAL,
+              method: PaymentMethod.GIFT_CARD,
+            },
+            orderBy: { createdAt: "desc" },
+            select: { id: true },
+          })
+        )?.id;
+
+      const giftCardPaymentId =
+        existingGiftCardPaymentId ??
+        (
+          await tx.payment.create({
+            data: {
+              orderId: orderContext.orderId,
+              status: PaymentStatus.PENDING,
+              method: PaymentMethod.GIFT_CARD,
+              provider: PaymentProvider.INTERNAL,
+              amountMinor: walletAmountMinor,
+              currencyCode: input.validation.pricing.currencyCode,
+              checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+            },
+            select: { id: true },
+          })
+        ).id;
+
+      const existingStripePaymentId =
+        orderContext.stripePaymentId ??
+        (
+          await tx.payment.findFirst({
+            where: {
+              orderId: orderContext.orderId,
+              provider: PaymentProvider.STRIPE,
+            },
+            orderBy: { createdAt: "desc" },
+            select: { id: true },
+          })
+        )?.id;
+
+      const stripePaymentId =
+        stripeAmountMinor > 0
+          ? existingStripePaymentId ??
+            (
+              await tx.payment.create({
+                data: {
+                  orderId: orderContext.orderId,
+                  status: PaymentStatus.PENDING,
+                  method: PaymentMethod.CARD,
+                  provider: PaymentProvider.STRIPE,
+                  amountMinor: stripeAmountMinor,
+                  currencyCode: input.validation.pricing.currencyCode,
+                  checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+                },
+                select: { id: true },
+              })
+            ).id
+          : null;
+
+      await tx.cartCheckoutIdempotency.update({
+        where: { id: input.idempotencyRecordId },
+        data: {
+          orderId: orderContext.orderId,
+          paymentId: stripePaymentId ?? giftCardPaymentId,
+          redemptionId,
+          giftCardPaymentId,
+          stripePaymentId,
+        },
+      });
+
+      return { giftCardPaymentId, stripePaymentId };
+    });
+
+    return {
+      orderId: orderContext.orderId,
+      paymentId: paymentRefs.stripePaymentId ?? paymentRefs.giftCardPaymentId,
+      stripePaymentId: paymentRefs.stripePaymentId,
+      giftCardPaymentId: paymentRefs.giftCardPaymentId,
+      redemptionId,
+      stripeAmountMinor,
+    };
   } catch (error) {
     await prisma.cartCheckoutIdempotency.update({
       where: { id: input.idempotencyRecordId },
@@ -813,16 +1065,37 @@ export async function resolveDeterministicFailureWithIdempotency(input: {
   return response;
 }
 
+function buildWalletAugmentedCartHash(cartHash: string, walletAmountMinor: number | undefined): string {
+  if (!walletAmountMinor || walletAmountMinor <= 0) {
+    return cartHash;
+  }
+  return `${cartHash}|walletAmountMinor=${walletAmountMinor}`;
+}
+
 export async function startCartCheckout(input: CartCheckoutStartInput): Promise<CartCheckoutResponse> {
   const eligibleActor = await isEligibleCheckoutClient(input.userId);
   if (!eligibleActor) {
+    const baseCartHash = computeCartHash(input.lines);
+    const authFailureHash = `AUTH_FAILURE_V1|cartHash=${buildWalletAugmentedCartHash(baseCartHash, input.walletAmountMinor)}|clientCartVersion=${input.clientCartVersion}`;
     return resolveDeterministicFailureWithIdempotency({
       userId: input.userId,
       idempotencyKey: input.idempotencyKey,
-      cartHash: `AUTH_FAILURE_V1|cartHash=${computeCartHash(input.lines)}|clientCartVersion=${input.clientCartVersion}`,
+      cartHash: authFailureHash,
       status: 403,
       code: "EMAIL_VERIFICATION_REQUIRED",
       message: "Your account must be active and email-verified before checkout.",
+    });
+  }
+
+  if ((input.walletAmountMinor ?? 0) > CART_CHECKOUT_MAX_WALLET_AMOUNT_MINOR) {
+    const baseCartHash = computeCartHash(input.lines);
+    return resolveDeterministicFailureWithIdempotency({
+      userId: input.userId,
+      idempotencyKey: input.idempotencyKey,
+      cartHash: buildWalletAugmentedCartHash(baseCartHash, input.walletAmountMinor),
+      status: 422,
+      code: "WALLET_REDEMPTION_EXCEEDS_MAX",
+      message: "Wallet redemption cannot exceed 500 EUR per order.",
     });
   }
 
@@ -830,25 +1103,29 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     lines: input.lines,
     clientId: input.userId,
   });
+
+  const effectiveCartHash = buildWalletAugmentedCartHash(validation.cartHash, input.walletAmountMinor);
+
   debugLog("start_checkout_attempt", {
     userId: input.userId,
     idempotencyKey: input.idempotencyKey,
-    cartHash: validation.cartHash,
+    cartHash: effectiveCartHash,
     lineCount: input.lines.length,
     clientCartVersion: input.clientCartVersion,
     validationOk: validation.ok,
+    walletAmountMinor: input.walletAmountMinor ?? 0,
   });
 
   const acquired = await acquireIdempotencyRecord({
     userId: input.userId,
     idempotencyKey: input.idempotencyKey,
-    cartHash: validation.cartHash,
+    cartHash: effectiveCartHash,
   });
 
   if (acquired.kind === "conflict") {
     debugLog("branch_conflict", {
       idempotencyKey: input.idempotencyKey,
-      cartHash: validation.cartHash,
+      cartHash: effectiveCartHash,
       existingState: acquired.record.state,
       branch: "conflict",
       finalStatus: 409,
@@ -869,7 +1146,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
   if (acquired.kind === "inProgress") {
     debugLog("branch_in_progress", {
       idempotencyKey: input.idempotencyKey,
-      cartHash: validation.cartHash,
+      cartHash: effectiveCartHash,
       existingState: acquired.record.state,
       branch: "in_progress",
       finalStatus: 202,
@@ -885,7 +1162,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
   if (acquired.kind === "replay") {
     debugLog("branch_replay", {
       idempotencyKey: input.idempotencyKey,
-      cartHash: validation.cartHash,
+      cartHash: effectiveCartHash,
       branch: "replay",
       replayed: true,
       responseStatus: acquired.record.responseStatus,
@@ -922,20 +1199,20 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     if (claimed.count === 0) {
       debugLog("resume_claim_failed", {
         idempotencyKey: input.idempotencyKey,
-        cartHash: validation.cartHash,
+        cartHash: effectiveCartHash,
         previousState: resumedFailedRecord.state,
         claimedCount: claimed.count,
       });
       const latest = await acquireIdempotencyRecord({
         userId: input.userId,
         idempotencyKey: input.idempotencyKey,
-        cartHash: validation.cartHash,
+        cartHash: effectiveCartHash,
       });
 
       if (latest.kind === "replay") {
         debugLog("resume_claim_failed_latest_replay", {
           idempotencyKey: input.idempotencyKey,
-          cartHash: validation.cartHash,
+          cartHash: effectiveCartHash,
           responseStatus: latest.record.responseStatus,
         });
         return toReplayResponse(latest.record);
@@ -944,7 +1221,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       if (latest.kind === "conflict") {
         debugLog("resume_claim_failed_latest_conflict", {
           idempotencyKey: input.idempotencyKey,
-          cartHash: validation.cartHash,
+          cartHash: effectiveCartHash,
           existingState: latest.record.state,
         });
         return createErrorResponse({
@@ -970,7 +1247,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     }
     debugLog("resume_claimed", {
       idempotencyKey: input.idempotencyKey,
-      cartHash: validation.cartHash,
+      cartHash: effectiveCartHash,
       previousState: resumedFailedRecord.state,
       claimedCount: claimed.count,
     });
@@ -988,7 +1265,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     });
     debugLog("branch_validation_failure", {
       idempotencyKey: input.idempotencyKey,
-      cartHash: validation.cartHash,
+      cartHash: effectiveCartHash,
       branch: "validation_failure",
       finalStatus: rejectionResponse.status,
       finalCode: rejectionResponse.body.code,
@@ -997,13 +1274,247 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     return rejectionResponse;
   }
 
-  const orderPayment = await resolveOrCreateOrderPayment({
-    userId: input.userId,
-    idempotencyRecordId,
-    existingOrderId: resumedFailedRecord?.orderId ?? acquired.record.orderId,
-    existingPaymentId: resumedFailedRecord?.paymentId ?? acquired.record.paymentId,
-    validation,
-  });
+  const cartHasStoreItems = validation.repricedLines.some(
+    (line) =>
+      line.productType === ProductType.GIFT_CARD || line.productType === ProductType.MERCHANDISE,
+  );
+  const cartHasGiftCardItems = validation.repricedLines.some(
+    (line) => line.productType === ProductType.GIFT_CARD,
+  );
+  const isRedemptionRequest = (input.walletAmountMinor ?? 0) > 0;
+
+  // Checked after idempotency replay so stored terminal responses remain replayable.
+  if (cartHasGiftCardItems) {
+    const gcRateLimit = await checkAndRecordDbRateLimit(
+      "gift_card_checkout",
+      input.userId,
+      GIFT_CARD_CHECKOUT_RATE_LIMIT,
+    );
+    if (!gcRateLimit.allowed) {
+      return {
+        status: 429,
+        body: {
+          code: "RATE_LIMIT_EXCEEDED",
+          message: "Too many gift-card checkout attempts. Please wait.",
+        },
+      };
+    }
+  }
+
+  if (isRedemptionRequest) {
+    const redemptionRateLimit = await checkAndRecordDbRateLimit(
+      "gift_card_redemption",
+      input.userId,
+      GIFT_CARD_REDEMPTION_RATE_LIMIT,
+    );
+    if (!redemptionRateLimit.allowed) {
+      return {
+        status: 429,
+        body: {
+          code: "RATE_LIMIT_EXCEEDED",
+          message: "Too many wallet redemption attempts. Please wait.",
+        },
+      };
+    }
+  }
+
+  if (isRedemptionRequest && !cartHasStoreItems) {
+    const redemptionScopeResponse = createErrorResponse({
+      status: 422,
+      code: "WALLET_REDEMPTION_REQUIRES_STORE_ITEMS",
+      message: "Gift-card wallet redemption requires store items in the cart.",
+      idempotency: {
+        key: input.idempotencyKey,
+        state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,
+        replayed: false,
+      },
+    });
+    await persistTerminalResponse({ id: idempotencyRecordId, response: redemptionScopeResponse });
+    return redemptionScopeResponse;
+  }
+
+  if (isRedemptionRequest && validation.ok && (input.walletAmountMinor ?? 0) > validation.pricing.subtotalAmountMinor) {
+    const redemptionExceedsOrderResponse = createErrorResponse({
+      status: 422,
+      code: "WALLET_REDEMPTION_EXCEEDS_ORDER_TOTAL",
+      message: "Wallet redemption cannot exceed the order total.",
+      idempotency: {
+        key: input.idempotencyKey,
+        state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,
+        replayed: false,
+      },
+    });
+    await persistTerminalResponse({
+      id: idempotencyRecordId,
+      response: redemptionExceedsOrderResponse,
+    });
+    return redemptionExceedsOrderResponse;
+  }
+
+  const giftCardOrderTotalMinor = sumGiftCardOrderTotalMinor(validation);
+  if (giftCardOrderTotalMinor > 0) {
+    const walletCap = await assertGiftCardWalletCapPrecheck({
+      clientId: input.userId,
+      newGiftCardOrderTotalMinor: giftCardOrderTotalMinor,
+    });
+
+    if (!walletCap.ok) {
+      const walletCapResponse = createErrorResponse({
+        status: 422,
+        code: "GIFT_CARD_WALLET_CAP_EXCEEDED",
+        message: "Gift-card purchase would exceed the 1,000 EUR wallet balance cap.",
+        idempotency: {
+          key: input.idempotencyKey,
+          state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,
+          replayed: false,
+        },
+      });
+
+      await persistTerminalResponse({
+        id: idempotencyRecordId,
+        response: walletCapResponse,
+      });
+
+      return walletCapResponse;
+    }
+  }
+
+  let orderPayment: CartCheckoutPaymentRefs;
+  try {
+    orderPayment = await resolveOrCreateOrderPayment({
+      userId: input.userId,
+      idempotencyRecordId,
+      existingOrderId: resumedFailedRecord?.orderId ?? acquired.record.orderId,
+      existingPaymentId: resumedFailedRecord?.paymentId ?? acquired.record.paymentId,
+      existingRedemptionId: resumedFailedRecord?.redemptionId ?? acquired.record.redemptionId,
+      existingGiftCardPaymentId: resumedFailedRecord?.giftCardPaymentId ?? acquired.record.giftCardPaymentId,
+      existingStripePaymentId: resumedFailedRecord?.stripePaymentId ?? acquired.record.stripePaymentId,
+      validation,
+      walletAmountMinor: input.walletAmountMinor ?? 0,
+    });
+  } catch (error) {
+    if (error instanceof GiftCardError) {
+      const code =
+        error.code === giftCardErrorCodes.insufficientAvailableBalance
+          ? "GIFT_CARD_INSUFFICIENT_AVAILABLE_BALANCE"
+          : error.code;
+      const walletFailureResponse = createErrorResponse({
+        status: 422,
+        code,
+        message: "Gift-card wallet redemption could not be applied.",
+        idempotency: {
+          key: input.idempotencyKey,
+          state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,
+          replayed: false,
+        },
+      });
+      await persistTerminalResponse({
+        id: idempotencyRecordId,
+        response: walletFailureResponse,
+      });
+      return walletFailureResponse;
+    }
+    throw error;
+  }
+
+  if (orderPayment.stripeAmountMinor === 0) {
+    if (!orderPayment.redemptionId || !orderPayment.giftCardPaymentId) {
+      throw new Error("Full wallet checkout is missing gift-card payment references.");
+    }
+
+    await captureGiftCardRedemption({
+      actor: { type: "USER", userId: input.userId, role: Role.CLIENT },
+      redemptionId: orderPayment.redemptionId,
+      paymentId: orderPayment.giftCardPaymentId,
+      idempotencyKey: `gift-card:capture:redemption:${orderPayment.redemptionId}`,
+      metadata: { source: CART_CHECKOUT_SOURCE, idempotencyRecordId },
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.payment.update({
+        where: { id: orderPayment.giftCardPaymentId! },
+        data: {
+          status: PaymentStatus.SUCCEEDED,
+          capturedAt: new Date(),
+        },
+      });
+      await tx.order.update({
+        where: { id: orderPayment.orderId },
+        data: { status: OrderStatus.PAID },
+      });
+    });
+
+    const storeOrderItems = await prisma.orderItem.findMany({
+      where: { orderId: orderPayment.orderId },
+      select: {
+        id: true,
+        lineTotalAmountMinor: true,
+        productNameSnapshot: true,
+        quantity: true,
+        currencyCode: true,
+        product: { select: { productType: true } },
+        price: { select: { unitAmountMinor: true } },
+      },
+    });
+
+    const purchasedGiftCardItems = storeOrderItems
+      .filter((item) => item.product.productType === ProductType.GIFT_CARD)
+      .map((item) => ({ orderItemId: item.id, amountMinor: item.lineTotalAmountMinor }));
+
+    if (purchasedGiftCardItems.length > 0) {
+      await issueGiftCardCodesForOrder({
+        orderId: orderPayment.orderId,
+        clientId: input.userId,
+        paymentId: orderPayment.giftCardPaymentId ?? undefined,
+        items: purchasedGiftCardItems,
+      });
+    }
+
+    const merchandiseItems = storeOrderItems.filter(
+      (item) => item.product.productType === ProductType.MERCHANDISE,
+    );
+
+    if (merchandiseItems.length > 0) {
+      try {
+        const { sendStorePurchaseConfirmationEmail } = await import("@/lib/email/store-email");
+        const purchaser = await prisma.user.findUnique({
+          where: { id: input.userId },
+          select: { name: true, email: true },
+        });
+        if (purchaser?.email) {
+          await sendStorePurchaseConfirmationEmail({
+            to: purchaser.email,
+            purchaserName: purchaser.name,
+            orderId: orderPayment.orderId,
+            items: merchandiseItems.map((item) => ({
+              name: item.productNameSnapshot,
+              quantity: item.quantity,
+              unitAmountMinor: item.price.unitAmountMinor,
+              currencyCode: item.currencyCode,
+            })),
+          });
+        }
+      } catch (emailError) {
+        console.error("[cart-checkout] merchandise confirmation email failed", emailError instanceof Error ? emailError.message : String(emailError));
+      }
+    }
+
+    const completedResponse = createCompletedResponse({
+      key: input.idempotencyKey,
+      replayed: false,
+      orderId: orderPayment.orderId,
+      giftCardPaymentId: orderPayment.giftCardPaymentId,
+    });
+
+    await persistTerminalResponse({
+      id: idempotencyRecordId,
+      response: completedResponse,
+      giftCardPaymentId: orderPayment.giftCardPaymentId,
+      redemptionId: orderPayment.redemptionId,
+    });
+
+    return completedResponse;
+  }
 
   let stripeAttempted = false;
 
@@ -1012,7 +1523,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     await assertCartCheckoutStillEligibleBeforeSession({
       userId: input.userId,
       orderId: orderPayment.orderId,
-      paymentId: orderPayment.paymentId,
+      paymentId: orderPayment.stripePaymentId ?? orderPayment.paymentId,
     });
     const metadata = {
       source: CART_CHECKOUT_SOURCE,
@@ -1020,6 +1531,8 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       paymentId: orderPayment.paymentId,
       idempotencyKey: input.idempotencyKey,
       userId: input.userId,
+      redemptionId: orderPayment.redemptionId ?? "",
+      giftCardPaymentId: orderPayment.giftCardPaymentId ?? "",
     };
 
     let stripeParams: Prisma.JsonObject | null = resumedFailedRecord?.stripeRequestPayload as Prisma.JsonObject | null;
@@ -1028,25 +1541,43 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
         validation.repricedLines.map((line) => line.priceId),
       );
 
-      const stripeLineItems = validation.repricedLines.map((line) => {
-        const stripePriceId = stripePriceIdsByLocalPriceId.get(line.priceId);
-        if (!stripePriceId) {
-          throw new Error(`Missing Stripe price for priceId ${line.priceId}.`);
-        }
+      const stripeLineItems =
+        (input.walletAmountMinor ?? 0) > 0
+          ? [
+              {
+                price_data: {
+                  currency: validation.pricing.currencyCode.toLowerCase(),
+                  product_data: {
+                    name: "Store checkout remaining balance",
+                  },
+                  unit_amount: orderPayment.stripeAmountMinor,
+                },
+                quantity: 1,
+              },
+            ]
+          : validation.repricedLines.map((line) => {
+              const stripePriceId = stripePriceIdsByLocalPriceId.get(line.priceId);
+              if (!stripePriceId) {
+                throw new Error(`Missing Stripe price for priceId ${line.priceId}.`);
+              }
 
-        return {
-          price: stripePriceId,
-          quantity: line.quantity,
-        };
-      });
+              return {
+                price: stripePriceId,
+                quantity: line.quantity,
+              };
+            });
 
       stripeParams = {
         mode: validation.composition === "RECURRING_ONLY" ? "subscription" : "payment",
         line_items: stripeLineItems as unknown as Prisma.JsonArray,
         metadata: metadata as unknown as Prisma.JsonObject,
         client_reference_id: input.userId,
-        success_url: `${env.appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${env.appUrl}/subscription/cancel`,
+        success_url: cartHasStoreItems
+          ? `${env.appUrl}/store/success?session_id={CHECKOUT_SESSION_ID}`
+          : `${env.appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: cartHasStoreItems
+          ? `${env.appUrl}/cart`
+          : `${env.appUrl}/subscription/cancel`,
       };
       if (validation.composition === "RECURRING_ONLY") {
         stripeParams.subscription_data = { metadata } as unknown as Prisma.JsonObject;
@@ -1060,15 +1591,47 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       });
     }
 
+    if (process.env.E2E_TEST_MODE === "1") {
+      const syntheticCheckoutSessionId = `cs_e2e_${Date.now()}_${orderPayment.paymentId.slice(-8)}`;
+      const syntheticCheckoutUrl = cartHasStoreItems
+        ? `${env.appUrl}/store/success?session_id=${encodeURIComponent(syntheticCheckoutSessionId)}`
+        : `${env.appUrl}/subscription/success?session_id=${encodeURIComponent(syntheticCheckoutSessionId)}`;
+
+      await prisma.payment.update({
+        where: { id: orderPayment.stripePaymentId ?? orderPayment.paymentId },
+        data: {
+          providerReference: syntheticCheckoutSessionId,
+          stripeCheckoutSessionId: syntheticCheckoutSessionId,
+          stripeCheckoutMode: validation.composition === "RECURRING_ONLY" ? "SUBSCRIPTION" : "PAYMENT",
+        },
+      });
+
+      const syntheticSuccessResponse = createSuccessResponse({
+        key: input.idempotencyKey,
+        replayed: false,
+        orderId: orderPayment.orderId,
+        paymentId: orderPayment.paymentId,
+        checkoutSessionId: syntheticCheckoutSessionId,
+        checkoutUrl: syntheticCheckoutUrl,
+      });
+
+      await persistTerminalResponse({
+        id: idempotencyRecordId,
+        response: syntheticSuccessResponse,
+      });
+
+      return syntheticSuccessResponse;
+    }
+
     stripeAttempted = true;
     debugLog("stripe_call_params", {
       idempotencyKey: input.idempotencyKey,
-      cartHash: validation.cartHash,
+      cartHash: effectiveCartHash,
       params: summarizeStripeParamsForDebug(stripeParams as unknown as Record<string, unknown>),
     });
     debugLog("stripe_call_start", {
       idempotencyKey: input.idempotencyKey,
-      cartHash: validation.cartHash,
+      cartHash: effectiveCartHash,
       stripeStarted: true,
       orderId: orderPayment.orderId,
       paymentId: orderPayment.paymentId,
@@ -1083,7 +1646,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     }
     debugLog("stripe_call_success", {
       idempotencyKey: input.idempotencyKey,
-      cartHash: validation.cartHash,
+      cartHash: effectiveCartHash,
       stripeStarted: true,
       stripeOutcome: "succeeded",
       checkoutSessionId: checkoutSession.id,
@@ -1092,7 +1655,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     });
 
     await prisma.payment.update({
-      where: { id: orderPayment.paymentId },
+      where: { id: orderPayment.stripePaymentId ?? orderPayment.paymentId },
       data: {
         providerReference: checkoutSession.id,
         stripeCheckoutSessionId: checkoutSession.id,
@@ -1115,7 +1678,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     });
     debugLog("branch_success", {
       idempotencyKey: input.idempotencyKey,
-      cartHash: validation.cartHash,
+      cartHash: effectiveCartHash,
       branch: "success",
       finalStatus: successResponse.status,
       finalCode: successResponse.body.status,
@@ -1147,7 +1710,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     });
     debugLog("stripe_call_failure", {
       idempotencyKey: input.idempotencyKey,
-      cartHash: validation.cartHash,
+      cartHash: effectiveCartHash,
       stripeStarted: stripeAttempted,
       stripeOutcome: timeoutLike ? "timed_out" : "failed",
       errorMessage: message,
@@ -1182,7 +1745,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
         });
         debugLog("branch_long_lived_uncertain_escalated", {
           idempotencyKey: input.idempotencyKey,
-          cartHash: validation.cartHash,
+          cartHash: effectiveCartHash,
           branch: "long_lived_uncertain_escalated",
           finalStatus: deterministicFailureResponse.status,
           finalCode: deterministicFailureResponse.body.code,
@@ -1195,7 +1758,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
 
       debugLog("branch_failed_uncertain_in_progress", {
         idempotencyKey: input.idempotencyKey,
-        cartHash: validation.cartHash,
+        cartHash: effectiveCartHash,
         branch: "failed_uncertain_in_progress",
         finalStatus: 202,
         finalCode: "IDEMPOTENCY_IN_PROGRESS",

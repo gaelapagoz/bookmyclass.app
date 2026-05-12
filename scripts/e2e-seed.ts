@@ -30,6 +30,12 @@ const E2E_DEV_BASELINE_STRIPE_PRICE_ENV_DEFAULTS: Record<string, string> = {
   STRIPE_PRICE_ID_MONTHLY_UNLIMITED_COLLECTIVE: "price_E2eMonthlyUnlimited",
   STRIPE_PRICE_ID_PRIVATE_5_PACK: "price_E2ePrivateFivePack",
   STRIPE_PRICE_ID_PRIVATE_10_PACK: "price_E2ePrivateTenPack",
+  STRIPE_PRICE_ID_STORE_GIFT_CARD_25_EUR: "price_E2eStoreGiftCard25",
+  STRIPE_PRICE_ID_STORE_GIFT_CARD_50_EUR: "price_E2eStoreGiftCard50",
+  STRIPE_PRICE_ID_STORE_GIFT_CARD_100_EUR: "price_E2eStoreGiftCard100",
+  STRIPE_PRICE_ID_STORE_MERCH_YOGA_MAT: "price_E2eStoreYogaMat",
+  STRIPE_PRICE_ID_STORE_MERCH_RESISTANCE_BANDS: "price_E2eStoreResistanceBands",
+  STRIPE_PRICE_ID_STORE_MERCH_STUDIO_TOTE: "price_E2eStoreStudioTote",
 };
 
 function ensureE2EDatabaseUrl() {
@@ -68,9 +74,15 @@ async function resetE2EDatabase() {
   await prisma.classType.deleteMany();
   await prisma.classCategory.deleteMany();
   await prisma.loyaltyLedgerEntry.deleteMany();
+  await prisma.giftCardReconciliationCase.deleteMany();
+  await prisma.giftCardLedgerEntry.deleteMany();
+  await prisma.giftCardRedemption.deleteMany();
+  await prisma.giftCardWallet.deleteMany();
   await prisma.creditLedgerEntry.deleteMany();
   await prisma.clientEntitlement.deleteMany();
+  await prisma.cartCheckoutIdempotency.deleteMany();
   await prisma.payment.deleteMany();
+  await prisma.giftCardCode.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.adminNote.deleteMany();
   await prisma.auditLog.deleteMany();

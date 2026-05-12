@@ -25,6 +25,7 @@ import {
   cancelClientWaitlistEntry,
   DashboardServiceError,
   getClientActivityPage,
+  getClientStoreOrderHistory,
   getClientSubscriptionRecoveryState,
   getDashboardBookingsData,
   getDashboardHomeData,
@@ -1340,5 +1341,285 @@ describe("getDashboardLoyaltyPlaceholder", () => {
     const result = await getDashboardLoyaltyPlaceholder(client.id);
 
     expect(result).toBe(0);
+  });
+});
+
+describe("getClientStoreOrderHistory", () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  async function makeStoreProduct(type: ProductType, nameSuffix = "") {
+    const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const product = await prisma.product.create({
+      data: {
+        name: `${type} Product ${nameSuffix}`,
+        slug: `${type.toLowerCase()}-${unique}`,
+        productType: type,
+        isActive: true,
+        isArchived: false,
+        sortOrder: 1,
+      },
+    });
+    const price = await prisma.price.create({
+      data: {
+        productId: product.id,
+        lookupKey: `${type.toLowerCase()}-price-${unique}`,
+        name: "Standard",
+        priceType: PriceType.ONE_TIME,
+        currencyCode: "EUR",
+        unitAmountMinor: 2500,
+        isActive: true,
+        isArchived: false,
+      },
+    });
+    return { product, price };
+  }
+
+  async function createStoreOrder(
+    clientId: string,
+    productType: ProductType,
+    status: OrderStatus = OrderStatus.PAID,
+  ) {
+    const { product, price } = await makeStoreProduct(productType);
+    return prisma.order.create({
+      data: {
+        clientId,
+        subtotalAmountMinor: 2500,
+        discountAmountMinor: 0,
+        totalAmountMinor: 2500,
+        currencyCode: "EUR",
+        status,
+        items: {
+          create: {
+            productId: product.id,
+            priceId: price.id,
+            quantity: 1,
+            productNameSnapshot: product.name,
+            priceNameSnapshot: price.name,
+            unitAmountMinor: 2500,
+            lineSubtotalAmountMinor: 2500,
+            lineDiscountAmountMinor: 0,
+            lineTotalAmountMinor: 2500,
+            currencyCode: "EUR",
+          },
+        },
+      },
+    });
+  }
+
+  it("returns merchandise orders for the correct client", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Store Client",
+        email: `store.client.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await createStoreOrder(client.id, ProductType.MERCHANDISE);
+
+    const result = await getClientStoreOrderHistory(client.id);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.items[0]?.productType).toBe(ProductType.MERCHANDISE);
+  });
+
+  it("returns gift-card orders for the correct client", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "GC Client",
+        email: `gc.client.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await createStoreOrder(client.id, ProductType.GIFT_CARD);
+
+    const result = await getClientStoreOrderHistory(client.id);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.items[0]?.productType).toBe(ProductType.GIFT_CARD);
+  });
+
+  it("sets fulfillmentNote to 'Pickup at studio' for merchandise orders", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Merch Fulfillment Client",
+        email: `merch.fulfil.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await createStoreOrder(client.id, ProductType.MERCHANDISE);
+
+    const result = await getClientStoreOrderHistory(client.id);
+
+    expect(result[0]?.fulfillmentNote).toBe("Pickup at studio");
+  });
+
+  it("sets fulfillmentNote to null for gift-card-only orders", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "GC Fulfillment Client",
+        email: `gc.fulfil.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await createStoreOrder(client.id, ProductType.GIFT_CARD);
+
+    const result = await getClientStoreOrderHistory(client.id);
+
+    expect(result[0]?.fulfillmentNote).toBeNull();
+  });
+
+  it("does not return plan/subscription orders (non-store types)", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Plan Client",
+        email: `plan.client.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await createStoreOrder(client.id, ProductType.DROP_IN_CLASS);
+
+    const result = await getClientStoreOrderHistory(client.id);
+
+    expect(result).toHaveLength(0);
+  });
+
+  it("does not return another client's store orders", async () => {
+    const clientA = await prisma.user.create({
+      data: {
+        name: "Client A",
+        email: `client.a.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+    const clientB = await prisma.user.create({
+      data: {
+        name: "Client B",
+        email: `client.b.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await createStoreOrder(clientA.id, ProductType.MERCHANDISE);
+
+    const result = await getClientStoreOrderHistory(clientB.id);
+
+    expect(result).toHaveLength(0);
+  });
+
+  it("excludes DRAFT orders from client purchase history", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Draft Client",
+        email: `draft.client.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await createStoreOrder(client.id, ProductType.MERCHANDISE, OrderStatus.DRAFT);
+
+    const result = await getClientStoreOrderHistory(client.id);
+
+    expect(result).toHaveLength(0);
+  });
+
+  it("includes PLACED and PAID orders", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Status Client",
+        email: `status.client.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    await createStoreOrder(client.id, ProductType.MERCHANDISE, OrderStatus.PLACED);
+    await createStoreOrder(client.id, ProductType.GIFT_CARD, OrderStatus.PAID);
+
+    const result = await getClientStoreOrderHistory(client.id);
+
+    expect(result).toHaveLength(2);
+    expect(result.map((o) => o.status)).toEqual(
+      expect.arrayContaining([OrderStatus.PLACED, OrderStatus.PAID]),
+    );
+  });
+
+  it("returns orders sorted by placedAt descending", async () => {
+    const client = await prisma.user.create({
+      data: {
+        name: "Sort Client",
+        email: `sort.client.${Date.now()}@example.test`,
+        role: Role.CLIENT,
+      },
+    });
+
+    const { product: p1, price: pr1 } = await makeStoreProduct(ProductType.MERCHANDISE, "A");
+    const { product: p2, price: pr2 } = await makeStoreProduct(ProductType.GIFT_CARD, "B");
+
+    const earlier = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    const later = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000);
+
+    await prisma.order.create({
+      data: {
+        clientId: client.id,
+        subtotalAmountMinor: 2500,
+        discountAmountMinor: 0,
+        totalAmountMinor: 2500,
+        currencyCode: "EUR",
+        status: OrderStatus.PAID,
+        placedAt: earlier,
+        items: {
+          create: {
+            productId: p1.id,
+            priceId: pr1.id,
+            quantity: 1,
+            productNameSnapshot: p1.name,
+            priceNameSnapshot: pr1.name,
+            unitAmountMinor: 2500,
+            lineSubtotalAmountMinor: 2500,
+            lineDiscountAmountMinor: 0,
+            lineTotalAmountMinor: 2500,
+            currencyCode: "EUR",
+          },
+        },
+      },
+    });
+    await prisma.order.create({
+      data: {
+        clientId: client.id,
+        subtotalAmountMinor: 2500,
+        discountAmountMinor: 0,
+        totalAmountMinor: 2500,
+        currencyCode: "EUR",
+        status: OrderStatus.PAID,
+        placedAt: later,
+        items: {
+          create: {
+            productId: p2.id,
+            priceId: pr2.id,
+            quantity: 1,
+            productNameSnapshot: p2.name,
+            priceNameSnapshot: pr2.name,
+            unitAmountMinor: 2500,
+            lineSubtotalAmountMinor: 2500,
+            lineDiscountAmountMinor: 0,
+            lineTotalAmountMinor: 2500,
+            currencyCode: "EUR",
+          },
+        },
+      },
+    });
+
+    const result = await getClientStoreOrderHistory(client.id);
+
+    expect(result).toHaveLength(2);
+    expect(new Date(result[0]!.placedAt).getTime()).toBeGreaterThan(
+      new Date(result[1]!.placedAt).getTime(),
+    );
   });
 });

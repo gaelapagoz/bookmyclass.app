@@ -23,7 +23,6 @@ description: Implement requested changes inside current architecture using servi
 - `Impacted Files`: max 12 paths, one per bullet.
 - Keep each bullet <= 14 words.
 - Use `none` when a section has no items.
-- Hard cap: ~260 tokens unless runtime prompt explicitly requests more.
 
 ## Use When
 - A scoped change is approved and needs implementation in this repository.

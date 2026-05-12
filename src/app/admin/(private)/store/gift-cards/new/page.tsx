@@ -1,0 +1,110 @@
+import Link from "next/link";
+
+import { requireAdminSession } from "@/lib/auth/require-auth";
+import { createStoreGiftCardAction } from "@/app/admin/(private)/store-actions";
+
+type SearchParams = Promise<{ error?: string }>;
+
+export default async function AdminStoreGiftCardNewPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  await requireAdminSession();
+  const { error } = await searchParams;
+
+  return (
+    <section className="space-y-4">
+      <header className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold text-[#1f2735]">Add Gift Card</h1>
+        <Link
+          href="/admin/store"
+          className="text-sm text-[#2a4f78] underline underline-offset-4"
+        >
+          Back to Store
+        </Link>
+      </header>
+
+      {error ? <p className="text-sm text-[#7b2d2d]">{error}</p> : null}
+
+      <form
+        action={createStoreGiftCardAction}
+        className="space-y-3 rounded-xl border border-[#d3dbe5] bg-white p-5"
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="block text-sm text-[#334155]">
+            Name
+            <input
+              name="name"
+              required
+              placeholder="e.g. Gift Card 75 EUR"
+              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm text-[#334155]">
+            Sort Order
+            <input
+              name="sortOrder"
+              type="number"
+              min={0}
+              defaultValue={900}
+              required
+              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+            />
+          </label>
+        </div>
+
+        <label className="block text-sm text-[#334155]">
+          Description
+          <textarea
+            name="description"
+            rows={2}
+            defaultValue="Studio gift card for future purchases."
+            className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+          />
+        </label>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="block text-sm text-[#334155]">
+            Amount (EUR)
+            <input
+              name="unitAmount"
+              type="number"
+              step="0.01"
+              min="0.01"
+              max="500"
+              required
+              placeholder="e.g. 75.00"
+              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+            />
+            <span className="mt-1 block text-xs text-[#64748b]">
+              Maximum 500 EUR per gift card.
+            </span>
+          </label>
+          <label className="block text-sm text-[#334155]">
+            Price Label
+            <input
+              name="priceName"
+              placeholder="e.g. Gift Card 75 EUR"
+              className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+            />
+          </label>
+        </div>
+
+        <div className="rounded-md border border-[#d3dbe5] bg-[#f8fafc] px-3 py-2 text-xs text-[#64748b]">
+          Currency: EUR — Billing: One-time — No entitlement rules created. Price starts as Stripe
+          PENDING. Checkout exposure requires Stripe sync to SYNCED.
+        </div>
+
+        <div className="flex items-center justify-between gap-3 pt-2">
+          <label className="inline-flex items-center gap-2 text-sm text-[#334155]">
+            <input type="checkbox" name="isActive" defaultChecked /> Active
+          </label>
+          <button type="submit" className="rounded-md bg-[#1d3652] px-4 py-2 text-sm text-white">
+            Save gift card
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}

@@ -56,7 +56,11 @@ These rules guide the Prisma schema design and must remain consistent across the
 - `DROP_IN_CLASS` creates a single-use collective-class entitlement rule.
 - `UNLIMITED_MEMBERSHIP` creates unlimited collective access entitlement rules.
 
-Removed types: `INTRO_OFFER`, `WORKSHOP_PASS`, `GIFT_CARD` (migrated to current catalog product types).
+Removed legacy entitlement-backed types: `INTRO_OFFER`, `WORKSHOP_PASS`.
+Gift cards are wallet-backed and must not create `ClientEntitlement` gift value.
+Store customer flows remain inactive until the later Store slices enable them.
+Merchandise is pickup-only in Store v1; customer-facing Store read models must carry `Pickup at studio.` wording.
+Store catalog defaults are Product + Price records only: gift-card defaults are EUR 25, EUR 50, and EUR 100, plus at least three merchandise products.
 
 ### Admin catalog rules (active)
 - Pack scope is derived from product type and is not selected manually:
@@ -66,6 +70,8 @@ Removed types: `INTRO_OFFER`, `WORKSHOP_PASS`, `GIFT_CARD` (migrated to current 
   - `DROP_IN_CLASS`, `CLASS_PACK`, `PRIVATE_PACK` => one-time
   - `UNLIMITED_MEMBERSHIP` => recurring
 - Billing interval applies only to `UNLIMITED_MEMBERSHIP`, with allowed values `MONTH` or `YEAR`.
+- Store gift-card price exposure requires EUR, one-time pricing, active/non-archived state, amount > 0 and <= EUR 500, and a synced Stripe price.
+- Store price edits preserve history; archived or inactive prices are filtered from checkout-ready Store read models rather than overwritten.
 
 ### Promotions
 - Discount codes can be applied to orders.
@@ -222,6 +228,21 @@ HAVING COUNT(*) > 1;
 - Payments track financial transactions independently.
 - Payment states include success, failure, and refund.
 - Payment history must be preserved.
+
+### Gift-card wallet foundation
+- Gift-card value is tracked only through `GiftCardWallet`, `GiftCardLedgerEntry`, and `GiftCardRedemption`.
+- Wallet settled balance is `ACTIVATION - CAPTURE`; available balance subtracts active `RESERVED` redemptions.
+- Gift-card mutations must be idempotent with persisted payload hashes.
+- Wallet mutations must lock the wallet row and write ledger entries in the same transaction.
+- Only users with role `CLIENT` may receive gift-card wallets.
+- Wallet cap pre-check includes current wallet balance, pending unpaid gift-card orders, and the new gift-card order value.
+- Gift-card purchase value is capped at EUR 500 per order; merchandise quantity is capped at 10 per product/order.
+- Expired `RESERVED` gift-card redemptions are released by maintenance in batches of at most 100.
+- Maintenance release uses the wallet lock and must not create duplicate `RELEASE` ledger entries.
+- Admin gift-card visibility is read-only for wallet balances, ledger entries, redemptions, and reconciliation cases.
+- `ADMIN` may add non-financial reconciliation notes only; notes do not adjust wallet, ledger, payment, or order state.
+- `MASTER_ADMIN` may resolve `MANUAL_REVIEW` cases only after service-level consistency verification passes.
+- Resolved reconciliation cases are hidden by default and remain filterable for operational review.
 
 ### Entitlements
 - Entitlements are only activated after successful payment.

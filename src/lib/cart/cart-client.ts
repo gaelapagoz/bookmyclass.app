@@ -78,7 +78,9 @@ function normalizeLine(line: Partial<ClientCartLine> | null | undefined): Client
     line.productType !== ProductType.CLASS_PACK &&
     line.productType !== ProductType.DROP_IN_CLASS &&
     line.productType !== ProductType.UNLIMITED_MEMBERSHIP &&
-    line.productType !== ProductType.PRIVATE_PACK
+    line.productType !== ProductType.PRIVATE_PACK &&
+    line.productType !== ProductType.GIFT_CARD &&
+    line.productType !== ProductType.MERCHANDISE
   ) {
     return null;
   }

@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { CartClearOnSuccess } from "@/components/cart/CartClearOnSuccess";
 import { requireAuth } from "@/lib/auth/require-auth";
-import { getCartCheckoutSuccessState } from "@/lib/cart/cart-success-state";
+import {
+  getCartCheckoutSuccessState,
+  getCartCheckoutSuccessStateForOrder,
+} from "@/lib/cart/cart-success-state";
 import { reconcileCatalogCheckoutSessionAfterReturn } from "@/lib/public-booking/stripe-webhook-service";
 
 function formatAmount(minor: number, currencyCode: string): string {
@@ -16,11 +19,12 @@ function formatAmount(minor: number, currencyCode: string): string {
 export default async function SubscriptionSuccessPage({
   searchParams,
 }: {
-  searchParams: Promise<{ productId?: string; session_id?: string }>;
+  searchParams: Promise<{ orderId?: string; productId?: string; session_id?: string }>;
 }) {
   const session = await requireAuth();
-  const { productId, session_id } = await searchParams;
+  const { orderId, productId, session_id } = await searchParams;
   const checkoutSessionId = session_id?.trim() || null;
+  const successOrderId = orderId?.trim() || null;
 
   if (checkoutSessionId) {
     try {
@@ -45,7 +49,12 @@ export default async function SubscriptionSuccessPage({
         checkoutSessionId,
         userId: session.user.id,
       })
-    : null;
+    : successOrderId
+      ? await getCartCheckoutSuccessStateForOrder({
+          orderId: successOrderId,
+          userId: session.user.id,
+        })
+      : null;
 
   const heading =
     successState?.reconciliationState === "CONFIRMED"

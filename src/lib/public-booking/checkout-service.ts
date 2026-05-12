@@ -860,6 +860,7 @@ export async function createCheckoutSessionForCart(input: {
   idempotencyKey: string;
   lines: Array<{ productId: string; priceId: string; quantity: number }>;
   clientCartVersion: string;
+  walletAmountMinor?: number;
 }) {
   const { startCartCheckout } = await import("@/lib/cart/cart-checkout-service");
   return startCartCheckout(input);

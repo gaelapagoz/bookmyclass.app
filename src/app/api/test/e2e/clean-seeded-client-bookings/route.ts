@@ -30,9 +30,18 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, deletedBookings: 0 });
   }
 
-  const deleted = await prisma.booking.deleteMany({
-    where: { clientId: client.id },
-  });
+  const [deletedWaitlistEntries, deletedBookings] = await prisma.$transaction([
+    prisma.waitlistEntry.deleteMany({
+      where: { clientId: client.id },
+    }),
+    prisma.booking.deleteMany({
+      where: { clientId: client.id },
+    }),
+  ]);
 
-  return Response.json({ success: true, deletedBookings: deleted.count });
+  return Response.json({
+    success: true,
+    deletedBookings: deletedBookings.count,
+    deletedWaitlistEntries: deletedWaitlistEntries.count,
+  });
 }

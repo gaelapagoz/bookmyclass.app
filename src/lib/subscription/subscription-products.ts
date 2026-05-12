@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { createPerfTrace } from "@/lib/monitoring/perf-trace";
 import { createInMemoryTtlCache } from "@/lib/cache/in-memory-ttl-cache";
 import { isCatalogPriceCheckoutReady } from "@/lib/catalog/checkout-readiness";
+import { PLAN_PRODUCT_TYPES } from "@/lib/catalog/product-scopes";
 
 export type SubscriptionCatalogItem = {
   productId: string;
@@ -100,6 +101,7 @@ async function getActiveSubscriptionCatalogProductsRaw(): Promise<SubscriptionCa
         where: {
           isActive: true,
           isArchived: false,
+          productType: { in: PLAN_PRODUCT_TYPES as ProductType[] },
           prices: {
             some: activePriceWhere,
           },
@@ -175,6 +177,7 @@ async function getSubscriptionCheckoutItemByProductIdRaw(
           id: productId,
           isActive: true,
           isArchived: false,
+          productType: { in: PLAN_PRODUCT_TYPES as ProductType[] },
           prices: {
             some: activePriceWhere,
           },
@@ -218,3 +221,4 @@ async function getSubscriptionCheckoutItemByProductIdRaw(
   }
 }
 
+export const listSubscriptionCatalog = getActiveSubscriptionCatalogProducts;

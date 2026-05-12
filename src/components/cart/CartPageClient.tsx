@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { PriceType } from "@prisma/client";
+import { PriceType, ProductType } from "@prisma/client";
 import { SignInModal } from "@/components/book-a-class/service-detail/SignInModal";
 import {
   ClientCartLine,
@@ -17,6 +17,7 @@ import {
   updateClientCartLineQuantity,
   validateClientCart,
 } from "@/lib/cart/cart-client";
+import { CART_CHECKOUT_MAX_WALLET_AMOUNT_MINOR } from "@/lib/cart/cart-contract";
 
 function formatAmount(minor: number, currencyCode: string): string {
   return new Intl.NumberFormat("en-GB", {
@@ -26,11 +27,21 @@ function formatAmount(minor: number, currencyCode: string): string {
   }).format(minor / 100);
 }
 
+type WalletBalance = {
+  balanceMinor: number;
+  availableBalanceMinor: number;
+  reservedAmountMinor: number;
+  currencyCode: string;
+};
+
 type CheckoutApiPayload = {
+  type?: string;
   code?: string;
   message?: string;
   checkoutSessionId?: string;
   checkoutUrl?: string;
+  redirectUrl?: string;
+  orderId?: string;
   retryAfterMs?: number;
   idempotency?: {
     state?: string;
@@ -64,6 +75,14 @@ function debugLog(event: string, payload: Record<string, unknown>) {
   }
 }
 
+function hasStoreItems(lines: ClientCartLine[]): boolean {
+  return lines.some(
+    (line) =>
+      line.productType === ProductType.GIFT_CARD ||
+      line.productType === ProductType.MERCHANDISE,
+  );
+}
+
 export function CartPageClient() {
   const [lines, setLines] = useState<ClientCartLine[]>([]);
   const [clientCartVersion, setClientCartVersion] = useState<number>(1);
@@ -73,6 +92,9 @@ export function CartPageClient() {
   const [showSignInModal, setShowSignInModal] = useState(false);
   const [showVerifyEmailAction, setShowVerifyEmailAction] = useState(false);
   const [submissionState, setSubmissionState] = useState<{ key: string; fingerprint: string } | null>(null);
+  const [walletBalance, setWalletBalance] = useState<WalletBalance | null>(null);
+  const [walletAmountMinor, setWalletAmountMinor] = useState<number>(0);
+  const [walletInputValue, setWalletInputValue] = useState<string>("");
 
   useEffect(() => {
     const sync = () => {
@@ -85,6 +107,27 @@ export function CartPageClient() {
     setIsHydrated(true);
     return subscribeToClientCart(sync);
   }, []);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    async function fetchWalletBalance() {
+      try {
+        const response = await fetch("/api/wallet/balance");
+        if (!response.ok) {
+          return;
+        }
+        const data = (await response.json()) as { balance: WalletBalance | null };
+        setWalletBalance(data.balance ?? null);
+      } catch {
+        // wallet balance fetch failure is non-blocking
+      }
+    }
+
+    void fetchWalletBalance();
+  }, [isHydrated]);
 
   useEffect(() => {
     if (!isHydrated || lines.length === 0) {
@@ -145,7 +188,41 @@ export function CartPageClient() {
   const validation = useMemo(() => validateClientCart({ lines }), [lines]);
   const fingerprint = useMemo(() => getCheckoutSubmissionFingerprint(lines), [lines]);
 
+  const showWalletControls =
+    isHydrated &&
+    walletBalance !== null &&
+    walletBalance.availableBalanceMinor > 0 &&
+    hasStoreItems(lines);
+
+  const maxApplicableWallet = showWalletControls
+    ? Math.min(
+        walletBalance!.availableBalanceMinor,
+        subtotalMinor,
+        CART_CHECKOUT_MAX_WALLET_AMOUNT_MINOR,
+      )
+    : 0;
+
   const checkoutDisabled = !validation.ok || lines.length === 0 || isSubmitting;
+
+  const applyWallet = () => {
+    const parsed = Math.round(parseFloat(walletInputValue) * 100);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setFeedback("Enter a valid wallet amount in EUR.");
+      return;
+    }
+    if (parsed > maxApplicableWallet) {
+      setFeedback(`Maximum applicable wallet amount is ${formatAmount(maxApplicableWallet, "EUR")}.`);
+      return;
+    }
+    setWalletAmountMinor(parsed);
+    setFeedback(null);
+  };
+
+  const removeWallet = () => {
+    setWalletAmountMinor(0);
+    setWalletInputValue("");
+    setFeedback(null);
+  };
 
   const incrementLine = (line: ClientCartLine) => {
     const result = updateClientCartLineQuantity({
@@ -196,6 +273,7 @@ export function CartPageClient() {
       fingerprint,
       lineCount: lines.length,
       clientCartVersion,
+      walletAmountMinor,
     });
 
     setSubmissionState({ key, fingerprint });
@@ -211,6 +289,7 @@ export function CartPageClient() {
           quantity: line.quantity,
         })),
         clientCartVersion: `v${clientCartVersion}`,
+        ...(walletAmountMinor > 0 ? { walletAmountMinor } : {}),
       });
 
       for (let attempt = 0; attempt < MAX_IN_PROGRESS_ATTEMPTS; attempt += 1) {
@@ -219,6 +298,7 @@ export function CartPageClient() {
           attempt: attempt + 1,
           maxAttempts: MAX_IN_PROGRESS_ATTEMPTS,
           fingerprint,
+          walletAmountMinor,
         });
         const response = await fetch("/api/cart/checkout", {
           method: "POST",
@@ -239,10 +319,23 @@ export function CartPageClient() {
           idempotencyKey: key,
           attempt: attempt + 1,
           status: response.status,
+          type: payload.type ?? null,
           code: payload.code ?? null,
           idempotencyState: payload.idempotency?.state ?? null,
           retryAfterMs: payload.retryAfterMs ?? null,
         });
+
+        if (response.status === 200 && payload.type === "completed" && payload.redirectUrl) {
+          const completedOrderId = typeof payload.orderId === "string" ? payload.orderId : null;
+          if (completedOrderId) {
+            rememberClientCartSnapshotForCheckoutSession({
+              checkoutSessionId: completedOrderId,
+              fingerprint,
+            });
+          }
+          window.location.assign(payload.redirectUrl);
+          return;
+        }
 
         if (response.status === 200 && payload.checkoutUrl) {
           if (typeof payload.checkoutSessionId === "string" && payload.checkoutSessionId.trim()) {
@@ -409,11 +502,87 @@ export function CartPageClient() {
         </div>
       )}
 
+      {showWalletControls ? (
+        <div className="mt-4 rounded-xl border border-[#d8cec6] bg-white p-4" data-testid="wallet-controls">
+          <h2 className="text-sm font-semibold text-[#6f2b2b]">Gift Card Wallet</h2>
+          <p className="mt-1 text-xs text-[#7f5a5a]">
+            Available: {formatAmount(walletBalance!.availableBalanceMinor, "EUR")}
+          </p>
+          {walletAmountMinor > 0 ? (
+            <div className="mt-3 flex items-center gap-3">
+              <span className="text-sm text-[#5f4040]" data-testid="wallet-applied-amount">
+                Applied: {formatAmount(walletAmountMinor, "EUR")}
+              </span>
+              <button
+                type="button"
+                onClick={removeWallet}
+                className="text-xs text-[#7b2d2d] underline underline-offset-2"
+                data-testid="wallet-remove"
+              >
+                Remove
+              </button>
+            </div>
+          ) : (
+            <div className="mt-3 flex items-end gap-2">
+              <div>
+                <label htmlFor="wallet-amount" className="block text-xs text-[#7f5a5a]">
+                  Amount (EUR)
+                </label>
+                <input
+                  id="wallet-amount"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  max={(maxApplicableWallet / 100).toFixed(2)}
+                  value={walletInputValue}
+                  onChange={(e) => setWalletInputValue(e.target.value)}
+                  placeholder="0.00"
+                  className="mt-1 w-28 rounded border border-[#d8cec6] px-2 py-1 text-sm text-[#5f4040]"
+                  data-testid="wallet-amount-input"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={applyWallet}
+                className="rounded-md border border-[#7b2d2d] px-3 py-1 text-sm text-[#7b2d2d] hover:bg-[#f2ede7]"
+                data-testid="wallet-apply"
+              >
+                Apply
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setWalletInputValue((maxApplicableWallet / 100).toFixed(2));
+                }}
+                className="text-xs text-[#7b2d2d] underline underline-offset-2"
+                data-testid="wallet-use-all"
+              >
+                Use all available
+              </button>
+            </div>
+          )}
+        </div>
+      ) : null}
+
       <div className="mt-6 rounded-xl border border-[#d8cec6] bg-white p-4">
         <div className="flex items-center justify-between text-sm text-[#5f4040]">
           <span>Subtotal</span>
           <span className="font-medium text-[#6f2b2b]">{formatAmount(subtotalMinor, subtotalCurrency)}</span>
         </div>
+        {walletAmountMinor > 0 ? (
+          <>
+            <div className="mt-1 flex items-center justify-between text-sm text-[#5f4040]">
+              <span>Wallet</span>
+              <span className="text-[#6f2b2b]">- {formatAmount(walletAmountMinor, "EUR")}</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between text-sm font-medium text-[#5f4040]">
+              <span>Remaining</span>
+              <span className="text-[#6f2b2b]">
+                {formatAmount(Math.max(0, subtotalMinor - walletAmountMinor), subtotalCurrency)}
+              </span>
+            </div>
+          </>
+        ) : null}
         <button
           type="button"
           onClick={() => void startCheckout()}

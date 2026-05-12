@@ -50,6 +50,7 @@ import { sendWaitlistPromotionNotification } from "@/lib/public-booking/waitlist
 import { promoteWaitlistAfterCancellationWithinTx } from "@/lib/public-booking/waitlist-service";
 import { resolveWaitlistPromotionCoverage } from "@/lib/public-booking/waitlist-service";
 import { isCatalogPriceCheckoutReady } from "@/lib/catalog/checkout-readiness";
+import { PLAN_PRODUCT_TYPES } from "@/lib/catalog/product-scopes";
 
 export type AdminDashboardData = {
   upcomingSessions: Array<{
@@ -794,14 +795,56 @@ export async function remediatePriceStripeId(input: {
       throw new Error("ADMIN_ROLE_REQUIRED");
     }
 
-    await tx.$executeRaw`
-      SELECT remediate_price_stripe_id(
-        ${input.priceId},
-        ${input.stripePriceId},
-        ${input.actor.actorId},
-        ${input.reason?.trim() || null}
-      )
-    `;
+    const price = await tx.price.findUnique({
+      where: { id: input.priceId },
+      select: { id: true, stripePriceId: true },
+    });
+
+    if (!price) {
+      throw new Error("PRICE_NOT_FOUND");
+    }
+
+    const newStripePriceId = input.stripePriceId?.trim();
+    if (!newStripePriceId) {
+      throw new Error("INVALID_STRIPE_PRICE_ID");
+    }
+
+    if (price.stripePriceId === newStripePriceId) {
+      throw new Error("STRIPE_PRICE_ID_UNCHANGED");
+    }
+
+    const correlation = `remediation-${randomUUID()}`;
+    const now = new Date();
+
+    await tx.$executeRaw`SET LOCAL "catalog.skip_stripe_id_immutability" = 'on'`;
+
+    await tx.price.update({
+      where: { id: input.priceId },
+      data: {
+        stripePriceId: newStripePriceId,
+        stripeSyncStatus: StripeSyncStatus.SYNCED,
+        stripeSyncLastAttempt: now,
+        stripeSyncLastSuccess: now,
+        stripeSyncErrorCode: null,
+        stripeSyncError: null,
+        stripeSyncCorrelation: correlation,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        actorId: input.actor.actorId,
+        actionType: "CATALOG_PRICE_STRIPE_REMEDIATION",
+        entityType: "Price",
+        entityId: input.priceId,
+        metadata: {
+          oldStripePriceId: price.stripePriceId,
+          newStripePriceId,
+          reason: input.reason?.trim() || null,
+          ownershipScopeKey: "GLOBAL_CATALOG",
+        },
+      },
+    });
   });
 }
 
@@ -3341,7 +3384,7 @@ export async function removeSessionAttendeeByManager(input: {
 
 export async function getAdminPlansData(): Promise<AdminPlanItem[]> {
   const products = await prisma.product.findMany({
-    where: { isArchived: false },
+    where: { isArchived: false, productType: { in: PLAN_PRODUCT_TYPES as ProductType[] } },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     select: {
       id: true,

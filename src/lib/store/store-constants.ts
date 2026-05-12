@@ -1,0 +1,6 @@
+export const STORE_CURRENCY_CODE = "EUR";
+export const STORE_PICKUP_WORDING = "Pickup at studio.";
+export const STORE_MAX_GIFT_CARD_ORDER_TOTAL_MINOR = 50_000;
+export const STORE_MAX_WALLET_BALANCE_MINOR = 100_000;
+export const STORE_MAX_MERCHANDISE_QUANTITY_PER_PRODUCT = 10;
+

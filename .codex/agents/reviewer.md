@@ -23,7 +23,6 @@ description: Review implementation quality, architecture consistency, and regres
 - `Findings` and `Required Fixes`: max 6 bullets each.
 - Keep each bullet <= 14 words.
 - Use `none` when a section has no items.
-- Hard cap: ~260 tokens unless runtime prompt explicitly requests more.
 
 ## Use When
 - A PR, patch, or code change needs technical review before merge/release.

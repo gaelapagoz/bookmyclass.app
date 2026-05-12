@@ -18,7 +18,6 @@ description: Assess release readiness and deployment impact for this manual, tag
 - `Gate Checklist`: max 8 compact status bullets.
 - Keep each bullet <= 14 words.
 - Use `none` when a section has no items.
-- Hard cap: ~240 tokens unless runtime prompt explicitly requests more.
 
 ## Use When
 - A change affects deployment, runtime config, migrations, observability, or release readiness.

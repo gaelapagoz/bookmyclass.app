@@ -44,6 +44,7 @@ import { hash } from "bcryptjs";
 import prisma from "../../../src/lib/db";
 import { assertLearningImagePath } from "../../../src/lib/learning/image-paths";
 import { AGENDA_SCHEDULE } from "../data/schedule";
+import { STORE_CATALOG_PRODUCT_COUNT, STORE_CATALOG_PRODUCTS } from "../data/store-catalog";
 import {
   PILATES_COURSES,
   PILATES_PROGRAM,
@@ -76,6 +77,11 @@ const PURCHASABLE_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[] = 
   { productName: "Monthly Recurrent Collective Subscription", lookupKey: "monthly-unlimited-collective-eur-monthly-v1", envVarName: "STRIPE_PRICE_ID_MONTHLY_UNLIMITED_COLLECTIVE" },
   { productName: "5-Ticket Private Classes", lookupKey: "qa-private-5-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_PRIVATE_5_PACK" },
   { productName: "10-Ticket Private Classes", lookupKey: "qa-private-10-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_PRIVATE_10_PACK" },
+  ...STORE_CATALOG_PRODUCTS.map((product) => ({
+    productName: product.name,
+    lookupKey: product.price.lookupKey,
+    envVarName: product.price.stripePriceEnvVarName,
+  })),
 ];
 
 const seedDayUtc = new Date();
@@ -299,6 +305,28 @@ async function seedProductionCatalog(stripePriceIdByLookupKey: Record<string, st
 
   console.info("[seed:prod] Catalog seeded (6 products).");
   return { collectiveTenPack, collectiveMonthly };
+}
+
+async function seedProductionStoreCatalog(stripePriceIdByLookupKey: Record<string, string>) {
+  for (const item of STORE_CATALOG_PRODUCTS) {
+    const product = await upsertProduct({
+      slug: item.slug,
+      name: item.name,
+      description: item.description,
+      productType: item.productType,
+      sortOrder: item.sortOrder,
+    });
+    await upsertPrice({
+      productId: product.id,
+      lookupKey: item.price.lookupKey,
+      stripePriceId: stripePriceIdByLookupKey[item.price.lookupKey],
+      name: item.price.name,
+      priceType: item.price.priceType,
+      currencyCode: item.price.currencyCode,
+      unitAmountMinor: item.price.unitAmountMinor,
+    });
+  }
+  console.info(`[seed:prod] Store catalog seeded: ${STORE_CATALOG_PRODUCTS.length} products (gift cards + merchandise, pickup-only).`);
 }
 
 // ─── Class schedule helpers ───────────────────────────────────────────────────
@@ -618,7 +646,8 @@ async function verifyProductionSeed(expected: { programCount: number; courseCoun
   if (totalClients < PROD_CLIENT_COUNT) throw new Error(`Production seed verification: expected at least ${PROD_CLIENT_COUNT} @test.user clients, got ${totalClients}.`);
   if (totalAdmins !== 2) throw new Error(`Production seed verification: expected 2 admin/master-admin users, got ${totalAdmins}.`);
   if (totalTeachers !== 3) throw new Error(`Production seed verification: expected 3 teachers, got ${totalTeachers}.`);
-  if (totalProducts !== 6) throw new Error(`Production seed verification: expected 6 active products, got ${totalProducts}.`);
+  const expectedProductCount = 6 + STORE_CATALOG_PRODUCT_COUNT;
+  if (totalProducts !== expectedProductCount) throw new Error(`Production seed verification: expected ${expectedProductCount} active products, got ${totalProducts}.`);
   if (programCount < expected.programCount) throw new Error(`Production seed verification: expected ${expected.programCount} learning programmes, got ${programCount}.`);
   if (courseCount < expected.courseCount) throw new Error(`Production seed verification: expected ${expected.courseCount} learning courses, got ${courseCount}.`);
   if (scheduleCount === 0) throw new Error("Production seed verification: no agenda schedule entries found.");
@@ -638,6 +667,7 @@ export async function runProductionSeed(): Promise<void> {
   const { masterAdmin: _master, admin, teachers, clients } = await seedProductionUsers();
   await seedBookingPolicy();
   const { collectiveTenPack, collectiveMonthly } = await seedProductionCatalog(stripePriceIdByLookupKey);
+  await seedProductionStoreCatalog(stripePriceIdByLookupKey);
 
   // Resolve price and entitlement rule IDs needed for booking seeding
   const tenPackPrice = await prisma.price.findUnique({ where: { lookupKey: "collective-10-pack-eur-once-v1" } });

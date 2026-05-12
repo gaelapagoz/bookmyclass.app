@@ -1,4 +1,4 @@
-import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, type APIRequestContext, type APIResponse, type Page } from "@playwright/test";
 import { E2E_TEST_SECRET } from "./constants";
 
 function testHeaders(): Record<string, string> {
@@ -6,6 +6,20 @@ function testHeaders(): Record<string, string> {
     "content-type": "application/json",
     "x-e2e-test-secret": E2E_TEST_SECRET,
   };
+}
+
+async function assertOk(response: APIResponse, endpoint: string): Promise<void> {
+  if (!response.ok()) {
+    let body = "(no body)";
+    try {
+      body = await response.text();
+    } catch {
+      // ignore
+    }
+    throw new Error(
+      `E2E helper route failed:\n  endpoint: ${endpoint}\n  status: ${response.status()}\n  body: ${body}`,
+    );
+  }
 }
 
 export async function verifyTestEmail(page: Page, email: string) {
@@ -107,11 +121,12 @@ export async function prepareCheckInWindowBookingForTest(
     classMode?: "collective" | "private";
   },
 ): Promise<{ bookingId: string; sessionId: string; sessionTitle: string }> {
-  const response = await request.post("/api/test/e2e/bookings/prepare-checkin-window", {
+  const endpoint = "/api/test/e2e/bookings/prepare-checkin-window";
+  const response = await request.post(endpoint, {
     headers: testHeaders(),
     data: input,
   });
-  expect(response.ok()).toBeTruthy();
+  await assertOk(response, endpoint);
   const payload = (await response.json()) as {
     bookingId?: string;
     sessionId?: string;
@@ -129,13 +144,14 @@ export async function prepareCheckInWindowBookingForTest(
 
 export async function prepareWaitlistSessionForTest(
   request: APIRequestContext,
-  input: { clientEmail: string; serviceSlug: string },
+  input: { clientEmail: string; createWaitlistEntry?: boolean; serviceSlug: string },
 ): Promise<{ dateKey: string; endTime: string; serviceSlug: string; sessionId: string; startTime: string }> {
-  const response = await request.post("/api/test/e2e/bookings/prepare-waitlist-session", {
+  const endpoint = "/api/test/e2e/bookings/prepare-waitlist-session";
+  const response = await request.post(endpoint, {
     headers: testHeaders(),
     data: input,
   });
-  expect(response.ok()).toBeTruthy();
+  await assertOk(response, endpoint);
   const payload = (await response.json()) as {
     sessionId?: string;
     serviceSlug?: string;
@@ -189,4 +205,30 @@ export async function reactivateUserForTest(request: APIRequestContext, email: s
   expect(response.ok()).toBeTruthy();
   const payload = (await response.json()) as { reactivated?: boolean };
   expect(payload.reactivated).toBe(true);
+}
+
+type CapturedEmail = {
+  to: string[];
+  subject: string;
+  html: string;
+  from: string;
+  replyTo: string | null;
+  context: string;
+  createdAt: string;
+};
+
+export async function getCapturedEmailsForTest(request: APIRequestContext): Promise<CapturedEmail[]> {
+  const response = await request.get("/api/test/e2e/outbox", {
+    headers: testHeaders(),
+  });
+  expect(response.ok()).toBeTruthy();
+  const payload = (await response.json()) as { emails?: CapturedEmail[] };
+  return payload.emails ?? [];
+}
+
+export async function clearCapturedEmailsForTest(request: APIRequestContext): Promise<void> {
+  const response = await request.delete("/api/test/e2e/outbox", {
+    headers: testHeaders(),
+  });
+  expect(response.ok()).toBeTruthy();
 }

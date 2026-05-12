@@ -19,7 +19,6 @@ description: Evaluate test impact and release confidence using a risk-based mix 
 - `Execution Plan`: max 6 commands, one per bullet.
 - Keep each bullet <= 14 words.
 - Use `none` when a section has no items.
-- Hard cap: ~240 tokens unless runtime prompt explicitly requests more.
 
 ## Use When
 - A change needs test planning, execution guidance, or release validation assessment.

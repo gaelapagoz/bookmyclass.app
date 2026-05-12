@@ -1,9 +1,14 @@
-import { PriceType } from "@prisma/client";
+import { PriceType, ProductType } from "@prisma/client";
 import { computeCartHash, buildCartHashCanonicalInput } from "@/lib/cart/cart-hash";
 import { createCartValidationRejection } from "@/lib/cart/cart-policy";
 import {
   isActiveSubscriptionForCartConstraint,
 } from "@/lib/cart/cart-contract";
+import {
+  STORE_CURRENCY_CODE,
+  STORE_MAX_GIFT_CARD_ORDER_TOTAL_MINOR,
+  STORE_MAX_MERCHANDISE_QUANTITY_PER_PRODUCT,
+} from "@/lib/store/store-constants";
 import type {
   CartComposition,
   CartNormalizedLine,
@@ -118,6 +123,10 @@ function resolveLineCatalogRejection(input: {
 
   if (!input.catalogPrice.checkoutEnabled) {
     return "CHECKOUT_NOT_ENABLED";
+  }
+
+  if (input.catalogPrice.currencyCode !== STORE_CURRENCY_CODE) {
+    return "NON_EUR_PRICE_NOT_ALLOWED";
   }
 
   return null;
@@ -249,6 +258,16 @@ export function validateCartAgainstCatalog(input: {
       };
     }
 
+    if (catalogPrice.currencyCode !== STORE_CURRENCY_CODE) {
+      return {
+        ok: false,
+        composition: "EMPTY",
+        cartHash,
+        normalizedLines,
+        rejection: createCartValidationRejection("NON_EUR_PRICE_NOT_ALLOWED"),
+      };
+    }
+
     if (catalogPrice.priceType === PriceType.RECURRING && line.quantity !== 1) {
       return {
         ok: false,
@@ -277,6 +296,38 @@ export function validateCartAgainstCatalog(input: {
       normalizedLines,
       rejection: createCartValidationRejection("MIXED_PRICE_TYPES_NOT_ALLOWED"),
     };
+  }
+
+  const giftCardTotalMinor = repricedLines
+    .filter((line) => line.productType === ProductType.GIFT_CARD)
+    .reduce((sum, line) => sum + line.lineSubtotalAmountMinor, 0);
+  if (giftCardTotalMinor > STORE_MAX_GIFT_CARD_ORDER_TOTAL_MINOR) {
+    return {
+      ok: false,
+      composition: resolveComposition(repricedLines),
+      cartHash,
+      normalizedLines,
+      rejection: createCartValidationRejection("GIFT_CARD_ORDER_TOTAL_EXCEEDED"),
+    };
+  }
+
+  const merchandiseQuantityByProduct = new Map<string, number>();
+  for (const line of repricedLines) {
+    if (line.productType !== ProductType.MERCHANDISE) {
+      continue;
+    }
+
+    const nextQuantity = (merchandiseQuantityByProduct.get(line.productId) ?? 0) + line.quantity;
+    if (nextQuantity > STORE_MAX_MERCHANDISE_QUANTITY_PER_PRODUCT) {
+      return {
+        ok: false,
+        composition: resolveComposition(repricedLines),
+        cartHash,
+        normalizedLines,
+        rejection: createCartValidationRejection("MERCHANDISE_QUANTITY_EXCEEDED"),
+      };
+    }
+    merchandiseQuantityByProduct.set(line.productId, nextQuantity);
   }
 
   if (

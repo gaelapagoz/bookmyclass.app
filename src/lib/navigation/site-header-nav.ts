@@ -25,6 +25,7 @@ const PRIMARY_ITEMS: HeaderPrimaryNavItem[] = [
   { href: "/", label: "Home", type: "link" },
   { href: "/book-a-class", label: "Book a Class", type: "link" },
   { href: "/subscription", label: "Subscription", type: "link" },
+  { href: "/store", label: "Store", type: "link" },
   { href: "/learning", label: "Online Learning", type: "link" },
   {
     id: "about-us",

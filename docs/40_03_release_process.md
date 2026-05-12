@@ -162,6 +162,35 @@ Notes:
 
 ---
 
+## Stripe Catalog Sync (New Environments / Store Rollout)
+
+Run `stripe:catalog:sync` when deploying to an environment that has not yet had
+Stripe Products and Prices created, or when enabling the Store feature for the
+first time. This is a one-time operator step per environment; subsequent
+re-runs are safe (idempotent).
+
+**Order of operations:**
+1. Deploy the application and run `prisma migrate deploy` and seed.
+2. Confirm `STRIPE_SECRET_KEY` is set to the correct key for the target environment.
+3. Test mode (safe):
+   ```
+   npm run stripe:catalog:sync -- --scope=all --dry-run
+   npm run stripe:catalog:sync -- --scope=all
+   ```
+4. Live mode (requires explicit flag):
+   ```
+   npm run stripe:catalog:sync -- --scope=all --dry-run
+   npm run stripe:catalog:sync -- --scope=all --confirm-live
+   ```
+5. Verify: store products now appear on `/store`; subscription prices resolve in checkout.
+
+**Rollback:** The script only writes `stripePriceId` and `StripeSyncStatus.SYNCED`
+to Price records. To roll back, reset those fields to `null`/`PENDING` in the DB.
+The Stripe Products and Prices created are retained in Stripe (harmless; they can be
+archived manually in the Stripe dashboard if needed).
+
+---
+
 ## Server deploy command order
 
 For UAT and Production, after checking out the release tag, use this command order:
@@ -193,6 +222,7 @@ pm2 restart bookmyclass-app --update-env
 * Always run `npx prisma migrate deploy` before `npx prisma generate`
 * Always run `npx prisma generate` before `npm run build`
 * Always restart PM2 only after a successful build
+* Never use destructive database reset commands for UAT or Production catalog setup
 
 ### Notes
 
@@ -237,6 +267,46 @@ Verify:
 - no immediate errors in logs (PM2)
 - Sentry is receiving errors (if triggered)
 - monitoring is green (Uptime Kuma)
+
+---
+
+### 4. Gift-Card Maintenance Confirmation
+
+When a release includes gift-card maintenance cleanup:
+- confirm `CRON_SECRET` is configured on the target environment
+- confirm the operator has scheduled or manually run `GET /api/cron/gift-cards/maintenance`
+- confirm cleanup reports `failedCount: 0`, or review `gift_card.reservation_cleanup_failed` events before enabling a schedule
+
+---
+
+### 5. Store Production Enablement Checklist
+
+When deploying the Store and gift-card purchase features to production, the operator
+must complete ALL of the following steps. The Store is always-on; there are no feature
+flags — Stripe catalog sync and live price IDs are the gate.
+
+**Stripe live prices — required before deployment:**
+- [ ] All active Store merchandise prices have `stripeSyncStatus = SYNCED` and a live Stripe price ID (not a test ID).
+- [ ] All active Store gift-card prices have `stripeSyncStatus = SYNCED` and a live Stripe price ID (not a test ID).
+- [ ] No active store price has a test Stripe ID (`price_test_*`) in the production database.
+- [ ] Stripe live mode key (`sk_live_*`) is configured in the production environment.
+
+**Alert rules and maintenance:**
+- [ ] Alert rules are configured for `gift_card.reservation_cleanup_failed` events.
+- [ ] `CRON_SECRET` is configured in the production environment.
+- [ ] Gift-card maintenance cron (`GET /api/cron/gift-cards/maintenance`) is scheduled or manually verified.
+- [ ] Maintenance procedure is confirmed: operator knows how to disable maintenance cron and recover.
+
+**Smoke tests (run after deployment):**
+- [ ] `/store` renders active products.
+- [ ] Gift-card purchase flow completes against live Stripe; issuance email delivered with code.
+- [ ] Gift-card code redemption credits wallet balance.
+- [ ] Health endpoint returns 200.
+
+**Canonical references:**
+- `docs/40_02_environment_variables.md` — environment variable reference
+- `src/lib/catalog/checkout-readiness.ts` — live/test Stripe ID validation
+- `src/lib/store/store-admin-catalog-service.ts` — store catalog admin service
 
 ---
 

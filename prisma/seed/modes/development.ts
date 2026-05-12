@@ -37,6 +37,7 @@ import { resolve } from "node:path";
 import prisma from "../../../src/lib/db";
 import { assertLearningImagePath } from "../../../src/lib/learning/image-paths";
 import { AGENDA_SCHEDULE } from "../data/schedule";
+import { STORE_CATALOG_PRODUCT_COUNT, STORE_CATALOG_PRODUCTS } from "../data/store-catalog";
 import { createSeededRng } from "../utils/deterministic-random";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -77,7 +78,8 @@ const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9]+$/;
 
 type CatalogStripePriceEnvSpec = { productName: string; lookupKey: string; envVarName: string };
 
-const PURCHASABLE_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[] = [
+// Subscription / class prices — always required for dev seed to succeed.
+const REQUIRED_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[] = [
   { productName: "Collective Class Drop-In", lookupKey: "collective-drop-in-eur-once-v1", envVarName: "STRIPE_PRICE_ID_COLLECTIVE_DROP_IN" },
   { productName: "5-Ticket Collective Classes", lookupKey: "qa-collective-5-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_COLLECTIVE_5_PACK" },
   { productName: "10-Ticket Collective Classes", lookupKey: "collective-10-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_COLLECTIVE_10_PACK" },
@@ -85,6 +87,14 @@ const PURCHASABLE_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[] = 
   { productName: "5-Ticket Private Classes", lookupKey: "qa-private-5-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_PRIVATE_5_PACK" },
   { productName: "10-Ticket Private Classes", lookupKey: "qa-private-10-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_PRIVATE_10_PACK" },
 ];
+
+// Store prices — optional in dev/UAT. Products are seeded with PENDING status when missing.
+// Provide the env vars to make store products checkout-ready in development.
+const OPTIONAL_STORE_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[] = STORE_CATALOG_PRODUCTS.map((product) => ({
+  productName: product.name,
+  lookupKey: product.price.lookupKey,
+  envVarName: product.price.stripePriceEnvVarName,
+}));
 
 const DEFAULT_LEARNING_SEED_JSON_PATH = resolve(process.cwd(), "prisma", "seed-data", "learning-content.json");
 
@@ -183,7 +193,7 @@ function resolveRequiredCatalogStripePriceIds(): Record<string, string> {
   const missing: CatalogStripePriceEnvSpec[] = [];
   const invalid: Array<CatalogStripePriceEnvSpec & { value: string }> = [];
 
-  for (const spec of PURCHASABLE_CATALOG_STRIPE_PRICE_ENV_SPECS) {
+  for (const spec of REQUIRED_CATALOG_STRIPE_PRICE_ENV_SPECS) {
     const value = process.env[spec.envVarName]?.trim();
     if (!value) { missing.push(spec); continue; }
     if (!STRIPE_PRICE_ID_PATTERN.test(value)) { invalid.push({ ...spec, value }); continue; }
@@ -198,7 +208,32 @@ function resolveRequiredCatalogStripePriceIds(): Record<string, string> {
     throw new Error(`Seed validation failed for purchasable catalog Stripe price configuration.\n${details}`);
   }
 
-  console.info("[seed:dev] Stripe price configuration validated.");
+  console.info("[seed:dev] Subscription/class Stripe price configuration validated.");
+  return stripePriceIdByLookupKey;
+}
+
+function resolveOptionalStoreCatalogStripePriceIds(): Record<string, string> {
+  const stripePriceIdByLookupKey: Record<string, string> = {};
+  const missing: string[] = [];
+  const invalid: Array<{ envVarName: string; value: string }> = [];
+
+  for (const spec of OPTIONAL_STORE_CATALOG_STRIPE_PRICE_ENV_SPECS) {
+    const value = process.env[spec.envVarName]?.trim();
+    if (!value) { missing.push(spec.envVarName); continue; }
+    if (!STRIPE_PRICE_ID_PATTERN.test(value)) { invalid.push({ envVarName: spec.envVarName, value }); continue; }
+    stripePriceIdByLookupKey[spec.lookupKey] = value;
+  }
+
+  if (missing.length > 0) {
+    console.warn(`[seed:dev] Store Stripe price IDs not set (store products will be seeded as PENDING/not checkout-ready): ${missing.join(", ")}`);
+  }
+  if (invalid.length > 0) {
+    console.warn(`[seed:dev] Invalid store Stripe price ID values (ignored): ${invalid.map((e) => `${e.envVarName}=${e.value}`).join(", ")}`);
+  }
+  if (Object.keys(stripePriceIdByLookupKey).length > 0) {
+    console.info(`[seed:dev] Store Stripe price IDs resolved: ${Object.keys(stripePriceIdByLookupKey).length}/${OPTIONAL_STORE_CATALOG_STRIPE_PRICE_ENV_SPECS.length}`);
+  }
+
   return stripePriceIdByLookupKey;
 }
 
@@ -430,18 +465,37 @@ async function upsertEntitlementRule(input: { productId: string; entitlementType
 }
 
 async function assertPurchasableCatalogStripePriceIdsPersisted() {
-  const seededPrices = await prisma.price.findMany({
-    where: { lookupKey: { in: PURCHASABLE_CATALOG_STRIPE_PRICE_ENV_SPECS.map((s) => s.lookupKey) } },
+  const requiredLookupKeys = REQUIRED_CATALOG_STRIPE_PRICE_ENV_SPECS.map((s) => s.lookupKey);
+  const storeLookupKeys = OPTIONAL_STORE_CATALOG_STRIPE_PRICE_ENV_SPECS.map((s) => s.lookupKey);
+
+  // Verify required subscription prices are all seeded and SYNCED.
+  const requiredPrices = await prisma.price.findMany({
+    where: { lookupKey: { in: requiredLookupKeys } },
     select: { lookupKey: true, stripePriceId: true, stripeSyncStatus: true },
   });
-  const missingStripeIds = seededPrices.filter((p) => !p.stripePriceId).map((p) => p.lookupKey);
-  if (missingStripeIds.length > 0) throw new Error(`Seed verification failed: Stripe price IDs missing for: ${missingStripeIds.join(", ")}`);
-  const seededLookupKeys = new Set(seededPrices.map((p) => p.lookupKey));
-  const missingRows = PURCHASABLE_CATALOG_STRIPE_PRICE_ENV_SPECS.map((s) => s.lookupKey).filter((k) => !seededLookupKeys.has(k));
-  if (missingRows.length > 0) throw new Error(`Seed verification failed: missing catalog prices for: ${missingRows.join(", ")}`);
-  const nonSyncedRows = seededPrices.filter((p) => p.stripeSyncStatus !== StripeSyncStatus.SYNCED).map((p) => `${p.lookupKey}:${p.stripeSyncStatus}`);
-  if (nonSyncedRows.length > 0) throw new Error(`Seed verification failed: non-SYNCED prices: ${nonSyncedRows.join(", ")}`);
-  console.info(`[seed:dev] Verified ${seededPrices.length} Stripe-linked catalog prices.`);
+  const missingRequiredStripeIds = requiredPrices.filter((p) => !p.stripePriceId).map((p) => p.lookupKey);
+  if (missingRequiredStripeIds.length > 0) throw new Error(`Seed verification failed: Stripe price IDs missing for: ${missingRequiredStripeIds.join(", ")}`);
+  const requiredSeededKeys = new Set(requiredPrices.map((p) => p.lookupKey));
+  const missingRequiredRows = requiredLookupKeys.filter((k) => !requiredSeededKeys.has(k));
+  if (missingRequiredRows.length > 0) throw new Error(`Seed verification failed: missing catalog prices for: ${missingRequiredRows.join(", ")}`);
+  const nonSyncedRequired = requiredPrices.filter((p) => p.stripeSyncStatus !== StripeSyncStatus.SYNCED).map((p) => `${p.lookupKey}:${p.stripeSyncStatus}`);
+  if (nonSyncedRequired.length > 0) throw new Error(`Seed verification failed: non-SYNCED subscription prices: ${nonSyncedRequired.join(", ")}`);
+  console.info(`[seed:dev] Verified ${requiredPrices.length} subscription/class Stripe-linked prices (SYNCED).`);
+
+  // Verify store prices are seeded (status may be PENDING if env vars were not provided).
+  const storePrices = await prisma.price.findMany({
+    where: { lookupKey: { in: storeLookupKeys } },
+    select: { lookupKey: true, stripePriceId: true, stripeSyncStatus: true },
+  });
+  const storeSeededKeys = new Set(storePrices.map((p) => p.lookupKey));
+  const missingStoreRows = storeLookupKeys.filter((k) => !storeSeededKeys.has(k));
+  if (missingStoreRows.length > 0) throw new Error(`Seed verification failed: missing store catalog prices for: ${missingStoreRows.join(", ")}`);
+  const storeSynced = storePrices.filter((p) => p.stripeSyncStatus === StripeSyncStatus.SYNCED).length;
+  const storePending = storePrices.filter((p) => p.stripeSyncStatus === StripeSyncStatus.PENDING).length;
+  if (storePending > 0) {
+    console.warn(`[seed:dev] ${storePending} store prices are PENDING (no Stripe price IDs provided). /store will show those products as not checkout-ready.`);
+  }
+  console.info(`[seed:dev] Verified ${storePrices.length} store prices: ${storeSynced} SYNCED, ${storePending} PENDING.`);
 }
 
 async function seedCatalog(stripePriceIdByLookupKey: Record<string, string>) {
@@ -469,7 +523,28 @@ async function seedCatalog(stripePriceIdByLookupKey: Record<string, string>) {
   await upsertPrice({ productId: privateTenPack.id, lookupKey: "qa-private-10-pack-eur-once-v1", stripePriceId: stripePriceIdByLookupKey["qa-private-10-pack-eur-once-v1"], name: "10-Private Sessions - One Time", priceType: PriceType.ONE_TIME, currencyCode: "EUR", unitAmountMinor: 60000 });
   await upsertEntitlementRule({ productId: privateTenPack.id, entitlementType: EntitlementType.CREDIT_PACK, entitlementScope: EntitlementScope.PRIVATE_CLASSES, quantity: 10, validForDays: 240, notes: "Ten credits for private classes." });
 
-  await assertPurchasableCatalogStripePriceIdsPersisted();
+}
+
+async function seedStoreCatalog(stripePriceIdByLookupKey: Record<string, string>) {
+  for (const item of STORE_CATALOG_PRODUCTS) {
+    const product = await upsertProduct({
+      slug: item.slug,
+      name: item.name,
+      description: item.description,
+      productType: item.productType,
+      sortOrder: item.sortOrder,
+    });
+    await upsertPrice({
+      productId: product.id,
+      lookupKey: item.price.lookupKey,
+      stripePriceId: stripePriceIdByLookupKey[item.price.lookupKey],
+      name: item.price.name,
+      priceType: item.price.priceType,
+      currencyCode: item.price.currencyCode,
+      unitAmountMinor: item.price.unitAmountMinor,
+    });
+  }
+  console.info(`[seed:dev] Store catalog seeded: ${STORE_CATALOG_PRODUCTS.length} products (gift cards + merchandise, pickup-only).`);
 }
 
 // ─── Class schedule helpers ───────────────────────────────────────────────────
@@ -1035,7 +1110,8 @@ async function verifyCleanSeed(clientEmail: string, schedulingSummary: Awaited<R
     prisma.studioSession.count({ where: { startsAt: { gte: futureWindowStartUtc, lte: futureWindowEndUtc }, classType: { category: { slug: { not: "private-reformer-coach" } } } } }),
   ]);
 
-  if (productCount !== 6) throw new Error(`Seed verification failed: expected 6 active products, got ${productCount}.`);
+  const expectedProductCount = 6 + STORE_CATALOG_PRODUCT_COUNT;
+  if (productCount !== expectedProductCount) throw new Error(`Seed verification failed: expected ${expectedProductCount} active products, got ${productCount}.`);
   if (collectivePastSessionsCount !== schedulingSummary.pastSessionsCount) throw new Error(`Seed verification failed: past collective session count mismatch (expected ${schedulingSummary.pastSessionsCount}, got ${collectivePastSessionsCount}).`);
   if (collectiveFutureSessionsCount !== schedulingSummary.futureSessionsCount) throw new Error(`Seed verification failed: future collective session count mismatch (expected ${schedulingSummary.futureSessionsCount}, got ${collectiveFutureSessionsCount}).`);
 
@@ -1062,11 +1138,15 @@ async function verifyCleanSeed(clientEmail: string, schedulingSummary: Awaited<R
 
 export async function runDevelopmentSeed(): Promise<void> {
   console.info("[seed:dev] Starting development seed (mode: development — identical for DEV and UAT).");
-  const stripePriceIdByLookupKey = resolveRequiredCatalogStripePriceIds();
+  const requiredPriceIds = resolveRequiredCatalogStripePriceIds();
+  const optionalStorePriceIds = resolveOptionalStoreCatalogStripePriceIds();
+  const stripePriceIdByLookupKey = { ...requiredPriceIds, ...optionalStorePriceIds };
   await purgeForCleanSeed();
   const users = await seedUsers();
   await seedBookingPolicy();
   await seedCatalog(stripePriceIdByLookupKey);
+  await seedStoreCatalog(stripePriceIdByLookupKey);
+  await assertPurchasableCatalogStripePriceIdsPersisted();
   await seedMarketingDemoData({ createdById: users.admin.id });
   const schedulingSummary = await seedScheduling({ anaId: users.teachers.ana.id, elenaId: users.teachers.elena.id, sofiaId: users.teachers.sofia.id });
   await seedLearningFromJson();

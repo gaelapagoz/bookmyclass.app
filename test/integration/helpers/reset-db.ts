@@ -25,16 +25,22 @@ export async function resetDb() {
   await prisma.learningProgram.deleteMany();
 
   await prisma.loyaltyLedgerEntry.deleteMany();
+  await prisma.giftCardReconciliationCase.deleteMany();
+  await prisma.giftCardLedgerEntry.deleteMany();
+  await prisma.giftCardRedemption.deleteMany();
+  await prisma.giftCardWallet.deleteMany();
   await prisma.creditLedgerEntry.deleteMany();
   await prisma.clientEntitlement.deleteMany();
   await prisma.cartCheckoutIdempotency.deleteMany();
   await prisma.payment.deleteMany();
+  await prisma.giftCardCode.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.adminNote.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.contactMessage.deleteMany();
   await prisma.clientMessage.deleteMany();
   await prisma.contactMessageRateLimit.deleteMany();
+  await prisma.rateLimitCounter.deleteMany();
   await prisma.order.deleteMany();
   await prisma.subscriptionContract.deleteMany();
   await prisma.entitlementRule.deleteMany();

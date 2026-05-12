@@ -26,6 +26,10 @@ function hasRequiredDelegates(client: PrismaClient): boolean {
     marketingCampaignLinkClick?: unknown;
     marketingCategory?: unknown;
     marketingUnsubscribe?: unknown;
+    giftCardWallet?: unknown;
+    giftCardLedgerEntry?: unknown;
+    giftCardRedemption?: unknown;
+    giftCardReconciliationCase?: unknown;
   };
   return Boolean(
       runtimeClient.passwordResetToken &&
@@ -38,7 +42,11 @@ function hasRequiredDelegates(client: PrismaClient): boolean {
       runtimeClient.marketingCampaignLink &&
       runtimeClient.marketingCampaignLinkClick &&
       runtimeClient.marketingCategory &&
-      runtimeClient.marketingUnsubscribe,
+      runtimeClient.marketingUnsubscribe &&
+      runtimeClient.giftCardWallet &&
+      runtimeClient.giftCardLedgerEntry &&
+      runtimeClient.giftCardRedemption &&
+      runtimeClient.giftCardReconciliationCase,
   );
 }
 

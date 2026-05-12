@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { signInAdmin, signInClient } from "./support/auth";
-import { cleanSeededClientBookingsForTest, prepareWaitlistSessionForTest } from "./support/e2e-api";
+import { signInAdmin } from "./support/auth";
+import {
+  cleanSeededClientBookingsForTest,
+  createVerifiedClientForTest,
+  prepareWaitlistSessionForTest,
+} from "./support/e2e-api";
 import {
   E2E_PASSWORD,
   SEEDED_ADMIN,
@@ -192,23 +196,17 @@ test("admin can manually add a client using audited no-credit override", async (
 
 // @covers admin-waitlist-count-readonly
 test("admin calendar shows waitlist count without manual waitlist controls", async ({ page }) => {
-  await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_NO_CREDITS.email);
+  const clientEmail = `e2e.admin.waitlist.${Date.now()}@example.test`;
+  await createVerifiedClientForTest(page.request, {
+    email: clientEmail,
+    password: E2E_PASSWORD,
+  });
   const prepared = await prepareWaitlistSessionForTest(page.request, {
-    clientEmail: SEEDED_CLIENT_NO_CREDITS.email,
+    clientEmail,
+    createWaitlistEntry: true,
     serviceSlug: SEEDED_SERVICE_SLUG,
   });
 
-  await signInClient(page, SEEDED_CLIENT_NO_CREDITS);
-  await page.goto(`/book-a-class/${prepared.serviceSlug}`);
-  const selectPreparedDateButton = page.getByRole("button", { name: `Select ${prepared.dateKey}` });
-  if ((await selectPreparedDateButton.count()) === 0) {
-    await page.getByRole("button", { name: "Show next month" }).click();
-  }
-  await page.getByRole("button", { name: `Select ${prepared.dateKey}` }).click();
-  await page.getByTestId(`service-slot-${prepared.sessionId}`).getByRole("button", { name: /Join waitlist/i }).click();
-  await expect(page.getByText("You have been added to the waitlist.")).toBeVisible();
-
-  await page.context().clearCookies();
   await signInAdmin(page, SEEDED_ADMIN);
   await page.goto(`/admin/sessions?week=${prepared.dateKey}`);
 
@@ -218,7 +216,7 @@ test("admin calendar shows waitlist count without manual waitlist controls", asy
     .first();
 
   await expect(sessionLink).toBeVisible();
-  await expect(page.getByText("Waitlist: 1")).toBeVisible();
+  await expect(sessionLink.getByText("Waitlist: 1")).toBeVisible();
   await expect(page.getByRole("button", { name: /join waitlist/i })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /cancel waitlist/i })).toHaveCount(0);
 });

@@ -6,6 +6,7 @@ import {
   CreditLedgerEntryType,
   EntitlementScope,
   EntitlementType,
+  GiftCardRedemptionStatus,
   OrderStatus,
   PaymentMethod,
   PaymentProvider,
@@ -21,6 +22,17 @@ import {
   isActiveSubscriptionForCartConstraint,
 } from "@/lib/cart/cart-contract";
 import { prisma } from "../db";
+import {
+  captureGiftCardRedemption,
+  releaseGiftCardRedemption,
+} from "@/lib/gift-cards/gift-card-wallet-service";
+import { issueGiftCardCodesForOrder } from "@/lib/gift-cards/gift-card-code-service";
+import {
+  createGiftCardManualReviewCase,
+  recordGiftCardWebhookRetry,
+} from "@/lib/gift-cards/gift-card-reconciliation-service";
+import { emitGiftCardAlertEvent } from "@/lib/gift-cards/gift-card-events";
+import { giftCardErrorCodes, GiftCardError } from "@/lib/gift-cards/gift-card-errors";
 import { getStripeClient } from "../payments/stripe";
 import { consumeCredit } from "@/lib/credits/credit-service";
 
@@ -43,6 +55,34 @@ type GenericCheckoutMetadata = {
 };
 
 const STALE_PROCESSING_THRESHOLD_MS = 10 * 60 * 1000;
+
+async function createPaidAfterReleaseManualReviewCase(input: {
+  orderId: string;
+  clientId: string;
+  walletId: string | null;
+  redemptionId: string;
+  stripePaymentId: string;
+  giftCardPaymentId: string;
+  checkoutSessionId: string;
+  paymentIntentId: string | null;
+}) {
+  await createGiftCardManualReviewCase({
+    orderId: input.orderId,
+    clientId: input.clientId,
+    walletId: input.walletId,
+    redemptionId: input.redemptionId,
+    paymentId: input.stripePaymentId,
+    reason: "STRIPE_PAID_AFTER_GIFT_CARD_RELEASE",
+    idempotencyKey: `gift-card:manual-review:paid-after-release:${input.checkoutSessionId}:${input.redemptionId}`,
+    metadata: {
+      checkoutSessionId: input.checkoutSessionId,
+      paymentIntentId: input.paymentIntentId,
+      stripePaymentId: input.stripePaymentId,
+      giftCardPaymentId: input.giftCardPaymentId,
+      source: "stripe-webhook",
+    },
+  });
+}
 
 function logInfo(message: string, context?: Record<string, unknown>) {
   console.info("[stripe/webhook]", message, context ?? {});
@@ -103,6 +143,108 @@ async function markWebhookEventRetryable(eventId: string): Promise<void> {
   await prisma.stripeWebhookEventReceipt.update({
     where: { eventId },
     data: { status: StripeWebhookReceiptStatus.RETRYABLE_FAILED },
+  });
+}
+
+async function resolveGiftCardRetryContext(event: Stripe.Event): Promise<{
+  orderId: string;
+  clientId: string;
+  paymentId: string | null;
+  redemptionId: string | null;
+  walletId: string | null;
+} | null> {
+  const dataObject =
+    event.data && typeof event.data === "object" && event.data.object && typeof event.data.object === "object"
+      ? (event.data.object as { id?: unknown; metadata?: Stripe.Metadata | null })
+      : null;
+  const metadata = dataObject?.metadata ?? null;
+  const paymentId = getStringMetadataValue(metadata, "paymentId");
+  const orderId = getStringMetadataValue(metadata, "orderId");
+  const checkoutSessionId = typeof dataObject?.id === "string" ? dataObject.id : null;
+
+  const payment = paymentId
+    ? await prisma.payment.findUnique({
+        where: { id: paymentId },
+        select: {
+          id: true,
+          orderId: true,
+          order: { select: { clientId: true } },
+        },
+      })
+    : checkoutSessionId
+      ? await prisma.payment.findFirst({
+          where: {
+            provider: PaymentProvider.STRIPE,
+            OR: [
+              { providerReference: checkoutSessionId },
+              { stripeCheckoutSessionId: checkoutSessionId },
+            ],
+          },
+          select: {
+            id: true,
+            orderId: true,
+            order: { select: { clientId: true } },
+          },
+        })
+      : null;
+
+  const resolvedOrderId = payment?.orderId ?? orderId;
+  if (!resolvedOrderId) {
+    return null;
+  }
+
+  const order = payment?.order ?? (await prisma.order.findUnique({
+    where: { id: resolvedOrderId },
+    select: { clientId: true },
+  }));
+  if (!order?.clientId) {
+    return null;
+  }
+
+  const redemption = await prisma.giftCardRedemption.findFirst({
+    where: { orderId: resolvedOrderId },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, walletId: true },
+  });
+
+  return {
+    orderId: resolvedOrderId,
+    clientId: order.clientId,
+    paymentId: payment?.id ?? null,
+    redemptionId: redemption?.id ?? null,
+    walletId: redemption?.walletId ?? null,
+  };
+}
+
+async function recordWebhookProcessingFailure(
+  event: Stripe.Event,
+  error: unknown,
+): Promise<{ exhausted: boolean }> {
+  const context = await resolveGiftCardRetryContext(event);
+  if (!context) {
+    return { exhausted: false };
+  }
+
+  return recordGiftCardWebhookRetry({
+    orderId: context.orderId,
+    clientId: context.clientId,
+    walletId: context.walletId,
+    redemptionId: context.redemptionId,
+    paymentId: context.paymentId,
+    reason: "STRIPE_WEBHOOK_PROCESSING_FAILED",
+    idempotencyKey: [
+      "gift-card:reconciliation:webhook",
+      "reason:STRIPE_WEBHOOK_PROCESSING_FAILED",
+      `order:${context.orderId}`,
+      `redemption:${context.redemptionId ?? "none"}`,
+      `payment:${context.paymentId ?? "none"}`,
+    ].join(":"),
+    metadata: {
+      eventId: event.id,
+      eventType: event.type,
+      source: "stripe-webhook",
+    },
+    error,
   });
 }
 
@@ -662,13 +804,29 @@ async function ensureCartOrderOwnershipFromPersistedItems(input: {
       items: {
         orderBy: { createdAt: "asc" },
         select: {
+          id: true,
           productId: true,
           priceId: true,
           quantity: true,
+          lineTotalAmountMinor: true,
+          productNameSnapshot: true,
+          currencyCode: true,
           price: {
-            select: { priceType: true },
+            select: { priceType: true, unitAmountMinor: true },
+          },
+          product: {
+            select: { productType: true },
           },
         },
+      },
+      payments: {
+        where: {
+          provider: PaymentProvider.STRIPE,
+          status: PaymentStatus.SUCCEEDED,
+        },
+        orderBy: { capturedAt: "desc" },
+        take: 1,
+        select: { id: true },
       },
     },
   });
@@ -677,7 +835,34 @@ async function ensureCartOrderOwnershipFromPersistedItems(input: {
     return;
   }
 
+  const giftCardItems = order.items
+    .filter((item) => item.product.productType === ProductType.GIFT_CARD)
+    .map((item) => ({
+      orderItemId: item.id,
+      amountMinor: item.lineTotalAmountMinor,
+    }));
+  if (giftCardItems.length > 0) {
+    await issueGiftCardCodesForOrder({
+      orderId: order.id,
+      clientId: input.clientId,
+      paymentId: order.payments[0]?.id ?? undefined,
+      items: giftCardItems,
+    });
+  }
+
+  const merchandiseItems = order.items.filter(
+    (item) => item.product.productType === ProductType.MERCHANDISE,
+  );
+
   for (const item of order.items) {
+    if (item.product.productType === ProductType.GIFT_CARD) {
+      continue;
+    }
+
+    if (item.product.productType === ProductType.MERCHANDISE) {
+      continue;
+    }
+
     if (item.price.priceType !== PriceType.ONE_TIME) {
       continue;
     }
@@ -689,6 +874,31 @@ async function ensureCartOrderOwnershipFromPersistedItems(input: {
       consumeCreditForBooking: false,
       purchaseQuantity: item.quantity,
     });
+  }
+
+  if (merchandiseItems.length > 0) {
+    try {
+      const { sendStorePurchaseConfirmationEmail } = await import("@/lib/email/store-email");
+      const purchaser = await prisma.user.findUnique({
+        where: { id: input.clientId },
+        select: { name: true, email: true },
+      });
+      if (purchaser?.email) {
+        await sendStorePurchaseConfirmationEmail({
+          to: purchaser.email,
+          purchaserName: purchaser.name,
+          orderId: order.id,
+          items: merchandiseItems.map((item) => ({
+            name: item.productNameSnapshot,
+            quantity: item.quantity,
+            unitAmountMinor: item.price.unitAmountMinor,
+            currencyCode: item.currencyCode,
+          })),
+        });
+      }
+    } catch (emailError) {
+      console.error("[stripe-webhook] merchandise confirmation email failed", emailError instanceof Error ? emailError.message : String(emailError));
+    }
   }
 }
 
@@ -813,6 +1023,36 @@ async function markPaymentFailedByCheckoutSession(input: {
     return;
   }
 
+  const redemption = payment.orderId
+    ? await prisma.giftCardRedemption.findFirst({
+        where: { orderId: payment.orderId, status: GiftCardRedemptionStatus.RESERVED },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      })
+    : null;
+
+  if (redemption) {
+    try {
+      await releaseGiftCardRedemption({
+        actor: { type: "SYSTEM", label: "stripe-checkout-failure" },
+        redemptionId: redemption.id,
+        idempotencyKey: `gift-card:release:redemption:${redemption.id}`,
+        metadata: {
+          checkoutSessionId: input.checkoutSessionId,
+          reason: input.reason,
+          source: "stripe-webhook",
+        },
+      });
+    } catch (error) {
+      if (
+        !(error instanceof GiftCardError) ||
+        error.code !== giftCardErrorCodes.invalidTransition
+      ) {
+        throw error;
+      }
+    }
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.payment.update({
       where: { id: payment.id },
@@ -824,6 +1064,19 @@ async function markPaymentFailedByCheckoutSession(input: {
     });
 
     if (payment.orderId) {
+      await tx.payment.updateMany({
+        where: {
+          orderId: payment.orderId,
+          provider: PaymentProvider.INTERNAL,
+          method: PaymentMethod.GIFT_CARD,
+          status: PaymentStatus.PENDING,
+        },
+        data: {
+          status: PaymentStatus.FAILED,
+          failedAt: new Date(),
+          failureReason: input.reason,
+        },
+      });
       await tx.order.update({
         where: { id: payment.orderId },
         data: { status: OrderStatus.CANCELLED },
@@ -998,6 +1251,133 @@ async function handleCheckoutCompleted(
     metadataSource,
   });
 
+  let capturedGiftCardPaymentId: string | null = null;
+  if (checkoutSource === CheckoutSource.CART_CHECKOUT_V1 && orderId) {
+    const giftCardPayment = await prisma.payment.findFirst({
+      where: {
+        orderId,
+        provider: PaymentProvider.INTERNAL,
+        method: PaymentMethod.GIFT_CARD,
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, status: true },
+    });
+    const redemption = await prisma.giftCardRedemption.findFirst({
+      where: { orderId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, status: true, clientId: true, walletId: true },
+    });
+
+    if (giftCardPayment && !redemption) {
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { clientId: true },
+      });
+      if (order?.clientId) {
+        await createGiftCardManualReviewCase({
+          orderId,
+          clientId: order.clientId,
+          paymentId: payment.id,
+          reason: "GIFT_CARD_PAYMENT_WITHOUT_REDEMPTION",
+          idempotencyKey: `gift-card:manual-review:missing-redemption:${orderId}:${giftCardPayment.id}`,
+          metadata: {
+            checkoutSessionId: session.id,
+            stripePaymentId: payment.id,
+            giftCardPaymentId: giftCardPayment.id,
+            source: "stripe-webhook",
+          },
+        });
+      }
+      logWarn("cart checkout completion blocked: gift-card payment has no redemption", {
+        checkoutSessionId: session.id,
+        orderId,
+        giftCardPaymentId: giftCardPayment.id,
+      });
+      return;
+    }
+
+    if (giftCardPayment && redemption?.status === GiftCardRedemptionStatus.RELEASED) {
+      await createPaidAfterReleaseManualReviewCase({
+        orderId,
+        clientId: redemption.clientId,
+        walletId: redemption.walletId,
+        redemptionId: redemption.id,
+        stripePaymentId: payment.id,
+        giftCardPaymentId: giftCardPayment.id,
+        checkoutSessionId: session.id,
+        paymentIntentId,
+      });
+      logWarn("cart checkout completion blocked: gift-card redemption already released", {
+        checkoutSessionId: session.id,
+        orderId,
+        giftCardPaymentId: giftCardPayment.id,
+        redemptionId: redemption.id,
+      });
+      return;
+    }
+
+    if (
+      giftCardPayment &&
+      redemption?.status === GiftCardRedemptionStatus.CAPTURED &&
+      giftCardPayment.status !== PaymentStatus.SUCCEEDED
+    ) {
+      capturedGiftCardPaymentId = giftCardPayment.id;
+    }
+
+    if (
+      giftCardPayment &&
+      redemption?.status === GiftCardRedemptionStatus.RESERVED &&
+      giftCardPayment.status === PaymentStatus.PENDING
+    ) {
+      try {
+        await captureGiftCardRedemption({
+          actor: { type: "SYSTEM", label: "stripe-checkout-success" },
+          redemptionId: redemption.id,
+          paymentId: giftCardPayment.id,
+          idempotencyKey: `gift-card:capture:redemption:${redemption.id}`,
+          metadata: {
+            checkoutSessionId: session.id,
+            stripePaymentId: payment.id,
+            source: "stripe-webhook",
+          },
+        });
+      } catch (error) {
+        await emitGiftCardAlertEvent({
+          eventName: "gift_card.capture_failed_after_stripe_success",
+          entityType: "GiftCardRedemption",
+          entityId: redemption.id,
+          metadata: {
+            orderId,
+            clientId: redemption.clientId,
+            walletId: redemption.walletId,
+            stripePaymentId: payment.id,
+            giftCardPaymentId: giftCardPayment.id,
+            checkoutSessionId: session.id,
+          },
+          error,
+        });
+        throw error;
+      }
+      capturedGiftCardPaymentId = giftCardPayment.id;
+    }
+
+    if (
+      giftCardPayment &&
+      giftCardPayment.status !== PaymentStatus.SUCCEEDED &&
+      !capturedGiftCardPaymentId
+    ) {
+      logWarn("cart checkout completion blocked: gift-card payment is not capturable", {
+        checkoutSessionId: session.id,
+        orderId,
+        giftCardPaymentId: giftCardPayment.id,
+        giftCardPaymentStatus: giftCardPayment.status,
+        redemptionId: redemption?.id ?? null,
+        redemptionStatus: redemption?.status ?? null,
+      });
+      return;
+    }
+  }
+
   await prisma.$transaction(async (tx) => {
     if (payment.status !== PaymentStatus.SUCCEEDED) {
       await tx.payment.update({
@@ -1030,6 +1410,15 @@ async function handleCheckoutCompleted(
     }
 
     if (orderId) {
+      if (capturedGiftCardPaymentId) {
+        await tx.payment.update({
+          where: { id: capturedGiftCardPaymentId },
+          data: {
+            status: PaymentStatus.SUCCEEDED,
+            capturedAt: new Date(),
+          },
+        });
+      }
       await tx.order.update({
         where: { id: orderId },
         data: { status: OrderStatus.PAID },
@@ -1486,6 +1875,11 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
 
     await markWebhookEventProcessed(event.id);
   } catch (error) {
+    const retry = await recordWebhookProcessingFailure(event, error);
+    if (retry.exhausted) {
+      await markWebhookEventProcessed(event.id);
+      return;
+    }
     await markWebhookEventRetryable(event.id);
     throw error;
   }

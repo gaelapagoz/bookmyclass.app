@@ -22,8 +22,11 @@
     "db:e2e:seed": "dotenv -e .env.e2e -- tsx scripts/e2e-seed.ts",
     "db:e2e:reset": "npm run db:e2e:migrate && npm run db:e2e:seed",
     "db:e2e:setup": "npm run db:e2e:migrate && npm run db:e2e:seed",
-    "test:e2e": "npm run db:e2e:reset && npm run build:e2e && playwright test",
-    "test:e2e:ci": "npm run db:e2e:reset && npm run build:e2e && playwright test --reporter=line",
+    "verify:e2e-config": "dotenv -e .env.e2e -- tsx scripts/verify-e2e-config.ts",
+    "test:e2e": "npm run verify:e2e-config && npm run db:e2e:reset && npm run build:e2e && playwright test",
+    "test:e2e:ci": "npm run verify:e2e-config && npm run db:e2e:reset && npm run build:e2e && playwright test --reporter=line",
+    "test:e2e:store": "playwright test --grep @store",
+    "test:e2e:booking": "playwright test --grep @booking",
     "test:e2e:uat": "playwright test -c playwright.uat.config.ts --reporter=line",
     "db:verify:dashboard-seed": "tsx scripts/verify-dashboard-seed-db.ts",
     "db:verify:dashboard-trend-seed": "tsx scripts/verify-dashboard-trend-seed-db.ts",
@@ -35,7 +38,8 @@
     "k6:discover:uat": "tsx scripts/k6-discover-uat.ts",
     "qa:e2e:coverage": "tsx scripts/e2e-coverage-report.ts",
     "test:uat:smoke": "tsx scripts/uat-smoke-check.ts",
-    "demo:screenshots": "playwright test -c playwright.demo.config.ts"
+    "demo:screenshots": "playwright test -c playwright.demo.config.ts",
+    "stripe:catalog:sync": "tsx scripts/sync-stripe-catalog.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",

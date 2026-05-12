@@ -5,6 +5,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import {
   CART_CHECKOUT_IDEMPOTENCY_KEY_REGEX,
+  CART_CHECKOUT_MAX_WALLET_AMOUNT_MINOR,
 } from "@/lib/cart/cart-contract";
 import { computeCartHash } from "@/lib/cart/cart-hash";
 import { prisma } from "@/lib/db";
@@ -28,6 +29,7 @@ const checkoutPayloadSchema = z.object({
       }),
     ),
   clientCartVersion: z.string().min(1),
+  walletAmountMinor: z.number().int().min(0).max(CART_CHECKOUT_MAX_WALLET_AMOUNT_MINOR).optional(),
 });
 const CART_CHECKOUT_DEBUG = process.env.CART_CHECKOUT_DEBUG === "1";
 
@@ -67,7 +69,11 @@ function buildDeterministicFailureCartHash(input: {
 }): string {
   const parsed = checkoutPayloadSchema.safeParse(input.parsedPayload);
   if (parsed.success) {
-    return `AUTH_FAILURE_V1|cartHash=${computeCartHash(parsed.data.lines)}|clientCartVersion=${parsed.data.clientCartVersion}`;
+    const walletSuffix =
+      (parsed.data.walletAmountMinor ?? 0) > 0
+        ? `|walletAmountMinor=${parsed.data.walletAmountMinor}`
+        : "";
+    return `AUTH_FAILURE_V1|cartHash=${computeCartHash(parsed.data.lines)}|clientCartVersion=${parsed.data.clientCartVersion}${walletSuffix}`;
   }
 
   return `AUTH_FAILURE_V1|rawBodySha256=${sha256Hex(input.rawBody)}`;
@@ -248,6 +254,7 @@ export async function POST(request: Request) {
       idempotencyKey,
       lines: parsed.data.lines,
       clientCartVersion: parsed.data.clientCartVersion,
+      walletAmountMinor: parsed.data.walletAmountMinor,
     });
     debugLog("checkout_result", {
       userId,

@@ -92,6 +92,7 @@ Evidence label legend used in this file:
   - Inferred: teacher operational workflows (UI placeholder suggests planned expansion).
   - Confirmed: waitlist join/cancel + auto-promotion workflow for collective classes.
   - Confirmed: waitlist feature scope for current release includes runtime eligibility-aware promotion, client join/cancel UX, and admin/teacher visibility; no manual waitlist controls are exposed.
+  - Confirmed: gift-card wallet financial foundation is modeled and service-backed; Store customer flows remain inactive.
   - Evidence status: Confirmed/Inferred/Missing based on `src` usage.
 
 ## 3. Roles and access model
@@ -198,6 +199,7 @@ Evidence label legend used in this file:
   - Catalog/pricing: `Product`, `Price`, `EntitlementRule`.
   - Scheduling/booking: `ClassCategory`, `ClassType`, `ClassTemplate`, `RecurringRule`, `StudioSession`, `Booking`, `BookingPolicy`, `WaitlistEntry`, `AttendanceRecord`.
   - Commerce: `Order`, `OrderItem`, `Payment`, `SubscriptionContract`, `ClientEntitlement`, `CreditLedgerEntry`, `LoyaltyLedgerEntry`.
+  - Gift cards: `GiftCardWallet`, `GiftCardLedgerEntry`, `GiftCardRedemption`, `GiftCardReconciliationCase` foundation tables.
   - Admin/support/marketing/content: `AuditLog`, `AdminNote`, `ContactMessage`, `ClientMessage`, `PublicDocument`, learning and marketing models.
   - Evidence status: Confirmed from repo (`prisma/schema.prisma`).
 - Key relationships:
@@ -474,6 +476,7 @@ Evidence label legend used in this file:
 - Seed/test-specific:
   - `LEARNING_SEED_JSON_PATH`, `DASHBOARD_TREND_AS_OF_DATE`.
   - `STRIPE_PRICE_ID_COLLECTIVE_DROP_IN`, `STRIPE_PRICE_ID_COLLECTIVE_5_PACK`, `STRIPE_PRICE_ID_COLLECTIVE_10_PACK`, `STRIPE_PRICE_ID_MONTHLY_UNLIMITED_COLLECTIVE`, `STRIPE_PRICE_ID_PRIVATE_5_PACK`, `STRIPE_PRICE_ID_PRIVATE_10_PACK`.
+  - Store seed Stripe price mappings: `STRIPE_PRICE_ID_STORE_GIFT_CARD_25_EUR`, `STRIPE_PRICE_ID_STORE_GIFT_CARD_50_EUR`, `STRIPE_PRICE_ID_STORE_GIFT_CARD_100_EUR`, `STRIPE_PRICE_ID_STORE_MERCH_YOGA_MAT`, `STRIPE_PRICE_ID_STORE_MERCH_RESISTANCE_BANDS`, `STRIPE_PRICE_ID_STORE_MERCH_STUDIO_TOTE`.
   - `.env.test` requires `DATABASE_URL`.
   - Evidence status: Confirmed from repo (`prisma/seed.ts`, `test/integration/helpers/setup-env.ts`, `.env.test.example`).
 - Required vs optional (determinable):

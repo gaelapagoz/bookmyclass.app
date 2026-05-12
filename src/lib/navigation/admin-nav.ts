@@ -46,6 +46,7 @@ export const adminNavConfig: AdminNavItem[] = [
     children: [
       { type: "link", href: "/admin/orders", label: "Orders" },
       { type: "link", href: "/admin/subscriptions", label: "Subscriptions" },
+      { type: "link", href: "/admin/gift-cards", label: "Gift Card Wallets" },
     ],
   },
   {
@@ -55,6 +56,12 @@ export const adminNavConfig: AdminNavItem[] = [
     children: [
       { type: "link", href: "/admin/classes", label: "Booking Services" },
       { type: "link", href: "/admin/plans", label: "Plans" },
+      {
+        type: "link",
+        href: "/admin/store",
+        label: "Store",
+        matchPrefixes: ["/admin/store/merchandise", "/admin/store/gift-cards"],
+      },
     ],
   },
   {

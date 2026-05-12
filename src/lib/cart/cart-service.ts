@@ -2,6 +2,7 @@ import {
   reconcileCartLinesAgainstCatalog,
   validateCartAgainstCatalog,
 } from "@/lib/cart/cart-validation";
+import { isCatalogPriceCheckoutReady } from "@/lib/catalog/checkout-readiness";
 import type {
   CartLineInput,
   CartReconciliationResult,
@@ -32,6 +33,7 @@ async function getCatalogPricesByIds(priceIds: string[]): Promise<CartResolvedCa
       billingInterval: true,
       billingIntervalCount: true,
       stripePriceId: true,
+      stripeSyncStatus: true,
       isActive: true,
       isArchived: true,
       startsAt: true,
@@ -60,7 +62,13 @@ async function getCatalogPricesByIds(priceIds: string[]): Promise<CartResolvedCa
     currencyCode: price.currencyCode,
     billingInterval: price.billingInterval,
     billingIntervalCount: price.billingIntervalCount,
-    checkoutEnabled: Boolean(price.stripePriceId),
+    checkoutEnabled:
+      price.currencyCode === "EUR" &&
+      price.isActive &&
+      !price.isArchived &&
+      price.product.isActive &&
+      !price.product.isArchived &&
+      isCatalogPriceCheckoutReady(price),
     productIsActive: price.product.isActive,
     productIsArchived: price.product.isArchived,
     priceIsActive: price.isActive,

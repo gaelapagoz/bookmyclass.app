@@ -13,6 +13,20 @@ Purpose: document the current observability and monitoring setup from repo + run
 - Netdata host monitoring is documented.
 - PM2 status/log checks are documented in ops guides.
 
+## Gift-Card Maintenance
+- Manual/scheduled cleanup endpoint: `GET /api/cron/gift-cards/maintenance`.
+- Authentication: `Authorization: Bearer $CRON_SECRET`.
+- Current scope: expired `RESERVED` redemption release, batch size 100, no reconciliation retry.
+- Operators should schedule this route only after release validation confirms `CRON_SECRET`.
+- Cleanup failures emit `gift_card.reservation_cleanup_failed` to structured logs, Sentry, and `AuditLog`.
+
+## Gift-Card Reconciliation Workflow
+- Admin visibility is available under `/admin/gift-cards` and the admin gift-card API.
+- `ADMIN` can inspect wallet balance, ledger history, redemption records, and reconciliation cases.
+- `ADMIN` can add operational notes, but cannot resolve `MANUAL_REVIEW` or mutate balances.
+- `MASTER_ADMIN` can resolve `MANUAL_REVIEW` only after the service verifies wallet, ledger, payment, order, and redemption consistency.
+- Resolved cases are hidden from default reconciliation lists and can be included with a resolved/all filter.
+
 ## Current Limitations
 - Live monitor configuration state cannot be fully verified from repo alone.
 - Operator confirmation is required for current production monitor endpoints, alert channels, and schedules.

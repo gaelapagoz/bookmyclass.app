@@ -3,7 +3,9 @@ import {
   ClientEntitlementStatus,
   CreditLedgerEntryType,
   EntitlementType,
+  OrderStatus,
   Prisma,
+  ProductType,
   SubscriptionStatus,
   StudioSessionStatus,
   WaitlistStatus,
@@ -29,6 +31,7 @@ import {
 } from "@/lib/booking/cancellation-policy";
 import { assertBookingNotCheckedInForCancellation, getBookingSelfCheckInEligibility } from "@/lib/attendance/attendance-service";
 import { restoreCredit } from "@/lib/credits/credit-service";
+import { STORE_PRODUCT_TYPES } from "@/lib/catalog/product-scopes";
 
 type DashboardServiceErrorCode =
   | "BOOKING_NOT_FOUND"
@@ -1242,4 +1245,84 @@ export async function getClientSubscriptionRecoveryState(
   }
 
   return { status: "NONE" };
+}
+
+export type StoreOrderItem = {
+  id: string;
+  productNameSnapshot: string;
+  productType: ProductType;
+  quantity: number;
+  unitAmountMinor: number;
+  lineTotalAmountMinor: number;
+  currencyCode: string;
+};
+
+export type StoreOrderSummary = {
+  id: string;
+  status: OrderStatus;
+  placedAt: string;
+  totalAmountMinor: number;
+  currencyCode: string;
+  items: StoreOrderItem[];
+  fulfillmentNote: string | null;
+};
+
+export async function getClientStoreOrderHistory(clientId: string): Promise<StoreOrderSummary[]> {
+  const orders = await prisma.order.findMany({
+    where: {
+      clientId,
+      // DRAFT orders are incomplete checkout artifacts and must not appear in client purchase history
+      status: { not: OrderStatus.DRAFT },
+      items: {
+        some: {
+          product: {
+            productType: { in: [...STORE_PRODUCT_TYPES] },
+          },
+        },
+      },
+    },
+    orderBy: { placedAt: "desc" },
+    take: 100,
+    select: {
+      id: true,
+      status: true,
+      placedAt: true,
+      totalAmountMinor: true,
+      currencyCode: true,
+      items: {
+        select: {
+          id: true,
+          productNameSnapshot: true,
+          quantity: true,
+          unitAmountMinor: true,
+          lineTotalAmountMinor: true,
+          currencyCode: true,
+          product: { select: { productType: true } },
+        },
+      },
+    },
+  });
+
+  return orders.map((order) => {
+    const hasMerchandise = order.items.some(
+      (item) => item.product.productType === ProductType.MERCHANDISE,
+    );
+    return {
+      id: order.id,
+      status: order.status,
+      placedAt: order.placedAt.toISOString(),
+      totalAmountMinor: order.totalAmountMinor,
+      currencyCode: order.currencyCode,
+      items: order.items.map((item) => ({
+        id: item.id,
+        productNameSnapshot: item.productNameSnapshot,
+        productType: item.product.productType,
+        quantity: item.quantity,
+        unitAmountMinor: item.unitAmountMinor,
+        lineTotalAmountMinor: item.lineTotalAmountMinor,
+        currencyCode: item.currencyCode,
+      })),
+      fulfillmentNote: hasMerchandise ? "Pickup at studio" : null,
+    };
+  });
 }

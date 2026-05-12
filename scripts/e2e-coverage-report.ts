@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 type Risk = "critical" | "high" | "medium" | "low";
-type Area = "public" | "customer" | "admin" | "teacher" | "cross";
+type Area = "public" | "customer" | "admin" | "teacher" | "cross" | "store";
 
 type MatrixItem = {
   id: string;
@@ -164,7 +164,7 @@ async function main(): Promise<void> {
     return { key: risk, coverage: max === 0 ? 0 : got / max, total: items.length };
   });
 
-  const byArea = (["public", "customer", "admin", "teacher", "cross"] as const).map((area) => {
+  const byArea = (["public", "customer", "admin", "teacher", "cross", "store"] as const).map((area) => {
     const items = matrix.items.filter((item) => item.area === area);
     const max = items.length;
     const got = items.reduce((sum, item) => sum + (scoreByItemId.get(item.id) ?? 0), 0);

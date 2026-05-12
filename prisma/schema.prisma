@@ -36,6 +36,8 @@ enum ProductType {
   CLASS_PACK
   PRIVATE_PACK
   UNLIMITED_MEMBERSHIP
+  MERCHANDISE
+  GIFT_CARD
 }
 
 enum PriceType {
@@ -149,6 +151,7 @@ enum PaymentMethod {
   BANK_TRANSFER
   CASH
   MANUAL
+  GIFT_CARD
 }
 
 enum PaymentProvider {
@@ -156,6 +159,39 @@ enum PaymentProvider {
   MOLLIE
   MANUAL
   OTHER
+  INTERNAL
+}
+
+enum GiftCardWalletStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum GiftCardLedgerEntryType {
+  ACTIVATION
+  RESERVE
+  CAPTURE
+  RELEASE
+}
+
+enum GiftCardRedemptionStatus {
+  RESERVED
+  CAPTURED
+  RELEASED
+}
+
+enum GiftCardReconciliationStatus {
+  OPEN
+  RETRYING
+  RESOLVED
+  MANUAL_REVIEW
+}
+
+enum GiftCardCodeStatus {
+  ISSUED
+  REDEEMED
+  VOIDED
+  EXPIRED
 }
 
 enum CheckoutSource {
@@ -265,65 +301,72 @@ enum AdminLoginAbuseKeyType {
 }
 
 model User {
-  id                         String                 @id @default(cuid())
-  name                       String
-  firstName                  String?
-  lastName                   String?
-  email                      String                 @unique
-  passwordHash               String?
-  emailVerified              DateTime?
-  emailVerifiedAt            DateTime?
-  image                      String?
-  role                       Role                   @default(CLIENT)
-  isActive                   Boolean                @default(true)
-  isInactive                 Boolean                @default(false)
-  createdVia                 UserCreatedVia         @default(IMPORT)
-  createdByUserId            String?
-  createdIp                  String?
-  activationStatus           UserActivationStatus   @default(ACTIVE)
-  marketingSubscriptionStatus MarketingSubscriptionStatus @default(NEVER_SUBSCRIBED)
-  lastEmailChangeAt          DateTime?
-  pendingEmail               String?
-  pendingEmailTokenHash      String?                @unique
-  pendingEmailTokenExpiresAt DateTime?
-  lastLoginAt                DateTime?
-  createdByUser              User?                  @relation("UserCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  createdUsers               User[]                 @relation("UserCreatedBy")
-  pendingRegistrations       PendingUserRegistration[]
-  clientProfile              ClientProfile?
-  teacherProfile             TeacherProfile?
-  defaultTeachingTemplates   ClassTemplate[]        @relation("TemplateDefaultTeacher")
-  teachingStudioSessions     StudioSession[]        @relation("StudioSessionTeacher")
-  cancelledStudioSessions    StudioSession[]        @relation("StudioSessionCancelledBy")
-  clientBookings             Booking[]              @relation("BookingClient")
-  cancelledBookings          Booking[]              @relation("BookingCancelledBy")
-  waitlistEntries            WaitlistEntry[]        @relation("WaitlistClient")
-  markedAttendanceRecords    AttendanceRecord[]     @relation("AttendanceMarkedBy")
-  orders                     Order[]                @relation("OrderClient")
-  subscriptionContracts      SubscriptionContract[] @relation("SubscriptionClient")
-  clientEntitlements         ClientEntitlement[]    @relation("ClientEntitlementClient")
-  creditLedgerEntries        CreditLedgerEntry[]    @relation("UserCreditLedger")
-  createdCreditLedgerEntries CreditLedgerEntry[]    @relation("CreditLedgerEntryCreatedBy")
-  clientLoyaltyLedgerEntries LoyaltyLedgerEntry[]   @relation("LoyaltyLedgerEntryClient")
-  createdLoyaltyEntries      LoyaltyLedgerEntry[]   @relation("LoyaltyLedgerEntryCreatedBy")
-  loyaltyCoupons             LoyaltyCoupon[]        @relation("LoyaltyCouponClient")
-  createdLoyaltyCoupons      LoyaltyCoupon[]        @relation("LoyaltyCouponCreatedBy")
-  voidedLoyaltyCoupons       LoyaltyCoupon[]        @relation("LoyaltyCouponVoidedBy")
-  createdLoyaltyRewardRules  LoyaltyRewardRule[]    @relation("LoyaltyRewardRuleCreatedBy")
-  updatedLoyaltyRewardRules  LoyaltyRewardRule[]    @relation("LoyaltyRewardRuleUpdatedBy")
-  auditLogsAsActor           AuditLog[]             @relation("AuditLogActor")
-  adminNotesAuthored         AdminNote[]            @relation("AdminNoteAuthor")
-  adminNotesAboutClient      AdminNote[]            @relation("AdminNoteClient")
-  contactMessages            ContactMessage[]       @relation("ContactMessageClient")
-  resolvedContactMessages    ContactMessage[]       @relation("ContactMessageResolvedBy")
-  clientMessagesUnified      ClientMessage[]        @relation("ClientMessageUser")
-  createdMarketingCampaigns  MarketingCampaign[]    @relation("MarketingCampaignCreatedBy")
-  marketingRecipients        MarketingCampaignRecipient[] @relation("MarketingRecipientUser")
-  marketingUnsubscribes      MarketingUnsubscribe[] @relation("MarketingUnsubscribeUser")
-  marketingSegments          MarketingUserSegment[]
-  accounts                   Account[]
-  sessions                   Session[]
-  passwordResetTokens        PasswordResetToken[]
+  id                                  String                       @id @default(cuid())
+  name                                String
+  firstName                           String?
+  lastName                            String?
+  email                               String                       @unique
+  passwordHash                        String?
+  emailVerified                       DateTime?
+  emailVerifiedAt                     DateTime?
+  image                               String?
+  role                                Role                         @default(CLIENT)
+  isActive                            Boolean                      @default(true)
+  isInactive                          Boolean                      @default(false)
+  createdVia                          UserCreatedVia               @default(IMPORT)
+  createdByUserId                     String?
+  createdIp                           String?
+  activationStatus                    UserActivationStatus         @default(ACTIVE)
+  marketingSubscriptionStatus         MarketingSubscriptionStatus  @default(NEVER_SUBSCRIBED)
+  lastEmailChangeAt                   DateTime?
+  pendingEmail                        String?
+  pendingEmailTokenHash               String?                      @unique
+  pendingEmailTokenExpiresAt          DateTime?
+  lastLoginAt                         DateTime?
+  createdByUser                       User?                        @relation("UserCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdUsers                        User[]                       @relation("UserCreatedBy")
+  pendingRegistrations                PendingUserRegistration[]
+  clientProfile                       ClientProfile?
+  teacherProfile                      TeacherProfile?
+  defaultTeachingTemplates            ClassTemplate[]              @relation("TemplateDefaultTeacher")
+  teachingStudioSessions              StudioSession[]              @relation("StudioSessionTeacher")
+  cancelledStudioSessions             StudioSession[]              @relation("StudioSessionCancelledBy")
+  clientBookings                      Booking[]                    @relation("BookingClient")
+  cancelledBookings                   Booking[]                    @relation("BookingCancelledBy")
+  waitlistEntries                     WaitlistEntry[]              @relation("WaitlistClient")
+  markedAttendanceRecords             AttendanceRecord[]           @relation("AttendanceMarkedBy")
+  orders                              Order[]                      @relation("OrderClient")
+  subscriptionContracts               SubscriptionContract[]       @relation("SubscriptionClient")
+  clientEntitlements                  ClientEntitlement[]          @relation("ClientEntitlementClient")
+  creditLedgerEntries                 CreditLedgerEntry[]          @relation("UserCreditLedger")
+  createdCreditLedgerEntries          CreditLedgerEntry[]          @relation("CreditLedgerEntryCreatedBy")
+  clientLoyaltyLedgerEntries          LoyaltyLedgerEntry[]         @relation("LoyaltyLedgerEntryClient")
+  createdLoyaltyEntries               LoyaltyLedgerEntry[]         @relation("LoyaltyLedgerEntryCreatedBy")
+  loyaltyCoupons                      LoyaltyCoupon[]              @relation("LoyaltyCouponClient")
+  giftCardWallets                     GiftCardWallet[]             @relation("GiftCardWalletClient")
+  giftCardLedgerEntries               GiftCardLedgerEntry[]        @relation("GiftCardLedgerEntryClient")
+  giftCardRedemptions                 GiftCardRedemption[]         @relation("GiftCardRedemptionClient")
+  giftCardReconciliationCases         GiftCardReconciliationCase[] @relation("GiftCardReconciliationClient")
+  resolvedGiftCardReconciliationCases GiftCardReconciliationCase[] @relation("GiftCardReconciliationResolvedBy")
+  purchasedGiftCardCodes              GiftCardCode[]               @relation("PurchasedGiftCards")
+  redeemedGiftCardCodes               GiftCardCode[]               @relation("RedeemedGiftCards")
+  createdLoyaltyCoupons               LoyaltyCoupon[]              @relation("LoyaltyCouponCreatedBy")
+  voidedLoyaltyCoupons                LoyaltyCoupon[]              @relation("LoyaltyCouponVoidedBy")
+  createdLoyaltyRewardRules           LoyaltyRewardRule[]          @relation("LoyaltyRewardRuleCreatedBy")
+  updatedLoyaltyRewardRules           LoyaltyRewardRule[]          @relation("LoyaltyRewardRuleUpdatedBy")
+  auditLogsAsActor                    AuditLog[]                   @relation("AuditLogActor")
+  adminNotesAuthored                  AdminNote[]                  @relation("AdminNoteAuthor")
+  adminNotesAboutClient               AdminNote[]                  @relation("AdminNoteClient")
+  contactMessages                     ContactMessage[]             @relation("ContactMessageClient")
+  resolvedContactMessages             ContactMessage[]             @relation("ContactMessageResolvedBy")
+  clientMessagesUnified               ClientMessage[]              @relation("ClientMessageUser")
+  createdMarketingCampaigns           MarketingCampaign[]          @relation("MarketingCampaignCreatedBy")
+  marketingRecipients                 MarketingCampaignRecipient[] @relation("MarketingRecipientUser")
+  marketingUnsubscribes               MarketingUnsubscribe[]       @relation("MarketingUnsubscribeUser")
+  marketingSegments                   MarketingUserSegment[]
+  accounts                            Account[]
+  sessions                            Session[]
+  passwordResetTokens                 PasswordResetToken[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -338,20 +381,20 @@ model User {
 }
 
 model PendingUserRegistration {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  firstName     String
-  lastName      String
-  passwordHash  String
-  role          Role     @default(CLIENT)
-  createdVia    UserCreatedVia @default(PUBLIC_SIGNUP)
-  createdIp     String?
-  tokenHash     String   @unique
+  id             String         @id @default(cuid())
+  email          String         @unique
+  firstName      String
+  lastName       String
+  passwordHash   String
+  role           Role           @default(CLIENT)
+  createdVia     UserCreatedVia @default(PUBLIC_SIGNUP)
+  createdIp      String?
+  tokenHash      String         @unique
   tokenExpiresAt DateTime
-  consumedAt    DateTime?
-  userId        String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  consumedAt     DateTime?
+  userId         String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
@@ -359,12 +402,12 @@ model PendingUserRegistration {
 }
 
 model ClientProfile {
-  id                    String    @id @default(cuid())
-  userId                String    @unique
-  phone                 String?
-  notes                 String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  phone     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
@@ -372,15 +415,15 @@ model ClientProfile {
 }
 
 model TeacherProfile {
-  id                    String    @id @default(cuid())
-  userId                String    @unique
-  phone                 String?
-  bio                   String?
-  specialties           String[]
-  certifications        String[]
-  hireDate              DateTime?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  phone          String?
+  bio            String?
+  specialties    String[]
+  certifications String[]
+  hireDate       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
@@ -614,42 +657,42 @@ model StudioSession {
 }
 
 model Booking {
-  id                     String                   @id @default(cuid())
-  clientId               String?
-  studioSessionId        String
-  orderId                String?
-  status                 BookingStatus            @default(CONFIRMED)
-  bookingIntent          BookingIntent            @default(SINGLE_BOOKING)
-  paymentSelection       BookingPaymentSelection?
-  selectedEntitlementId  String?
-  selectedPriceId        String?
-  draftAmountMinor       Int?
-  draftCurrencyCode      String?
-  bookedAt               DateTime                 @default(now())
-  customerName           String?
-  customerEmail          String?
-  customerPhone          String?
-  customerMessage        String?
-  consentTermsAccepted   Boolean                  @default(false)
-  consentPrivacyAccepted Boolean                  @default(false)
-  consentAcceptedAt      DateTime?
+  id                          String                   @id @default(cuid())
+  clientId                    String?
+  studioSessionId             String
+  orderId                     String?
+  status                      BookingStatus            @default(CONFIRMED)
+  bookingIntent               BookingIntent            @default(SINGLE_BOOKING)
+  paymentSelection            BookingPaymentSelection?
+  selectedEntitlementId       String?
+  selectedPriceId             String?
+  draftAmountMinor            Int?
+  draftCurrencyCode           String?
+  bookedAt                    DateTime                 @default(now())
+  customerName                String?
+  customerEmail               String?
+  customerPhone               String?
+  customerMessage             String?
+  consentTermsAccepted        Boolean                  @default(false)
+  consentPrivacyAccepted      Boolean                  @default(false)
+  consentAcceptedAt           DateTime?
   cancellationEligibleUntilAt DateTime?
-  creditRefundedAt       DateTime?
-  cancelledAt            DateTime?
-  cancellationReason     String?
-  cancelledById          String?
-  client                 User?                    @relation("BookingClient", fields: [clientId], references: [id], onDelete: SetNull)
-  studioSession          StudioSession            @relation(fields: [studioSessionId], references: [id], onDelete: Restrict)
-  order                  Order?                   @relation("BookingOrder", fields: [orderId], references: [id], onDelete: SetNull)
-  selectedEntitlement    ClientEntitlement?       @relation("BookingSelectedEntitlement", fields: [selectedEntitlementId], references: [id], onDelete: SetNull)
-  selectedPrice          Price?                   @relation("BookingSelectedPrice", fields: [selectedPriceId], references: [id], onDelete: SetNull)
-  payments               Payment[]                @relation("BookingPayment")
-  cancelledBy            User?                    @relation("BookingCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
-  attendanceRecord       AttendanceRecord?
-  creditLedgerEntries    CreditLedgerEntry[]
-  clientMessages         ClientMessage[]          @relation("ClientMessageBooking")
-  createdAt              DateTime                 @default(now())
-  updatedAt              DateTime                 @updatedAt
+  creditRefundedAt            DateTime?
+  cancelledAt                 DateTime?
+  cancellationReason          String?
+  cancelledById               String?
+  client                      User?                    @relation("BookingClient", fields: [clientId], references: [id], onDelete: SetNull)
+  studioSession               StudioSession            @relation(fields: [studioSessionId], references: [id], onDelete: Restrict)
+  order                       Order?                   @relation("BookingOrder", fields: [orderId], references: [id], onDelete: SetNull)
+  selectedEntitlement         ClientEntitlement?       @relation("BookingSelectedEntitlement", fields: [selectedEntitlementId], references: [id], onDelete: SetNull)
+  selectedPrice               Price?                   @relation("BookingSelectedPrice", fields: [selectedPriceId], references: [id], onDelete: SetNull)
+  payments                    Payment[]                @relation("BookingPayment")
+  cancelledBy                 User?                    @relation("BookingCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  attendanceRecord            AttendanceRecord?
+  creditLedgerEntries         CreditLedgerEntry[]
+  clientMessages              ClientMessage[]          @relation("ClientMessageBooking")
+  createdAt                   DateTime                 @default(now())
+  updatedAt                   DateTime                 @updatedAt
 
   @@index([clientId, status, bookedAt])
   @@index([studioSessionId, status])
@@ -663,13 +706,13 @@ model Booking {
 }
 
 model BookingPolicy {
-  id                          String   @id @default(cuid())
-  scope                       String   @unique @default("GLOBAL")
-  cancellationCutoffHours     Int      @default(24)
-  checkInOpensMinutesBefore   Int      @default(15)
-  checkInClosesMinutesAfter   Int      @default(10)
-  createdAt                   DateTime @default(now())
-  updatedAt                   DateTime @updatedAt
+  id                        String   @id @default(cuid())
+  scope                     String   @unique @default("GLOBAL")
+  cancellationCutoffHours   Int      @default(24)
+  checkInOpensMinutesBefore Int      @default(15)
+  checkInClosesMinutesAfter Int      @default(10)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 }
 
 model SiteSettings {
@@ -733,48 +776,54 @@ model AttendanceRecord {
 }
 
 model Order {
-  id                   String               @id @default(cuid())
-  clientId             String
-  subtotalAmountMinor  Int
-  discountAmountMinor  Int                  @default(0)
-  totalAmountMinor     Int
-  currencyCode         String
-  status               OrderStatus          @default(PLACED)
-  placedAt             DateTime             @default(now())
-  notes                String?
-  client               User                 @relation("OrderClient", fields: [clientId], references: [id], onDelete: Restrict)
-  items                OrderItem[]
-  payments             Payment[]
-  bookings             Booking[]            @relation("BookingOrder")
-  clientEntitlements   ClientEntitlement[]
-  creditLedgerEntries  CreditLedgerEntry[]
-  loyaltyLedgerEntries LoyaltyLedgerEntry[]
-  adminNotes           AdminNote[]
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
+  id                          String                       @id @default(cuid())
+  clientId                    String
+  subtotalAmountMinor         Int
+  discountAmountMinor         Int                          @default(0)
+  totalAmountMinor            Int
+  currencyCode                String
+  status                      OrderStatus                  @default(PLACED)
+  placedAt                    DateTime                     @default(now())
+  notes                       String?
+  client                      User                         @relation("OrderClient", fields: [clientId], references: [id], onDelete: Restrict)
+  items                       OrderItem[]
+  payments                    Payment[]
+  bookings                    Booking[]                    @relation("BookingOrder")
+  clientEntitlements          ClientEntitlement[]
+  creditLedgerEntries         CreditLedgerEntry[]
+  loyaltyLedgerEntries        LoyaltyLedgerEntry[]
+  giftCardLedgerEntries       GiftCardLedgerEntry[]
+  giftCardRedemptions         GiftCardRedemption[]
+  giftCardReconciliationCases GiftCardReconciliationCase[]
+  giftCardCodes               GiftCardCode[]
+  adminNotes                  AdminNote[]
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
 
   @@index([clientId, status, placedAt])
   @@index([placedAt])
 }
 
 model OrderItem {
-  id                      String   @id @default(cuid())
+  id                      String                @id @default(cuid())
   orderId                 String
   productId               String
   priceId                 String
-  quantity                Int      @default(1)
+  quantity                Int                   @default(1)
   productNameSnapshot     String
   priceNameSnapshot       String
   unitAmountMinor         Int
   lineSubtotalAmountMinor Int
-  lineDiscountAmountMinor Int      @default(0)
+  lineDiscountAmountMinor Int                   @default(0)
   lineTotalAmountMinor    Int
   currencyCode            String
-  order                   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product                 Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
-  price                   Price    @relation(fields: [priceId], references: [id], onDelete: Restrict)
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  order                   Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product                 Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  price                   Price                 @relation(fields: [priceId], references: [id], onDelete: Restrict)
+  giftCardLedgerEntries   GiftCardLedgerEntry[]
+  giftCardCode            GiftCardCode?
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
 
   @@index([orderId])
   @@index([productId])
@@ -782,28 +831,30 @@ model OrderItem {
 }
 
 model Payment {
-  id                String          @id @default(cuid())
-  orderId           String?
-  bookingId         String?
-  status            PaymentStatus
-  method            PaymentMethod
-  provider          PaymentProvider
-  providerReference String?
-  stripeCheckoutSessionId String?   @unique
-  stripeCustomerId  String?
-  stripeCheckoutMode StripeCheckoutMode?
-  checkoutSource    CheckoutSource?
-  amountMinor       Int
-  currencyCode      String
-  authorizedAt      DateTime?
-  capturedAt        DateTime?
-  failedAt          DateTime?
-  refundedAt        DateTime?
-  failureReason     String?
-  order             Order?          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  booking           Booking?        @relation("BookingPayment", fields: [bookingId], references: [id], onDelete: SetNull)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  id                          String                       @id @default(cuid())
+  orderId                     String?
+  bookingId                   String?
+  status                      PaymentStatus
+  method                      PaymentMethod
+  provider                    PaymentProvider
+  providerReference           String?
+  stripeCheckoutSessionId     String?                      @unique
+  stripeCustomerId            String?
+  stripeCheckoutMode          StripeCheckoutMode?
+  checkoutSource              CheckoutSource?
+  amountMinor                 Int
+  currencyCode                String
+  authorizedAt                DateTime?
+  capturedAt                  DateTime?
+  failedAt                    DateTime?
+  refundedAt                  DateTime?
+  failureReason               String?
+  order                       Order?                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  booking                     Booking?                     @relation("BookingPayment", fields: [bookingId], references: [id], onDelete: SetNull)
+  giftCardLedgerEntries       GiftCardLedgerEntry[]
+  giftCardReconciliationCases GiftCardReconciliationCase[]
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
 
   @@index([orderId, status, createdAt])
   @@index([bookingId, status, createdAt])
@@ -811,24 +862,183 @@ model Payment {
   @@index([checkoutSource, createdAt])
 }
 
+model GiftCardWallet {
+  id                  String                       @id @default(cuid())
+  clientId            String
+  currencyCode        String
+  balanceMinor        Int                          @default(0)
+  status              GiftCardWalletStatus         @default(ACTIVE)
+  client              User                         @relation("GiftCardWalletClient", fields: [clientId], references: [id], onDelete: Restrict)
+  ledgerEntries       GiftCardLedgerEntry[]
+  redemptions         GiftCardRedemption[]
+  reconciliationCases GiftCardReconciliationCase[]
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+
+  @@unique([clientId, currencyCode])
+  @@index([clientId])
+  @@index([status])
+  @@index([clientId, status])
+  @@index([currencyCode])
+}
+
+model GiftCardLedgerEntry {
+  id             String                  @id @default(cuid())
+  walletId       String
+  clientId       String
+  entryType      GiftCardLedgerEntryType
+  amountMinor    Int
+  currencyCode   String
+  orderId        String?
+  orderItemId    String?
+  paymentId      String?
+  redemptionId   String?
+  idempotencyKey String                  @unique
+  payloadHash    String
+  metadata       Json?
+  happenedAt     DateTime                @default(now())
+  wallet         GiftCardWallet          @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  client         User                    @relation("GiftCardLedgerEntryClient", fields: [clientId], references: [id], onDelete: Restrict)
+  order          Order?                  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderItem      OrderItem?              @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  payment        Payment?                @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  redemption     GiftCardRedemption?     @relation(fields: [redemptionId], references: [id], onDelete: SetNull)
+  createdAt      DateTime                @default(now())
+
+  @@index([walletId])
+  @@index([clientId])
+  @@index([orderId])
+  @@index([orderItemId])
+  @@index([paymentId])
+  @@index([redemptionId])
+  @@index([entryType])
+  @@index([happenedAt])
+  @@index([createdAt])
+}
+
+model GiftCardRedemption {
+  id                  String                       @id @default(cuid())
+  walletId            String
+  clientId            String
+  orderId             String
+  status              GiftCardRedemptionStatus     @default(RESERVED)
+  reservedAmountMinor Int
+  capturedAmountMinor Int                          @default(0)
+  releasedAmountMinor Int                          @default(0)
+  currencyCode        String
+  idempotencyKey      String                       @unique
+  payloadHash         String
+  expiresAt           DateTime
+  retryCount          Int                          @default(0)
+  lastRetryAt         DateTime?
+  wallet              GiftCardWallet               @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  client              User                         @relation("GiftCardRedemptionClient", fields: [clientId], references: [id], onDelete: Restrict)
+  order               Order                        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  ledgerEntries       GiftCardLedgerEntry[]
+  reconciliationCases GiftCardReconciliationCase[]
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+
+  @@index([walletId])
+  @@index([clientId])
+  @@index([orderId])
+  @@index([status])
+  @@index([walletId, status])
+  @@index([orderId, status])
+  @@index([expiresAt])
+  @@index([createdAt])
+}
+
+model GiftCardReconciliationCase {
+  id             String                       @id @default(cuid())
+  orderId        String
+  clientId       String
+  walletId       String?
+  redemptionId   String?
+  paymentId      String?
+  status         GiftCardReconciliationStatus
+  reason         String
+  idempotencyKey String?                      @unique
+  payloadHash    String?
+  retryCount     Int                          @default(0)
+  lastRetryAt    DateTime?
+  resolvedAt     DateTime?
+  resolvedById   String?
+  resolutionNote String?
+  metadata       Json?
+  order          Order                        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  client         User                         @relation("GiftCardReconciliationClient", fields: [clientId], references: [id], onDelete: Restrict)
+  wallet         GiftCardWallet?              @relation(fields: [walletId], references: [id], onDelete: SetNull)
+  redemption     GiftCardRedemption?          @relation(fields: [redemptionId], references: [id], onDelete: SetNull)
+  payment        Payment?                     @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  resolvedBy     User?                        @relation("GiftCardReconciliationResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+
+  @@index([status])
+  @@index([orderId])
+  @@index([clientId])
+  @@index([redemptionId])
+  @@index([paymentId])
+  @@index([createdAt])
+  @@index([updatedAt])
+}
+
+model GiftCardCode {
+  id            String             @id @default(cuid())
+  orderId       String
+  orderItemId   String             @unique
+  purchasedById String
+  redeemedById  String?
+  codeHash      String             @unique
+  maskedCode    String
+  amountMinor   Int
+  currencyCode  String
+  status        GiftCardCodeStatus
+  issuedAt      DateTime
+  redeemedAt    DateTime?
+  expiresAt     DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  order       Order     @relation(fields: [orderId], references: [id])
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id])
+  purchasedBy User      @relation("PurchasedGiftCards", fields: [purchasedById], references: [id])
+  redeemedBy  User?     @relation("RedeemedGiftCards", fields: [redeemedById], references: [id])
+
+  @@index([purchasedById])
+  @@index([redeemedById])
+  @@index([status])
+}
+
 model CartCheckoutIdempotency {
-  id              String                       @id @default(cuid())
-  userId          String
-  idempotencyKey  String
-  cartHash        String
-  state           CartCheckoutIdempotencyState
-  orderId         String?
-  paymentId       String?
+  id                   String                        @id @default(cuid())
+  userId               String
+  idempotencyKey       String
+  cartHash             String
+  state                CartCheckoutIdempotencyState
+  orderId              String?
+  paymentId            String?
+  redemptionId         String?
+  giftCardPaymentId    String?
+  stripePaymentId      String?
+  checkoutSessionId    String?
+  responseType         CartCheckoutResponseType?
   stripeRequestPayload Json?
-  responseStatus  Int?
-  responseCode    String?
-  responseMessage String?
-  responseBody    Json?
-  createdAt       DateTime                     @default(now())
-  updatedAt       DateTime                     @updatedAt
+  responseStatus       Int?
+  responseCode         String?
+  responseMessage      String?
+  responseBody         Json?
+  createdAt            DateTime                      @default(now())
+  updatedAt            DateTime                      @updatedAt
 
   @@unique([userId, idempotencyKey])
   @@index([userId, createdAt])
+}
+
+enum CartCheckoutResponseType {
+  COMPLETED
+  STRIPE_REDIRECT
 }
 
 enum CartCheckoutIdempotencyState {
@@ -904,32 +1114,32 @@ model ClientEntitlement {
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
 
+  @@unique([clientId, productId, orderId])
   @@index([clientId, status, expiresAt])
   @@index([productId, status])
   @@index([orderId])
   @@index([subscriptionContractId])
-  @@unique([clientId, productId, orderId])
 }
 
 model CreditLedgerEntry {
-  id            String                @id @default(cuid())
-  clientId      String
-  entryType     CreditLedgerEntryType
-  amount        Int
-  happenedAt    DateTime              @default(now())
-  entitlementId String?
-  bookingId     String?
-  orderId       String?
-  createdById   String?
-  idempotencyKey String?              @unique
-  notes         String?
-  client        User                  @relation("UserCreditLedger", fields: [clientId], references: [id], onDelete: Restrict)
-  entitlement   ClientEntitlement?    @relation(fields: [entitlementId], references: [id], onDelete: SetNull)
-  booking       Booking?              @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  order         Order?                @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  createdBy     User?                 @relation("CreditLedgerEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  id             String                @id @default(cuid())
+  clientId       String
+  entryType      CreditLedgerEntryType
+  amount         Int
+  happenedAt     DateTime              @default(now())
+  entitlementId  String?
+  bookingId      String?
+  orderId        String?
+  createdById    String?
+  idempotencyKey String?               @unique
+  notes          String?
+  client         User                  @relation("UserCreditLedger", fields: [clientId], references: [id], onDelete: Restrict)
+  entitlement    ClientEntitlement?    @relation(fields: [entitlementId], references: [id], onDelete: SetNull)
+  booking        Booking?              @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  order          Order?                @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdBy      User?                 @relation("CreditLedgerEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 
   @@index([clientId, happenedAt])
   @@index([clientId, entryType, happenedAt])
@@ -939,26 +1149,26 @@ model CreditLedgerEntry {
 }
 
 model LoyaltyLedgerEntry {
-  id             String                 @id @default(cuid())
-  clientId       String
-  entryType      LoyaltyLedgerEntryType
-  amount         Int
-  happenedAt     DateTime               @default(now())
-  orderId        String?
-  rewardRuleId   String?
-  couponId       String?
-  sourceType     String?
+  id              String                 @id @default(cuid())
+  clientId        String
+  entryType       LoyaltyLedgerEntryType
+  amount          Int
+  happenedAt      DateTime               @default(now())
+  orderId         String?
+  rewardRuleId    String?
+  couponId        String?
+  sourceType      String?
   sourceReference String?
-  idempotencyKey String?                @unique
-  createdById    String?
-  notes          String?
-  client         User                   @relation("LoyaltyLedgerEntryClient", fields: [clientId], references: [id], onDelete: Restrict)
-  order          Order?                 @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  rewardRule     LoyaltyRewardRule?     @relation(fields: [rewardRuleId], references: [id], onDelete: SetNull)
-  coupon         LoyaltyCoupon?         @relation(fields: [couponId], references: [id], onDelete: SetNull)
-  createdBy      User?                  @relation("LoyaltyLedgerEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
+  idempotencyKey  String?                @unique
+  createdById     String?
+  notes           String?
+  client          User                   @relation("LoyaltyLedgerEntryClient", fields: [clientId], references: [id], onDelete: Restrict)
+  order           Order?                 @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  rewardRule      LoyaltyRewardRule?     @relation(fields: [rewardRuleId], references: [id], onDelete: SetNull)
+  coupon          LoyaltyCoupon?         @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  createdBy       User?                  @relation("LoyaltyLedgerEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
 
   @@index([clientId, happenedAt])
   @@index([clientId, entryType, happenedAt])
@@ -969,51 +1179,51 @@ model LoyaltyLedgerEntry {
 }
 
 model LoyaltyRewardRule {
-  id                String               @id @default(cuid())
-  name              String
-  pointsThreshold   Int
-  couponValueMinor  Int
-  couponCurrencyCode String              @default("EUR")
-  isActive          Boolean              @default(true)
-  createdById       String?
-  updatedById       String?
-  createdBy         User?                @relation("LoyaltyRewardRuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy         User?                @relation("LoyaltyRewardRuleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  ledgerEntries     LoyaltyLedgerEntry[]
-  coupons           LoyaltyCoupon[]
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  id                 String               @id @default(cuid())
+  name               String
+  pointsThreshold    Int
+  couponValueMinor   Int
+  couponCurrencyCode String               @default("EUR")
+  isActive           Boolean              @default(true)
+  createdById        String?
+  updatedById        String?
+  createdBy          User?                @relation("LoyaltyRewardRuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy          User?                @relation("LoyaltyRewardRuleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  ledgerEntries      LoyaltyLedgerEntry[]
+  coupons            LoyaltyCoupon[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
   @@index([isActive, updatedAt])
 }
 
 model LoyaltyCoupon {
-  id                String              @id @default(cuid())
-  clientId          String
-  rewardRuleId      String
-  code              String              @unique
-  pointsRedeemed    Int
-  couponValueMinor  Int
+  id                 String               @id @default(cuid())
+  clientId           String
+  rewardRuleId       String
+  code               String               @unique
+  pointsRedeemed     Int
+  couponValueMinor   Int
   couponCurrencyCode String
-  status            LoyaltyCouponStatus @default(GENERATED)
-  idempotencyKey    String?             @unique
-  emailSentAt       DateTime?
-  emailSendAttempts Int                 @default(0)
-  emailLastError    String?
-  usedAt            DateTime?
-  expiredAt         DateTime?
-  voidedAt          DateTime?
-  voidReason        String?
-  createdById       String?
-  voidedById        String?
-  notes             String?
-  client            User                @relation("LoyaltyCouponClient", fields: [clientId], references: [id], onDelete: Restrict)
-  rewardRule        LoyaltyRewardRule   @relation(fields: [rewardRuleId], references: [id], onDelete: Restrict)
-  createdBy         User?               @relation("LoyaltyCouponCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  voidedBy          User?               @relation("LoyaltyCouponVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
-  ledgerEntries     LoyaltyLedgerEntry[]
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  status             LoyaltyCouponStatus  @default(GENERATED)
+  idempotencyKey     String?              @unique
+  emailSentAt        DateTime?
+  emailSendAttempts  Int                  @default(0)
+  emailLastError     String?
+  usedAt             DateTime?
+  expiredAt          DateTime?
+  voidedAt           DateTime?
+  voidReason         String?
+  createdById        String?
+  voidedById         String?
+  notes              String?
+  client             User                 @relation("LoyaltyCouponClient", fields: [clientId], references: [id], onDelete: Restrict)
+  rewardRule         LoyaltyRewardRule    @relation(fields: [rewardRuleId], references: [id], onDelete: Restrict)
+  createdBy          User?                @relation("LoyaltyCouponCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  voidedBy           User?                @relation("LoyaltyCouponVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
+  ledgerEntries      LoyaltyLedgerEntry[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
   @@index([clientId, status, createdAt])
   @@index([rewardRuleId, status, createdAt])
@@ -1074,20 +1284,20 @@ model ContactMessage {
 }
 
 model ClientMessage {
-  id        String            @id @default(cuid())
-  type      ClientMessageType
-  userId    String?
-  bookingId String?
-  name      String
-  email     String
-  phone     String?
-  subject   String?
-  message   String
-  status    ClientMessageStatus        @default(NEW)
+  id            String                     @id @default(cuid())
+  type          ClientMessageType
+  userId        String?
+  bookingId     String?
+  name          String
+  email         String
+  phone         String?
+  subject       String?
+  message       String
+  status        ClientMessageStatus        @default(NEW)
   contactStatus ClientMessageContactStatus @default(INBOX)
-  spamReason String?
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
+  spamReason    String?
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
 
   user    User?    @relation("ClientMessageUser", fields: [userId], references: [id], onDelete: SetNull)
   booking Booking? @relation("ClientMessageBooking", fields: [bookingId], references: [id], onDelete: SetNull)
@@ -1131,17 +1341,17 @@ model PublicAuthRateLimit {
 }
 
 model AdminLoginAbuseCounter {
-  id                  String                @id @default(cuid())
-  keyType             AdminLoginAbuseKeyType
-  keyHash             String
-  failedAttempts      Int                   @default(0)
-  firstFailedAt       DateTime?
-  lastFailedAt        DateTime?
-  lockedUntil         DateTime?
+  id                   String                 @id @default(cuid())
+  keyType              AdminLoginAbuseKeyType
+  keyHash              String
+  failedAttempts       Int                    @default(0)
+  firstFailedAt        DateTime?
+  lastFailedAt         DateTime?
+  lockedUntil          DateTime?
   captchaRequiredUntil DateTime?
-  lastSuccessAt       DateTime?
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
+  lastSuccessAt        DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 
   @@unique([keyType, keyHash])
   @@index([lockedUntil])
@@ -1161,31 +1371,31 @@ model PublicDocument {
 }
 
 model MarketingCategory {
-  id          String              @id @default(cuid())
-  name        String
-  slug        String              @unique
-  isActive    Boolean             @default(true)
-  campaigns   MarketingCampaign[]
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  id        String              @id @default(cuid())
+  name      String
+  slug      String              @unique
+  isActive  Boolean             @default(true)
+  campaigns MarketingCampaign[]
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
 }
 
 model MarketingSegment {
-  id          String               @id @default(cuid())
-  name        String
-  slug        String               @unique
-  isActive    Boolean              @default(true)
-  users       MarketingUserSegment[]
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  id        String                 @id @default(cuid())
+  name      String
+  slug      String                 @unique
+  isActive  Boolean                @default(true)
+  users     MarketingUserSegment[]
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
 }
 
 model MarketingUserSegment {
-  userId      String
-  segmentId   String
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  segment     MarketingSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
-  assignedAt  DateTime         @default(now())
+  userId     String
+  segmentId  String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  segment    MarketingSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  assignedAt DateTime         @default(now())
 
   @@id([userId, segmentId])
   @@index([segmentId])
@@ -1193,28 +1403,28 @@ model MarketingUserSegment {
 }
 
 model MarketingCampaign {
-  id                String                  @id @default(cuid())
-  name              String
-  status            MarketingCampaignStatus @default(DRAFT)
-  categoryId        String?
-  audienceType      MarketingAudienceType
+  id                 String                             @id @default(cuid())
+  name               String
+  status             MarketingCampaignStatus            @default(DRAFT)
+  categoryId         String?
+  audienceType       MarketingAudienceType
   manualAudienceJson Json?
-  subject           String
-  previewText       String
-  fromName          String
-  fromEmail         String
-  replyTo           String?
-  contentJson       Json
-  htmlSnapshot      String?
-  sentAt            DateTime?
-  createdById       String
-  category          MarketingCategory?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  createdBy         User                    @relation("MarketingCampaignCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  recipients        MarketingCampaignRecipient[]
-  links             MarketingCampaignLink[]
-  generationUsages  MarketingCampaignGenerationUsage[]
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
+  subject            String
+  previewText        String
+  fromName           String
+  fromEmail          String
+  replyTo            String?
+  contentJson        Json
+  htmlSnapshot       String?
+  sentAt             DateTime?
+  createdById        String
+  category           MarketingCategory?                 @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdBy          User                               @relation("MarketingCampaignCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  recipients         MarketingCampaignRecipient[]
+  links              MarketingCampaignLink[]
+  generationUsages   MarketingCampaignGenerationUsage[]
+  createdAt          DateTime                           @default(now())
+  updatedAt          DateTime                           @updatedAt
 
   @@index([status, updatedAt])
   @@index([categoryId])
@@ -1222,18 +1432,18 @@ model MarketingCampaign {
 }
 
 model MarketingCampaignGenerationUsage {
-  id                  String   @id @default(cuid())
+  id                  String            @id @default(cuid())
   campaignId          String
   model               String
   inputTokens         Int
   outputTokens        Int
   totalTokens         Int
-  estimatedInputCost  Decimal  @db.Decimal(14, 6)
-  estimatedOutputCost Decimal  @db.Decimal(14, 6)
-  estimatedTotalCost  Decimal  @db.Decimal(14, 6)
+  estimatedInputCost  Decimal           @db.Decimal(14, 6)
+  estimatedOutputCost Decimal           @db.Decimal(14, 6)
+  estimatedTotalCost  Decimal           @db.Decimal(14, 6)
   pricingVersion      String
   rateBasisJson       Json
-  createdAt           DateTime @default(now())
+  createdAt           DateTime          @default(now())
   campaign            MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@index([campaignId, createdAt])
@@ -1241,21 +1451,21 @@ model MarketingCampaignGenerationUsage {
 }
 
 model MarketingCampaignRecipient {
-  id             String                 @id @default(cuid())
+  id             String                       @id @default(cuid())
   campaignId     String
   userId         String?
   email          String
-  status         MarketingRecipientStatus @default(PENDING)
+  status         MarketingRecipientStatus     @default(PENDING)
   sentAt         DateTime?
   deliveredAt    DateTime?
   openedAt       DateTime?
   clickedAt      DateTime?
   unsubscribedAt DateTime?
-  campaign       MarketingCampaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user           User?                  @relation("MarketingRecipientUser", fields: [userId], references: [id], onDelete: SetNull)
+  campaign       MarketingCampaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user           User?                        @relation("MarketingRecipientUser", fields: [userId], references: [id], onDelete: SetNull)
   clicks         MarketingCampaignLinkClick[]
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
 
   @@unique([campaignId, email])
   @@index([campaignId, status])
@@ -1263,27 +1473,27 @@ model MarketingCampaignRecipient {
 }
 
 model MarketingCampaignLink {
-  id          String                     @id @default(cuid())
-  campaignId  String
-  url         String
-  token       String                     @unique
-  clickCount  Int                        @default(0)
-  campaign    MarketingCampaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  clicks      MarketingCampaignLinkClick[]
-  createdAt   DateTime                   @default(now())
-  updatedAt   DateTime                   @updatedAt
+  id         String                       @id @default(cuid())
+  campaignId String
+  url        String
+  token      String                       @unique
+  clickCount Int                          @default(0)
+  campaign   MarketingCampaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  clicks     MarketingCampaignLinkClick[]
+  createdAt  DateTime                     @default(now())
+  updatedAt  DateTime                     @updatedAt
 
   @@index([campaignId])
 }
 
 model MarketingCampaignLinkClick {
-  id             String                @id @default(cuid())
+  id             String                      @id @default(cuid())
   campaignLinkId String
   recipientId    String?
-  clickedAt      DateTime              @default(now())
+  clickedAt      DateTime                    @default(now())
   ip             String?
   userAgent      String?
-  campaignLink   MarketingCampaignLink @relation(fields: [campaignLinkId], references: [id], onDelete: Cascade)
+  campaignLink   MarketingCampaignLink       @relation(fields: [campaignLinkId], references: [id], onDelete: Cascade)
   recipient      MarketingCampaignRecipient? @relation(fields: [recipientId], references: [id], onDelete: SetNull)
 
   @@index([campaignLinkId, clickedAt])
@@ -1343,12 +1553,12 @@ model VerificationToken {
 }
 
 model PasswordResetToken {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1365,4 +1575,3 @@ model PasswordResetRateLimit {
 
   @@index([lastRequestedAt])
 }
-

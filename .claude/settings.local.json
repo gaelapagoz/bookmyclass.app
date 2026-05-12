@@ -67,10 +67,44 @@
       "PowerShell(New-Item -ItemType Directory -Force \"c:\\\\Dev\\\\studio.saas.platform\\\\src\\\\app\\\\api\\\\test\\\\e2e\\\\users\\\\create-verified-client\")",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(cmd /c npx vitest --run test/integration/gift-card-maintenance-service.integration.test.ts)",
+      "Bash(Get-Content \"C:\\\\Users\\\\gaela\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Dev-studio-saas-platform\\\\f114441b-df1a-42d4-880b-46751adc1d31\\\\tasks\\\\bu9jwt9u9.output\" -Wait -Tail 50)",
+      "Bash(Select-String -Pattern \"\\(FAIL|PASS|Tests|Test Files|passed|failed|Duration\\)\")",
+      "Bash(Select-Object -Last 20)",
+      "Bash(npx prisma *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Dev\\\\studio.saas.platform\\\\src\\\\app\\\\\\(admin\\)\" -Recurse -Filter \"*.tsx\")",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(k,':',v\\) for k,v in d.get\\('scripts',{}\\).items\\(\\) if 'seed' in k.lower\\(\\) or 'prisma' in k.lower\\(\\)]\")",
+      "Read(//tmp/**)",
+      "Bash(npx eslint *)",
+      "Bash(npx playwright *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Dev\\\\studio.saas.platform\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(Get-Content \"C:\\\\Users\\\\gaela\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Dev-studio-saas-platform\\\\9a1358f2-9286-4fcc-9474-a203856e2d64\\\\tasks\\\\bz9hag6pv.output\" -Tail 80)",
+      "Bash(tail -80 \"/c/Users/gaela/AppData/Local/Temp/claude/c--Dev-studio-saas-platform/9a1358f2-9286-4fcc-9474-a203856e2d64/tasks/bz9hag6pv.output\" 2>&1)",
+      "Read(//c/Users/gaela/AppData/Local/Temp/claude/c--Dev-studio-saas-platform/9a1358f2-9286-4fcc-9474-a203856e2d64/tasks/**)",
+      "Bash(Get-Content \"C:\\\\Users\\\\gaela\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Dev-studio-saas-platform\\\\6140d6f0-e0eb-41c8-9de1-443877c29cdf\\\\tasks\\\\bcb5qeu69.output\")",
+      "Bash(Select-Object -Last 30)",
+      "Bash(Select-String -Pattern \"passed|failed|error\")",
+      "Bash(find src/app/api/test -name \"*.ts\")",
+      "Bash(ls src/app/api/test/e2e/)",
+      "Bash(ls src/app/api/test/)",
+      "Bash(npx next *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Dev\\\\studio.saas.platform\\\\src\\\\app\" -Filter \"*dashboard*\" -Recurse)",
+      "Bash(New-Item -ItemType Directory -Force -Path \"c:\\\\Dev\\\\studio.saas.platform\\\\src\\\\app\\\\api\\\\gift-cards\\\\redeem\")",
+      "Bash(mkdir -p \"/mnt/c/Dev/studio.saas.platform/src/app/api/gift-cards/redeem\" && echo done)",
+      "Bash(npx dotenv *)",
+      "Bash(Remove-Item \"c:\\\\Dev\\\\studio.saas.platform\\\\src\\\\lib\\\\store\\\\store-feature-flags.ts\")",
+      "Bash(New-Item -ItemType Directory -Path \"c:\\\\Dev\\\\studio.saas.platform\\\\prisma\\\\migrations\\\\20260512000001_fix_price_immutability_no_remediation_table\" -Force)",
+      "Bash(Write-Output \"created\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); scripts=d.get\\('scripts',{}\\); [print\\(k,'=',v\\) for k,v in scripts.items\\(\\) if 'migrate' in k or 'db' in k or 'prisma' in k or 'test' in v[:30] if 'migrate' in v or 'db:' in v]\")"
     ],
     "additionalDirectories": [
-      "c:\\Dev\\studio.saas.platform\\public\\images\\homesite"
+      "c:\\Dev\\studio.saas.platform\\public\\images\\homesite",
+      "C:\\Users\\gaela\\.claude\\projects\\c--Dev-studio-saas-platform",
+      "\\mnt\\c\\Dev\\studio.saas.platform\\src\\app\\api\\gift-cards"
     ]
   }
 }

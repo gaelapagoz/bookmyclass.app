@@ -182,6 +182,83 @@ describe("cart validation service", () => {
     expect(result.rejection.message).toBe("One or more cart items are not checkout-ready.");
   });
 
+  it("rejects non-EUR catalog prices", async () => {
+    const service = createCartValidationService({
+      getCatalogPricesByIds: async () => [
+        buildCatalogPrice({
+          priceType: PriceType.ONE_TIME,
+          currencyCode: "USD",
+        }),
+      ],
+      getClientSubscriptionSnapshots: async () => [],
+      now: () => new Date("2026-04-19T10:00:00.000Z"),
+    });
+
+    const result = await service.validate({
+      lines: [{ productId: "prod_1", priceId: "price_1", quantity: 1 }],
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("Expected rejection");
+    expect(result.rejection.code).toBe("NON_EUR_PRICE_NOT_ALLOWED");
+  });
+
+  it("rejects gift-card order totals above 500 EUR", async () => {
+    const service = createCartValidationService({
+      getCatalogPricesByIds: async () => [
+        buildCatalogPrice({
+          priceType: PriceType.ONE_TIME,
+          productType: ProductType.GIFT_CARD,
+          unitAmountMinor: 25_000,
+        }),
+      ],
+      getClientSubscriptionSnapshots: async () => [],
+      now: () => new Date("2026-04-19T10:00:00.000Z"),
+    });
+
+    const result = await service.validate({
+      lines: [{ productId: "prod_1", priceId: "price_1", quantity: 3 }],
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("Expected rejection");
+    expect(result.rejection.code).toBe("GIFT_CARD_ORDER_TOTAL_EXCEEDED");
+  });
+
+  it("rejects merchandise quantities above 10 per product", async () => {
+    const service = createCartValidationService({
+      getCatalogPricesByIds: async () => [
+        buildCatalogPrice({
+          priceId: "price_a",
+          productId: "prod_merch",
+          priceType: PriceType.ONE_TIME,
+          productType: ProductType.MERCHANDISE,
+          unitAmountMinor: 1_000,
+        }),
+        buildCatalogPrice({
+          priceId: "price_b",
+          productId: "prod_merch",
+          priceType: PriceType.ONE_TIME,
+          productType: ProductType.MERCHANDISE,
+          unitAmountMinor: 1_200,
+        }),
+      ],
+      getClientSubscriptionSnapshots: async () => [],
+      now: () => new Date("2026-04-19T10:00:00.000Z"),
+    });
+
+    const result = await service.validate({
+      lines: [
+        { productId: "prod_merch", priceId: "price_a", quantity: 6 },
+        { productId: "prod_merch", priceId: "price_b", quantity: 5 },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("Expected rejection");
+    expect(result.rejection.code).toBe("MERCHANDISE_QUANTITY_EXCEEDED");
+  });
+
   it("enforces max one active subscription total using shared predicate behavior", async () => {
     const service = createCartValidationService({
       getCatalogPricesByIds: async () => [

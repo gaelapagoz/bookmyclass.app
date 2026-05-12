@@ -2,6 +2,16 @@ import { SubscriptionStatus } from "@prisma/client";
 
 export const CART_CHECKOUT_SOURCE = "CART_CHECKOUT_V1" as const;
 
+export const CART_CHECKOUT_RESPONSE_TYPES = {
+  COMPLETED: "completed",
+  STRIPE_REDIRECT: "stripe_redirect",
+} as const;
+
+export const CART_CHECKOUT_MAX_WALLET_AMOUNT_MINOR = 50_000;
+
+export type CartCheckoutResponseType =
+  (typeof CART_CHECKOUT_RESPONSE_TYPES)[keyof typeof CART_CHECKOUT_RESPONSE_TYPES];
+
 export const CART_CHECKOUT_IDEMPOTENCY_KEY_PREFIX = "cartchk_" as const;
 export const CART_CHECKOUT_IDEMPOTENCY_KEY_REGEX = /^cartchk_[0-9a-fA-F-]{36}$/;
 

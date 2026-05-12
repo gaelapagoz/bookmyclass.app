@@ -72,6 +72,9 @@ function mockCartFetch(checkoutResponses: Response[] = []) {
     if (url.includes("/api/cart/reconcile")) {
       return createNoopReconcileResponse();
     }
+    if (url.includes("/api/wallet/balance")) {
+      return new Response(JSON.stringify({ balance: null }), { status: 200, headers: { "content-type": "application/json" } });
+    }
 
     const next = pendingCheckoutResponses.shift();
     if (next) {

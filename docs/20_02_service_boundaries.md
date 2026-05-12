@@ -13,6 +13,9 @@ Purpose: document the current service-first boundaries and where logic belongs.
 - Booking and checkout domain: `src/lib/public-booking/*`.
 - Attendance and check-in domain: `src/lib/attendance/*`.
 - Subscription domain: `src/lib/subscription/*`.
+- Gift-card wallet foundation: `src/lib/gift-cards/*`.
+- Gift-card admin visibility, reconciliation note handling, and manual-review resolution checks: `src/lib/gift-cards/gift-card-admin-service.ts`.
+- Store catalog setup, read models, fulfillment wording, and wallet cap pre-check: `src/lib/store/*`.
 - Dashboard domain: `src/lib/dashboard/*`.
 - Admin domain: `src/lib/admin/*`.
 - Marketing domain: `src/lib/marketing/*`.
@@ -27,6 +30,10 @@ Purpose: document the current service-first boundaries and where logic belongs.
 - Keep Stripe, Resend, and Sentry integration boundaries centralized under `src/lib/*` integration modules.
 - Reuse shared validators/utilities rather than re-implementing per route.
 - Attendance transition rules are owned by `attendance-service`; pages/actions must call the service instead of duplicating transition checks.
+- Gift-card activation, reserve, capture, release, wallet locking, and invariant checks are owned by `gift-cards/*`.
+- Gift-card admin routes and pages must call `gift-card-admin-service`; they must not duplicate reconciliation consistency checks or wallet calculations.
+- Store Product + Price readiness and setup rules are owned by `store/*`.
+- Store UI, checkout routes, webhooks, and admin behavior must not duplicate gift-card wallet rules.
 
 ## Canonical References
 - `docs/10_01_business_rules.md`

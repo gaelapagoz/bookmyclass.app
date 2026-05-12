@@ -1300,19 +1300,19 @@ describe("admin plan service", () => {
       ).rejects.toThrow();
     });
 
-    it("rejects GIFT_CARD product type at the schema level", async () => {
-      await expect(
-        prisma.product.create({
-          data: {
-            name: "Gift Card",
-            slug: `gift-card-reject-${Date.now()}`,
-            productType: "GIFT_CARD" as unknown as ProductType,
-            isActive: true,
-            isArchived: false,
-            sortOrder: 0,
-          },
-        }),
-      ).rejects.toThrow();
+    it("accepts GIFT_CARD product type at the schema level (wallet-backed, not entitlement-backed)", async () => {
+      const product = await prisma.product.create({
+        data: {
+          name: "Gift Card",
+          slug: `gift-card-accept-${Date.now()}`,
+          productType: ProductType.GIFT_CARD,
+          isActive: true,
+          isArchived: false,
+          sortOrder: 0,
+        },
+        select: { id: true, productType: true },
+      });
+      expect(product.productType).toBe(ProductType.GIFT_CARD);
     });
   });
 

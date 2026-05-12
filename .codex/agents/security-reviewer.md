@@ -19,7 +19,6 @@ description: Perform repo-specific security review focused on authz, validation,
 - `Findings`: max 6 bullets, highest release-impact first.
 - Keep each bullet <= 14 words.
 - Use `none` when a section has no items.
-- Hard cap: ~260 tokens unless runtime prompt explicitly requests more.
 
 ## Use When
 - A change touches authentication, authorization, booking/payment mutation paths, webhooks, admin/teacher access, or secret/config handling.

@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { signInAdmin, signInClient, signInTeacher } from "./support/auth";
 import {
   cleanSeededClientBookingsForTest,
+  createVerifiedClientForTest,
   createUnassignedTeacherSessionForTest,
   deactivateUserForTest,
   prepareCheckInWindowBookingForTest,
@@ -185,23 +186,17 @@ test.describe("teacher flow", () => {
 
   // @covers teacher-waitlist-count-readonly
   test("teacher calendar shows waitlist count without manual waitlist controls", async ({ page }) => {
-    await cleanSeededClientBookingsForTest(page.request, SEEDED_CLIENT_NO_CREDITS.email);
+    const clientEmail = `e2e.teacher.waitlist.${Date.now()}@example.test`;
+    await createVerifiedClientForTest(page.request, {
+      email: clientEmail,
+      password: E2E_PASSWORD,
+    });
     const prepared = await prepareWaitlistSessionForTest(page.request, {
-      clientEmail: SEEDED_CLIENT_NO_CREDITS.email,
+      clientEmail,
+      createWaitlistEntry: true,
       serviceSlug: SEEDED_SERVICE_SLUG,
     });
 
-    await signInClient(page, SEEDED_CLIENT_NO_CREDITS);
-    await page.goto(`/book-a-class/${prepared.serviceSlug}`);
-    const selectPreparedDateButton = page.getByRole("button", { name: `Select ${prepared.dateKey}` });
-    if ((await selectPreparedDateButton.count()) === 0) {
-      await page.getByRole("button", { name: "Show next month" }).click();
-    }
-    await page.getByRole("button", { name: `Select ${prepared.dateKey}` }).click();
-    await page.getByTestId(`service-slot-${prepared.sessionId}`).getByRole("button", { name: /Join waitlist/i }).click();
-    await expect(page.getByText("You have been added to the waitlist.")).toBeVisible();
-
-    await page.context().clearCookies();
     await signInTeacher(page, SEEDED_TEACHER);
     await page.goto(`/teacher/sessions?week=${prepared.dateKey}`);
 

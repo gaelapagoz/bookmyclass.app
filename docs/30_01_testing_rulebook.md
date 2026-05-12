@@ -17,6 +17,8 @@ These areas are release-critical and require explicit coverage whenever touched:
 - booking (draft, eligibility, confirm/cancel paths)
 - checkout (session creation and success reconciliation)
 - webhook (Stripe signature, idempotent processing, failure handling)
+- gift-card wallet foundation (ledger invariants, idempotency, concurrency)
+- store catalog readiness (EUR filtering, Stripe sync exposure, pickup wording, quantity caps)
 - cancellation (before cutoff vs late cancellation behavior)
 - admin mutations (authorization + validation + persistence behavior)
 
@@ -26,6 +28,7 @@ Add or update tests when a change modifies:
 - API route request/response behavior
 - auth gating, role checks, or protected flows
 - payment, checkout, webhook, or idempotency logic
+- wallet or ledger mutation logic
 - page branching states (`success`, `empty`, `error`, `notFound`, `unauthorized`)
 - route params/query handling (sorting, filtering, pagination)
 
@@ -56,6 +59,7 @@ Do not leave outdated tests passing by removing assertions that verify behavior.
 - invalid input/validation failure
 - not-found or not-allowed case
 - one idempotency or replay-safe case for payment/booking/webhook operations
+- concurrency coverage for financial ledger reservations when balance can be overspent
 - assert status code and stable response contract (not only body fragments)
 
 ### UI/Page Branching States (minimum)

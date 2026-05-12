@@ -55,6 +55,19 @@
     { "id": "admin-waitlist-count-readonly", "area": "admin", "risk": "medium", "description": "Admin calendar shows active waitlist count without exposing manual waitlist controls." },
     { "id": "admin-manual-attendee-add-eligible", "area": "admin", "risk": "high", "description": "Admin can manually add an eligible client to a session roster." },
     { "id": "admin-manual-attendee-override", "area": "admin", "risk": "high", "description": "Admin can use an audited manual no-credit attendee override with a reason." },
+    { "id": "admin-gift-card-wallet-readonly", "area": "admin", "risk": "high", "description": "Admin can inspect gift-card wallet lookup without financial mutation controls." },
+    { "id": "admin-gift-card-resolve-admin-denied", "area": "admin", "risk": "high", "description": "ADMIN role is denied gift-card manual-review resolution." },
+    { "id": "admin-gift-card-master-resolve", "area": "admin", "risk": "high", "description": "MASTER_ADMIN can resolve gift-card manual review after verification." },
+    { "id": "admin-gift-card-resolved-hidden-default", "area": "admin", "risk": "medium", "description": "Resolved gift-card reconciliation cases are hidden by default and filterable." },
+    { "id": "admin-store-catalog-nav", "area": "admin", "risk": "medium", "description": "Admin catalog nav contains Store: Merchandise and Store: Gift Cards; Gift Card Wallets is under Sales." },
+    { "id": "admin-store-merchandise-list", "area": "admin", "risk": "medium", "description": "Admin can access and view Store merchandise catalog including checkout readiness status." },
+    { "id": "admin-store-merchandise-create-edit-archive", "area": "admin", "risk": "high", "description": "Admin can create, edit, and archive a merchandise catalog item with pickup-only wording enforced." },
+    { "id": "admin-store-gift-card-catalog-list", "area": "admin", "risk": "medium", "description": "Admin can access and view Store gift-card catalog distinct from wallet/reconciliation area." },
+    { "id": "admin-store-gift-card-create-edit-archive", "area": "admin", "risk": "high", "description": "Admin can create, edit, and archive a gift-card catalog price; validation rejects invalid currency, recurring, zero/over-cap amounts." },
+    { "id": "admin-store-gift-card-checkout-requires-stripe-sync", "area": "admin", "risk": "high", "description": "Gift-card catalog price requires Stripe sync before checkout exposure; missing or unsynced price blocks checkout." },
+    { "id": "admin-store-live-price-rejects-test-id", "area": "admin", "risk": "high", "description": "Live environment rejects test Stripe price IDs; checkout readiness returns false for test IDs in live mode." },
+    { "id": "admin-store-live-price-rejects-missing-id", "area": "admin", "risk": "high", "description": "Live environment rejects missing stripePriceId for any store price." },
+    { "id": "admin-store-wallet-area-remains-readonly", "area": "admin", "risk": "medium", "description": "Existing gift-card wallet/reconciliation admin area remains read-only and permission-safe after nav restructure." },
 
     { "id": "teacher-anonymous-blocked", "area": "teacher", "risk": "high", "description": "Anonymous user is redirected away from teacher routes." },
     { "id": "teacher-client-blocked", "area": "teacher", "risk": "high", "description": "Client user is redirected away from teacher routes." },
@@ -82,6 +95,15 @@
     { "id": "cross-cancellation-policy-enforced", "area": "cross", "risk": "critical", "description": "Cancellation policy cutoff is enforced consistently in customer cancellation flow." },
     { "id": "cross-session-expiry-stale-booking", "area": "cross", "risk": "high", "description": "Expired checkout session produces a safe stale booking outcome." },
     { "id": "cross-password-reset-security-flow", "area": "cross", "risk": "high", "description": "Password reset token flow enforces one-time use and secure post-reset sign-in." },
-    { "id": "cross-health-endpoint", "area": "cross", "risk": "high", "description": "Health endpoint reports runtime and database readiness." }
+    { "id": "cross-health-endpoint", "area": "cross", "risk": "high", "description": "Health endpoint reports runtime and database readiness." },
+
+    { "id": "store-page-renders-products", "area": "store", "risk": "high", "description": "/store page renders active gift-card and merchandise products with pickup wording and section headers." },
+    { "id": "store-gift-card-purchase-flow", "area": "store", "risk": "critical", "description": "Gift-card purchase from /store through Stripe checkout to success page; GiftCardCode issued (status=ISSUED), issuance email sent to purchaser. Wallet NOT credited at purchase." },
+    { "id": "store-full-wallet-gift-card-purchase-flow", "area": "store", "risk": "critical", "description": "Gift-card purchase paid fully by wallet balance; GiftCardCode issued without Stripe redirect." },
+    { "id": "store-wallet-balance-breakdown", "area": "store", "risk": "high", "description": "Dashboard wallet page shows correct settled, available, and reserved balance when a reservation is active." },
+    { "id": "store-gift-card-redeem-code", "area": "store", "risk": "critical", "description": "Client redeems a valid gift card code from dashboard wallet; balance increases, code becomes REDEEMED." },
+    { "id": "store-gift-card-redeem-invalid-code", "area": "store", "risk": "high", "description": "Invalid or already-used gift card code returns a generic error without revealing reason." },
+    { "id": "store-gift-card-redeem-rate-limited", "area": "store", "risk": "high", "description": "Excessive redemption attempts within 15 min window return 429 RATE_LIMITED." },
+    { "id": "store-gift-card-issuance-email-sent", "area": "store", "risk": "high", "description": "Gift-card issuance triggers an email with the plaintext code to the purchaser." }
   ]
 }

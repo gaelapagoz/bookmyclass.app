@@ -9,6 +9,7 @@ Purpose: define environment-variable expectations by runtime context using repos
 - `STRIPE_SECRET_KEY`
 - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 - `STRIPE_WEBHOOK_SECRET`
+- `CRON_SECRET` - required bearer token for cron-only maintenance routes.
 
 ## Email Delivery
 - Provider send path uses:
@@ -39,22 +40,93 @@ These flags gate the staged migration from the legacy booking flow to the new ca
 - `CATALOG_PRE_CUTOVER_VALIDATOR_ENFORCED` — when set to `"1"`, runs pre-cutover invariant assertions and throws on violations rather than logging. Default: unset (log-only). Risk if enabled prematurely: valid catalog checkouts may be rejected by overly strict invariant checks.
 - `CATALOG_BACKFILL_WRITES_ENABLED` — when set to `"1"`, allows the catalog backfill script to write `serviceScope` to existing `ClassType` records. Default: unset (disabled). Risk if left enabled in production after backfill: ongoing writes may unexpectedly mutate service-scope data.
 
-## Store / Gift Card Feature Flags
-These flags gate staged Store and gift-card rollout. All default to disabled
-(unset = false). They must remain disabled until local/CI validation and required
-operator setup are complete.
-- `STORE_ENABLED` - enables the customer-facing Store surface. Default: unset (disabled).
-- `GIFT_CARD_PURCHASE_ENABLED` - enables gift-card purchase/activation flows. Default: unset (disabled).
-- `GIFT_CARD_REDEMPTION_ENABLED` - enables gift-card wallet redemption in supported checkout flows. Default: unset (disabled).
+## Cron Maintenance
+- `GET /api/cron/gift-cards/maintenance` requires `Authorization: Bearer $CRON_SECRET`.
+- The route releases expired `RESERVED` gift-card redemptions only; reconciliation retry is not active in this slice.
+- Schedule only after operator confirmation that `CRON_SECRET` is configured in the target environment.
+
+## Store Stripe Price IDs
+Used at seed time to mark store product prices as checkout-ready (`StripeSyncStatus.SYNCED`).
+If omitted in development, store products are seeded with `PENDING` status and will not appear on the client `/store` until provided and seed is re-run.
+In production, all 12 `STRIPE_PRICE_ID_*` values are required and the seed fails fast if any are missing or malformed.
+
+**Subscription/class prices (required in all seed modes):**
+- `STRIPE_PRICE_ID_COLLECTIVE_DROP_IN`
+- `STRIPE_PRICE_ID_COLLECTIVE_5_PACK`
+- `STRIPE_PRICE_ID_COLLECTIVE_10_PACK`
+- `STRIPE_PRICE_ID_MONTHLY_UNLIMITED_COLLECTIVE`
+- `STRIPE_PRICE_ID_PRIVATE_5_PACK`
+- `STRIPE_PRICE_ID_PRIVATE_10_PACK`
+
+**Store gift card prices (required in production; optional in dev/UAT — PENDING when omitted):**
+- `STRIPE_PRICE_ID_STORE_GIFT_CARD_25_EUR`
+- `STRIPE_PRICE_ID_STORE_GIFT_CARD_50_EUR`
+- `STRIPE_PRICE_ID_STORE_GIFT_CARD_100_EUR`
+
+**Store merchandise prices (required in production; optional in dev/UAT — PENDING when omitted):**
+- `STRIPE_PRICE_ID_STORE_MERCH_YOGA_MAT`
+- `STRIPE_PRICE_ID_STORE_MERCH_RESISTANCE_BANDS`
+- `STRIPE_PRICE_ID_STORE_MERCH_STUDIO_TOTE`
 
 ## Seed/Test Helpers
 - `.env.test.example` defines integration-test baseline.
-- Seed currently expects Stripe price IDs for seeded catalog mapping.
+- `.env.e2e.example` defines E2E baseline including fake store price IDs for the test Stripe key.
 - `STRIPE_PRICE_ID_*` mappings are seed/bootstrap-only inputs and are not read by runtime checkout paths.
 
 ## Runtime Boundary
 - Runtime checkout (`booking`, `subscription`, `cart`) resolves Stripe price references from DB `Price.stripePriceId` only.
 - Runtime must not rely on env-based Stripe price lookup mappings.
+
+## Stripe Catalog Sync Script (`stripe:catalog:sync`)
+
+`scripts/sync-stripe-catalog.ts` reads the local DB catalog and creates or reuses
+Stripe Products/Prices. It requires only `DATABASE_URL` and `STRIPE_SECRET_KEY` at
+run time — no `STRIPE_PRICE_ID_*` env vars needed.
+
+**Required at runtime:**
+- `DATABASE_URL` — Prisma connection string.
+- `STRIPE_SECRET_KEY` — must start with `sk_test_` (test mode) or `sk_live_` (live mode).
+
+**Stripe key permissions required (restricted key):**
+- Products: read + write
+- Prices: read + write
+- No webhook, billing portal, or checkout permissions needed.
+
+**Modes and flags:**
+```
+# Test mode — dry-run (default safe entry point)
+npm run stripe:catalog:sync -- --scope=all --dry-run
+
+# Test mode — apply changes
+npm run stripe:catalog:sync -- --scope=all
+
+# Store products only
+npm run stripe:catalog:sync -- --scope=store
+
+# Plans/class products only
+npm run stripe:catalog:sync -- --scope=plans
+
+# Live mode — dry-run preview (no mutations)
+npm run stripe:catalog:sync -- --scope=all --dry-run
+
+# Live mode — real mutations (requires explicit flag)
+npm run stripe:catalog:sync -- --scope=all --confirm-live
+```
+
+**Safety rules:**
+- Live mode requires `--confirm-live` or the script aborts.
+- `--dry-run` prints what would happen without touching Stripe or DB.
+- `STRIPE_SECRET_KEY` is never logged.
+- `StripeSyncStatus.SYNCED` is only written after Stripe confirms the price exists.
+- Existing Stripe prices are never silently overwritten (amount/currency/interval are immutable).
+
+**Rollback/verification:**
+- The script is idempotent: re-running it produces the same result.
+- On mismatch error: inspect the local Price record and the Stripe dashboard manually.
+- For a changed amount: create a new Price record (new `lookupKey`) in the DB rather than
+  editing the existing one. Stripe prices are immutable.
+- After a successful sync, store products appear on `/store` immediately (no restart needed).
+- After a successful sync, subscription/class prices appear in checkout immediately.
 
 ## Canonical References
 - `docs/00_01_system_baseline.md`
