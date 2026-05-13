@@ -103,7 +103,9 @@
       "Bash(Select-String -Pattern \"\\(passed|failed|Tests|Test Files\\)\")",
       "Bash(node -e \"console.log\\(require\\('./node_modules/next/package.json'\\).version\\)\")",
       "Bash(node -e \"const { PrismaClient } = require\\('@prisma/client'\\); const p = new PrismaClient\\(\\); console.log\\(typeof p.giftCardCode\\);\")",
-      "Bash(node -e \"const c = require\\('@prisma/client'\\); console.log\\(Object.keys\\(c\\).filter\\(k => k.includes\\('GiftCard'\\)\\).join\\('\\\\n'\\)\\);\")"
+      "Bash(node -e \"const c = require\\('@prisma/client'\\); console.log\\(Object.keys\\(c\\).filter\\(k => k.includes\\('GiftCard'\\)\\).join\\('\\\\n'\\)\\);\")",
+      "Bash(Select-Object -First 20)",
+      "Bash(Remove-Item -Recurse -Force .next -ErrorAction SilentlyContinue)"
     ],
     "additionalDirectories": [
       "c:\\Dev\\studio.saas.platform\\public\\images\\homesite",

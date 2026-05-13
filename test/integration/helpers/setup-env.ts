@@ -5,6 +5,12 @@ import * as dotenv from "dotenv";
 
 dotenv.config({ path: ".env.test", override: true });
 
+// Stripe keys from .env.local must not leak into integration tests.
+// No STRIPE_SECRET_KEY → attemptStorePriceSyncFromEnv returns null → prices stay PENDING.
+delete process.env.STRIPE_SECRET_KEY;
+delete process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+delete process.env.STRIPE_WEBHOOK_SECRET;
+
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is not set in .env.test.");
 }

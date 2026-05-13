@@ -146,6 +146,48 @@ export default async function AdminGiftCardsPage({ searchParams }: { searchParam
                   </tbody>
                 </table>
               </div>
+
+              {walletLookup.giftCardCodes && walletLookup.giftCardCodes.length > 0 ? (
+                <div className="mt-4">
+                  <h3 className="mb-2 text-sm font-semibold text-[#1f2735]">Redeemed Gift Card Codes</h3>
+                  <div className="overflow-x-auto rounded-md border border-[#d3dbe5] bg-white">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-[#f3f6fb] text-left text-xs uppercase text-[#5a6d86]">
+                        <tr>
+                          <th className="px-3 py-2">Code</th>
+                          <th className="px-3 py-2">Amount</th>
+                          <th className="px-3 py-2">Status</th>
+                          <th className="px-3 py-2">Issued</th>
+                          <th className="px-3 py-2">Redeemed</th>
+                          <th className="px-3 py-2">Purchaser</th>
+                          <th className="px-3 py-2">Redeemer</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {walletLookup.giftCardCodes.map((code) => (
+                          <tr key={code.id} className="border-t border-[#e2e8f0]">
+                            <td className="px-3 py-2 font-mono text-xs">{code.maskedCode}</td>
+                            <td className="px-3 py-2">{formatMoney(code.amountMinor, code.currencyCode)}</td>
+                            <td className="px-3 py-2">{code.status}</td>
+                            <td className="px-3 py-2">{formatDate(code.issuedAt)}</td>
+                            <td className="px-3 py-2">{code.redeemedAt ? formatDate(code.redeemedAt) : "-"}</td>
+                            <td className="px-3 py-2">
+                              {code.purchasedBy
+                                ? <span>{code.purchasedBy.name ?? code.purchasedBy.email}<p className="text-xs text-[#5a6d86]">{code.purchasedBy.id}</p></span>
+                                : "-"}
+                            </td>
+                            <td className="px-3 py-2">
+                              {code.redeemedBy
+                                ? <span>{code.redeemedBy.name ?? code.redeemedBy.email}<p className="text-xs text-[#5a6d86]">{code.redeemedBy.id}</p></span>
+                                : "-"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
             </>
           ) : (
             <div className="rounded-md border border-[#d3dbe5] bg-white p-4 text-sm text-[#4b5a72]">

@@ -1282,6 +1282,8 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     (line) => line.productType === ProductType.GIFT_CARD,
   );
   const isRedemptionRequest = (input.walletAmountMinor ?? 0) > 0;
+  // Wallet is safe only for one-time payments; recurring renewals are Stripe-backed only.
+  const cartIsOneTimeOnly = validation.composition === "ONE_TIME_ONLY";
 
   // Checked after idempotency replay so stored terminal responses remain replayable.
   if (cartHasGiftCardItems) {
@@ -1318,11 +1320,11 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     }
   }
 
-  if (isRedemptionRequest && !cartHasStoreItems) {
+  if (isRedemptionRequest && !cartIsOneTimeOnly) {
     const redemptionScopeResponse = createErrorResponse({
       status: 422,
-      code: "WALLET_REDEMPTION_REQUIRES_STORE_ITEMS",
-      message: "Gift-card wallet redemption requires store items in the cart.",
+      code: "WALLET_REDEMPTION_REQUIRES_ONE_TIME_CART",
+      message: "Gift-card wallet cannot be used for recurring membership purchases.",
       idempotency: {
         key: input.idempotencyKey,
         state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,

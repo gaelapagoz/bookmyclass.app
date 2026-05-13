@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { PriceType, ProductType } from "@prisma/client";
+import { PriceType } from "@prisma/client";
 import { SignInModal } from "@/components/book-a-class/service-detail/SignInModal";
 import {
   ClientCartLine,
@@ -75,12 +75,12 @@ function debugLog(event: string, payload: Record<string, unknown>) {
   }
 }
 
-function hasStoreItems(lines: ClientCartLine[]): boolean {
-  return lines.some(
-    (line) =>
-      line.productType === ProductType.GIFT_CARD ||
-      line.productType === ProductType.MERCHANDISE,
-  );
+function hasOneTimeItems(lines: ClientCartLine[]): boolean {
+  return lines.some((line) => line.priceType === PriceType.ONE_TIME);
+}
+
+function hasRecurringOnlyItems(lines: ClientCartLine[]): boolean {
+  return lines.length > 0 && lines.every((line) => line.priceType === PriceType.RECURRING);
 }
 
 export function CartPageClient() {
@@ -192,7 +192,13 @@ export function CartPageClient() {
     isHydrated &&
     walletBalance !== null &&
     walletBalance.availableBalanceMinor > 0 &&
-    hasStoreItems(lines);
+    hasOneTimeItems(lines);
+
+  const showRecurringWalletNote =
+    isHydrated &&
+    walletBalance !== null &&
+    walletBalance.availableBalanceMinor > 0 &&
+    hasRecurringOnlyItems(lines);
 
   const maxApplicableWallet = showWalletControls
     ? Math.min(
@@ -561,6 +567,14 @@ export function CartPageClient() {
               </button>
             </div>
           )}
+        </div>
+      ) : null}
+
+      {showRecurringWalletNote ? (
+        <div className="mt-4 rounded-xl border border-[#d8cec6] bg-white p-4" data-testid="wallet-recurring-note">
+          <p className="text-xs text-[#7f5a5a]">
+            Gift card wallet cannot be used for recurring memberships. Your wallet balance is available for one-time purchases.
+          </p>
         </div>
       ) : null}
 

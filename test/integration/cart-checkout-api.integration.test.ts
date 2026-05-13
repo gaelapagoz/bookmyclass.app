@@ -1356,9 +1356,12 @@ describe("POST /api/cart/checkout — Slice 4 idempotency edge cases (formerly f
     expect(createStripeCheckoutSessionWithIdempotencyMock).not.toHaveBeenCalled();
   });
 
-  it("rejects wallet redemption for non-store carts", async () => {
+  it("rejects wallet redemption for recurring-only carts", async () => {
     const client = await seedClient({ verified: true });
-    const { product, price } = await seedCheckoutReadyCatalog({ productType: ProductType.CLASS_PACK });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.CLASS_PACK,
+      priceType: PriceType.RECURRING,
+    });
 
     vi.mocked(auth).mockResolvedValue({
       user: { id: client.id, name: client.name, email: client.email },
@@ -1378,7 +1381,39 @@ describe("POST /api/cart/checkout — Slice 4 idempotency edge cases (formerly f
 
     expect(response.status).toBe(422);
     await expect(response.json()).resolves.toMatchObject({
-      code: "WALLET_REDEMPTION_REQUIRES_STORE_ITEMS",
+      code: "WALLET_REDEMPTION_REQUIRES_ONE_TIME_CART",
+    });
+    expect(createStripeCheckoutSessionWithIdempotencyMock).not.toHaveBeenCalled();
+  });
+
+  it("wallet redemption eligible for one-time plan cart (CLASS_PACK) — proceeds past eligibility check", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.CLASS_PACK,
+      priceType: PriceType.ONE_TIME,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_f4a00008-0000-0000-0000-100000000008",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          walletAmountMinor: 2500,
+        },
+      }),
+    );
+
+    // No wallet exists → balance error, not eligibility error.
+    // This confirms the server no longer blocks wallet on ONE_TIME plan products.
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "GIFT_CARD_INSUFFICIENT_AVAILABLE_BALANCE",
     });
     expect(createStripeCheckoutSessionWithIdempotencyMock).not.toHaveBeenCalled();
   });

@@ -19,6 +19,7 @@ import { GET as walletLookupRoute } from "../../src/app/api/admin/gift-cards/wal
 import { POST as noteRoute } from "../../src/app/api/admin/gift-cards/reconciliation/[caseId]/note/route";
 import { POST as resolveRoute } from "../../src/app/api/admin/gift-cards/reconciliation/[caseId]/resolve/route";
 import { activateGiftCardValue, captureGiftCardRedemption, reserveGiftCardValue } from "../../src/lib/gift-cards/gift-card-wallet-service";
+import { issueGiftCardCode, redeemGiftCardCode } from "../../src/lib/gift-cards/gift-card-code-service";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
 
@@ -464,6 +465,104 @@ describe("gift-card admin visibility and permissions", () => {
     );
     expect(missing.status).toBe(404);
     await expect(missing.json()).resolves.toMatchObject({ code: "GIFT_CARD_RECONCILIATION_NOT_FOUND" });
+  });
+
+  it("admin wallet lookup includes redeemed gift card codes with maskedCode and redeemer, not codeHash", async () => {
+    const admin = await createUser(Role.ADMIN);
+    const purchaser = await createUser(Role.CLIENT);
+    const redeemer = await createUser(Role.CLIENT);
+
+    // Create and issue a gift card code purchased by `purchaser`
+    const { product, price } = await createProduct({ productType: ProductType.GIFT_CARD, amountMinor: 5_000 });
+    const order = await prisma.order.create({
+      data: {
+        clientId: purchaser.id,
+        subtotalAmountMinor: 5_000,
+        totalAmountMinor: 5_000,
+        currencyCode: "EUR",
+        status: OrderStatus.PAID,
+        items: {
+          create: {
+            productId: product.id,
+            priceId: price.id,
+            productNameSnapshot: product.name,
+            priceNameSnapshot: price.name,
+            unitAmountMinor: 5_000,
+            lineSubtotalAmountMinor: 5_000,
+            lineTotalAmountMinor: 5_000,
+            currencyCode: "EUR",
+          },
+        },
+      },
+      include: { items: true },
+    });
+    const orderItem = order.items[0]!;
+    const issued = await issueGiftCardCode({
+      orderId: order.id,
+      orderItemId: orderItem.id,
+      purchasedById: purchaser.id,
+      amountMinor: 5_000,
+    });
+    if (issued.alreadyIssued) {
+      throw new Error("Expected a fresh gift card code issuance");
+    }
+    const { plaintextCode } = issued;
+
+    // Redeemer activates the gift card code
+    await redeemGiftCardCode({
+      plaintextCode,
+      redeemerUserId: redeemer.id,
+      redeemerClientId: redeemer.id,
+    });
+
+    vi.mocked(auth).mockResolvedValue({ user: { id: admin.id } } as never);
+
+    const response = await walletLookupRoute(
+      request(`http://localhost/api/admin/gift-cards/wallets?clientId=${redeemer.id}`),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+
+    // giftCardCodes list must be present and show the redeemed code
+    expect(body.giftCardCodes).toHaveLength(1);
+    const code = body.giftCardCodes[0];
+
+    // maskedCode must appear
+    expect(code.maskedCode).toBeDefined();
+    expect(typeof code.maskedCode).toBe("string");
+    expect(code.maskedCode.length).toBeGreaterThan(0);
+
+    // codeHash must NOT appear
+    expect(code).not.toHaveProperty("codeHash");
+    // plaintextCode must NOT be present under any key
+    expect(JSON.stringify(code)).not.toContain(plaintextCode);
+
+    // redeemer must appear
+    expect(code.redeemedBy).toMatchObject({ id: redeemer.id });
+
+    // purchaser must appear
+    expect(code.purchasedBy).toMatchObject({ id: purchaser.id });
+
+    // amount and status
+    expect(code.amountMinor).toBe(5_000);
+    expect(code.status).toBe("REDEEMED");
+    expect(code.redeemedAt).not.toBeNull();
+  });
+
+  it("admin wallet lookup returns empty giftCardCodes for client with no redeemed codes", async () => {
+    const admin = await createUser(Role.ADMIN);
+    const client = await createUser(Role.CLIENT);
+    await activateWallet(client.id, 10_000);
+    vi.mocked(auth).mockResolvedValue({ user: { id: admin.id } } as never);
+
+    const response = await walletLookupRoute(
+      request(`http://localhost/api/admin/gift-cards/wallets?clientId=${client.id}`),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.giftCardCodes).toEqual([]);
   });
 
   it("allows MASTER_ADMIN to resolve MANUAL_REVIEW after verification and hides resolved cases by default", async () => {

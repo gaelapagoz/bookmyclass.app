@@ -321,7 +321,6 @@ export async function updateAdminStoreMerchandise(
           isArchived: false,
           stripeSyncStatus: StripeSyncStatus.PENDING,
           stripeSyncCorrelation: correlation,
-          stripeSyncLastAttempt: new Date(),
         },
         select: { id: true },
       });
@@ -661,7 +660,6 @@ export async function updateAdminStoreGiftCardProduct(
           isArchived: false,
           stripeSyncStatus: StripeSyncStatus.PENDING,
           stripeSyncCorrelation: correlation,
-          stripeSyncLastAttempt: new Date(),
         },
         select: { id: true },
       });

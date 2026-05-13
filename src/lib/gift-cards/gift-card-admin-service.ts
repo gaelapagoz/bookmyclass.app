@@ -1,4 +1,5 @@
 import {
+  GiftCardCodeStatus,
   GiftCardLedgerEntryType,
   type GiftCardLedgerEntry,
   GiftCardReconciliationStatus,
@@ -166,6 +167,38 @@ function serializeRedemption(redemption: GiftCardRedemption) {
   };
 }
 
+type GiftCardCodeRow = {
+  id: string;
+  maskedCode: string;
+  amountMinor: number;
+  currencyCode: string;
+  status: GiftCardCodeStatus;
+  issuedAt: Date;
+  redeemedAt: Date | null;
+  expiresAt: Date | null;
+  purchasedBy: { id: string; name: string | null; email: string } | null;
+  redeemedBy: { id: string; name: string | null; email: string } | null;
+};
+
+function serializeGiftCardCode(row: GiftCardCodeRow) {
+  return {
+    id: row.id,
+    maskedCode: row.maskedCode,
+    amountMinor: row.amountMinor,
+    currencyCode: row.currencyCode,
+    status: row.status,
+    issuedAt: row.issuedAt,
+    redeemedAt: row.redeemedAt,
+    expiresAt: row.expiresAt,
+    purchasedBy: row.purchasedBy
+      ? { id: row.purchasedBy.id, name: row.purchasedBy.name, email: row.purchasedBy.email }
+      : null,
+    redeemedBy: row.redeemedBy
+      ? { id: row.redeemedBy.id, name: row.redeemedBy.name, email: row.redeemedBy.email }
+      : null,
+  };
+}
+
 function serializeReconciliationCase(caseRecord: GiftCardReconciliationCase) {
   return {
     id: caseRecord.id,
@@ -266,7 +299,7 @@ export async function getAdminGiftCardWalletLookup(input: {
     };
   }
 
-  const [reservedAggregate, ledgerEntries, totalLedgerEntries, redemptions, reconciliationCases] =
+  const [reservedAggregate, ledgerEntries, totalLedgerEntries, redemptions, reconciliationCases, giftCardCodes] =
     await prisma.$transaction([
       prisma.giftCardRedemption.aggregate({
         where: { walletId: wallet.id, status: GiftCardRedemptionStatus.RESERVED },
@@ -289,6 +322,23 @@ export async function getAdminGiftCardWalletLookup(input: {
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 20,
       }),
+      prisma.giftCardCode.findMany({
+        where: { redeemedById: input.clientId },
+        orderBy: [{ redeemedAt: "desc" }, { issuedAt: "desc" }],
+        take: 50,
+        select: {
+          id: true,
+          maskedCode: true,
+          amountMinor: true,
+          currencyCode: true,
+          status: true,
+          issuedAt: true,
+          redeemedAt: true,
+          expiresAt: true,
+          purchasedBy: { select: { id: true, name: true, email: true } },
+          redeemedBy: { select: { id: true, name: true, email: true } },
+        },
+      }),
     ]);
 
   const reservedAmountMinor = reservedAggregate._sum.reservedAmountMinor ?? 0;
@@ -303,6 +353,7 @@ export async function getAdminGiftCardWalletLookup(input: {
     ledgerEntries: ledgerEntries.map(serializeLedgerEntry),
     redemptions: redemptions.map(serializeRedemption),
     reconciliationCases: reconciliationCases.map(serializeReconciliationCase),
+    giftCardCodes: giftCardCodes.map(serializeGiftCardCode),
     pagination: {
       page,
       pageSize,
