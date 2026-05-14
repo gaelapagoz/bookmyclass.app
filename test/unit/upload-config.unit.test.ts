@@ -22,6 +22,12 @@ describe("upload config", () => {
     expect(() => resolveUploadsConfig({ NODE_ENV: "production" })).toThrow(/UPLOADS_DIR/);
   });
 
+  it("allows local uploads defaults in e2e production mode", () => {
+    const config = resolveUploadsConfig({ NODE_ENV: "production", E2E_TEST_MODE: "1" });
+    expect(config.uploadsDir).toBe(DEFAULT_LOCAL_UPLOADS_DIR);
+    expect(config.publicUploadsBasePath).toBe("/uploads");
+  });
+
   it("rejects production uploads inside the app release directory", () => {
     expect(() =>
       resolveUploadsConfig({

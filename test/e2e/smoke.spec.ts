@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { signInAdmin, signInClient } from "./support/auth";
-import { SEEDED_ADMIN, SEEDED_CLIENT_WITH_CREDITS } from "./support/constants";
+import { SEEDED_ADMIN, SEEDED_CLIENT_SMOKE } from "./support/constants";
 
 // @covers public-homepage-loads
 test("public homepage loads", async ({ page }) => {
@@ -59,6 +59,6 @@ test("admin sign-in works", async ({ page }) => {
 
 // @covers customer-sign-in
 test("client sign-in works", async ({ page }) => {
-  await signInClient(page, SEEDED_CLIENT_WITH_CREDITS);
+  await signInClient(page, SEEDED_CLIENT_SMOKE);
   await expect(page.getByRole("heading", { name: "Client Dashboard" })).toBeVisible();
 });

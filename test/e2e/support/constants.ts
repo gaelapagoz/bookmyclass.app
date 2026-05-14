@@ -20,6 +20,11 @@ export const SEEDED_CLIENT_NO_CREDITS = {
   password: E2E_PASSWORD,
 };
 
+export const SEEDED_CLIENT_SMOKE = {
+  email: "client.smoke.e2e@bookmyclass.local",
+  password: E2E_PASSWORD,
+};
+
 export const SEEDED_SERVICE_SLUG = "e2e-flow-class";
 
 export const E2E_TEST_SECRET = process.env.E2E_TEST_SECRET ?? "";

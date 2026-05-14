@@ -17,6 +17,10 @@ if (result.error) {
   process.exit(1);
 }
 
+if (!process.env.UPLOADS_DIR?.trim()) {
+  process.env.UPLOADS_DIR = resolve(process.cwd(), ".local", "e2e-uploads");
+}
+
 const requiredEnvVars = [
   "DATABASE_URL",
   "APP_URL",

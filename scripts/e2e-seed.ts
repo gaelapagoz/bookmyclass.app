@@ -106,6 +106,7 @@ async function resetE2EDatabase() {
   await prisma.adminLoginAbuseCounter.deleteMany();
   await prisma.bookingPolicy.deleteMany();
   await prisma.publicDocument.deleteMany();
+  await prisma.mediaAsset.deleteMany();
   await prisma.pendingUserRegistration.deleteMany();
   await prisma.verificationToken.deleteMany();
   await prisma.user.deleteMany();
@@ -210,6 +211,29 @@ async function main() {
       clientProfile: {
         create: {
           phone: "+32000000003",
+        },
+      },
+    },
+  });
+
+  const smokeClient = await prisma.user.create({
+    data: {
+      name: "E2E Smoke Client",
+      firstName: "E2E",
+      lastName: "Smoke",
+      email: "client.smoke.e2e@bookmyclass.local",
+      passwordHash,
+      role: Role.CLIENT,
+      isActive: true,
+      isInactive: false,
+      activationStatus: UserActivationStatus.ACTIVE,
+      createdVia: UserCreatedVia.IMPORT,
+      emailVerified: now,
+      emailVerifiedAt: now,
+      marketingSubscriptionStatus: MarketingSubscriptionStatus.SUBSCRIBED,
+      clientProfile: {
+        create: {
+          phone: "+32000000004",
         },
       },
     },
@@ -532,6 +556,7 @@ async function main() {
     teacherEmail: teacher.email,
     clientWithCreditsEmail: clientWithCredits.email,
     clientNoCreditsEmail: clientNoCredits.email,
+    smokeClientEmail: smokeClient.email,
     serviceSlug: classType.slug,
     recurringPriceId: recurringPrice?.id ?? null,
     recurringStripePriceId: recurringPrice?.stripePriceId ?? null,

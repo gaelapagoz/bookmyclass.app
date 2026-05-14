@@ -38,16 +38,17 @@ export function normalizePublicUploadsBasePath(value: string | undefined): strin
 
 export function resolveUploadsConfig(env: NodeJS.ProcessEnv = process.env): UploadsConfig {
   const isProduction = env.NODE_ENV === "production";
+  const isE2eTestMode = env.E2E_TEST_MODE === "1";
   const configuredUploadsDir = env.UPLOADS_DIR?.trim();
 
-  if (isProduction && !configuredUploadsDir) {
+  if (isProduction && !configuredUploadsDir && !isE2eTestMode) {
     throw new UploadsConfigError("UPLOADS_DIR is required in production.");
   }
 
   const uploadsDir = path.resolve(configuredUploadsDir || DEFAULT_LOCAL_UPLOADS_DIR);
   const publicUploadsBasePath = normalizePublicUploadsBasePath(env.PUBLIC_UPLOADS_BASE_PATH);
 
-  if (isProduction) {
+  if (isProduction && !isE2eTestMode) {
     assertSafeProductionUploadsDir(uploadsDir);
   }
 
