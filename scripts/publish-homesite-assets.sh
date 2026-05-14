@@ -78,7 +78,10 @@ mapfile -t html_files < <(find "$HOMESITE_SOURCE_DIR" -maxdepth 1 -type f -name 
 mapfile -t image_files < <(find "$HOMESITE_IMAGE_SOURCE_DIR" -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.gif' -o -iname '*.svg' \) | sort)
 [[ "${#image_files[@]}" -gt 0 ]] || fail "No homesite image files found in $HOMESITE_IMAGE_SOURCE_DIR"
 
-mkdir -p "$HOMESITE_PUBLISH_DIR" "$HOMESITE_IMAGE_DEST_DIR"
+mkdir -p "$HOMESITE_PUBLISH_DIR"
+mkdir -p "$HOMESITE_IMAGE_DEST_DIR"
+[[ -d "$HOMESITE_PUBLISH_DIR" ]] || fail "Homesite destination directory was not created: $HOMESITE_PUBLISH_DIR"
+[[ -d "$HOMESITE_IMAGE_DEST_DIR" ]] || fail "Homesite image destination directory was not created: $HOMESITE_IMAGE_DEST_DIR"
 [[ -w "$HOMESITE_PUBLISH_DIR" ]] || fail "Homesite destination is not writable: $HOMESITE_PUBLISH_DIR"
 [[ -w "$HOMESITE_IMAGE_DEST_DIR" ]] || fail "Homesite image destination is not writable: $HOMESITE_IMAGE_DEST_DIR"
 
@@ -86,6 +89,10 @@ touch "$HOMESITE_PUBLISH_DIR/.homesite-write-check" "$HOMESITE_IMAGE_DEST_DIR/.h
 rm -f "$HOMESITE_PUBLISH_DIR/.homesite-write-check" "$HOMESITE_IMAGE_DEST_DIR/.homesite-write-check"
 
 if command -v rsync >/dev/null 2>&1; then
+  # Make parent creation explicit before rsync to avoid receiver-side mkdir behavior.
+  mkdir -p "$HOMESITE_IMAGE_DEST_DIR"
+  [[ -d "$HOMESITE_IMAGE_DEST_DIR" ]] || fail "Homesite image destination directory missing before rsync: $HOMESITE_IMAGE_DEST_DIR"
+  [[ -w "$HOMESITE_IMAGE_DEST_DIR" ]] || fail "Homesite image destination directory not writable before rsync: $HOMESITE_IMAGE_DEST_DIR"
   rsync -a --delete --include='*/' --include='*.html' --exclude='*' "$HOMESITE_SOURCE_DIR/" "$HOMESITE_PUBLISH_DIR/"
   rsync -a --delete "$HOMESITE_IMAGE_SOURCE_DIR/" "$HOMESITE_IMAGE_DEST_DIR/"
 else
