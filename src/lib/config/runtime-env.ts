@@ -1,3 +1,5 @@
+import { resolveUploadsConfig, UploadsConfigError } from "@/lib/media/upload-config";
+
 export class RuntimeEnvError extends Error {
   constructor(message: string) {
     super(message);
@@ -56,10 +58,21 @@ export function validateRuntimeEnv(): void {
   if (!process.env.EMAIL_FROM?.trim()) missing.push("EMAIL_FROM");
   if (!process.env.MARKETING_TRACKING_SECRET?.trim()) missing.push("MARKETING_TRACKING_SECRET");
   if (!process.env.CRON_SECRET?.trim()) missing.push("CRON_SECRET");
+  if (!process.env.UPLOADS_DIR?.trim()) missing.push("UPLOADS_DIR");
 
   if (missing.length > 0) {
     throw new RuntimeEnvError(
       `Missing required production environment variables: ${missing.join(", ")}`,
     );
+  }
+
+  try {
+    resolveUploadsConfig();
+  } catch (error) {
+    if (error instanceof UploadsConfigError) {
+      throw new RuntimeEnvError(error.message);
+    }
+
+    throw error;
   }
 }

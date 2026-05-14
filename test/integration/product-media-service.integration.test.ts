@@ -1,7 +1,8 @@
 import "./helpers/setup-env";
 
 import { existsSync } from "node:fs";
-import { unlink } from "node:fs/promises";
+import { mkdtemp, rm, unlink } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import {
   PriceType,
@@ -18,12 +19,14 @@ import {
   uploadStoreProductImage,
   validateProductImageUpload,
 } from "../../src/lib/media/product-media-service";
+import { resolveUploadsConfig } from "../../src/lib/media/upload-config";
 import { createAdminStoreGiftCardProduct } from "../../src/lib/store/store-admin-catalog-service";
 import { listStoreCatalogReadModels } from "../../src/lib/store/store-catalog";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
 
 const writtenPublicPaths: string[] = [];
+const tempUploadDirs: string[] = [];
 
 function fileFromBytes(bytes: number[], name: string, type: string): File {
   return new File([new Uint8Array(bytes)], name, { type });
@@ -92,23 +95,33 @@ async function remember(publicPath: string) {
 }
 
 function publicPathToAbsolute(publicPath: string): string {
-  return path.join(process.cwd(), "public", publicPath.replace(/^\/+/, ""));
+  const uploadsBasePath = "/uploads/";
+  if (!publicPath.startsWith(uploadsBasePath)) {
+    throw new Error(`Unexpected public upload path: ${publicPath}`);
+  }
+
+  return path.join(resolveUploadsConfig().uploadsDir, publicPath.slice(uploadsBasePath.length));
 }
 
 describe("product media service", () => {
   beforeEach(async () => {
     await resetDb();
     writtenPublicPaths.length = 0;
-    vi.unstubAllEnvs();
+    const uploadsDir = await mkdtemp(path.join(os.tmpdir(), "bookmyclass-product-media-"));
+    tempUploadDirs.push(uploadsDir);
+    vi.stubEnv("UPLOADS_DIR", uploadsDir);
+    vi.stubEnv("PUBLIC_UPLOADS_BASE_PATH", "/uploads");
   });
 
   afterEach(async () => {
-    vi.unstubAllEnvs();
     await Promise.all(
       writtenPublicPaths.map(async (publicPath) => {
         await unlink(publicPathToAbsolute(publicPath)).catch(() => undefined);
       }),
     );
+    await Promise.all(tempUploadDirs.map((dir) => rm(dir, { recursive: true, force: true })));
+    tempUploadDirs.length = 0;
+    vi.unstubAllEnvs();
   });
 
   it("creates a MediaAsset row and links it to a Store product", async () => {
@@ -132,6 +145,7 @@ describe("product media service", () => {
     expect(storedProduct!.imageAssetId).toBe(asset.id);
     expect(storedProduct!.imageAsset!.path).toBe(asset.path);
     expect(existsSync(publicPathToAbsolute(asset.path))).toBe(true);
+    expect(publicPathToAbsolute(asset.path)).not.toContain(path.join(process.cwd(), "public"));
   });
 
   it("replaces a product image without deleting the previous MediaAsset", async () => {

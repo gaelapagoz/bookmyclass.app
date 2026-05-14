@@ -10,6 +10,7 @@ const REQUIRED_PROD_VARS: Record<string, string> = {
   EMAIL_FROM: "noreply@bookmyclass.app",
   MARKETING_TRACKING_SECRET: "mts_xxx",
   CRON_SECRET: "cron_xxx",
+  UPLOADS_DIR: "/var/lib/bookmyclass/uploads",
 };
 
 function setProductionEnv(overrides: Partial<typeof REQUIRED_PROD_VARS> = {}) {
@@ -69,6 +70,13 @@ describe("validateRuntimeEnv", () => {
   it("passes when all required production vars are present", () => {
     setProductionEnv();
     expect(() => validateRuntimeEnv()).not.toThrow();
+  });
+
+  it("rejects production uploads stored in the release public folder", () => {
+    setProductionEnv({ UPLOADS_DIR: `${process.cwd()}/public/uploads` });
+
+    expect(() => validateRuntimeEnv()).toThrow(RuntimeEnvError);
+    expect(() => validateRuntimeEnv()).toThrow(/outside the application release directory/);
   });
 
   it.each(Object.keys(REQUIRED_PROD_VARS))(

@@ -10,6 +10,14 @@ Purpose: define environment-variable expectations by runtime context using repos
 - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `CRON_SECRET` - required bearer token for cron-only maintenance routes.
+- `UPLOADS_DIR` - required in production. Must point to a persistent filesystem directory outside the checked-out app/release folder, for example `/var/lib/bookmyclass/uploads`.
+
+## Media Uploads
+- `UPLOADS_DIR` controls where uploaded product media is written. In local/dev only, the app falls back to `public/uploads` so uploads are visible through `next dev`.
+- `PUBLIC_UPLOADS_BASE_PATH` is optional and defaults to `/uploads`. Production nginx must serve this path with an `alias` to `UPLOADS_DIR`.
+- Production must not set `UPLOADS_DIR` to the repository folder, `.next`, or `public`; runtime validation rejects release-local storage.
+- Store product image records store public paths such as `/uploads/products/<file>.png`, never absolute filesystem paths.
+- Production backup/restore must include both the database and the uploaded media directory. Restoring the DB without `UPLOADS_DIR` contents can leave product image references broken.
 
 ## Email Delivery
 - Provider send path uses:

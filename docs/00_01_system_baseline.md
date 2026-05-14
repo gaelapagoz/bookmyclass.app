@@ -330,6 +330,8 @@ Evidence label legend used in this file:
   - Evidence status: Confirmed from repo.
 - Static asset handling:
   - Static files in `public/`; standard Next.js static handling.
+  - Uploaded Store product media uses persistent `UPLOADS_DIR` and public paths under `/uploads/...`; production must not store uploads inside the release-local `public/` folder.
+  - Static homesite screenshot assets are committed under `public/images/homesite` and are copied into the nginx homesite document root by deploy scripts.
   - Evidence status: Confirmed from repo.
 - Environment separation:
   - `.env`, `.env.local`, `.env.test`, `.env.test.example`; CI env in workflow.
@@ -459,7 +461,7 @@ Evidence label legend used in this file:
   - `NEXTAUTH_SECRET` (used as fallback in marketing tracking secret chain).
   - Evidence status: Confirmed from repo (`src/auth.ts`, `src/lib/marketing/marketing-tracking.ts`).
 - App/runtime:
-  - `DATABASE_URL`, `APP_URL`, `NODE_ENV`, `NEXT_RUNTIME`.
+  - `DATABASE_URL`, `APP_URL`, `NODE_ENV`, `NEXT_RUNTIME`, `UPLOADS_DIR`, `PUBLIC_UPLOADS_BASE_PATH`.
   - Evidence status: Confirmed from repo.
 - Stripe/billing:
   - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`.

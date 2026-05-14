@@ -140,7 +140,36 @@ STRIPE_PRICE_ID_STORE_GIFT_CARD_100_EUR=price_xxx
 STRIPE_PRICE_ID_STORE_MERCH_YOGA_MAT=price_xxx
 STRIPE_PRICE_ID_STORE_MERCH_RESISTANCE_BANDS=price_xxx
 STRIPE_PRICE_ID_STORE_MERCH_STUDIO_TOTE=price_xxx
+
+UPLOADS_DIR=/var/lib/bookmyclass/uploads
+PUBLIC_UPLOADS_BASE_PATH=/uploads
 ```
+
+---
+
+## 9.5 Persistent uploaded media
+
+Uploaded Store product images must live outside `/var/www/bookmyclass` so tag
+checkouts, builds, and restarts do not erase them.
+
+Create the persistent media root as root or a sudo-capable operator:
+
+```bash
+mkdir -p /var/lib/bookmyclass/uploads
+chown -R deploy:deploy /var/lib/bookmyclass
+chmod 750 /var/lib/bookmyclass /var/lib/bookmyclass/uploads
+```
+
+Then verify from the checked-out app directory after `.env` is present:
+
+```bash
+cd /var/www/bookmyclass
+npm run verify:media-runtime
+```
+
+Backups and restores must include `/var/lib/bookmyclass/uploads` together with
+the database. Restoring only the database may leave product image paths pointing
+at files that are no longer present.
 
 ---
 
@@ -221,6 +250,12 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
+
+    location /uploads/ {
+        alias /var/lib/bookmyclass/uploads/;
+        access_log off;
+        expires 30d;
+    }
 }
 ```
 
@@ -253,6 +288,7 @@ npx prisma migrate deploy
 npx prisma generate
 npm run build
 pm2 restart bookmyclass-app --update-env
+npm run verify:media-runtime
 ```
 
 ---
@@ -282,6 +318,7 @@ npx prisma migrate deploy
 npx prisma generate
 npm run build
 pm2 restart bookmyclass-app --update-env
+npm run verify:media-runtime
 ```
 
 ### Command meaning
@@ -293,6 +330,7 @@ pm2 restart bookmyclass-app --update-env
 * `npx prisma generate` regenerates Prisma client artifacts for the checked out version
 * `npm run build` builds the Next.js application
 * `pm2 restart bookmyclass-app --update-env` restarts the app with the current environment
+* `npm run verify:media-runtime` confirms persistent upload storage is writable and returns `/uploads/...` paths
 
 ### Rules
 

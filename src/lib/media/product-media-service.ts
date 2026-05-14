@@ -4,10 +4,10 @@ import path from "node:path";
 import { ProductType } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { assertContainedPath, resolveUploadsConfig } from "@/lib/media/upload-config";
 
 const DEFAULT_MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
-const PUBLIC_PRODUCT_UPLOAD_PATH = "/uploads/products";
-const PRODUCT_UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "products");
+const PRODUCT_UPLOAD_SUBDIR = "products";
 
 const allowedTypes = {
   "image/jpeg": new Set([".jpg", ".jpeg"]),
@@ -142,18 +142,35 @@ export async function validateProductImageUpload(file: File | null | undefined):
 function buildStoragePath(storageFilename: string): {
   absolutePath: string;
   publicPath: string;
+  productUploadDir: string;
 } {
-  const absolutePath = path.resolve(PRODUCT_UPLOAD_DIR, storageFilename);
-  const uploadRoot = path.resolve(PRODUCT_UPLOAD_DIR);
-  const relative = path.relative(uploadRoot, absolutePath);
+  if (storageFilename.includes("/") || storageFilename.includes("\\") || storageFilename.includes("..")) {
+    throw new ProductMediaError("UNSAFE_STORAGE_PATH", "Image storage path is not safe.");
+  }
 
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+  let uploadConfig: ReturnType<typeof resolveUploadsConfig>;
+  try {
+    uploadConfig = resolveUploadsConfig();
+  } catch (error) {
+    throw new ProductMediaError(
+      "UNSAFE_STORAGE_PATH",
+      error instanceof Error ? error.message : "Upload storage configuration is not safe.",
+    );
+  }
+
+  const productUploadDir = path.resolve(uploadConfig.uploadsDir, PRODUCT_UPLOAD_SUBDIR);
+  const absolutePath = path.resolve(productUploadDir, storageFilename);
+
+  try {
+    assertContainedPath(productUploadDir, absolutePath);
+  } catch {
     throw new ProductMediaError("UNSAFE_STORAGE_PATH", "Image storage path is not safe.");
   }
 
   return {
     absolutePath,
-    publicPath: `${PUBLIC_PRODUCT_UPLOAD_PATH}/${storageFilename}`,
+    publicPath: `${uploadConfig.publicUploadsBasePath}/${PRODUCT_UPLOAD_SUBDIR}/${storageFilename}`,
+    productUploadDir,
   };
 }
 
@@ -180,9 +197,9 @@ export async function uploadStoreProductImage(input: {
   }
 
   const storageFilename = `${randomUUID()}${validated.extension}`;
-  const { absolutePath, publicPath } = buildStoragePath(storageFilename);
+  const { absolutePath, publicPath, productUploadDir } = buildStoragePath(storageFilename);
 
-  await mkdir(PRODUCT_UPLOAD_DIR, { recursive: true });
+  await mkdir(productUploadDir, { recursive: true });
   await writeFile(absolutePath, validated.buffer, { flag: "wx" });
 
   try {

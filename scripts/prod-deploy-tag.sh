@@ -43,14 +43,18 @@ git checkout "$TARGET_TAG"
 mkdir -p "$HOMESITE_PUBLISH_DIR"
 if command -v rsync >/dev/null 2>&1; then
   rsync -a --delete "$APP_DIR/homesite/" "$HOMESITE_PUBLISH_DIR/"
+  rsync -a --delete "$APP_DIR/public/images/homesite/" "$HOMESITE_PUBLISH_DIR/images/homesite/"
 else
   cp -a "$APP_DIR/homesite/." "$HOMESITE_PUBLISH_DIR/"
+  mkdir -p "$HOMESITE_PUBLISH_DIR/images/homesite"
+  cp -a "$APP_DIR/public/images/homesite/." "$HOMESITE_PUBLISH_DIR/images/homesite/"
 fi
 npm ci
 npx prisma migrate deploy
 npx prisma generate
 npm run build
 pm2 restart "$APP_NAME" --update-env
+npm run verify:media-runtime
 git describe --tags --exact-match
 pm2 status
 curl -sSf -o /dev/null -w "url=http://127.0.0.1:3000/api/health code=%{http_code} total=%{time_total}s\n" http://127.0.0.1:3000/api/health

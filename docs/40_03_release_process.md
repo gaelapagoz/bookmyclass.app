@@ -154,6 +154,7 @@ npx prisma migrate deploy
 npx prisma generate
 npm run build
 pm2 restart bookmyclass-app --update-env
+npm run verify:media-runtime
 
 Notes:
 - PM2 app name: bookmyclass-app
@@ -208,6 +209,7 @@ npx prisma migrate deploy
 npx prisma generate
 npm run build
 pm2 restart bookmyclass-app --update-env
+npm run verify:media-runtime
 ```
 
 ### Command meaning
@@ -219,6 +221,7 @@ pm2 restart bookmyclass-app --update-env
 * `npx prisma generate` regenerates Prisma client artifacts for the checked out version
 * `npm run build` builds the Next.js application
 * `pm2 restart bookmyclass-app --update-env` restarts the app with the current environment
+* `npm run verify:media-runtime` checks persistent media storage and `/uploads/...` public path generation
 
 ### Rules
 
@@ -321,6 +324,8 @@ flags — Stripe catalog sync and live price IDs are the gate.
 - [ ] Gift-card purchase flow completes against live Stripe; issuance email delivered with code.
 - [ ] Gift-card code redemption credits wallet balance.
 - [ ] Health endpoint returns 200.
+- [ ] Uploaded product images render from `/uploads/...` after deploy/restart.
+- [ ] Static homesite screenshots render without a manual symlink.
 
 **Canonical references:**
 - `docs/40_02_environment_variables.md` — environment variable reference
@@ -423,6 +428,7 @@ curl -i https://<ENV_DOMAIN>/api/health
 - E2E coverage matrix check must pass (`npm run qa:e2e:coverage`)
 - Store production catalog readiness must pass (`npm run verify:catalog:production`)
 - Gift-card maintenance verification must pass (`npm run verify:gift-card-maintenance`)
+- Media runtime verification must pass when Store uploads are in scope (`npm run verify:media-runtime`)
 - Prisma migration status must be valid
 
 Defined in:

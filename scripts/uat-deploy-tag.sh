@@ -125,8 +125,11 @@ log_step "publish homesite assets"
 mkdir -p "$HOMESITE_PUBLISH_DIR"
 if command -v rsync >/dev/null 2>&1; then
   rsync -a --delete "$APP_DIR/homesite/" "$HOMESITE_PUBLISH_DIR/"
+  rsync -a --delete "$APP_DIR/public/images/homesite/" "$HOMESITE_PUBLISH_DIR/images/homesite/"
 else
   cp -a "$APP_DIR/homesite/." "$HOMESITE_PUBLISH_DIR/"
+  mkdir -p "$HOMESITE_PUBLISH_DIR/images/homesite"
+  cp -a "$APP_DIR/public/images/homesite/." "$HOMESITE_PUBLISH_DIR/images/homesite/"
 fi
 
 log_step "pre-build PM2 evidence"
@@ -150,6 +153,9 @@ npm run build
 
 log_step "restart PM2 after successful build"
 pm2 restart "$APP_NAME" --update-env
+
+log_step "verify media runtime"
+npm run verify:media-runtime
 
 log_step "post-restart PM2 evidence"
 pm2 status
