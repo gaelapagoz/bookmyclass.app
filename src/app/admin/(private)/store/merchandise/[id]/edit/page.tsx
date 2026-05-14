@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 
 import { StripeSyncStatus } from "@prisma/client";
@@ -53,6 +54,7 @@ export default async function AdminStoreMerchandiseEditPage({
 
       <form
         action={updateStoreMerchandiseAction.bind(null, id)}
+        encType="multipart/form-data"
         className="space-y-3 rounded-xl border border-[#d3dbe5] bg-white p-5"
       >
         <div className="grid gap-3 md:grid-cols-2">
@@ -86,6 +88,35 @@ export default async function AdminStoreMerchandiseEditPage({
             className="mt-1 w-full rounded-md border border-[#d3dbe5] bg-[#f8fafc] px-3 py-2 text-[#64748b]"
           />
         </label>
+
+        <div className="space-y-2 rounded-md border border-[#d3dbe5] bg-[#f8fafc] p-3">
+          <p className="text-sm font-medium text-[#334155]">Product Image</p>
+          {record.imageAsset ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Image
+                src={record.imageAsset.path}
+                alt={`${record.name} product image`}
+                width={96}
+                height={96}
+                className="h-24 w-24 rounded-md border border-[#d3dbe5] object-cover"
+              />
+              <label className="inline-flex items-center gap-2 text-sm text-[#334155]">
+                <input type="checkbox" name="removeImage" /> Remove current image
+              </label>
+            </div>
+          ) : (
+            <p className="text-xs text-[#64748b]">No image uploaded.</p>
+          )}
+          <label className="block text-sm text-[#334155]">
+            Replace Image
+            <input
+              name="image"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="mt-1 w-full rounded-md border border-[#d3dbe5] bg-white px-3 py-2"
+            />
+          </label>
+        </div>
 
         <label className="block text-sm text-[#334155]">
           Description

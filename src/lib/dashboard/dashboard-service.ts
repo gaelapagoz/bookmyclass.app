@@ -3,6 +3,7 @@ import {
   ClientEntitlementStatus,
   CreditLedgerEntryType,
   EntitlementType,
+  GiftCardCodeStatus,
   OrderStatus,
   Prisma,
   ProductType,
@@ -33,6 +34,7 @@ import {
 import { assertBookingNotCheckedInForCancellation, getBookingSelfCheckInEligibility } from "@/lib/attendance/attendance-service";
 import { restoreCredit } from "@/lib/credits/credit-service";
 import { STORE_PRODUCT_TYPES } from "@/lib/catalog/product-scopes";
+import type { MediaAssetReadModel } from "@/lib/media/product-media-service";
 
 type DashboardServiceErrorCode =
   | "BOOKING_NOT_FOUND"
@@ -1252,6 +1254,7 @@ export type StoreOrderItem = {
   id: string;
   productNameSnapshot: string;
   productType: ProductType;
+  imageAsset: Pick<MediaAssetReadModel, "id" | "path" | "mimeType" | "sizeBytes" | "originalFilename"> | null;
   quantity: number;
   unitAmountMinor: number;
   lineTotalAmountMinor: number;
@@ -1265,6 +1268,28 @@ export type StoreOrderSummary = {
   totalAmountMinor: number;
   currencyCode: string;
   items: StoreOrderItem[];
+  fulfillmentNote: string | null;
+};
+
+export type OrderLineItem = {
+  id: string;
+  productNameSnapshot: string;
+  productType: ProductType;
+  imageAsset: Pick<MediaAssetReadModel, "id" | "path" | "mimeType" | "sizeBytes" | "originalFilename"> | null;
+  quantity: number;
+  unitAmountMinor: number;
+  lineTotalAmountMinor: number;
+  currencyCode: string;
+  giftCardCode: { maskedCode: string; status: GiftCardCodeStatus } | null;
+};
+
+export type OrderSummary = {
+  id: string;
+  status: OrderStatus;
+  placedAt: string;
+  totalAmountMinor: number;
+  currencyCode: string;
+  items: OrderLineItem[];
   fulfillmentNote: string | null;
 };
 
@@ -1298,7 +1323,20 @@ export async function getClientStoreOrderHistory(clientId: string): Promise<Stor
           unitAmountMinor: true,
           lineTotalAmountMinor: true,
           currencyCode: true,
-          product: { select: { productType: true } },
+          product: {
+            select: {
+              productType: true,
+              imageAsset: {
+                select: {
+                  id: true,
+                  path: true,
+                  mimeType: true,
+                  sizeBytes: true,
+                  originalFilename: true,
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -1318,10 +1356,82 @@ export async function getClientStoreOrderHistory(clientId: string): Promise<Stor
         id: item.id,
         productNameSnapshot: item.productNameSnapshot,
         productType: item.product.productType,
+        imageAsset: item.product.imageAsset,
         quantity: item.quantity,
         unitAmountMinor: item.unitAmountMinor,
         lineTotalAmountMinor: item.lineTotalAmountMinor,
         currencyCode: item.currencyCode,
+      })),
+      fulfillmentNote: hasMerchandise ? STORE_PICKUP_WORDING : null,
+    };
+  });
+}
+
+export async function getClientOrderHistory(clientId: string): Promise<OrderSummary[]> {
+  const orders = await prisma.order.findMany({
+    where: {
+      clientId,
+      // DRAFT orders are incomplete checkout artifacts and must not appear in client purchase history
+      status: { not: OrderStatus.DRAFT },
+    },
+    orderBy: { placedAt: "desc" },
+    take: 100,
+    select: {
+      id: true,
+      status: true,
+      placedAt: true,
+      totalAmountMinor: true,
+      currencyCode: true,
+      items: {
+        select: {
+          id: true,
+          productNameSnapshot: true,
+          quantity: true,
+          unitAmountMinor: true,
+          lineTotalAmountMinor: true,
+          currencyCode: true,
+          product: {
+            select: {
+              productType: true,
+              imageAsset: {
+                select: {
+                  id: true,
+                  path: true,
+                  mimeType: true,
+                  sizeBytes: true,
+                  originalFilename: true,
+                },
+              },
+            },
+          },
+          giftCardCode: { select: { maskedCode: true, status: true } },
+        },
+      },
+    },
+  });
+
+  return orders.map((order) => {
+    const hasMerchandise = order.items.some(
+      (item) => item.product.productType === ProductType.MERCHANDISE,
+    );
+    return {
+      id: order.id,
+      status: order.status,
+      placedAt: order.placedAt.toISOString(),
+      totalAmountMinor: order.totalAmountMinor,
+      currencyCode: order.currencyCode,
+      items: order.items.map((item) => ({
+        id: item.id,
+        productNameSnapshot: item.productNameSnapshot,
+        productType: item.product.productType,
+        imageAsset: item.product.imageAsset,
+        quantity: item.quantity,
+        unitAmountMinor: item.unitAmountMinor,
+        lineTotalAmountMinor: item.lineTotalAmountMinor,
+        currencyCode: item.currencyCode,
+        giftCardCode: item.giftCardCode
+          ? { maskedCode: item.giftCardCode.maskedCode, status: item.giftCardCode.status }
+          : null,
       })),
       fulfillmentNote: hasMerchandise ? STORE_PICKUP_WORDING : null,
     };

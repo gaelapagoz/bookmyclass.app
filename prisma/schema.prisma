@@ -364,6 +364,7 @@ model User {
   marketingRecipients                 MarketingCampaignRecipient[] @relation("MarketingRecipientUser")
   marketingUnsubscribes               MarketingUnsubscribe[]       @relation("MarketingUnsubscribeUser")
   marketingSegments                   MarketingUserSegment[]
+  uploadedMediaAssets                 MediaAsset[]                @relation("MediaAssetUploadedBy")
   accounts                            Account[]
   sessions                            Session[]
   passwordResetTokens                 PasswordResetToken[]
@@ -378,6 +379,24 @@ model User {
   @@index([createdByUserId, createdAt])
   @@index([pendingEmail, pendingEmailTokenExpiresAt])
   @@index([lastLoginAt])
+}
+
+model MediaAsset {
+  id               String    @id @default(cuid())
+  path             String    @unique
+  mimeType         String
+  sizeBytes        Int
+  originalFilename String
+  storageFilename  String    @unique
+  uploadedById     String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  uploadedBy User      @relation("MediaAssetUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  products   Product[]
+
+  @@index([uploadedById, createdAt])
+  @@index([mimeType])
 }
 
 model PendingUserRegistration {
@@ -439,15 +458,18 @@ model Product {
   isActive              Boolean                @default(true)
   isArchived            Boolean                @default(false)
   sortOrder             Int                    @default(0)
+  imageAssetId          String?
   prices                Price[]
   entitlementRules      EntitlementRule[]
   clientEntitlements    ClientEntitlement[]
   orderItems            OrderItem[]
   subscriptionContracts SubscriptionContract[]
+  imageAsset            MediaAsset?            @relation(fields: [imageAssetId], references: [id], onDelete: SetNull)
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
 
   @@index([productType, isActive])
+  @@index([imageAssetId])
   @@index([sortOrder])
 }
 

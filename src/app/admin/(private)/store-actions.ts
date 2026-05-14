@@ -14,7 +14,13 @@ import {
   updateAdminStoreGiftCardProduct,
   getAdminStoreMerchandiseById,
   getAdminStoreGiftCardById,
+  setAdminStoreProductActiveState,
 } from "@/lib/store/store-admin-catalog-service";
+import {
+  unlinkStoreProductImage,
+  uploadStoreProductImage,
+  validateProductImageUpload,
+} from "@/lib/media/product-media-service";
 import { attemptStorePriceSyncFromEnv } from "@/lib/store/store-stripe-sync-service";
 
 // ---------------------------------------------------------------------------
@@ -49,13 +55,19 @@ function isChecked(formData: FormData, key: string): boolean {
   return formData.get(key) === "on" || formData.get(key) === "true";
 }
 
+function getImageFile(formData: FormData): File | null {
+  const value = formData.get("image");
+  return value instanceof File && value.size > 0 ? value : null;
+}
+
 // ---------------------------------------------------------------------------
 // Merchandise actions
 // ---------------------------------------------------------------------------
 
 export async function createStoreMerchandiseAction(formData: FormData) {
-  await requireAdminSession();
+  const session = await requireAdminSession();
   await assertSameOriginServerAction();
+  const imageFile = getImageFile(formData);
 
   const parsed = merchandiseSchema.safeParse({
     name: formData.get("name"),
@@ -72,14 +84,28 @@ export async function createStoreMerchandiseAction(formData: FormData) {
   }
 
   try {
-    await createAdminStoreMerchandise({
+    if (imageFile) {
+      await validateProductImageUpload(imageFile);
+    }
+
+    const created = await createAdminStoreMerchandise({
       name: parsed.data.name,
       description: parsed.data.description,
       sortOrder: parsed.data.sortOrder,
       priceName: parsed.data.priceName,
       unitAmountMinor: parsed.data.unitAmount,
-      isActive: parsed.data.isActive,
+      isActive: imageFile ? false : parsed.data.isActive,
     });
+    if (imageFile) {
+      await uploadStoreProductImage({
+        productId: created.id,
+        uploadedById: session.user.id,
+        file: imageFile,
+      });
+      if (parsed.data.isActive) {
+        await setAdminStoreProductActiveState(created.id, true);
+      }
+    }
   } catch (err) {
     const code = err instanceof Error ? err.message : "UNKNOWN_ERROR";
     redirect(`/admin/store/merchandise/new?error=${encodeURIComponent(code)}`);
@@ -89,8 +115,11 @@ export async function createStoreMerchandiseAction(formData: FormData) {
 }
 
 export async function updateStoreMerchandiseAction(id: string, formData: FormData) {
-  await requireAdminSession();
+  const session = await requireAdminSession();
   await assertSameOriginServerAction();
+  const imageFile = getImageFile(formData);
+  const shouldRemoveImage = isChecked(formData, "removeImage");
+  const willUploadImage = imageFile && !shouldRemoveImage;
 
   const parsed = merchandiseSchema.safeParse({
     name: formData.get("name"),
@@ -107,15 +136,31 @@ export async function updateStoreMerchandiseAction(id: string, formData: FormDat
   }
 
   try {
+    if (willUploadImage) {
+      await validateProductImageUpload(imageFile);
+    }
+
     await updateAdminStoreMerchandise(id, {
       name: parsed.data.name,
       description: parsed.data.description,
       sortOrder: parsed.data.sortOrder,
-      isActive: parsed.data.isActive,
+      isActive: willUploadImage ? false : parsed.data.isActive,
       isArchived: false,
       priceName: parsed.data.priceName,
       unitAmountMinor: parsed.data.unitAmount,
     });
+    if (shouldRemoveImage) {
+      await unlinkStoreProductImage(id);
+    } else if (willUploadImage) {
+      await uploadStoreProductImage({
+        productId: id,
+        uploadedById: session.user.id,
+        file: imageFile,
+      });
+      if (parsed.data.isActive) {
+        await setAdminStoreProductActiveState(id, true);
+      }
+    }
   } catch (err) {
     const code = err instanceof Error ? err.message : "UNKNOWN_ERROR";
     redirect(`/admin/store/merchandise/${id}/edit?error=${encodeURIComponent(code)}`);
@@ -143,8 +188,9 @@ export async function archiveStoreMerchandiseAction(id: string) {
 // ---------------------------------------------------------------------------
 
 export async function createStoreGiftCardAction(formData: FormData) {
-  await requireAdminSession();
+  const session = await requireAdminSession();
   await assertSameOriginServerAction();
+  const imageFile = getImageFile(formData);
 
   const parsed = giftCardSchema.safeParse({
     name: formData.get("name"),
@@ -161,14 +207,28 @@ export async function createStoreGiftCardAction(formData: FormData) {
   }
 
   try {
-    await createAdminStoreGiftCardProduct({
+    if (imageFile) {
+      await validateProductImageUpload(imageFile);
+    }
+
+    const created = await createAdminStoreGiftCardProduct({
       name: parsed.data.name,
       description: parsed.data.description,
       sortOrder: parsed.data.sortOrder,
       priceName: parsed.data.priceName,
       unitAmountMinor: parsed.data.unitAmount,
-      isActive: parsed.data.isActive,
+      isActive: imageFile ? false : parsed.data.isActive,
     });
+    if (imageFile) {
+      await uploadStoreProductImage({
+        productId: created.id,
+        uploadedById: session.user.id,
+        file: imageFile,
+      });
+      if (parsed.data.isActive) {
+        await setAdminStoreProductActiveState(created.id, true);
+      }
+    }
   } catch (err) {
     const code = err instanceof Error ? err.message : "UNKNOWN_ERROR";
     redirect(`/admin/store/gift-cards/new?error=${encodeURIComponent(code)}`);
@@ -178,8 +238,11 @@ export async function createStoreGiftCardAction(formData: FormData) {
 }
 
 export async function updateStoreGiftCardAction(id: string, formData: FormData) {
-  await requireAdminSession();
+  const session = await requireAdminSession();
   await assertSameOriginServerAction();
+  const imageFile = getImageFile(formData);
+  const shouldRemoveImage = isChecked(formData, "removeImage");
+  const willUploadImage = imageFile && !shouldRemoveImage;
 
   const parsed = giftCardSchema.safeParse({
     name: formData.get("name"),
@@ -196,15 +259,31 @@ export async function updateStoreGiftCardAction(id: string, formData: FormData) 
   }
 
   try {
+    if (willUploadImage) {
+      await validateProductImageUpload(imageFile);
+    }
+
     await updateAdminStoreGiftCardProduct(id, {
       name: parsed.data.name,
       description: parsed.data.description,
       sortOrder: parsed.data.sortOrder,
-      isActive: parsed.data.isActive,
+      isActive: willUploadImage ? false : parsed.data.isActive,
       isArchived: false,
       priceName: parsed.data.priceName,
       unitAmountMinor: parsed.data.unitAmount,
     });
+    if (shouldRemoveImage) {
+      await unlinkStoreProductImage(id);
+    } else if (willUploadImage) {
+      await uploadStoreProductImage({
+        productId: id,
+        uploadedById: session.user.id,
+        file: imageFile,
+      });
+      if (parsed.data.isActive) {
+        await setAdminStoreProductActiveState(id, true);
+      }
+    }
   } catch (err) {
     const code = err instanceof Error ? err.message : "UNKNOWN_ERROR";
     redirect(`/admin/store/gift-cards/${id}/edit?error=${encodeURIComponent(code)}`);

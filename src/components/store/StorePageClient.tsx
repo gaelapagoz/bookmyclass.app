@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import { ProductType } from "@prisma/client";
 import { addLineToClientCart } from "@/lib/cart/cart-client";
@@ -84,6 +85,22 @@ export function StorePageClient({ products }: { products: StoreCatalogReadModel[
                 key={product.id}
                 className="rounded-xl border border-[#d8cec6] bg-white p-4"
               >
+                {product.imageAsset ? (
+                  <Image
+                    src={product.imageAsset.path}
+                    alt={`${product.name} product image`}
+                    width={480}
+                    height={320}
+                    className="mb-3 aspect-[3/2] w-full rounded-md object-cover"
+                  />
+                ) : (
+                  <div
+                    className="mb-3 flex aspect-[3/2] w-full items-center justify-center rounded-md bg-[#f2ede7] text-xs font-medium text-[#8a5959]"
+                    data-testid="store-product-placeholder"
+                  >
+                    Studio Store
+                  </div>
+                )}
                 <h3 className="font-semibold text-[#6f2b2b]">{product.name}</h3>
                 {product.description ? (
                   <p className="mt-1 text-sm text-[#7f5a5a]">{product.description}</p>
@@ -129,6 +146,22 @@ export function StorePageClient({ products }: { products: StoreCatalogReadModel[
                 key={product.id}
                 className="rounded-xl border border-[#d8cec6] bg-white p-4"
               >
+                {product.imageAsset ? (
+                  <Image
+                    src={product.imageAsset.path}
+                    alt={`${product.name} product image`}
+                    width={480}
+                    height={320}
+                    className="mb-3 aspect-[3/2] w-full rounded-md object-cover"
+                  />
+                ) : (
+                  <div
+                    className="mb-3 flex aspect-[3/2] w-full items-center justify-center rounded-md bg-[#f2ede7] text-xs font-medium text-[#8a5959]"
+                    data-testid="store-product-placeholder"
+                  >
+                    Studio Store
+                  </div>
+                )}
                 <h3 className="font-semibold text-[#6f2b2b]">{product.name}</h3>
                 {product.fulfillmentLabel ? (
                   <p

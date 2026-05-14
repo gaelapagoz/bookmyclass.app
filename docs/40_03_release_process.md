@@ -181,8 +181,13 @@ re-runs are safe (idempotent).
    ```
    npm run stripe:catalog:sync -- --scope=all --dry-run
    npm run stripe:catalog:sync -- --scope=all --confirm-live
+   npm run verify:catalog:production
    ```
 5. Verify: store products now appear on `/store`; subscription prices resolve in checkout.
+
+Before production deploy, run the dry-run first and record the result. If the
+dry-run is clean, run the live sync only with explicit operator confirmation,
+then run `npm run verify:catalog:production` again against the target database.
 
 **Rollback:** The script only writes `stripePriceId` and `StripeSyncStatus.SYNCED`
 to Price records. To roll back, reset those fields to `null`/`PENDING` in the DB.
@@ -274,8 +279,19 @@ Verify:
 
 When a release includes gift-card maintenance cleanup:
 - confirm `CRON_SECRET` is configured on the target environment
+- run `npm run verify:gift-card-maintenance`
 - confirm the operator has scheduled or manually run `GET /api/cron/gift-cards/maintenance`
 - confirm cleanup reports `failedCount: 0`, or review `gift_card.reservation_cleanup_failed` events before enabling a schedule
+- note: maintenance is controlled by route authentication and scheduler configuration; there is no active Store/Gift Card maintenance feature flag in the current runtime
+
+Recommended scheduler setup:
+- Endpoint: `GET /api/cron/gift-cards/maintenance`
+- Header: `Authorization: Bearer $CRON_SECRET`
+- Frequency: every 5 to 15 minutes
+- External scheduler: create an HTTPS GET monitor in Uptime Kuma, Healthchecks,
+  or cron with the bearer header; alert on non-2xx responses.
+- Release evidence must include maintenance route verification, schedule
+  configured, and the last successful run observed before launch.
 
 ---
 
@@ -288,12 +304,15 @@ flags — Stripe catalog sync and live price IDs are the gate.
 **Stripe live prices — required before deployment:**
 - [ ] All active Store merchandise prices have `stripeSyncStatus = SYNCED` and a live Stripe price ID (not a test ID).
 - [ ] All active Store gift-card prices have `stripeSyncStatus = SYNCED` and a live Stripe price ID (not a test ID).
+- [ ] `npm run stripe:catalog:sync -- --scope=all --dry-run` completed cleanly.
+- [ ] `npm run verify:catalog:production` passed after catalog sync.
 - [ ] No active store price has a test Stripe ID (`price_test_*`) in the production database.
 - [ ] Stripe live mode key (`sk_live_*`) is configured in the production environment.
 
 **Alert rules and maintenance:**
 - [ ] Alert rules are configured for `gift_card.reservation_cleanup_failed` events.
 - [ ] `CRON_SECRET` is configured in the production environment.
+- [ ] `npm run verify:gift-card-maintenance` passed.
 - [ ] Gift-card maintenance cron (`GET /api/cron/gift-cards/maintenance`) is scheduled or manually verified.
 - [ ] Maintenance procedure is confirmed: operator knows how to disable maintenance cron and recover.
 
@@ -402,6 +421,8 @@ curl -i https://<ENV_DOMAIN>/api/health
 - CI build must pass
 - Test suite must pass
 - E2E coverage matrix check must pass (`npm run qa:e2e:coverage`)
+- Store production catalog readiness must pass (`npm run verify:catalog:production`)
+- Gift-card maintenance verification must pass (`npm run verify:gift-card-maintenance`)
 - Prisma migration status must be valid
 
 Defined in:

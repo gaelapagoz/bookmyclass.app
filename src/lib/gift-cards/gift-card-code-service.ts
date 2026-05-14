@@ -344,3 +344,114 @@ export async function redeemGiftCardCode(input: RedeemGiftCardCodeInput): Promis
     throw new GiftCardCodeRedemptionError("WALLET_ERROR", "Gift card redemption could not be completed. Please try again.");
   }
 }
+
+export type GiftCardCodeResendResult =
+  | { outcome: "sent"; maskedCode: string }
+  | { outcome: "already_redeemed" }
+  | { outcome: "not_resendable"; reason: "voided" | "expired" };
+
+export class GiftCardCodeResendError extends Error {
+  constructor(
+    readonly errorCode: "OWNERSHIP_DENIED" | "NOT_FOUND" | "EMAIL_MISSING",
+    message: string,
+  ) {
+    super(message);
+    this.name = "GiftCardCodeResendError";
+  }
+}
+
+/**
+ * Rotates the gift card code for an ISSUED (unredeemed) code owned by requestedById
+ * and resends it via email. The old code is replaced server-side so the previous
+ * value can no longer be redeemed. Plaintext is never written to the database.
+ */
+export async function requestGiftCardCodeResend(input: {
+  orderItemId: string;
+  requestedById: string;
+}): Promise<GiftCardCodeResendResult> {
+  const record = await prisma.giftCardCode.findUnique({
+    where: { orderItemId: input.orderItemId },
+    select: {
+      id: true,
+      orderId: true,
+      purchasedById: true,
+      status: true,
+      amountMinor: true,
+      currencyCode: true,
+      expiresAt: true,
+    },
+  });
+
+  if (!record) {
+    throw new GiftCardCodeResendError("NOT_FOUND", "Gift card code not found.");
+  }
+
+  // Ownership validation — server-side, always enforced
+  if (record.purchasedById !== input.requestedById) {
+    throw new GiftCardCodeResendError("OWNERSHIP_DENIED", "You do not own this gift card code.");
+  }
+
+  if (record.status === GiftCardCodeStatus.REDEEMED) {
+    return { outcome: "already_redeemed" };
+  }
+
+  if (record.status === GiftCardCodeStatus.VOIDED) {
+    return { outcome: "not_resendable", reason: "voided" };
+  }
+
+  if (
+    record.status === GiftCardCodeStatus.EXPIRED ||
+    (record.expiresAt !== null && record.expiresAt < new Date())
+  ) {
+    return { outcome: "not_resendable", reason: "expired" };
+  }
+
+  // Generate a fresh code. The old code hash is replaced, invalidating the previous value.
+  const newPlaintextCode = generatePlaintextCode();
+  const newCodeHash = hashCode(newPlaintextCode);
+  const newMaskedCode = maskCode(newPlaintextCode);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.giftCardCode.update({
+      where: { orderItemId: input.orderItemId },
+      data: {
+        codeHash: newCodeHash,
+        maskedCode: newMaskedCode,
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        actorId: input.requestedById,
+        actionType: "GIFT_CARD_CODE_RESENT",
+        entityType: "GiftCardCode",
+        entityId: record.id,
+        metadata: {
+          orderId: record.orderId,
+          orderItemId: input.orderItemId,
+          maskedCode: newMaskedCode,
+          source: "gift-card-code-service",
+        },
+      },
+    });
+  });
+
+  const purchaser = await prisma.user.findUnique({
+    where: { id: input.requestedById },
+    select: { name: true, email: true },
+  });
+
+  if (!purchaser?.email) {
+    throw new GiftCardCodeResendError("EMAIL_MISSING", "No email address on file.");
+  }
+
+  const { sendGiftCardIssuanceEmail } = await import("@/lib/email/gift-card-email");
+  await sendGiftCardIssuanceEmail({
+    to: purchaser.email,
+    purchaserName: purchaser.name,
+    plaintextCode: newPlaintextCode,
+    amountMinor: record.amountMinor,
+    currencyCode: record.currencyCode ?? GIFT_CARD_CURRENCY_CODE,
+  });
+
+  return { outcome: "sent", maskedCode: newMaskedCode };
+}

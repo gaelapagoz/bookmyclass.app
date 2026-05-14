@@ -46,6 +46,7 @@ export async function resetDb() {
   await prisma.entitlementRule.deleteMany();
   await prisma.price.deleteMany();
   await prisma.product.deleteMany();
+  await prisma.mediaAsset.deleteMany();
   await prisma.clientProfile.deleteMany();
   await prisma.teacherProfile.deleteMany();
   await prisma.account.deleteMany();

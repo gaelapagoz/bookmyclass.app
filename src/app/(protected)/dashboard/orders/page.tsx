@@ -1,7 +1,8 @@
-import Link from "next/link";
 import { requireAuth } from "@/lib/auth/require-auth";
-import { getClientStoreOrderHistory } from "@/lib/dashboard/dashboard-service";
-import { OrderStatus, ProductType } from "@prisma/client";
+import { getClientOrderHistory } from "@/lib/dashboard/dashboard-service";
+import { OrderStatus, ProductType, GiftCardCodeStatus } from "@prisma/client";
+import { ResendGiftCardCodeButton } from "./ResendGiftCardCodeButton";
+import Image from "next/image";
 
 function formatAmount(minor: number, currencyCode: string): string {
   return new Intl.NumberFormat("en-GB", {
@@ -41,13 +42,27 @@ function itemTypeLabel(productType: ProductType): string {
   switch (productType) {
     case ProductType.GIFT_CARD: return "Gift Card";
     case ProductType.MERCHANDISE: return "Merchandise";
+    case ProductType.DROP_IN_CLASS: return "Drop-in Class";
+    case ProductType.CLASS_PACK: return "Class Pack";
+    case ProductType.PRIVATE_PACK: return "Private Pack";
+    case ProductType.UNLIMITED_MEMBERSHIP: return "Membership";
     default: return productType;
+  }
+}
+
+function giftCardStatusLabel(status: GiftCardCodeStatus): string {
+  switch (status) {
+    case GiftCardCodeStatus.ISSUED: return "Not yet redeemed";
+    case GiftCardCodeStatus.REDEEMED: return "Redeemed";
+    case GiftCardCodeStatus.VOIDED: return "Voided";
+    case GiftCardCodeStatus.EXPIRED: return "Expired";
+    default: return status;
   }
 }
 
 export default async function DashboardOrdersPage() {
   const session = await requireAuth();
-  const orders = await getClientStoreOrderHistory(session.user.id);
+  const orders = await getClientOrderHistory(session.user.id);
 
   return (
     <section className="space-y-6">
@@ -56,14 +71,8 @@ export default async function DashboardOrdersPage() {
       {orders.length === 0 ? (
         <div className="rounded-xl border border-[#d8cec6] bg-white p-5">
           <p className="text-sm text-[#5f4040]" data-testid="orders-empty">
-            No Store purchases yet.
+            No purchases yet.
           </p>
-          <Link
-            href="/store"
-            className="mt-3 inline-block text-sm font-medium text-[#7b2d2d] underline underline-offset-4 hover:opacity-80"
-          >
-            Visit the Store
-          </Link>
         </div>
       ) : (
         <ul className="space-y-4" data-testid="orders-list">
@@ -87,25 +96,55 @@ export default async function DashboardOrdersPage() {
                 </p>
               </div>
 
-              <ul className="space-y-1 border-t border-[#f0e8e4] pt-2">
+              <ul className="space-y-2 border-t border-[#f0e8e4] pt-2">
                 {order.items.map((item) => (
                   <li
                     key={item.id}
-                    className="flex items-center justify-between text-sm text-[#5f4040]"
+                    className="space-y-1"
                     data-testid="order-line-item"
                   >
-                    <span>
-                      <span className="mr-1.5 rounded bg-[#f2ede7] px-1.5 py-0.5 text-xs text-[#8a5959]">
-                        {itemTypeLabel(item.productType)}
+                    <div className="flex items-center justify-between gap-3 text-sm text-[#5f4040]">
+                      <span className="flex min-w-0 items-center gap-2">
+                        {item.imageAsset ? (
+                          <Image
+                            src={item.imageAsset.path}
+                            alt={`${item.productNameSnapshot} product image`}
+                            width={48}
+                            height={48}
+                            className="h-12 w-12 shrink-0 rounded-md border border-[#e8dfd9] object-cover"
+                          />
+                        ) : null}
+                        <span className="min-w-0">
+                          <span className="mr-1.5 rounded bg-[#f2ede7] px-1.5 py-0.5 text-xs text-[#8a5959]">
+                            {itemTypeLabel(item.productType)}
+                          </span>
+                          {item.productNameSnapshot}
+                          {item.quantity > 1 ? (
+                            <span className="ml-1 text-[#8a5959]">x {item.quantity}</span>
+                          ) : null}
+                        </span>
                       </span>
-                      {item.productNameSnapshot}
-                      {item.quantity > 1 ? (
-                        <span className="ml-1 text-[#8a5959]">× {item.quantity}</span>
-                      ) : null}
-                    </span>
-                    <span className="font-mono text-xs">
-                      {formatAmount(item.lineTotalAmountMinor, item.currencyCode)}
-                    </span>
+                      <span className="shrink-0 font-mono text-xs">
+                        {formatAmount(item.lineTotalAmountMinor, item.currencyCode)}
+                      </span>
+                    </div>
+
+                    {item.productType === ProductType.GIFT_CARD && item.giftCardCode ? (
+                      <div
+                        className="flex items-center gap-3 rounded bg-[#faf5f2] border border-[#e8dfd9] px-3 py-2 text-xs"
+                        data-testid="gift-card-code-row"
+                      >
+                        <span className="font-mono text-[#3d2020] tracking-wide" data-testid="gift-card-masked">
+                          {item.giftCardCode.maskedCode}
+                        </span>
+                        <span className="text-[#8a5959]" data-testid="gift-card-status">
+                          {giftCardStatusLabel(item.giftCardCode.status)}
+                        </span>
+                        {item.giftCardCode.status === GiftCardCodeStatus.ISSUED ? (
+                          <ResendGiftCardCodeButton orderItemId={item.id} />
+                        ) : null}
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ul>

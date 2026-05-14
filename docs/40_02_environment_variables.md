@@ -128,22 +128,20 @@ npm run stripe:catalog:sync -- --scope=all --confirm-live
 - After a successful sync, store products appear on `/store` immediately (no restart needed).
 - After a successful sync, subscription/class prices appear in checkout immediately.
 
-## Store and Gift Card — Always-On Capabilities (No Feature Flags)
+## Store and Gift Card Runtime Model
 
-Store browsing, gift-card purchase, gift-card redemption, and gift-card maintenance are **permanently enabled product capabilities**. They are not feature-flagged.
+Store browsing, gift-card purchase, gift-card redemption, merchandise checkout,
+and gift-card maintenance are production-critical flows in the canonical
+application runtime. The current architecture does not gate these flows with
+Store rollout feature flags.
 
-### Forbidden env vars — do not introduce or reinstate
+The historical/modeling flags `STORE_ENABLED`, `GIFT_CARD_PURCHASE_ENABLED`,
+`GIFT_CARD_REDEMPTION_ENABLED`, and `GIFT_CARD_MAINTENANCE_ENABLED` are not
+active runtime configuration and must not be treated as production requirements.
 
-The following env vars are **deprecated and forbidden** across all environments, code, CI, scripts, and docs:
-
-- `STORE_ENABLED`
-- `GIFT_CARD_PURCHASE_ENABLED`
-- `GIFT_CARD_REDEMPTION_ENABLED`
-- `GIFT_CARD_MAINTENANCE_ENABLED`
-
-No runtime guard, validator check, CI variable, or documentation reference may use these names. Any reviewer instruction to add them back contradicts this decision and must be rejected.
-
-`scripts/verify-e2e-config.ts` must never include these names in `REQUIRED_FLAGS`. E2E readiness for Store/Gift Card is validated by the required `STRIPE_PRICE_ID_STORE_*` vars and by the E2E test suite passing — not by feature flags.
+`scripts/verify-e2e-config.ts` validates the E2E secret and required Store
+Stripe price IDs before Playwright starts. It does not validate Store rollout
+feature flags.
 
 ### Operational readiness for Store / Gift Card depends on
 
@@ -152,6 +150,7 @@ No runtime guard, validator check, CI variable, or documentation reference may u
 - E2E and integration coverage passing
 - Webhook validation functioning
 - `CRON_SECRET` protecting the maintenance route
+- Maintenance scheduling configured only after `npm run verify:gift-card-maintenance` passes
 - Audit/reconciliation checks via `GiftCardManualReview`
 
 ## Canonical References

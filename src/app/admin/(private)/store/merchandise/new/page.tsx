@@ -30,6 +30,7 @@ export default async function AdminStoreMerchandiseNewPage({
 
       <form
         action={createStoreMerchandiseAction}
+        encType="multipart/form-data"
         className="space-y-3 rounded-xl border border-[#d3dbe5] bg-white p-5"
       >
         <div className="grid gap-3 md:grid-cols-2">
@@ -53,6 +54,19 @@ export default async function AdminStoreMerchandiseNewPage({
             />
           </label>
         </div>
+
+        <label className="block text-sm text-[#334155]">
+          Product Image
+          <input
+            name="image"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
+          />
+          <span className="mt-1 block text-xs text-[#64748b]">
+            JPEG, PNG, or WebP. Maximum size is 5 MB unless configured otherwise.
+          </span>
+        </label>
 
         <label className="block text-sm text-[#334155]">
           Description

@@ -26,7 +26,6 @@ import {
   captureGiftCardRedemption,
   releaseGiftCardRedemption,
 } from "@/lib/gift-cards/gift-card-wallet-service";
-import { issueGiftCardCodesForOrder } from "@/lib/gift-cards/gift-card-code-service";
 import {
   createGiftCardManualReviewCase,
   recordGiftCardWebhookRetry,
@@ -35,6 +34,7 @@ import { emitGiftCardAlertEvent } from "@/lib/gift-cards/gift-card-events";
 import { giftCardErrorCodes, GiftCardError } from "@/lib/gift-cards/gift-card-errors";
 import { getStripeClient } from "../payments/stripe";
 import { consumeCredit } from "@/lib/credits/credit-service";
+import { fulfillPaidCartOrder } from "@/lib/fulfillment/order-fulfillment-service";
 
 type CatalogCheckoutMetadata = {
   userId: string;
@@ -796,110 +796,11 @@ async function ensureCartOrderOwnershipFromPersistedItems(input: {
   orderId: string;
   clientId: string;
 }) {
-  const order = await prisma.order.findUnique({
-    where: { id: input.orderId },
-    select: {
-      id: true,
-      clientId: true,
-      items: {
-        orderBy: { createdAt: "asc" },
-        select: {
-          id: true,
-          productId: true,
-          priceId: true,
-          quantity: true,
-          lineTotalAmountMinor: true,
-          productNameSnapshot: true,
-          currencyCode: true,
-          price: {
-            select: { priceType: true, unitAmountMinor: true },
-          },
-          product: {
-            select: { productType: true },
-          },
-        },
-      },
-      payments: {
-        where: {
-          provider: PaymentProvider.STRIPE,
-          status: PaymentStatus.SUCCEEDED,
-        },
-        orderBy: { capturedAt: "desc" },
-        take: 1,
-        select: { id: true },
-      },
-    },
+  await fulfillPaidCartOrder({
+    orderId: input.orderId,
+    clientId: input.clientId,
+    idempotencyKeyPrefix: "stripe-fulfillment",
   });
-
-  if (!order || order.clientId !== input.clientId) {
-    return;
-  }
-
-  const giftCardItems = order.items
-    .filter((item) => item.product.productType === ProductType.GIFT_CARD)
-    .map((item) => ({
-      orderItemId: item.id,
-      amountMinor: item.lineTotalAmountMinor,
-    }));
-  if (giftCardItems.length > 0) {
-    await issueGiftCardCodesForOrder({
-      orderId: order.id,
-      clientId: input.clientId,
-      paymentId: order.payments[0]?.id ?? undefined,
-      items: giftCardItems,
-    });
-  }
-
-  const merchandiseItems = order.items.filter(
-    (item) => item.product.productType === ProductType.MERCHANDISE,
-  );
-
-  for (const item of order.items) {
-    if (item.product.productType === ProductType.GIFT_CARD) {
-      continue;
-    }
-
-    if (item.product.productType === ProductType.MERCHANDISE) {
-      continue;
-    }
-
-    if (item.price.priceType !== PriceType.ONE_TIME) {
-      continue;
-    }
-
-    await ensureOwnershipForSuccessfulPricePurchase({
-      clientId: input.clientId,
-      orderId: order.id,
-      selectedPriceId: item.priceId,
-      consumeCreditForBooking: false,
-      purchaseQuantity: item.quantity,
-    });
-  }
-
-  if (merchandiseItems.length > 0) {
-    try {
-      const { sendStorePurchaseConfirmationEmail } = await import("@/lib/email/store-email");
-      const purchaser = await prisma.user.findUnique({
-        where: { id: input.clientId },
-        select: { name: true, email: true },
-      });
-      if (purchaser?.email) {
-        await sendStorePurchaseConfirmationEmail({
-          to: purchaser.email,
-          purchaserName: purchaser.name,
-          orderId: order.id,
-          items: merchandiseItems.map((item) => ({
-            name: item.productNameSnapshot,
-            quantity: item.quantity,
-            unitAmountMinor: item.price.unitAmountMinor,
-            currencyCode: item.currencyCode,
-          })),
-        });
-      }
-    } catch (emailError) {
-      console.error("[stripe-webhook] merchandise confirmation email failed", emailError instanceof Error ? emailError.message : String(emailError));
-    }
-  }
 }
 
 async function ensureCatalogPaymentForCompletedSession(input: {
@@ -1456,6 +1357,15 @@ async function handleCheckoutCompleted(
         selectedPriceId: selectedPriceIdFromMetadata,
         consumeCreditForBooking: true,
       });
+      if (orderId) {
+        await fulfillPaidCartOrder({
+          orderId,
+          clientId: booking.clientId,
+          idempotencyKeyPrefix: "stripe-fulfillment",
+          issueGiftCardCodes: false,
+          grantEntitlements: false,
+        });
+      }
     }
   } else if (catalogMetadata && selectedPriceIdFromMetadata) {
     await ensureOwnershipForSuccessfulPricePurchase({
@@ -1464,6 +1374,13 @@ async function handleCheckoutCompleted(
       selectedPriceId: selectedPriceIdFromMetadata,
       consumeCreditForBooking: false,
     });
+    if (orderId) {
+      await fulfillPaidCartOrder({
+        orderId,
+        clientId: catalogMetadata.userId,
+        idempotencyKeyPrefix: "stripe-fulfillment",
+      });
+    }
   }
 
   if (session.mode === "subscription") {

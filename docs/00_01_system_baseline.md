@@ -92,7 +92,7 @@ Evidence label legend used in this file:
   - Inferred: teacher operational workflows (UI placeholder suggests planned expansion).
   - Confirmed: waitlist join/cancel + auto-promotion workflow for collective classes.
   - Confirmed: waitlist feature scope for current release includes runtime eligibility-aware promotion, client join/cancel UX, and admin/teacher visibility; no manual waitlist controls are exposed.
-  - Confirmed: gift-card wallet financial foundation is modeled and service-backed; Store customer flows remain inactive.
+  - Confirmed: Store customer flows are active as part of the canonical runtime: Product + Price catalog browsing, gift-card purchase, gift-card redemption, merchandise checkout, and purchase history are service-backed and covered by Store release validation.
   - Evidence status: Confirmed/Inferred/Missing based on `src` usage.
 
 ## 3. Roles and access model

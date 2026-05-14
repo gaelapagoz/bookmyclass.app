@@ -32,9 +32,9 @@ import {
   captureGiftCardRedemption,
   reserveGiftCardValue,
 } from "@/lib/gift-cards/gift-card-wallet-service";
-import { issueGiftCardCodesForOrder } from "@/lib/gift-cards/gift-card-code-service";
 import { GIFT_CARD_CURRENCY_CODE } from "@/lib/gift-cards/gift-card-types";
 import { GiftCardError, giftCardErrorCodes } from "@/lib/gift-cards/gift-card-errors";
+import { fulfillPaidCartOrder } from "@/lib/fulfillment/order-fulfillment-service";
 
 const GIFT_CARD_CHECKOUT_RATE_LIMIT = {
   maxAttempts: 10,
@@ -1446,60 +1446,11 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       });
     });
 
-    const storeOrderItems = await prisma.orderItem.findMany({
-      where: { orderId: orderPayment.orderId },
-      select: {
-        id: true,
-        lineTotalAmountMinor: true,
-        productNameSnapshot: true,
-        quantity: true,
-        currencyCode: true,
-        product: { select: { productType: true } },
-        price: { select: { unitAmountMinor: true } },
-      },
+    await fulfillPaidCartOrder({
+      orderId: orderPayment.orderId,
+      clientId: input.userId,
+      giftCardPaymentId: orderPayment.giftCardPaymentId ?? undefined,
     });
-
-    const purchasedGiftCardItems = storeOrderItems
-      .filter((item) => item.product.productType === ProductType.GIFT_CARD)
-      .map((item) => ({ orderItemId: item.id, amountMinor: item.lineTotalAmountMinor }));
-
-    if (purchasedGiftCardItems.length > 0) {
-      await issueGiftCardCodesForOrder({
-        orderId: orderPayment.orderId,
-        clientId: input.userId,
-        paymentId: orderPayment.giftCardPaymentId ?? undefined,
-        items: purchasedGiftCardItems,
-      });
-    }
-
-    const merchandiseItems = storeOrderItems.filter(
-      (item) => item.product.productType === ProductType.MERCHANDISE,
-    );
-
-    if (merchandiseItems.length > 0) {
-      try {
-        const { sendStorePurchaseConfirmationEmail } = await import("@/lib/email/store-email");
-        const purchaser = await prisma.user.findUnique({
-          where: { id: input.userId },
-          select: { name: true, email: true },
-        });
-        if (purchaser?.email) {
-          await sendStorePurchaseConfirmationEmail({
-            to: purchaser.email,
-            purchaserName: purchaser.name,
-            orderId: orderPayment.orderId,
-            items: merchandiseItems.map((item) => ({
-              name: item.productNameSnapshot,
-              quantity: item.quantity,
-              unitAmountMinor: item.price.unitAmountMinor,
-              currencyCode: item.currencyCode,
-            })),
-          });
-        }
-      } catch (emailError) {
-        console.error("[cart-checkout] merchandise confirmation email failed", emailError instanceof Error ? emailError.message : String(emailError));
-      }
-    }
 
     const completedResponse = createCompletedResponse({
       key: input.idempotencyKey,

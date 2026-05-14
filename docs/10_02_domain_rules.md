@@ -58,7 +58,7 @@ These rules guide the Prisma schema design and must remain consistent across the
 
 Removed legacy entitlement-backed types: `INTRO_OFFER`, `WORKSHOP_PASS`.
 Gift cards are wallet-backed and must not create `ClientEntitlement` gift value.
-Store customer flows remain inactive until the later Store slices enable them.
+Store customer flows are active in the current runtime and are not gated by Store rollout feature flags.
 Merchandise is pickup-only in Store v1; customer-facing Store read models must carry `Pickup at studio.` wording.
 Store catalog defaults are Product + Price records only: gift-card defaults are EUR 25, EUR 50, and EUR 100, plus at least three merchandise products.
 

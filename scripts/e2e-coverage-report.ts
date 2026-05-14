@@ -28,6 +28,7 @@ type CoverageTag = {
 const ROOT = process.cwd();
 const MATRIX_PATH = path.resolve(ROOT, "qa", "e2e-coverage-matrix.json");
 const E2E_DIR = path.resolve(ROOT, "test", "e2e");
+const PACKAGE_PATH = path.resolve(ROOT, "package.json");
 
 function pct(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
@@ -114,6 +115,23 @@ async function main(): Promise<void> {
     console.error(`Malformed matrix structure: ${path.relative(ROOT, MATRIX_PATH)}`);
     process.exit(1);
   }
+
+  let packageRaw: string;
+  try {
+    packageRaw = await fs.readFile(PACKAGE_PATH, "utf8");
+  } catch {
+    console.error(`Missing required file: ${path.relative(ROOT, PACKAGE_PATH)}`);
+    process.exit(1);
+  }
+
+  const packageJson = JSON.parse(packageRaw) as { scripts?: Record<string, string> };
+  const canonicalE2E = packageJson.scripts?.["test:e2e"] ?? "";
+  const storeSubsetE2E = packageJson.scripts?.["test:e2e:store"] ?? "";
+  const canonicalRunsFullPlaywright =
+    canonicalE2E.includes("npm run verify:e2e-config") &&
+    canonicalE2E.includes("playwright test") &&
+    !canonicalE2E.includes("--grep");
+  const storeSubsetIsConvenienceOnly = storeSubsetE2E === "playwright test --grep @store";
 
   let specFiles: string[] = [];
   try {
@@ -225,14 +243,30 @@ async function main(): Promise<void> {
   const storeArea = byArea.find((a) => a.key === "store");
   const storeFlowsExecuted = (storeArea?.coverage ?? 0) > 0;
 
-  console.log(`Store flows executed: ${storeFlowsExecuted ? "yes" : "NO — zero store coverage"}`);
+  console.log(`Store coverage tagged in canonical suite: ${storeFlowsExecuted ? "yes" : "NO - zero store coverage"}`);
+  console.log(`Canonical E2E command runs full suite: ${canonicalRunsFullPlaywright ? "yes" : "NO"}`);
+  console.log(`Store subset command is convenience-only: ${storeSubsetIsConvenienceOnly ? "yes" : "NO"}`);
   console.log("");
 
   if (!storeFlowsExecuted) {
     console.error("[e2e-coverage] FAIL: store area has 0% coverage. Store E2E flows are mandatory.");
   }
 
-  if (unknownRefs.length > 0 || malformed.length > 0 || !storeFlowsExecuted) {
+  if (!canonicalRunsFullPlaywright) {
+    console.error("[e2e-coverage] FAIL: npm run test:e2e must run verify:e2e-config and the full Playwright suite without --grep.");
+  }
+
+  if (!storeSubsetIsConvenienceOnly) {
+    console.error("[e2e-coverage] FAIL: npm run test:e2e:store must remain a local @store subset only.");
+  }
+
+  if (
+    unknownRefs.length > 0 ||
+    malformed.length > 0 ||
+    !storeFlowsExecuted ||
+    !canonicalRunsFullPlaywright ||
+    !storeSubsetIsConvenienceOnly
+  ) {
     process.exit(1);
   }
 }

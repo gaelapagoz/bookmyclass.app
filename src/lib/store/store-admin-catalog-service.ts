@@ -7,6 +7,7 @@ import {
   STORE_MAX_GIFT_CARD_ORDER_TOTAL_MINOR,
   STORE_PICKUP_WORDING,
 } from "@/lib/store/store-constants";
+import type { MediaAssetReadModel } from "@/lib/media/product-media-service";
 import { isStorePriceCheckoutReady } from "@/lib/store/store-catalog";
 import { attemptStorePriceSyncFromEnv } from "@/lib/store/store-stripe-sync-service";
 
@@ -89,6 +90,8 @@ type AdminStorePriceRow = {
   isArchived: boolean;
 };
 
+type AdminStoreImageAsset = Pick<MediaAssetReadModel, "id" | "path" | "mimeType" | "sizeBytes" | "originalFilename">;
+
 export type AdminStoreMerchandiseRow = {
   id: string;
   name: string;
@@ -98,6 +101,7 @@ export type AdminStoreMerchandiseRow = {
   isActive: boolean;
   isArchived: boolean;
   sortOrder: number;
+  imageAsset: AdminStoreImageAsset | null;
   primaryPrice: AdminStorePriceRow | null;
   isCheckoutReady: boolean;
 };
@@ -111,9 +115,18 @@ export type AdminStoreGiftCardRow = {
   isActive: boolean;
   isArchived: boolean;
   sortOrder: number;
+  imageAsset: AdminStoreImageAsset | null;
   activePrice: AdminStorePriceRow | null;
   isCheckoutReady: boolean;
 };
+
+const imageAssetSelect = {
+  id: true,
+  path: true,
+  mimeType: true,
+  sizeBytes: true,
+  originalFilename: true,
+} as const;
 
 // ---------------------------------------------------------------------------
 // Merchandise — list
@@ -132,6 +145,7 @@ export async function listAdminStoreMerchandise(): Promise<AdminStoreMerchandise
       isActive: true,
       isArchived: true,
       sortOrder: true,
+      imageAsset: { select: imageAssetSelect },
       prices: {
         where: { isActive: true, isArchived: false },
         orderBy: { createdAt: "desc" },
@@ -166,6 +180,7 @@ export async function listAdminStoreMerchandise(): Promise<AdminStoreMerchandise
       isActive: p.isActive,
       isArchived: p.isArchived,
       sortOrder: p.sortOrder,
+      imageAsset: p.imageAsset as AdminStoreImageAsset | null,
       primaryPrice: price,
       isCheckoutReady: price !== null && isStorePriceCheckoutReady({ productType: p.productType, productIsActive: p.isActive, productIsArchived: p.isArchived, price }),
     };
@@ -356,6 +371,7 @@ export async function getAdminStoreMerchandiseById(
       isActive: true,
       isArchived: true,
       sortOrder: true,
+      imageAsset: { select: imageAssetSelect },
       prices: {
         where: { isActive: true, isArchived: false },
         orderBy: { createdAt: "desc" },
@@ -391,6 +407,7 @@ export async function getAdminStoreMerchandiseById(
     isActive: product.isActive,
     isArchived: product.isArchived,
     sortOrder: product.sortOrder,
+    imageAsset: product.imageAsset as AdminStoreImageAsset | null,
     primaryPrice: price,
     isCheckoutReady: price !== null && isStorePriceCheckoutReady({ productType: product.productType, productIsActive: product.isActive, productIsArchived: product.isArchived, price }),
   };
@@ -413,6 +430,7 @@ export async function listAdminStoreGiftCardProducts(): Promise<AdminStoreGiftCa
       isActive: true,
       isArchived: true,
       sortOrder: true,
+      imageAsset: { select: imageAssetSelect },
       prices: {
         where: { isActive: true, isArchived: false },
         orderBy: { createdAt: "desc" },
@@ -447,6 +465,7 @@ export async function listAdminStoreGiftCardProducts(): Promise<AdminStoreGiftCa
       isActive: p.isActive,
       isArchived: p.isArchived,
       sortOrder: p.sortOrder,
+      imageAsset: p.imageAsset as AdminStoreImageAsset | null,
       activePrice: price,
       isCheckoutReady: price !== null && isStorePriceCheckoutReady({ productType: p.productType, productIsActive: p.isActive, productIsArchived: p.isArchived, price }),
     };
@@ -537,6 +556,7 @@ export async function getAdminStoreGiftCardById(
       isActive: true,
       isArchived: true,
       sortOrder: true,
+      imageAsset: { select: imageAssetSelect },
       prices: {
         where: { isActive: true, isArchived: false },
         orderBy: { createdAt: "desc" },
@@ -572,6 +592,7 @@ export async function getAdminStoreGiftCardById(
     isActive: product.isActive,
     isArchived: product.isArchived,
     sortOrder: product.sortOrder,
+    imageAsset: product.imageAsset as AdminStoreImageAsset | null,
     activePrice: price,
     isCheckoutReady: price !== null && isStorePriceCheckoutReady({ productType: product.productType, productIsActive: product.isActive, productIsArchived: product.isArchived, price }),
   };
@@ -725,6 +746,25 @@ export async function archiveAdminStoreMerchandise(productId: string): Promise<v
       data: { isActive: false },
     }),
   ]);
+}
+
+export async function setAdminStoreProductActiveState(
+  productId: string,
+  isActive: boolean,
+): Promise<void> {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { productType: true },
+  });
+  if (!product || (product.productType !== ProductType.MERCHANDISE && product.productType !== ProductType.GIFT_CARD)) {
+    throw new Error("PRODUCT_NOT_FOUND");
+  }
+
+  await prisma.product.update({
+    where: { id: productId },
+    data: { isActive },
+    select: { id: true },
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -18,6 +18,7 @@ Required values:
 - `STRIPE_WEBHOOK_SECRET`
 - `E2E_TEST_MODE=1`
 - `E2E_TEST_SECRET`
+- all `STRIPE_PRICE_ID_STORE_*` values from `.env.e2e.example`
 
 Optional in deterministic e2e mode (`E2E_TEST_MODE=1`):
 
@@ -28,6 +29,7 @@ Notes:
 
 - In e2e mode, email delivery is provider-bypassed deterministically in the centralized email integration layer.
 - Production still requires valid Resend delivery configuration and sender domain policy.
+- Store and Gift Card flows are part of the canonical E2E runtime and are not gated by Store rollout feature flags.
 
 ## E2E DB Lifecycle Commands
 
@@ -40,10 +42,15 @@ Notes:
 
 - `npm run qa:e2e:coverage`: validate matrix coverage tags before running the expensive browser suite
 - `npm run test:e2e`
+- `npm run test:e2e:store`: local Store-only subset convenience command
 
 `qa:e2e:coverage` scans `test/e2e/**/*.spec.ts` for `@covers` and `@covers-partial`
 tags and validates them against `qa/e2e-coverage-matrix.json`. Unknown or malformed
 tags fail the command.
+
+Store coverage is release-valid only when the canonical `npm run test:e2e` suite
+has run successfully. The Store-only subset is useful during development but is
+not a substitute for full E2E evidence.
 
 ## Test-Only Helpers
 

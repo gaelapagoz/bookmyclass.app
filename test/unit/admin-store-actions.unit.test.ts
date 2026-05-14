@@ -17,6 +17,10 @@ const mocks = vi.hoisted(() => ({
   updateAdminStoreGiftCardProduct: vi.fn(),
   getAdminStoreMerchandiseById: vi.fn(),
   getAdminStoreGiftCardById: vi.fn(),
+  setAdminStoreProductActiveState: vi.fn(),
+  uploadStoreProductImage: vi.fn(),
+  unlinkStoreProductImage: vi.fn(),
+  validateProductImageUpload: vi.fn(),
   attemptStorePriceSyncFromEnv: vi.fn(),
 }));
 
@@ -41,10 +45,17 @@ vi.mock("@/lib/store/store-admin-catalog-service", () => ({
   updateAdminStoreGiftCardProduct: mocks.updateAdminStoreGiftCardProduct,
   getAdminStoreMerchandiseById: mocks.getAdminStoreMerchandiseById,
   getAdminStoreGiftCardById: mocks.getAdminStoreGiftCardById,
+  setAdminStoreProductActiveState: mocks.setAdminStoreProductActiveState,
 }));
 
 vi.mock("@/lib/store/store-stripe-sync-service", () => ({
   attemptStorePriceSyncFromEnv: mocks.attemptStorePriceSyncFromEnv,
+}));
+
+vi.mock("@/lib/media/product-media-service", () => ({
+  uploadStoreProductImage: mocks.uploadStoreProductImage,
+  unlinkStoreProductImage: mocks.unlinkStoreProductImage,
+  validateProductImageUpload: mocks.validateProductImageUpload,
 }));
 
 import {
@@ -84,9 +95,14 @@ describe("admin store actions", () => {
     mocks.updateAdminStoreGiftCardProduct.mockReset();
     mocks.getAdminStoreMerchandiseById.mockReset();
     mocks.getAdminStoreGiftCardById.mockReset();
+    mocks.setAdminStoreProductActiveState.mockReset();
+    mocks.uploadStoreProductImage.mockReset();
+    mocks.unlinkStoreProductImage.mockReset();
+    mocks.validateProductImageUpload.mockReset();
     mocks.attemptStorePriceSyncFromEnv.mockReset();
     mocks.requireAdminSession.mockResolvedValue({ user: { id: "admin-1", role: "ADMIN" } });
     mocks.assertSameOriginServerAction.mockResolvedValue(undefined);
+    mocks.validateProductImageUpload.mockResolvedValue(null);
   });
 
   it("keeps merchandise create flow and returns to unified Store", async () => {
@@ -97,6 +113,43 @@ describe("admin store actions", () => {
     expect(mocks.createAdminStoreMerchandise).toHaveBeenCalledWith(
       expect.objectContaining({ name: "Store Item", unitAmountMinor: 2500, isActive: true }),
     );
+  });
+
+  it("uploads merchandise image after product creation", async () => {
+    const image = new File([new Uint8Array([0x89])], "mat.png", { type: "image/png" });
+    const form = makeForm(baseForm);
+    form.set("image", image);
+    mocks.createAdminStoreMerchandise.mockResolvedValue({ id: "merch-1" });
+
+    await expect(createStoreMerchandiseAction(form)).rejects.toThrow("NEXT_REDIRECT:/admin/store");
+
+    expect(mocks.validateProductImageUpload).toHaveBeenCalledWith(image);
+    expect(mocks.uploadStoreProductImage).toHaveBeenCalledWith({
+      productId: "merch-1",
+      uploadedById: "admin-1",
+      file: image,
+    });
+    expect(mocks.createAdminStoreMerchandise).toHaveBeenCalledWith(
+      expect.objectContaining({ isActive: false }),
+    );
+    expect(mocks.setAdminStoreProductActiveState).toHaveBeenCalledWith("merch-1", true);
+  });
+
+  it("leaves created merchandise inactive when image upload fails", async () => {
+    const image = new File([new Uint8Array([0x89])], "mat.png", { type: "image/png" });
+    const form = makeForm(baseForm);
+    form.set("image", image);
+    mocks.createAdminStoreMerchandise.mockResolvedValue({ id: "merch-1" });
+    mocks.uploadStoreProductImage.mockRejectedValue(new Error("IMAGE_WRITE_FAILED"));
+
+    await expect(createStoreMerchandiseAction(form)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store/merchandise/new",
+    );
+
+    expect(mocks.createAdminStoreMerchandise).toHaveBeenCalledWith(
+      expect.objectContaining({ isActive: false }),
+    );
+    expect(mocks.setAdminStoreProductActiveState).not.toHaveBeenCalled();
   });
 
   it("keeps merchandise edit flow and returns to unified Store", async () => {
@@ -132,6 +185,58 @@ describe("admin store actions", () => {
     expect(mocks.updateAdminStoreMerchandise).toHaveBeenCalledOnce();
   });
 
+  it("replaces merchandise image on edit", async () => {
+    const image = new File([new Uint8Array([0xff])], "mat.jpg", { type: "image/jpeg" });
+    const form = makeForm(baseForm);
+    form.set("image", image);
+    mocks.updateAdminStoreMerchandise.mockResolvedValue(undefined);
+
+    await expect(updateStoreMerchandiseAction("merch-1", form)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store",
+    );
+
+    expect(mocks.uploadStoreProductImage).toHaveBeenCalledWith({
+      productId: "merch-1",
+      uploadedById: "admin-1",
+      file: image,
+    });
+    expect(mocks.updateAdminStoreMerchandise).toHaveBeenCalledWith(
+      "merch-1",
+      expect.objectContaining({ isActive: false }),
+    );
+    expect(mocks.setAdminStoreProductActiveState).toHaveBeenCalledWith("merch-1", true);
+  });
+
+  it("unlinks merchandise image on edit when requested", async () => {
+    const form = makeForm({ ...baseForm, removeImage: "on" });
+    mocks.updateAdminStoreMerchandise.mockResolvedValue(undefined);
+
+    await expect(updateStoreMerchandiseAction("merch-1", form)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store",
+    );
+
+    expect(mocks.unlinkStoreProductImage).toHaveBeenCalledWith("merch-1");
+    expect(mocks.uploadStoreProductImage).not.toHaveBeenCalled();
+  });
+
+  it("leaves edited merchandise inactive when image upload fails", async () => {
+    const image = new File([new Uint8Array([0xff])], "mat.jpg", { type: "image/jpeg" });
+    const form = makeForm(baseForm);
+    form.set("image", image);
+    mocks.updateAdminStoreMerchandise.mockResolvedValue(undefined);
+    mocks.uploadStoreProductImage.mockRejectedValue(new Error("IMAGE_WRITE_FAILED"));
+
+    await expect(updateStoreMerchandiseAction("merch-1", form)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store/merchandise/merch-1/edit",
+    );
+
+    expect(mocks.updateAdminStoreMerchandise).toHaveBeenCalledWith(
+      "merch-1",
+      expect.objectContaining({ isActive: false }),
+    );
+    expect(mocks.setAdminStoreProductActiveState).not.toHaveBeenCalled();
+  });
+
   it("keeps gift-card create flow and returns to unified Store", async () => {
     mocks.createAdminStoreGiftCardProduct.mockResolvedValue({ id: "gift-1" });
 
@@ -140,6 +245,25 @@ describe("admin store actions", () => {
     expect(mocks.createAdminStoreGiftCardProduct).toHaveBeenCalledWith(
       expect.objectContaining({ name: "Store Item", unitAmountMinor: 2500, isActive: true }),
     );
+  });
+
+  it("uploads gift-card image after product creation", async () => {
+    const image = new File([new Uint8Array([0x89])], "gift.png", { type: "image/png" });
+    const form = makeForm(baseForm);
+    form.set("image", image);
+    mocks.createAdminStoreGiftCardProduct.mockResolvedValue({ id: "gift-1" });
+
+    await expect(createStoreGiftCardAction(form)).rejects.toThrow("NEXT_REDIRECT:/admin/store");
+
+    expect(mocks.uploadStoreProductImage).toHaveBeenCalledWith({
+      productId: "gift-1",
+      uploadedById: "admin-1",
+      file: image,
+    });
+    expect(mocks.createAdminStoreGiftCardProduct).toHaveBeenCalledWith(
+      expect.objectContaining({ isActive: false }),
+    );
+    expect(mocks.setAdminStoreProductActiveState).toHaveBeenCalledWith("gift-1", true);
   });
 
   it("keeps gift-card edit flow and returns to unified Store", async () => {
@@ -153,6 +277,80 @@ describe("admin store actions", () => {
       "gift-1",
       expect.objectContaining({ name: "Store Item", unitAmountMinor: 2500, isArchived: false }),
     );
+  });
+
+  it("replaces gift-card image on edit", async () => {
+    const image = new File([new Uint8Array([0xff])], "gift.jpg", { type: "image/jpeg" });
+    const form = makeForm(baseForm);
+    form.set("image", image);
+    mocks.updateAdminStoreGiftCardProduct.mockResolvedValue(undefined);
+
+    await expect(updateStoreGiftCardAction("gift-1", form)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store",
+    );
+
+    expect(mocks.updateAdminStoreGiftCardProduct).toHaveBeenCalledWith(
+      "gift-1",
+      expect.objectContaining({ isActive: false }),
+    );
+    expect(mocks.uploadStoreProductImage).toHaveBeenCalledWith({
+      productId: "gift-1",
+      uploadedById: "admin-1",
+      file: image,
+    });
+    expect(mocks.setAdminStoreProductActiveState).toHaveBeenCalledWith("gift-1", true);
+  });
+
+  it("unlinks gift-card image on edit when requested", async () => {
+    const form = makeForm({ ...baseForm, removeImage: "on" });
+    mocks.updateAdminStoreGiftCardProduct.mockResolvedValue(undefined);
+
+    await expect(updateStoreGiftCardAction("gift-1", form)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store",
+    );
+
+    expect(mocks.unlinkStoreProductImage).toHaveBeenCalledWith("gift-1");
+    expect(mocks.uploadStoreProductImage).not.toHaveBeenCalled();
+  });
+
+  it("leaves edited gift card inactive when image upload fails", async () => {
+    const image = new File([new Uint8Array([0xff])], "gift.jpg", { type: "image/jpeg" });
+    const form = makeForm(baseForm);
+    form.set("image", image);
+    mocks.updateAdminStoreGiftCardProduct.mockResolvedValue(undefined);
+    mocks.uploadStoreProductImage.mockRejectedValue(new Error("IMAGE_WRITE_FAILED"));
+
+    await expect(updateStoreGiftCardAction("gift-1", form)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store/gift-cards/gift-1/edit",
+    );
+
+    expect(mocks.updateAdminStoreGiftCardProduct).toHaveBeenCalledWith(
+      "gift-1",
+      expect.objectContaining({ isActive: false }),
+    );
+    expect(mocks.setAdminStoreProductActiveState).not.toHaveBeenCalled();
+  });
+
+  it("blocks image mutation when admin authentication fails", async () => {
+    const form = makeForm(baseForm);
+    form.set("image", new File([new Uint8Array([0x89])], "gift.png", { type: "image/png" }));
+    mocks.requireAdminSession.mockRejectedValue(new Error("UNAUTHORIZED"));
+
+    await expect(createStoreGiftCardAction(form)).rejects.toThrow("UNAUTHORIZED");
+
+    expect(mocks.createAdminStoreGiftCardProduct).not.toHaveBeenCalled();
+    expect(mocks.uploadStoreProductImage).not.toHaveBeenCalled();
+  });
+
+  it("blocks image mutation when non-admin access is rejected", async () => {
+    const form = makeForm(baseForm);
+    form.set("image", new File([new Uint8Array([0x89])], "gift.png", { type: "image/png" }));
+    mocks.requireAdminSession.mockRejectedValue(new Error("FORBIDDEN_NON_ADMIN"));
+
+    await expect(updateStoreGiftCardAction("gift-1", form)).rejects.toThrow("FORBIDDEN_NON_ADMIN");
+
+    expect(mocks.updateAdminStoreGiftCardProduct).not.toHaveBeenCalled();
+    expect(mocks.uploadStoreProductImage).not.toHaveBeenCalled();
   });
 });
 

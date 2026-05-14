@@ -6,6 +6,8 @@ Define operator-run manual release validation for active, production-critical an
 ## Scope
 This campaign validates only active runtime capabilities confirmed by baseline docs.
 Store run evidence in `test-results/manual_test_<YYYY-MM-DD>.md`.
+Store production readiness evidence must also be recorded in
+`test-results/manual_test_<YYYY-MM-DD>_store_production_readiness.md`.
 
 Included personas:
 - Client
@@ -57,6 +59,14 @@ Resolution used for this campaign:
 - Active collective session in check-in window and one outside check-in window.
 - Active private session (for exclusion check in self-check-in/kiosk path).
 - At least one active Product + Price for `/subscription` checkout.
+- Active Store Gift Card products for EUR 25, EUR 50, and EUR 100.
+- At least three active Store Merchandise products with checkout-ready prices.
+- Store products/prices are Product + Price rows with `StripeSyncStatus.SYNCED`.
+- Gift-card email delivery/outbox evidence is available to the operator.
+- At least one issued, unredeemed gift-card code for redemption checks.
+- At least one redeemed gift-card wallet ledger entry for wallet history checks.
+- Two verified client accounts are available for IDOR and duplicate redemption checks.
+- Admin Store catalog access is available for merchandise, gift cards, and images.
 - At least one full collective session with waitlist capacity available.
 - At least one full collective session with waitlist already full.
 
@@ -66,23 +76,31 @@ Resolution used for this campaign:
 3. Client booking
 4. Client waitlist
 5. Client subscription/membership
-6. Client dashboard/profile/security
-7. Admin auth/access
-8. Admin catalog/session/user operations
-9. Teacher/kiosk/attendance
-10. Learning
-11. Inbox/contact
-12. Marketing
-13. Agenda/public document
-14. Operational confidence checks
+6. Store checkout and gift-card lifecycle
+7. Store dashboard and history
+8. Store admin/catalog/media
+9. Store security
+10. Client dashboard/profile/security
+11. Admin auth/access
+12. Admin catalog/session/user operations
+13. Teacher/kiosk/attendance
+14. Learning
+15. Inbox/contact
+16. Marketing
+17. Agenda/public document
+18. Store production readiness
+19. Operational confidence checks
 
 ## Release-Blocking Subset
-`SMK-001`, `SMK-002`, `AUT-001`, `AUT-002`, `AUT-003`, `BKG-002`, `BKG-003`, `BKG-004`, `BKG-005`, `BKG-006`, `BKG-007`, `WTL-001`, `WTL-002`, `WTL-003`, `SUB-001`, `SUB-002`, `DBO-001`, `ADM-001`, `ADM-002`, `AOP-001`, `AOP-002`, `TCH-001`, `TCH-002`, `TCH-003`, `LRN-001`, `INB-001`, `AGD-001`, `OPC-001`
+`SMK-001`, `SMK-002`, `AUT-001`, `AUT-002`, `AUT-003`, `BKG-002`, `BKG-003`, `BKG-004`, `BKG-005`, `BKG-006`, `BKG-007`, `WTL-001`, `WTL-002`, `WTL-003`, `SUB-001`, `SUB-002`, `STR-001`, `STR-002`, `STR-003`, `STR-004`, `STR-005`, `STR-006`, `STR-007`, `STR-008`, `STH-001`, `STH-002`, `STA-001`, `STA-002`, `STS-001`, `STS-002`, `STS-003`, `SPR-001`, `SPR-002`, `SPR-003`, `SPR-004`, `DBO-001`, `ADM-001`, `ADM-002`, `AOP-001`, `AOP-002`, `TCH-001`, `TCH-002`, `TCH-003`, `LRN-001`, `INB-001`, `AGD-001`, `OPC-001`
 
 ## Known Baseline Risks
 - Teacher workflow enforcement is a known risk area; execute teacher/kiosk tests with strict evidence capture and do not over-assume role gating behavior.
 - Server-side rules are authoritative; UI behavior that appears valid must still match backend enforcement outcomes.
 - Product + Price is the catalog source of truth; any mismatch between catalog display and checkout behavior is an S2.
+- Gift-card wallet balance is credited only after code redemption, never at purchase.
+- Plaintext gift-card codes must appear only in purchaser email/outbox evidence.
+- Store production signoff is invalid without the Store readiness evidence file.
 
 ## Manual Campaign
 
@@ -132,6 +150,44 @@ Resolution used for this campaign:
 | SUB-001 | Client | Critical | Yes | Subscription catalog uses Product + Price | Active checkout-enabled products/prices | Open `/subscription`; inspect available offerings | Displayed offerings are active Product + Price items (no plan-model drift) |
 | SUB-002 | Client | Critical | Yes | Subscription checkout success | Signed-in client and Stripe test data | Start checkout from `/subscription`; complete Stripe test checkout; open success page | Successful completion creates owned membership state visible in dashboard/membership |
 | SUB-003 | Client | Major | No | Billing portal access | Client has Stripe customer/subscription | Trigger billing portal action | Portal session opens successfully for eligible user |
+
+### Store Checkout and Gift-Card Lifecycle
+
+| Test ID | Persona | Priority | Release Blocking | Title | Preconditions | Steps | Expected Result |
+|---|---|---|---|---|---|---|---|
+| STR-001 | Client | Critical | Yes | Merchandise purchase via Stripe | Signed-in verified client; checkout-ready merchandise product; Stripe test/live mode per target | Open `/store`; add merchandise; complete Stripe checkout; return to `/store/success` | Order is paid, purchased cart line is cleared, merchandise purchase is visible, and pickup-at-studio wording is shown |
+| STR-002 | Client | Critical | Yes | Gift-card purchase via Stripe issues code | Signed-in verified client; checkout-ready gift-card price; email/outbox access | Buy gift card from `/store`; complete Stripe checkout; inspect success page and purchaser email/outbox | GiftCardCode is issued after payment, purchaser receives plaintext code and amount by email, and wallet is not credited at purchase |
+| STR-003 | Client | Critical | Yes | Gift-card full-wallet purchase if enabled | Client has available wallet balance; full-wallet Store checkout path available | Buy gift card using wallet-only payment; open `/store/success?orderId=...` | Order completes without Stripe redirect, cart line clears, code is issued, and no duplicate wallet credit occurs |
+| STR-004 | Client | Critical | Yes | Failed or expired Store checkout retains cart | Signed-in client with Store cart item; test failed/expired checkout path available | Start Store checkout; fail or expire payment; return/cancel | Order is not completed, cart item remains, and no GiftCardCode is issued |
+| STR-005 | Client | Critical | Yes | Purchaser can redeem own gift-card code | Purchaser has issued unredeemed code | Open dashboard wallet; redeem code | Wallet balance increases only after redemption, ledger entry is recorded, and code becomes redeemed |
+| STR-006 | Client | Critical | Yes | Second client cannot redeem already redeemed code | Same code from `STR-005`; second verified client | Sign in as second client; attempt redeeming same code | Duplicate redemption is rejected with a safe generic error and no wallet balance change |
+| STR-007 | Client | Critical | Yes | Invalid and voided code errors do not reveal status | Verified client; invalid code and voided/expired code available if applicable | Attempt redemption with invalid and voided/expired codes | Client receives the same safe generic error without existence/status leakage |
+| STR-008 | Client | Critical | Yes | Gift-card purchase email code secrecy | Completed gift-card purchase; access to logs/outbox/Sentry evidence | Inspect purchaser email/outbox and operator-visible logs/errors for the flow | Plaintext code appears in purchaser delivery only; no plaintext code appears in logs, Sentry, or API responses |
+
+### Store Dashboard and History
+
+| Test ID | Persona | Priority | Release Blocking | Title | Preconditions | Steps | Expected Result |
+|---|---|---|---|---|---|---|---|
+| STH-001 | Client | Critical | Yes | Dashboard wallet reflects redeemed codes only | Client with issued unredeemed code and one redeemed code | Open dashboard wallet before and after redemption | Empty/unredeemed purchase does not credit wallet; redeemed code appears in balance and ledger history |
+| STH-002 | Client | Critical | Yes | Store purchases appear in order history | Client has merchandise and gift-card orders | Open `/dashboard/orders` or purchase history surface | Merchandise and gift-card purchases show date, item, quantity, total, payment status, and fulfillment note |
+| STH-003 | Client | Major | No | Store product images render in purchase history | Purchased product has uploaded image; another product has none | Open purchase history | Uploaded image displays where available; placeholder displays where absent; no broken image appears |
+
+### Store Admin, Catalog, and Media
+
+| Test ID | Persona | Priority | Release Blocking | Title | Preconditions | Steps | Expected Result |
+|---|---|---|---|---|---|---|---|
+| STA-001 | Admin | Critical | Yes | Admin creates Store product and sync readiness is visible | Admin session; Stripe catalog sync path available | Create merchandise and gift-card catalog entries; inspect admin Store list | Items remain Product + Price rows, readiness status is visible, and checkout exposure requires synced Stripe price |
+| STA-002 | Admin | Critical | Yes | Admin can edit merchandise price with history preserved | Existing merchandise product with historical order | Edit merchandise price in admin; inspect old order and new checkout price | New Price record or historical-safe update is used; old order retains original amount |
+| STA-003 | Admin | Major | No | Admin Store image workflow | Admin session; valid JPEG/PNG/WebP and invalid SVG/oversized files | Upload, preview, replace, remove product image for merchandise and gift card; attempt invalid uploads | Valid image operations work; invalid MIME/extension/size/path attempts are rejected server-side |
+
+### Store Security
+
+| Test ID | Persona | Priority | Release Blocking | Title | Preconditions | Steps | Expected Result |
+|---|---|---|---|---|---|---|---|
+| STS-001 | Client | Critical | Yes | Store order IDOR is blocked | Client A has Store order; Client B exists | Sign in as Client B; attempt Client A order/success/history URLs | Access is denied or not found; Client B cannot see Client A order data |
+| STS-002 | Client | Critical | Yes | Wallet IDOR is blocked | Client A has wallet activity; Client B exists | Sign in as Client B; attempt wallet/API access for Client A | Client B sees only own wallet; no other-client wallet data leaks |
+| STS-003 | Client | Critical | Yes | Redemption response hides purchaser identity and code hash | Valid code purchased by Client A; Client B redeems | Redeem as Client B; inspect UI/API response | Redeemer cannot see purchaser identity, order data, or `GiftCardCode.codeHash` |
+| STS-004 | Admin/Client | Major | No | Upload route authorization and validation | Non-admin user and admin user available | Attempt product image upload as anonymous/client/admin with unsafe file variants | Anonymous/client upload is rejected; admin valid upload succeeds; unsafe files are rejected |
 
 ### Client Dashboard/Profile/Security
 
@@ -193,6 +249,15 @@ Resolution used for this campaign:
 |---|---|---|---|---|---|---|---|
 | AGD-001 | Admin | Critical | Yes | Upload/switch public agenda document | Admin session and valid document file | Upload or switch agenda/public document in admin | New active document persists and becomes current |
 | AGD-002 | Client | Major | No | Public agenda document availability | Active public document exists | Open public agenda/document page | Active document is reachable and rendered/downloadable |
+
+### Store Production Readiness
+
+| Test ID | Persona | Priority | Release Blocking | Title | Preconditions | Steps | Expected Result |
+|---|---|---|---|---|---|---|---|
+| SPR-001 | Admin | Critical | Yes | Catalog sync and readiness evidence | Operator shell on target env; correct Stripe mode selected | Run `npm run stripe:catalog:sync -- --scope=all --dry-run`; if live launch approved run actual sync with explicit confirmation; run `npm run verify:catalog:production` | Dry-run result is recorded, actual sync result is recorded if run, and catalog readiness verifier passes |
+| SPR-002 | Admin | Critical | Yes | Canonical E2E suite includes Store | E2E env configured | Run `npm run verify:e2e-config`, `npm run test:e2e`, and `npm run qa:e2e:coverage` | Config verifier passes, full canonical E2E passes with Store flows included, and no critical Store flows are silently skipped |
+| SPR-003 | Admin | Critical | Yes | Gift-card maintenance route and schedule verified | Target app running; `CRON_SECRET`; maintenance enabled | Run `npm run verify:gift-card-maintenance`; configure scheduler for `GET /api/cron/gift-cards/maintenance` with bearer header; observe a successful run | Valid secret succeeds, invalid/missing secret rejects, schedule is configured, and last successful run is recorded |
+| SPR-004 | Admin | Critical | Yes | Store launch operator confirmations recorded | Store readiness evidence template exists | Fill `test-results/manual_test_<YYYY-MM-DD>_store_production_readiness.md` | Evidence includes live Stripe confirmation, no test Stripe IDs, maintenance verification/schedule status, and operator signoff |
 
 ### Operational Confidence Checks
 

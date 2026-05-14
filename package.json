@@ -31,6 +31,8 @@
     "db:verify:dashboard-seed": "tsx scripts/verify-dashboard-seed-db.ts",
     "db:verify:dashboard-trend-seed": "tsx scripts/verify-dashboard-trend-seed-db.ts",
     "verify:db:schema": "tsx scripts/verify-db-schema.ts",
+    "verify:catalog:production": "tsx scripts/verify-production-catalog-readiness.ts",
+    "verify:gift-card-maintenance": "tsx scripts/verify-gift-card-maintenance.ts",
     "ops:verify-production-readiness": "bash scripts/verify-production-readiness.sh",
     "db:seed:uat:k6": "UAT_K6_SEED=1 tsx scripts/seed-uat-k6.ts",
     "db:seed:dev": "dotenv -e .env.local -- cross-env BOOKMYCLASS_SEED_MODE=development prisma db seed",

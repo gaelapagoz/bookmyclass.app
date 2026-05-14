@@ -105,7 +105,10 @@
       "Bash(node -e \"const { PrismaClient } = require\\('@prisma/client'\\); const p = new PrismaClient\\(\\); console.log\\(typeof p.giftCardCode\\);\")",
       "Bash(node -e \"const c = require\\('@prisma/client'\\); console.log\\(Object.keys\\(c\\).filter\\(k => k.includes\\('GiftCard'\\)\\).join\\('\\\\n'\\)\\);\")",
       "Bash(Select-Object -First 20)",
-      "Bash(Remove-Item -Recurse -Force .next -ErrorAction SilentlyContinue)"
+      "Bash(Remove-Item -Recurse -Force .next -ErrorAction SilentlyContinue)",
+      "Bash(Get-ChildItem -Path c:\\\\Dev\\\\studio.saas.platform -Directory)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(grep -E \"\\\\.ts$\")"
     ],
     "additionalDirectories": [
       "c:\\Dev\\studio.saas.platform\\public\\images\\homesite",

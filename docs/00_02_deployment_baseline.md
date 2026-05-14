@@ -24,7 +24,7 @@ If a setup/runbook file conflicts with this file, treat this file as authoritati
 | Backup script path | `/usr/local/bin/bookmyclass-db-backup-run.sh` | Verified live | Confirmed in root crontab on production host. |
 | Healthcheck cron | `*/5 * * * * /usr/local/bin/bookmyclass-healthcheck.sh >> /var/log/bookmyclass-healthcheck.log 2>&1` | Confirmed from deployment docs | Root crontab. |
 | Backup cron | `30 2 * * * /usr/local/bin/bookmyclass-db-backup-run.sh >> /var/log/bookmyclass-db-backup.log 2>&1` | Verified live | Root crontab. |
-| App maintenance cron | `0 3 * * * curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://bookmyclass.app/api/cron/maintenance` runs webhook receipt cleanup + expired booking draft cleanup nightly at 03:00. | Needs operator confirmation | Route exists at `/api/cron/maintenance`; must be added to root crontab. The old `/api/cron/webhook-receipt-cleanup` route still exists as a standalone fallback. |
+| App maintenance cron | `*/5 * * * * cd /var/www/bookmyclass && set -a && . ./.env && set +a && curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://bookmyclass.app/api/cron/maintenance >> /var/log/bookmyclass-maintenance.log 2>&1` | Required | Runs webhook receipt cleanup, cart checkout idempotency cleanup, and expired booking draft cleanup. The old daily maintenance cron is insufficient for booking/cart cleanup. |
 | `MARKETING_TRACKING_SECRET` env var | Required in production — no fallback. Must be set before enabling campaign sends. | Required | Previously had a fallback; enforced at startup via `validateRuntimeEnv()` — missing value causes 503 at `/api/health` and blocks Stripe client init. |
 | Canonical auth secret env var | `AUTH_SECRET` | Confirmed from code/runtime | `NEXTAUTH_SECRET` appears only as fallback in one marketing helper. |
 | Canonical Stripe env vars | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Confirmed from code/runtime | Seed/test-only Stripe price IDs are separate from core runtime Stripe keys. |
@@ -36,6 +36,22 @@ If a setup/runbook file conflicts with this file, treat this file as authoritati
 - Verified at: `2026-04-18`
 - Verification method: `pm2 status/show, docker ps, crontab -l, nginx config audit, cloudflared systemd/log audit, runtime env audit, public endpoint probes`
 - Notes: Cloudflared remains remote-managed for tunnel ingress; public web routing source of truth is currently nginx behind Cloudflare proxied DNS rather than tunnel ingress rules.
+
+## Production Root Cron
+
+Production root cron should include these managed operational jobs:
+
+```cron
+*/5 * * * * cd /var/www/bookmyclass && set -a && . ./.env && set +a && curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://bookmyclass.app/api/cron/maintenance >> /var/log/bookmyclass-maintenance.log 2>&1
+30 2 * * * /usr/local/bin/bookmyclass-db-backup-run.sh >> /var/log/bookmyclass-db-backup.log 2>&1
+*/5 * * * * /usr/local/bin/bookmyclass-healthcheck.sh >> /var/log/bookmyclass-healthcheck.log 2>&1
+```
+
+- App maintenance must run every 5 minutes so expired booking drafts and cart checkout idempotency records are cleaned up promptly.
+- DB backup runs daily at 02:30 UTC.
+- Local app healthcheck runs every 5 minutes.
+- The previous daily `0 3 * * *` maintenance cron is insufficient for booking/cart cleanup and should be replaced.
+- Install and verify with `scripts/prod-install-cron.sh` and `scripts/prod-verify-cron.sh`; both scripts default to `/var/www/bookmyclass` and `https://bookmyclass.app` while allowing `APP_DIR` and `BASE_URL` overrides.
 
 ## Deployment Flow (Canonical)
 

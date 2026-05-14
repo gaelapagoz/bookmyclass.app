@@ -16,6 +16,7 @@ import {
   STORE_MAX_WALLET_BALANCE_MINOR,
   STORE_PICKUP_WORDING,
 } from "@/lib/store/store-constants";
+import type { MediaAssetReadModel } from "@/lib/media/product-media-service";
 export {
   STORE_CURRENCY_CODE,
   STORE_MAX_GIFT_CARD_ORDER_TOTAL_MINOR,
@@ -45,6 +46,7 @@ type StoreCatalogProduct = {
   slug: string;
   description: string | null;
   productType: ProductType;
+  imageAsset: Pick<MediaAssetReadModel, "id" | "path" | "mimeType" | "sizeBytes" | "originalFilename"> | null;
   prices: StoreCatalogPrice[];
 };
 
@@ -166,6 +168,15 @@ export async function listStoreCatalogReadModels(): Promise<StoreCatalogReadMode
       productType: true,
       isActive: true,
       isArchived: true,
+      imageAsset: {
+        select: {
+          id: true,
+          path: true,
+          mimeType: true,
+          sizeBytes: true,
+          originalFilename: true,
+        },
+      },
       prices: {
         orderBy: [{ unitAmountMinor: "asc" }, { name: "asc" }],
         select: {
@@ -205,6 +216,7 @@ export async function listStoreCatalogReadModels(): Promise<StoreCatalogReadMode
       slug: product.slug,
       description: product.description,
       productType: product.productType,
+      imageAsset: product.imageAsset,
       prices: product.prices,
       checkoutPrices,
       fulfillmentLabel,
