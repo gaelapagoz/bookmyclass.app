@@ -30,7 +30,7 @@ timestamp_utc="$(date -u +%Y%m%dT%H%M%SZ)"
 evidence_dir="${EVIDENCE_ROOT%/}/manual-cd-${timestamp_utc}-${TARGET_TAG}"
 mkdir -p "$evidence_dir"
 
-ssh_target="deploy-target"
+ssh_target="${SSH_TARGET:-deploy-target}"
 remote_run_id="uat-deploy-${timestamp_utc}-${TARGET_TAG//[^A-Za-z0-9_.-]/_}"
 remote_dir="/tmp/${remote_run_id}"
 remote_script="${remote_dir}/deploy.sh"

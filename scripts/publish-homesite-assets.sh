@@ -35,6 +35,24 @@ print_path_listing() {
   fi
 }
 
+print_destination_diagnostics() {
+  local label="$1"
+  local path="$2"
+  local parent
+
+  parent="$(dirname "$path")"
+  echo
+  echo "-- $label parent: $parent"
+  ls -la "$parent" || true
+  echo "-- $label path: $path"
+  ls -la "$path" || true
+  echo "-- $label directory test"
+  test -d "$path" && echo "test_d=pass" || echo "test_d=fail"
+  test -w "$path" && echo "test_w=pass" || echo "test_w=fail"
+  echo "-- $label find"
+  find "$path" -maxdepth 3 -print | sort | head -n 120 || true
+}
+
 print_failure_diagnostics() {
   local reason="${1:-unknown}"
 
@@ -89,11 +107,23 @@ touch "$HOMESITE_PUBLISH_DIR/.homesite-write-check" "$HOMESITE_IMAGE_DEST_DIR/.h
 rm -f "$HOMESITE_PUBLISH_DIR/.homesite-write-check" "$HOMESITE_IMAGE_DEST_DIR/.homesite-write-check"
 
 if command -v rsync >/dev/null 2>&1; then
-  # Make parent creation explicit before rsync to avoid receiver-side mkdir behavior.
-  mkdir -p "$HOMESITE_IMAGE_DEST_DIR"
+  log_step "pre-rsync homesite destination diagnostics"
+  echo "pwd=$(pwd)"
+  echo "whoami=$(id -un 2>/dev/null || whoami)"
+  mkdir -pv "$HOMESITE_PUBLISH_DIR" "$HOMESITE_IMAGE_DEST_DIR"
+  print_destination_diagnostics "homesite destination" "$HOMESITE_PUBLISH_DIR"
+  print_destination_diagnostics "homesite image destination" "$HOMESITE_IMAGE_DEST_DIR"
+
   [[ -d "$HOMESITE_IMAGE_DEST_DIR" ]] || fail "Homesite image destination directory missing before rsync: $HOMESITE_IMAGE_DEST_DIR"
   [[ -w "$HOMESITE_IMAGE_DEST_DIR" ]] || fail "Homesite image destination directory not writable before rsync: $HOMESITE_IMAGE_DEST_DIR"
   rsync -a --delete --include='*/' --include='*.html' --exclude='*' "$HOMESITE_SOURCE_DIR/" "$HOMESITE_PUBLISH_DIR/"
+
+  # The HTML rsync runs with --delete at the homesite root and can remove
+  # image-only destination directories before the image rsync starts.
+  mkdir -pv "$HOMESITE_IMAGE_DEST_DIR"
+  print_destination_diagnostics "homesite image destination after HTML rsync" "$HOMESITE_IMAGE_DEST_DIR"
+  [[ -d "$HOMESITE_IMAGE_DEST_DIR" ]] || fail "Homesite image destination directory missing after HTML rsync: $HOMESITE_IMAGE_DEST_DIR"
+  [[ -w "$HOMESITE_IMAGE_DEST_DIR" ]] || fail "Homesite image destination directory not writable after HTML rsync: $HOMESITE_IMAGE_DEST_DIR"
   rsync -a --delete "$HOMESITE_IMAGE_SOURCE_DIR/" "$HOMESITE_IMAGE_DEST_DIR/"
 else
   find "$HOMESITE_PUBLISH_DIR" -maxdepth 1 -type f -name '*.html' -delete
