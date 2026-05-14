@@ -51,6 +51,14 @@ Rule:
 The UAT release workflow is available for operator-run validation and should be
 triggered only when the operator approves UAT validation for the target tag.
 
+Demo-stage topology note:
+- `UAT_*` GitHub Actions secrets may intentionally point to the same
+  production/demo server while PROD is being used as UAT for demonstrations.
+- This configuration is supported and must produce a workflow warning, not a
+  failure.
+- UAT workflow steps should still consume the `UAT_*` secret names; do not wire
+  UAT jobs directly to `PROD_*` secrets.
+
 For `v*` tag pushes, workflow `.github/workflows/uat-release.yml` runs:
 1. `regression` (pre-deploy build/test/validation)
 2. `e2e` (pre-deploy CI e2e)
@@ -88,6 +96,8 @@ This preserves immutable tag deployment because deploy and smoke jobs both use `
 
 - `UAT_APP_DIR` (defaults to script value when unset)
 - `UAT_PM2_APP_NAME` (defaults to script value when unset)
+- `PROD_DEMO_SSH_HOST` (optional warning-only comparison value for demo-stage
+  UAT deployments; defaults to `ssh-prod.bookmyclass.app`)
 
 ### SSH safety model
 
@@ -160,6 +170,15 @@ Notes:
 - PM2 app name: bookmyclass-app
 - Do not skip migrate deploy
 - Do not deploy from main
+- Homesite HTML and screenshot assets are published automatically before the app
+  build by `scripts/publish-homesite-assets.sh`.
+- The default homesite document root is `/var/www/bookmyclass-homesite`.
+- The deploy script creates `/var/www/bookmyclass-homesite/images/homesite`
+  automatically and copies committed homesite images from
+  `public/images/homesite`; no manual symlink or manual `mkdir` is required.
+- Store product upload media is separate: uploaded product images must resolve
+  from persistent `/uploads/...` storage backed by `UPLOADS_DIR`, not from the
+  release-local `public/` folder or `.next`.
 
 ---
 
@@ -265,6 +284,9 @@ Validate:
 - sign-in works
 - booking flow loads
 - admin access works
+- static homesite screenshot images return 200 from a real image URL such as
+  `https://bookmyclass.app/images/homesite/<image>.jpg`; a 403 from the
+  directory URL alone is not a failure because directory listing may be disabled
 
 ---
 

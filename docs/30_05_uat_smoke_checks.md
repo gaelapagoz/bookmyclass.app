@@ -62,7 +62,11 @@ Expected order:
 
 Assumed SSH secrets for deploy step:
 - UAT secrets remain UAT-only.
-- UAT workflows must not use PROD secrets.
+- During demo-stage operation, UAT secrets may intentionally contain the same
+  host/app values as the production/demo server. This is allowed only when the
+  values are still provided through the `UAT_*` secret names and the workflow
+  emits a warning that UAT is targeting the prod/demo topology.
+- Do not reference `PROD_*` secrets directly from UAT workflow steps.
 
 Example post-deploy smoke step:
 

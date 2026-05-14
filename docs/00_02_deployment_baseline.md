@@ -17,6 +17,7 @@ If a setup/runbook file conflicts with this file, treat this file as authoritati
 | Database user naming convention | `bookmyclass-app-user` | Verified live | Confirmed from production runtime `DATABASE_URL`. |
 | App port | `3000` | Confirmed from deployment docs | Nginx proxy target uses `127.0.0.1:3000`. |
 | Nginx/public routing facts | `bookmyclass.app` + `www.bookmyclass.app` serve static homesite; `bookmyclass.app/api/contact-form` proxies to `127.0.0.1:3000/api/contact-form`; `demo.bookmyclass.app` proxies to `127.0.0.1:3000`; `/uploads/` must alias persistent `UPLOADS_DIR` for Store product images | Verified live + required media update | TLS served via certbot cert for `bookmyclass.app`. |
+| Homesite static asset deployment | Default target is `/var/www/bookmyclass-homesite`; deploy scripts must create `/var/www/bookmyclass-homesite/images/homesite`, copy HTML from `homesite/`, copy screenshot assets from `public/images/homesite/`, and verify referenced images exist | Required | No manual symlink or manual `mkdir` is part of the canonical deploy flow. |
 | Persistent uploaded media root | `UPLOADS_DIR=/var/lib/bookmyclass/uploads` recommended | Required | Must be outside `/var/www/bookmyclass`, `.next`, and `public`; backup/restore must include this directory. |
 | Cloudflare edge/tunnel source of truth | Public web hostnames currently reach nginx via Cloudflare proxied DNS (edge IPs in nginx logs). Cloudflared named tunnel is remote-managed and currently advertises `ssh-prod.bookmyclass.app -> ssh://localhost:22` + `http_status:404`. | Verified live with drift note | Local `/etc/cloudflared/config.yml` must not be treated as web-routing source of truth while remote-managed config is authoritative. |
 | Prisma Studio port | `NEEDS_OPERATOR_CONFIRMATION` | Needs confirmation | Conflicting docs: `5555` and `51212`. |
@@ -74,6 +75,10 @@ Rules:
 - Never deploy directly to production from main.
 - Production deployment remains explicit and operator-approved.
 - UAT is operational for manual operator validation and is not an automatic gate.
+- During the demo stage, `UAT_*` GitHub Actions secrets may intentionally point
+  at the same production/demo server values. This must be visible in workflow
+  logs as a warning, but it is not a deploy blocker while the operator approves
+  that topology.
 - Use "operator-run UAT/manual release validation" for current manual evidence.
 - Store manual evidence at `test-results/manual_test_<YYYY-MM-DD>.md`.
 

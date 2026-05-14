@@ -30,25 +30,18 @@ ssh_target="deploy-target"
 echo "Deploying tag $TARGET_TAG to production alias $ssh_target (user=${REMOTE_USER} host=${REMOTE_HOST})"
 
 set +e
-ssh "$ssh_target" bash -s -- "$TARGET_TAG" "$APP_DIR" "$APP_NAME" "$HOMESITE_PUBLISH_DIR" <<'REMOTE' 2>&1 | tee "$evidence_dir/deploy.log"
+ssh "$ssh_target" bash -s -- "$TARGET_TAG" "$APP_DIR" "$APP_NAME" "$HOMESITE_PUBLISH_DIR" "$BASE_URL" <<'REMOTE' 2>&1 | tee "$evidence_dir/deploy.log"
 set -euo pipefail
 TARGET_TAG="$1"
 APP_DIR="$2"
 APP_NAME="$3"
 HOMESITE_PUBLISH_DIR="$4"
+BASE_URL="$5"
 
 cd "$APP_DIR"
 git fetch --all --tags
 git checkout "$TARGET_TAG"
-mkdir -p "$HOMESITE_PUBLISH_DIR"
-if command -v rsync >/dev/null 2>&1; then
-  rsync -a --delete "$APP_DIR/homesite/" "$HOMESITE_PUBLISH_DIR/"
-  rsync -a --delete "$APP_DIR/public/images/homesite/" "$HOMESITE_PUBLISH_DIR/images/homesite/"
-else
-  cp -a "$APP_DIR/homesite/." "$HOMESITE_PUBLISH_DIR/"
-  mkdir -p "$HOMESITE_PUBLISH_DIR/images/homesite"
-  cp -a "$APP_DIR/public/images/homesite/." "$HOMESITE_PUBLISH_DIR/images/homesite/"
-fi
+bash "$APP_DIR/scripts/publish-homesite-assets.sh" "$APP_DIR" "$HOMESITE_PUBLISH_DIR" "$BASE_URL"
 npm ci
 npx prisma migrate deploy
 npx prisma generate

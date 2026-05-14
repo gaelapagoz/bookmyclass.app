@@ -605,8 +605,14 @@ validation and must not be treated as an automatic release gate.
 - Docker:
   - `docker compose up -d postgres`
 - Deploy commands/scripts in repo:
-  - No executable in-repo deploy script found.
-  - Manual deploy sequence documented in `docs/50_02_bookmyclass_server_setup_updated.md`.
+  - Tag deploy scripts exist for UAT and production:
+    `scripts/uat-deploy-tag.sh`, `scripts/prod-deploy-tag.sh`, and
+    `scripts/publish-homesite-assets.sh`.
+  - Homesite HTML is sourced from `homesite/`; homesite screenshot assets are
+    sourced from `public/images/homesite/` and deployed to the nginx homesite
+    document root.
+  - Manual deploy sequence remains documented in
+    `docs/50_02_bookmyclass_server_setup_updated.md`.
 ## Appendix C: Production evidence notes
 - Core runtime/config evidence:
   - `package.json`

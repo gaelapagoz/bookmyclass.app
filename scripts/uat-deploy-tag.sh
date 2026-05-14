@@ -4,10 +4,11 @@ set -euo pipefail
 TARGET_TAG="${1:-${TARGET_TAG:-}}"
 REMOTE_HOST="${REMOTE_HOST:-bookmyclass-uat}"
 REMOTE_USER="${REMOTE_USER:-deploy}"
-APP_DIR="${APP_DIR:-/var/www/bookmyclass-uat}"
+APP_DIR="${APP_DIR:-/var/www/bookmyclass}"
 APP_NAME="${APP_NAME:-bookmyclass-app-uat}"
 HOMESITE_PUBLISH_DIR="${HOMESITE_PUBLISH_DIR:-/var/www/bookmyclass-homesite}"
-BASE_URL="${BASE_URL:-https://uat.bookmyclass.app}"
+BASE_URL="${APP_BASE_URL:-${UAT_BASE_URL:-${BASE_URL:-https://demo.bookmyclass.app}}}"
+HOMESITE_BASE_URL="${HOMESITE_BASE_URL:-https://bookmyclass.app}"
 EVIDENCE_ROOT="${EVIDENCE_ROOT:-/tmp}"
 LOCAL_HEALTH_URL="${LOCAL_HEALTH_URL:-http://127.0.0.1:3000/api/health}"
 HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-20}"
@@ -55,6 +56,7 @@ LOCAL_HEALTH_URL="$6"
 HEALTH_ATTEMPTS="$7"
 HEALTH_DELAY_SECONDS="$8"
 EXPECTED_SHA="${9:-}"
+HOMESITE_BASE_URL="${10:-https://bookmyclass.app}"
 
 log_step() {
   echo
@@ -121,16 +123,7 @@ if [[ -n "$EXPECTED_SHA" && "$actual_head" != "$EXPECTED_SHA" ]]; then
   exit 4
 fi
 
-log_step "publish homesite assets"
-mkdir -p "$HOMESITE_PUBLISH_DIR"
-if command -v rsync >/dev/null 2>&1; then
-  rsync -a --delete "$APP_DIR/homesite/" "$HOMESITE_PUBLISH_DIR/"
-  rsync -a --delete "$APP_DIR/public/images/homesite/" "$HOMESITE_PUBLISH_DIR/images/homesite/"
-else
-  cp -a "$APP_DIR/homesite/." "$HOMESITE_PUBLISH_DIR/"
-  mkdir -p "$HOMESITE_PUBLISH_DIR/images/homesite"
-  cp -a "$APP_DIR/public/images/homesite/." "$HOMESITE_PUBLISH_DIR/images/homesite/"
-fi
+bash "$APP_DIR/scripts/publish-homesite-assets.sh" "$APP_DIR" "$HOMESITE_PUBLISH_DIR" "$HOMESITE_BASE_URL"
 
 log_step "pre-build PM2 evidence"
 pm2 status
@@ -226,7 +219,7 @@ shift 3
 REMOTE_START
 
 ssh "$ssh_target" "chmod 700 '$remote_start'"
-ssh "$ssh_target" "'$remote_start' '$remote_script' '$remote_log' '$remote_status' '$TARGET_TAG' '$APP_DIR' '$APP_NAME' '$HOMESITE_PUBLISH_DIR' '$BASE_URL' '$LOCAL_HEALTH_URL' '$HEALTH_ATTEMPTS' '$HEALTH_DELAY_SECONDS' '$EXPECTED_SHA'"
+ssh "$ssh_target" "'$remote_start' '$remote_script' '$remote_log' '$remote_status' '$TARGET_TAG' '$APP_DIR' '$APP_NAME' '$HOMESITE_PUBLISH_DIR' '$BASE_URL' '$LOCAL_HEALTH_URL' '$HEALTH_ATTEMPTS' '$HEALTH_DELAY_SECONDS' '$EXPECTED_SHA' '$HOMESITE_BASE_URL'"
 
 last_lines=0
 remote_exit=""

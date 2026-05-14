@@ -182,10 +182,13 @@ jobs:
       CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_ID }}
       CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_SECRET }}
       BASE_URL: ${{ secrets.UAT_BASE_URL }}
+      UAT_BASE_URL: ${{ secrets.UAT_BASE_URL }}
+      HOMESITE_BASE_URL: ${{ secrets.UAT_HOMESITE_BASE_URL }}
       APP_DIR: ${{ secrets.UAT_APP_DIR }}
       APP_NAME: ${{ secrets.UAT_PM2_APP_NAME }}
       EXPECTED_SHA: ${{ github.sha }}
       EVIDENCE_ROOT: artifacts/uat-deploy
+      PROD_DEMO_SSH_HOST: ${{ vars.PROD_DEMO_SSH_HOST || 'ssh-prod.bookmyclass.app' }}
 
     steps:
       - name: Check out repository at pushed tag
@@ -245,8 +248,13 @@ jobs:
           echo "remote_user=${REMOTE_USER}"
           echo "app_dir=${APP_DIR:-<default from script>}"
           echo "app_name=${APP_NAME:-<default from script>}"
-          echo "base_url=${BASE_URL}"
+          echo "app_base_url=${BASE_URL:-https://demo.bookmyclass.app}"
+          echo "homesite_base_url=${HOMESITE_BASE_URL:-https://bookmyclass.app}"
+          echo "app_healthcheck_url=${BASE_URL:-https://demo.bookmyclass.app}/api/health"
           echo "expected_sha=${EXPECTED_SHA}"
+          if [[ "${REMOTE_HOST}" == "${PROD_DEMO_SSH_HOST}" || "${APP_DIR:-}" == "/var/www/bookmyclass" || "${BASE_URL}" == "https://bookmyclass.app" || "${BASE_URL}" == "https://demo.bookmyclass.app" ]]; then
+            echo "::warning::UAT deploy is targeting the production/demo host topology. This is supported for demo-stage use when UAT_* secrets intentionally point there."
+          fi
 
       - name: Test SSH connectivity via Cloudflare Access
         run: |
@@ -262,6 +270,24 @@ jobs:
           export CLOUDFLARE_ACCESS_CLIENT_SECRET="${CLOUDFLARE_ACCESS_CLIENT_SECRET}"
           mkdir -p "${EVIDENCE_ROOT}"
           bash scripts/uat-deploy-tag.sh "${TARGET_TAG}" 2>&1 | tee "${EVIDENCE_ROOT}/deploy-command.log"
+
+      - name: Collect remote UAT deploy logs on failure
+        if: failure()
+        run: |
+          set -euo pipefail
+          export CLOUDFLARE_ACCESS_CLIENT_ID="${CLOUDFLARE_ACCESS_CLIENT_ID}"
+          export CLOUDFLARE_ACCESS_CLIENT_SECRET="${CLOUDFLARE_ACCESS_CLIENT_SECRET}"
+          mkdir -p "${EVIDENCE_ROOT}/remote"
+          ssh deploy-target 'set -euo pipefail
+            latest="$(find /tmp -maxdepth 1 -type d -name "uat-deploy-*" -printf "%T@ %p\n" 2>/dev/null | sort -nr | head -n 1 | cut -d" " -f2- || true)"
+            if [[ -z "$latest" ]]; then
+              echo "[warn] no /tmp/uat-deploy-* directory found"
+              exit 0
+            fi
+            echo "latest_remote_deploy_dir=$latest"
+            find /tmp -maxdepth 2 -path "/tmp/uat-deploy-*/deploy.log" -printf "%p\n" | sort
+            cat "$latest/deploy.log"
+          ' 2>&1 | tee "${EVIDENCE_ROOT}/remote/latest-remote-deploy.log"
 
       - name: Upload UAT deploy evidence on failure
         if: failure()

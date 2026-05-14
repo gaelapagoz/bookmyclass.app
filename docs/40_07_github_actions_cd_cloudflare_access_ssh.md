@@ -5,6 +5,10 @@
 **Current Status:** UAT is operational for operator-run manual validation.
 UAT checks are triggered by the operator when release scope requires them; they
 are not automatic release gates.
+During the current demo stage, `UAT_*` GitHub Actions secrets may intentionally
+point to the same production/demo server values. The UAT workflow must make that
+visible with a warning, but it must not fail solely because the UAT alias targets
+the prod/demo topology.
 
 **Scope:** GitHub-hosted runners → Cloudflare Access SSH → private servers over SSH with strict host key checking, PM2 deployments, and post-deploy validation.
 
@@ -138,11 +142,19 @@ The key insight: **GitHub runners run in public AWS/Azure environments and canno
 - **Automatic:** No; the operator runs UAT validation manually when needed
 - **Gate:** Operator-approved manual validation
 - **Environment:** `uat` (GitHub Environment)
+- **Demo-stage host mapping:** `UAT_*` secrets may point at the production/demo
+  server when the operator intentionally uses PROD as UAT. Keep the `UAT_*`
+  secret names and log a warning; do not block this configuration.
 - **Post-deploy validations:**
   - Smoke tests (HTTP health checks)
   - Playwright e2e against deployed UAT
   - k6 load test smoke
   - OWASP ZAP security baseline
+  - Homesite HTML and screenshot assets are published to
+    `/var/www/bookmyclass-homesite`; image assets are copied from
+    `public/images/homesite` to
+    `/var/www/bookmyclass-homesite/images/homesite` and verified with a real
+    image URL.
 
 ### Production Deployment
 - **Trigger:** Manual via `workflow_dispatch` + exact tag input
@@ -1824,7 +1836,10 @@ pm2 describe bookmyclass-app
 - UAT is operational for operator-run manual validation.
 - Current releases use local/CI validation plus operator-run UAT/manual release validation.
 - Store manual evidence at `test-results/manual_test_<YYYY-MM-DD>.md`.
-- Never map UAT workflows to production secrets.
+- Demo-stage UAT may target the production/demo server when `UAT_*` secrets are
+  intentionally set to those values. This must be logged as a warning, not
+  treated as a failure.
+- Never wire UAT workflow steps directly to `PROD_*` secrets.
 - Never deploy directly to production from main or from an unvalidated commit.
 
 ### Approval Gate is Mandatory
