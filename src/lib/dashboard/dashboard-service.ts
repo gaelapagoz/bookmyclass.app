@@ -35,6 +35,7 @@ import { assertBookingNotCheckedInForCancellation, getBookingSelfCheckInEligibil
 import { restoreCredit } from "@/lib/credits/credit-service";
 import { STORE_PRODUCT_TYPES } from "@/lib/catalog/product-scopes";
 import type { MediaAssetReadModel } from "@/lib/media/product-media-service";
+import { getCanonicalMediaRenderState } from "@/lib/media";
 
 type DashboardServiceErrorCode =
   | "BOOKING_NOT_FOUND"
@@ -1342,29 +1343,31 @@ export async function getClientStoreOrderHistory(clientId: string): Promise<Stor
     },
   });
 
-  return orders.map((order) => {
+  return Promise.all(orders.map(async (order) => {
     const hasMerchandise = order.items.some(
       (item) => item.product.productType === ProductType.MERCHANDISE,
     );
+    const items = await Promise.all(order.items.map(async (item) => ({
+      id: item.id,
+      productNameSnapshot: item.productNameSnapshot,
+      productType: item.product.productType,
+      imageAsset: await getRenderableOrderImageAsset(item.product.imageAsset),
+      quantity: item.quantity,
+      unitAmountMinor: item.unitAmountMinor,
+      lineTotalAmountMinor: item.lineTotalAmountMinor,
+      currencyCode: item.currencyCode,
+    })));
+
     return {
       id: order.id,
       status: order.status,
       placedAt: order.placedAt.toISOString(),
       totalAmountMinor: order.totalAmountMinor,
       currencyCode: order.currencyCode,
-      items: order.items.map((item) => ({
-        id: item.id,
-        productNameSnapshot: item.productNameSnapshot,
-        productType: item.product.productType,
-        imageAsset: item.product.imageAsset,
-        quantity: item.quantity,
-        unitAmountMinor: item.unitAmountMinor,
-        lineTotalAmountMinor: item.lineTotalAmountMinor,
-        currencyCode: item.currencyCode,
-      })),
+      items,
       fulfillmentNote: hasMerchandise ? STORE_PICKUP_WORDING : null,
     };
-  });
+  }));
 }
 
 export async function getClientOrderHistory(clientId: string): Promise<OrderSummary[]> {
@@ -1410,30 +1413,41 @@ export async function getClientOrderHistory(clientId: string): Promise<OrderSumm
     },
   });
 
-  return orders.map((order) => {
+  return Promise.all(orders.map(async (order) => {
     const hasMerchandise = order.items.some(
       (item) => item.product.productType === ProductType.MERCHANDISE,
     );
+    const items = await Promise.all(order.items.map(async (item) => ({
+      id: item.id,
+      productNameSnapshot: item.productNameSnapshot,
+      productType: item.product.productType,
+      imageAsset: await getRenderableOrderImageAsset(item.product.imageAsset),
+      quantity: item.quantity,
+      unitAmountMinor: item.unitAmountMinor,
+      lineTotalAmountMinor: item.lineTotalAmountMinor,
+      currencyCode: item.currencyCode,
+      giftCardCode: item.giftCardCode
+        ? { maskedCode: item.giftCardCode.maskedCode, status: item.giftCardCode.status }
+        : null,
+    })));
+
     return {
       id: order.id,
       status: order.status,
       placedAt: order.placedAt.toISOString(),
       totalAmountMinor: order.totalAmountMinor,
       currencyCode: order.currencyCode,
-      items: order.items.map((item) => ({
-        id: item.id,
-        productNameSnapshot: item.productNameSnapshot,
-        productType: item.product.productType,
-        imageAsset: item.product.imageAsset,
-        quantity: item.quantity,
-        unitAmountMinor: item.unitAmountMinor,
-        lineTotalAmountMinor: item.lineTotalAmountMinor,
-        currencyCode: item.currencyCode,
-        giftCardCode: item.giftCardCode
-          ? { maskedCode: item.giftCardCode.maskedCode, status: item.giftCardCode.status }
-          : null,
-      })),
+      items,
       fulfillmentNote: hasMerchandise ? STORE_PICKUP_WORDING : null,
     };
-  });
+  }));
+}
+
+async function getRenderableOrderImageAsset<T extends { path: string }>(asset: T | null): Promise<T | null> {
+  if (!asset) {
+    return null;
+  }
+
+  const renderState = await getCanonicalMediaRenderState(asset.path, { allowedFolders: ["products"] });
+  return renderState.src ? asset : null;
 }

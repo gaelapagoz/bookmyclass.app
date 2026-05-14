@@ -8,6 +8,7 @@ import {
   STORE_PICKUP_WORDING,
 } from "@/lib/store/store-constants";
 import type { MediaAssetReadModel } from "@/lib/media/product-media-service";
+import { getCanonicalMediaRenderState } from "@/lib/media";
 import { isStorePriceCheckoutReady } from "@/lib/store/store-catalog";
 import { attemptStorePriceSyncFromEnv } from "@/lib/store/store-stripe-sync-service";
 
@@ -169,7 +170,7 @@ export async function listAdminStoreMerchandise(): Promise<AdminStoreMerchandise
     },
   });
 
-  return products.map((p) => {
+  return Promise.all(products.map(async (p) => {
     const price = (p.prices[0] as AdminStorePriceRow | undefined) ?? null;
     return {
       id: p.id,
@@ -180,11 +181,11 @@ export async function listAdminStoreMerchandise(): Promise<AdminStoreMerchandise
       isActive: p.isActive,
       isArchived: p.isArchived,
       sortOrder: p.sortOrder,
-      imageAsset: p.imageAsset as AdminStoreImageAsset | null,
+      imageAsset: await getRenderableAdminStoreImageAsset(p.imageAsset as AdminStoreImageAsset | null),
       primaryPrice: price,
       isCheckoutReady: price !== null && isStorePriceCheckoutReady({ productType: p.productType, productIsActive: p.isActive, productIsArchived: p.isArchived, price }),
     };
-  });
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -407,7 +408,7 @@ export async function getAdminStoreMerchandiseById(
     isActive: product.isActive,
     isArchived: product.isArchived,
     sortOrder: product.sortOrder,
-    imageAsset: product.imageAsset as AdminStoreImageAsset | null,
+    imageAsset: await getRenderableAdminStoreImageAsset(product.imageAsset as AdminStoreImageAsset | null),
     primaryPrice: price,
     isCheckoutReady: price !== null && isStorePriceCheckoutReady({ productType: product.productType, productIsActive: product.isActive, productIsArchived: product.isArchived, price }),
   };
@@ -454,7 +455,7 @@ export async function listAdminStoreGiftCardProducts(): Promise<AdminStoreGiftCa
     },
   });
 
-  return products.map((p) => {
+  return Promise.all(products.map(async (p) => {
     const price = (p.prices[0] as AdminStorePriceRow | undefined) ?? null;
     return {
       id: p.id,
@@ -465,11 +466,11 @@ export async function listAdminStoreGiftCardProducts(): Promise<AdminStoreGiftCa
       isActive: p.isActive,
       isArchived: p.isArchived,
       sortOrder: p.sortOrder,
-      imageAsset: p.imageAsset as AdminStoreImageAsset | null,
+      imageAsset: await getRenderableAdminStoreImageAsset(p.imageAsset as AdminStoreImageAsset | null),
       activePrice: price,
       isCheckoutReady: price !== null && isStorePriceCheckoutReady({ productType: p.productType, productIsActive: p.isActive, productIsArchived: p.isArchived, price }),
     };
-  });
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -592,7 +593,7 @@ export async function getAdminStoreGiftCardById(
     isActive: product.isActive,
     isArchived: product.isArchived,
     sortOrder: product.sortOrder,
-    imageAsset: product.imageAsset as AdminStoreImageAsset | null,
+    imageAsset: await getRenderableAdminStoreImageAsset(product.imageAsset as AdminStoreImageAsset | null),
     activePrice: price,
     isCheckoutReady: price !== null && isStorePriceCheckoutReady({ productType: product.productType, productIsActive: product.isActive, productIsArchived: product.isArchived, price }),
   };
@@ -746,6 +747,15 @@ export async function archiveAdminStoreMerchandise(productId: string): Promise<v
       data: { isActive: false },
     }),
   ]);
+}
+
+async function getRenderableAdminStoreImageAsset(asset: AdminStoreImageAsset | null): Promise<AdminStoreImageAsset | null> {
+  if (!asset) {
+    return null;
+  }
+
+  const renderState = await getCanonicalMediaRenderState(asset.path, { allowedFolders: ["products"] });
+  return renderState.src ? asset : null;
 }
 
 export async function setAdminStoreProductActiveState(

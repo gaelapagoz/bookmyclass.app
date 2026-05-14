@@ -135,7 +135,7 @@ describe("product media service", () => {
     });
     await remember(asset.path);
 
-    expect(asset.path).toMatch(/^\/uploads\/products\/[0-9a-f-]+\.png$/);
+    expect(asset.path).toMatch(/^\/uploads\/products\/product-\d+-[0-9a-f-]+\.png$/);
     expect(asset.mimeType).toBe("image/png");
 
     const storedProduct = await prisma.product.findUnique({
@@ -210,7 +210,7 @@ describe("product media service", () => {
     await expect(validateProductImageUpload(fileFromBytes([60, 115, 118, 103], "bad.svg", "image/svg+xml"))).rejects.toMatchObject({ code: "UNSUPPORTED_MIME_TYPE" });
     await expect(validateProductImageUpload(pngFile("../bad.png"))).rejects.toMatchObject({ code: "UNSAFE_FILENAME" });
     await expect(validateProductImageUpload(fileFromBytes([0x89, 0x50, 0x4e], "bad.png", "image/png"))).rejects.toMatchObject({ code: "SIGNATURE_MISMATCH" });
-    await expect(validateProductImageUpload(fileFromBytes([0xff, 0xd8, 0xff], "bad.png", "image/jpeg"))).rejects.toMatchObject({ code: "MIME_EXTENSION_MISMATCH" });
+    await expect(validateProductImageUpload(fileFromBytes([0xff, 0xd8, 0xff], "bad.png", "image/jpeg"))).rejects.toMatchObject({ code: "UNSUPPORTED_EXTENSION" });
 
     vi.stubEnv("PRODUCT_IMAGE_MAX_BYTES", "8");
     await expect(validateProductImageUpload(pngFile("too-large.png"))).rejects.toMatchObject({ code: "IMAGE_TOO_LARGE" });

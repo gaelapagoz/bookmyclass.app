@@ -17,7 +17,7 @@ import {
   changeAuthenticatedUserPassword,
   type PasswordServiceError,
 } from "@/lib/auth/password-service";
-import { SecureMediaError, storeSecureImageWithPathPersistence, type SecureMediaFile } from "@/lib/media";
+import { CanonicalMediaError, storeCanonicalImageWithPathPersistence, type CanonicalMediaFile } from "@/lib/media";
 
 const profileSchema = z.object({
   firstName: z.string().trim().min(1),
@@ -80,7 +80,7 @@ function mapPasswordActionError(error: unknown): string | null {
 }
 
 function mapTeacherActionError(error: unknown): string {
-  if (error instanceof SecureMediaError) {
+  if (error instanceof CanonicalMediaError) {
     if (error.code === "FILE_TOO_LARGE") {
       return "Image must be 5MB or less.";
     }
@@ -138,7 +138,7 @@ function mapTeacherActionError(error: unknown): string {
   return "Unexpected server error.";
 }
 
-function getOptionalImageFile(formData: FormData, fieldName: string): SecureMediaFile | null {
+function getOptionalImageFile(formData: FormData, fieldName: string): CanonicalMediaFile | null {
   const file = formData.get(fieldName);
   if (!(file instanceof File) || file.size < 1) {
     return null;
@@ -194,11 +194,10 @@ export async function uploadTeacherSelfImageAction(formData: FormData) {
   }
 
   try {
-    await storeSecureImageWithPathPersistence({
+    await storeCanonicalImageWithPathPersistence({
       file,
-      folder: "/images/instructors",
+      folder: "teachers",
       filenamePrefix: `teacher-${session.user.id}`,
-      allowedFolders: ["/images/instructors"],
       persistPath: async (publicPath) => {
         await updateTeacherSelfImage({
           teacherUserId: session.user.id,

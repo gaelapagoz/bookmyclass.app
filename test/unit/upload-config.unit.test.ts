@@ -13,6 +13,7 @@ describe("upload config", () => {
     const config = resolveUploadsConfig({ NODE_ENV: "test" });
 
     expect(config.uploadsDir).toBe(DEFAULT_LOCAL_UPLOADS_DIR);
+    expect(config.uploadsDir).toContain(`${path.sep}.local${path.sep}uploads`);
     expect(config.publicUploadsBasePath).toBe("/uploads");
   });
 

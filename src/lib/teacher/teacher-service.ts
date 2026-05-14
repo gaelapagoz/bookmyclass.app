@@ -9,7 +9,7 @@ import {
   removeSessionAttendeeByManager,
 } from "@/lib/admin/admin-service";
 import { assertTeacherSelfScope, assertTeacherSessionScope } from "@/lib/teacher/teacher-helpers";
-import { assertSafeMediaPublicPath } from "@/lib/media";
+import { assertCanonicalMediaPublicPath, assertSafeMediaPublicPath, getCanonicalMediaRenderState } from "@/lib/media";
 
 export type TeacherProfileData = {
   id: string;
@@ -56,7 +56,7 @@ export async function getTeacherSelfProfile(teacherUserId: string): Promise<Teac
     lastName: teacher.lastName ?? "",
     fullName: teacher.name,
     email: teacher.email,
-    image: teacher.image ?? "",
+    image: await getTeacherImageRenderPath(teacher.image),
     phone: teacher.teacherProfile?.phone ?? "",
     bio: teacher.teacherProfile?.bio ?? "",
     specialties: teacher.teacherProfile?.specialties ?? [],
@@ -135,7 +135,10 @@ export async function updateTeacherSelfImage(input: {
     requestedTeacherUserId: input.requestedTeacherUserId,
   });
 
-  const imagePath = assertSafeMediaPublicPath(input.imagePath, ["/images/instructors"]);
+  const trimmed = input.imagePath.trim();
+  const imagePath = trimmed.startsWith("/uploads/")
+    ? assertCanonicalMediaPublicPath(trimmed, ["teachers"])
+    : assertSafeMediaPublicPath(trimmed, ["/images/instructors"]);
   const existing = await prisma.user.findUnique({
     where: { id: input.teacherUserId },
     select: {
@@ -155,6 +158,19 @@ export async function updateTeacherSelfImage(input: {
       image: true,
     },
   });
+}
+
+async function getTeacherImageRenderPath(imagePath: string | null): Promise<string> {
+  if (!imagePath) {
+    return "";
+  }
+
+  if (imagePath.startsWith("/uploads/")) {
+    const renderState = await getCanonicalMediaRenderState(imagePath, { allowedFolders: ["teachers"] });
+    return renderState.src ?? "";
+  }
+
+  return imagePath.trim();
 }
 
 export async function getTeacherAssignedSessions(input: {

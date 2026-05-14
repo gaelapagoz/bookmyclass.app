@@ -22,3 +22,31 @@ export type {
 
 export { listLearningMediaLibraryImages, listMediaLibraryImages } from "./media-library";
 export type { MediaLibraryItem } from "./media-library";
+
+export {
+  CANONICAL_MEDIA_FOLDERS,
+  CanonicalMediaError,
+  assertCanonicalMediaFolder,
+  assertSafeOriginalFilename,
+  buildCanonicalMediaFilename,
+  buildCanonicalMediaStoragePath,
+  isCanonicalMediaFolder,
+  storeCanonicalImageWithPathPersistence,
+  validateCanonicalImageFile,
+} from "./media-upload-service";
+
+export type {
+  CanonicalImageMimeType,
+  CanonicalMediaErrorCode,
+  CanonicalMediaFile,
+  CanonicalMediaFolder,
+  StoreCanonicalImageOptions,
+  StoredCanonicalImage,
+  ValidatedCanonicalImage,
+} from "./media-upload-service";
+
+export {
+  assertCanonicalMediaPublicPath,
+  getCanonicalMediaRenderState,
+  toCanonicalMediaAbsolutePath,
+} from "./media-render-service";

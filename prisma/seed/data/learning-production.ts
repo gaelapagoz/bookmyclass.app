@@ -6,10 +6,10 @@
 
 export const PROD_LEARNING_VIDEO_URL = "https://www.youtube.com/watch?v=ZdfJcN-yBIE";
 
-// Canonical image paths — must match /images/learning/*.jpg pattern.
-export const PROD_LEARNING_IMAGE_FITNESS = "/images/learning/course_1_fitness.jpg";
-export const PROD_LEARNING_IMAGE_YOGA = "/images/learning/course_2_yoga.jpg";
-export const PROD_LEARNING_IMAGE_PILATES = "/images/learning/course_3_pilates.jpg";
+// Canonical image paths — seeded runtime media is served from /uploads/learning/*.jpg.
+export const PROD_LEARNING_IMAGE_FITNESS = "/uploads/learning/course_1_fitness.jpg";
+export const PROD_LEARNING_IMAGE_YOGA = "/uploads/learning/course_2_yoga.jpg";
+export const PROD_LEARNING_IMAGE_PILATES = "/uploads/learning/course_3_pilates.jpg";
 
 export type ProdLearningProgram = {
   legacyId: string;

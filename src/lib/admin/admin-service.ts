@@ -39,7 +39,13 @@ import {
 } from "@/lib/auth/user-identity-service";
 import { normalizeBookingCancellationWindowHours } from "@/lib/booking/cancellation-policy";
 import { assertLearningImagePath } from "@/lib/learning/image-paths";
-import { assertSafeMediaPublicPath, getLocalMediaRenderState, listLearningMediaLibraryImages } from "@/lib/media";
+import {
+  assertCanonicalMediaPublicPath,
+  assertSafeMediaPublicPath,
+  getCanonicalMediaRenderState,
+  getLocalMediaRenderState,
+  listLearningMediaLibraryImages,
+} from "@/lib/media";
 import { getSiteTimeZone, updateSiteTimeZone } from "@/lib/site-settings/site-settings-service";
 import {
   bookingDraftActiveBookingFilter,
@@ -1773,9 +1779,7 @@ export async function getAdminClassById(id: string) {
     weekdays: [...new Set(recurringRules.map((rule) => rule.weekday))],
     endDate: recurringRules[0]?.endDate?.toISOString().slice(0, 10) ?? null,
   };
-  const imageRenderState = classType.imageUrl?.startsWith("/images/")
-    ? await getLocalMediaRenderState(classType.imageUrl, { allowedFolders: ["/images/classes"] })
-    : { src: classType.imageUrl, shouldRenderFallback: !classType.imageUrl };
+  const imageRenderState = await getClassImageRenderState(classType.imageUrl);
 
   return {
     id: classType.id,
@@ -1912,7 +1916,22 @@ function normalizeClassImagePath(value: string | null | undefined): string | nul
     return null;
   }
 
+  if (trimmed.startsWith("/uploads/")) {
+    return assertCanonicalMediaPublicPath(trimmed, ["classes"]);
+  }
+
   return assertSafeMediaPublicPath(trimmed, ["/images/classes"]);
+}
+
+async function getClassImageRenderState(imageUrl: string | null) {
+  if (imageUrl?.startsWith("/uploads/")) {
+    return getCanonicalMediaRenderState(imageUrl, { allowedFolders: ["classes"] });
+  }
+  if (imageUrl?.startsWith("/images/")) {
+    return getLocalMediaRenderState(imageUrl, { allowedFolders: ["/images/classes"] });
+  }
+
+  return { src: imageUrl, shouldRenderFallback: !imageUrl };
 }
 
 async function buildUniqueClassSlug(name: string, excludeClassTypeId?: string): Promise<string> {
@@ -5420,7 +5439,10 @@ export async function updateAdminTeacherImage(input: {
   imagePath: string;
   adminUserId: string;
 }) {
-  const imagePath = assertSafeMediaPublicPath(input.imagePath, ["/images/instructors"]);
+  const trimmed = input.imagePath.trim();
+  const imagePath = trimmed.startsWith("/uploads/")
+    ? assertCanonicalMediaPublicPath(trimmed, ["teachers"])
+    : assertSafeMediaPublicPath(trimmed, ["/images/instructors"]);
   const [teacherRecord, adminRecord] = await prisma.$transaction([
     prisma.user.findUnique({
       where: { id: input.userId },
@@ -5908,6 +5930,10 @@ export async function getLearningMediaLibraryOptions() {
 }
 
 async function getLearningImageRenderPath(path: string | null): Promise<string | null> {
+  if (path?.startsWith("/uploads/")) {
+    const renderState = await getCanonicalMediaRenderState(path, { allowedFolders: ["learning"] });
+    return renderState.src;
+  }
   const renderState = await getLocalMediaRenderState(path, { allowedFolders: ["/images/learning"] });
   return renderState.src;
 }

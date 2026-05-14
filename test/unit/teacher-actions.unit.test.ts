@@ -137,7 +137,7 @@ describe("teacher actions", () => {
     vi.mocked(requireTeacherSession).mockResolvedValue(teacherSession() as never);
     vi.mocked(updateTeacherSelfImage).mockResolvedValue({
       id: "teacher-1",
-      image: "/images/instructors/teacher-teacher-1-test.png",
+      image: "/uploads/teachers/teacher-teacher-1-test.png",
     });
 
     const formData = new FormData();
@@ -152,7 +152,7 @@ describe("teacher actions", () => {
     expect(updateTeacherSelfImage).toHaveBeenCalledWith({
       teacherUserId: "teacher-1",
       requestedTeacherUserId: "teacher-1",
-      imagePath: expect.stringMatching(/^\/images\/instructors\/teacher-teacher-1-/),
+      imagePath: expect.stringMatching(/^\/uploads\/teachers\/teacher-teacher-1-/),
     });
   });
 

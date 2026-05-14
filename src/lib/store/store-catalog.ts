@@ -17,6 +17,7 @@ import {
   STORE_PICKUP_WORDING,
 } from "@/lib/store/store-constants";
 import type { MediaAssetReadModel } from "@/lib/media/product-media-service";
+import { getCanonicalMediaRenderState } from "@/lib/media";
 export {
   STORE_CURRENCY_CODE,
   STORE_MAX_GIFT_CARD_ORDER_TOTAL_MINOR,
@@ -197,7 +198,7 @@ export async function listStoreCatalogReadModels(): Promise<StoreCatalogReadMode
     },
   });
 
-  const readModels = products.map((product) => {
+  const readModels = await Promise.all(products.map(async (product) => {
     const checkoutPrices = product.prices.filter((price) =>
       isStorePriceCheckoutReady({
         productType: product.productType,
@@ -216,12 +217,12 @@ export async function listStoreCatalogReadModels(): Promise<StoreCatalogReadMode
       slug: product.slug,
       description: product.description,
       productType: product.productType,
-      imageAsset: product.imageAsset,
+      imageAsset: await getRenderableStoreImageAsset(product.imageAsset),
       prices: product.prices,
       checkoutPrices,
       fulfillmentLabel,
     };
-  });
+  }));
 
   const visible = readModels.filter((p) => p.checkoutPrices.length > 0);
 
@@ -326,3 +327,12 @@ export async function assertGiftCardWalletCapPrecheck(input: {
 }
 
 export const listStoreCatalog = listStoreCatalogReadModels;
+
+async function getRenderableStoreImageAsset<T extends { path: string }>(asset: T | null): Promise<T | null> {
+  if (!asset) {
+    return null;
+  }
+
+  const renderState = await getCanonicalMediaRenderState(asset.path, { allowedFolders: ["products"] });
+  return renderState.src ? asset : null;
+}

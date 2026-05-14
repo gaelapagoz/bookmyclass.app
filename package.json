@@ -34,6 +34,7 @@
     "verify:catalog:production": "tsx scripts/verify-production-catalog-readiness.ts",
     "verify:gift-card-maintenance": "tsx scripts/verify-gift-card-maintenance.ts",
     "verify:media-runtime": "tsx scripts/verify-media-runtime.ts",
+    "media:backfill": "tsx scripts/backfill-media-uploads.ts",
     "ops:verify-production-readiness": "bash scripts/verify-production-readiness.sh",
     "db:seed:uat:k6": "UAT_K6_SEED=1 tsx scripts/seed-uat-k6.ts",
     "db:seed:dev": "dotenv -e .env.local -- cross-env BOOKMYCLASS_SEED_MODE=development prisma db seed",

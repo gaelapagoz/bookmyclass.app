@@ -7,8 +7,8 @@ Purpose: summarize backup and restore posture currently documented for operation
 - Offsite backup to Backblaze B2 is documented.
 - Monitoring/heartbeat integration for backup checks is documented.
 - Restore guidance exists in runbooks.
-- Uploaded product images under production `UPLOADS_DIR` (for example `/var/lib/bookmyclass/uploads/products/`) are runtime media assets and must be included in backup/restore procedures.
-- Restoring the database without uploaded media files may leave Product image references pointing at missing files.
+- Uploaded teacher, booking service, online learning, and Store product images under production `UPLOADS_DIR` (for example `/var/lib/bookmyclass/uploads/teachers/`, `/classes/`, `/learning/`, and `/products/`) are runtime media assets and must be included in backup/restore procedures.
+- Restoring the database without uploaded media files may leave image references pointing at missing files.
 - Production deploy steps must preserve uploaded media directories and must not wipe runtime uploads.
 
 ## Canonical Runtime Facts Status

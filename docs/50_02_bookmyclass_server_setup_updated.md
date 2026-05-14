@@ -149,8 +149,9 @@ PUBLIC_UPLOADS_BASE_PATH=/uploads
 
 ## 9.5 Persistent uploaded media
 
-Uploaded Store product images must live outside `/var/www/bookmyclass` so tag
-checkouts, builds, and restarts do not erase them.
+Uploaded teacher, booking service, online learning, and Store product images
+must live outside `/var/www/bookmyclass` so tag checkouts, builds, and restarts
+do not erase them.
 
 Create the persistent media root as root or a sudo-capable operator:
 
@@ -168,8 +169,8 @@ npm run verify:media-runtime
 ```
 
 Backups and restores must include `/var/lib/bookmyclass/uploads` together with
-the database. Restoring only the database may leave product image paths pointing
-at files that are no longer present.
+the database. Restoring only the database may leave uploaded image paths
+pointing at files that are no longer present.
 
 ---
 
@@ -330,7 +331,7 @@ npm run verify:media-runtime
 * `npx prisma generate` regenerates Prisma client artifacts for the checked out version
 * `npm run build` builds the Next.js application
 * `pm2 restart bookmyclass-app --update-env` restarts the app with the current environment
-* `npm run verify:media-runtime` confirms persistent upload storage is writable and returns `/uploads/...` paths
+* `npm run verify:media-runtime` confirms persistent upload storage is writable and returns `/uploads/...` paths for all canonical image folders
 
 ### Rules
 

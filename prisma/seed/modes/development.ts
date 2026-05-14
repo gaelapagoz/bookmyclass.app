@@ -39,6 +39,16 @@ import { assertLearningImagePath } from "../../../src/lib/learning/image-paths";
 import { AGENDA_SCHEDULE } from "../data/schedule";
 import { STORE_CATALOG_PRODUCT_COUNT, STORE_CATALOG_PRODUCTS } from "../data/store-catalog";
 import { createSeededRng } from "../utils/deterministic-random";
+import {
+  buildSeedMediaPlan,
+  buildStoreSeedAssetFilename,
+  readSeedFileSizeBytes,
+  type SeedMediaSyncSummary,
+  syncSeedMediaAsset,
+  syncSeedMediaPath,
+  toCanonicalSeedImagePath,
+  verifySeededMediaReferences,
+} from "../utils/seed-media";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -97,6 +107,22 @@ const OPTIONAL_STORE_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[]
 }));
 
 const DEFAULT_LEARNING_SEED_JSON_PATH = resolve(process.cwd(), "prisma", "seed-data", "learning-content.json");
+
+const SEEDED_TEACHER_IMAGES = {
+  ana: toCanonicalSeedImagePath("/images/instructors/ana_instructor_bio.jpg"),
+  elena: toCanonicalSeedImagePath("/images/instructors/elena_instructor_bio.jpg"),
+  sofia: toCanonicalSeedImagePath("/images/instructors/sofia_instructor_bio.jpg"),
+} as const;
+
+const SEEDED_CLASS_IMAGES = {
+  vinyasaYoga: toCanonicalSeedImagePath("/images/classes/vinyasa-yoga.jpg"),
+  rocketYoga: toCanonicalSeedImagePath("/images/classes/rocket-yoga.jpg"),
+  hathaYoga: toCanonicalSeedImagePath("/images/classes/hatha-yoga.jpg"),
+  matPilates: toCanonicalSeedImagePath("/images/classes/mat-pilates.jpg"),
+  reformerFoundations: toCanonicalSeedImagePath("/images/classes/reformer-foundations.jpg"),
+  functionalStrength: toCanonicalSeedImagePath("/images/classes/functional-strength.jpg"),
+  privateReformerCoaching: toCanonicalSeedImagePath("/images/classes/private-reformer-coaching.jpg"),
+} as const;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -258,6 +284,12 @@ async function purgeForCleanSeed() {
   await prisma.siteWeeklyScheduleEntry.deleteMany();
 
   await prisma.loyaltyLedgerEntry.deleteMany();
+  await prisma.giftCardLedgerEntry.deleteMany();
+  await prisma.giftCardReconciliationCase.deleteMany();
+  await prisma.giftCardRedemption.deleteMany();
+  await prisma.giftCardCode.deleteMany();
+  await prisma.giftCardWallet.deleteMany();
+  await prisma.cartCheckoutIdempotency.deleteMany();
   await prisma.creditLedgerEntry.deleteMany();
   await prisma.clientEntitlement.deleteMany();
   await prisma.payment.deleteMany();
@@ -274,6 +306,7 @@ async function purgeForCleanSeed() {
   await prisma.entitlementRule.deleteMany();
   await prisma.price.deleteMany();
   await prisma.product.deleteMany();
+  await prisma.mediaAsset.deleteMany();
 
   await prisma.bookingPolicy.deleteMany();
 
@@ -323,7 +356,7 @@ async function seedUsers() {
       email: "ana.ionescu@yogapilatesfitness.local",
       role: Role.TEACHER, passwordHash: sharedPasswordHash,
       emailVerified: sharedEmailVerifiedAt, emailVerifiedAt: sharedEmailVerifiedAt,
-      image: "/images/instructors/ana_instructor_bio.jpg",
+      image: SEEDED_TEACHER_IMAGES.ana,
       isActive: true, isInactive: false, lastLoginAt: new Date("2026-03-18T09:30:00.000Z"),
       teacherProfile: {
         create: {
@@ -342,7 +375,7 @@ async function seedUsers() {
       email: "elena.moreau@yogapilatesfitness.local",
       role: Role.TEACHER, passwordHash: sharedPasswordHash,
       emailVerified: sharedEmailVerifiedAt, emailVerifiedAt: sharedEmailVerifiedAt,
-      image: "/images/instructors/elena_instructor_bio.jpg",
+      image: SEEDED_TEACHER_IMAGES.elena,
       isActive: true, isInactive: false, lastLoginAt: new Date("2026-03-17T10:00:00.000Z"),
       teacherProfile: {
         create: {
@@ -361,7 +394,7 @@ async function seedUsers() {
       email: "sofia.vandenberg@yogapilatesfitness.local",
       role: Role.TEACHER, passwordHash: sharedPasswordHash,
       emailVerified: sharedEmailVerifiedAt, emailVerifiedAt: sharedEmailVerifiedAt,
-      image: "/images/instructors/sofia_instructor_bio.jpg",
+      image: SEEDED_TEACHER_IMAGES.sofia,
       isActive: true, isInactive: false, lastLoginAt: new Date("2026-03-16T08:45:00.000Z"),
       teacherProfile: {
         create: {
@@ -526,6 +559,19 @@ async function seedCatalog(stripePriceIdByLookupKey: Record<string, string>) {
 }
 
 async function seedStoreCatalog(stripePriceIdByLookupKey: Record<string, string>) {
+  const [firstAdmin] = await prisma.user.findMany({
+    where: { role: { in: [Role.ADMIN, Role.MASTER_ADMIN] } },
+    orderBy: { createdAt: "asc" },
+    take: 1,
+    select: { id: true },
+  });
+  if (!firstAdmin) {
+    throw new Error("Store seed media requires an existing admin user.");
+  }
+
+  let copiedCount = 0;
+  let existingCount = 0;
+
   for (const item of STORE_CATALOG_PRODUCTS) {
     const product = await upsertProduct({
       slug: item.slug,
@@ -543,8 +589,44 @@ async function seedStoreCatalog(stripePriceIdByLookupKey: Record<string, string>
       currencyCode: item.price.currencyCode,
       unitAmountMinor: item.price.unitAmountMinor,
     });
+
+    const storageFilename = buildStoreSeedAssetFilename(item.slug);
+    const publicPath = `/uploads/products/${storageFilename}`;
+    const mediaPlan = buildSeedMediaPlan(publicPath, {
+      sourceFolder: "products",
+      sourceFilename: item.seedImageSourceFilename,
+    });
+    const syncResult = await syncSeedMediaAsset(mediaPlan);
+    if (syncResult === "copied") copiedCount += 1;
+    else existingCount += 1;
+
+    const sizeBytes = await readSeedFileSizeBytes(mediaPlan.destinationAbsolutePath);
+    const mediaAsset = await prisma.mediaAsset.upsert({
+      where: { path: publicPath },
+      update: {
+        mimeType: "image/jpeg",
+        sizeBytes,
+        originalFilename: storageFilename,
+        storageFilename,
+        uploadedById: firstAdmin.id,
+      },
+      create: {
+        path: publicPath,
+        mimeType: "image/jpeg",
+        sizeBytes,
+        originalFilename: storageFilename,
+        storageFilename,
+        uploadedById: firstAdmin.id,
+      },
+    });
+    await prisma.product.update({
+      where: { id: product.id },
+      data: { imageAssetId: mediaAsset.id },
+    });
   }
-  console.info(`[seed:dev] Store catalog seeded: ${STORE_CATALOG_PRODUCTS.length} products (gift cards + merchandise, pickup-only).`);
+  console.info(
+    `[seed:dev] Store catalog seeded: ${STORE_CATALOG_PRODUCTS.length} products (gift cards + merchandise, pickup-only). mediaCopied=${copiedCount}, mediaExisting=${existingCount}.`,
+  );
 }
 
 // ─── Class schedule helpers ───────────────────────────────────────────────────
@@ -720,13 +802,13 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
   const fitnessCategory = await upsertClassCategory({ slug: "fitness-functional", name: "Fitness & Functional", description: "Strength, mobility, and conditioning sessions.", sortOrder: 30 });
   const privateCategory = await upsertClassCategory({ slug: "private-reformer-coach", name: "Private Reformer Coach", description: "Private reformer coaching and technique refinement.", sortOrder: 40 });
 
-  const vinyasaYoga = await upsertClassType({ slug: "vinyasa-yoga", categoryId: yogaCategory.id, name: "Vinyasa Yoga", description: "Breath-led flowing yoga for strength and mobility.", imageUrl: "/images/classes/vinyasa-yoga.jpg", defaultDurationMinutes: 30, defaultCapacity: COLLECTIVE_SESSION_CAPACITY, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 10 });
-  const rocketYoga = await upsertClassType({ slug: "rocket-yoga", categoryId: yogaCategory.id, name: "Rocket Yoga", description: "High-energy yoga sequencing with progressive options.", imageUrl: "/images/classes/rocket-yoga.jpg", defaultDurationMinutes: 30, defaultCapacity: COLLECTIVE_SESSION_CAPACITY, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 20 });
-  const hathaYoga = await upsertClassType({ slug: "hatha-yoga", categoryId: yogaCategory.id, name: "Hatha Yoga", description: "Slower paced foundational yoga and alignment practice.", imageUrl: "/images/classes/hatha-yoga.jpg", defaultDurationMinutes: 30, defaultCapacity: COLLECTIVE_SESSION_CAPACITY, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 30 });
-  const matPilates = await upsertClassType({ slug: "mat-pilates", categoryId: pilatesCategory.id, name: "Mat Pilates", description: "Core-driven pilates session suitable for all levels.", imageUrl: "/images/classes/mat-pilates.jpg", defaultDurationMinutes: 30, defaultCapacity: COLLECTIVE_SESSION_CAPACITY, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 10 });
-  const reformerFoundations = await upsertClassType({ slug: "reformer-foundations", categoryId: pilatesCategory.id, name: "Reformer Foundations", description: "Small group reformer fundamentals for technique and control.", imageUrl: "/images/classes/reformer-foundations.jpg", defaultDurationMinutes: 30, defaultCapacity: COLLECTIVE_SESSION_CAPACITY, pricingMode: ServicePricingMode.PLAN_ONLY, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 20 });
-  const functionalStrength = await upsertClassType({ slug: "functional-strength", categoryId: fitnessCategory.id, name: "Functional Strength", description: "Strength and conditioning with athletic movement patterns.", imageUrl: "/images/classes/functional-strength.jpg", defaultDurationMinutes: 30, defaultCapacity: COLLECTIVE_SESSION_CAPACITY, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 10 });
-  const privateReformerCoaching = await upsertClassType({ slug: "private-reformer-coaching", categoryId: privateCategory.id, name: "Private Reformer Coaching", description: "Private 1:1 or duo coaching on the reformer.", imageUrl: "/images/classes/private-reformer-coaching.jpg", defaultDurationMinutes: 30, defaultCapacity: 1, pricingMode: ServicePricingMode.PLAN_ONLY, serviceScope: EntitlementScope.PRIVATE_CLASSES, sortOrder: 10 });
+  const vinyasaYoga = await upsertClassType({ slug: "vinyasa-yoga", categoryId: yogaCategory.id, name: "Vinyasa Yoga", description: "Breath-led flowing yoga for strength and mobility.", imageUrl: SEEDED_CLASS_IMAGES.vinyasaYoga, defaultDurationMinutes: 30, defaultCapacity: COLLECTIVE_SESSION_CAPACITY, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 10 });
+  const rocketYoga = await upsertClassType({ slug: "rocket-yoga", categoryId: yogaCategory.id, name: "Rocket Yoga", description: "High-energy yoga sequencing with progressive options.", imageUrl: SEEDED_CLASS_IMAGES.rocketYoga, defaultDurationMinutes: 30, defaultCapacity: COLLECTIVE_SESSION_CAPACITY, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 20 });
+  const hathaYoga = await upsertClassType({ slug: "hatha-yoga", categoryId: yogaCategory.id, name: "Hatha Yoga", description: "Slower paced foundational yoga and alignment practice.", imageUrl: SEEDED_CLASS_IMAGES.hathaYoga, defaultDurationMinutes: 30, defaultCapacity: COLLECTIVE_SESSION_CAPACITY, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 30 });
+  const matPilates = await upsertClassType({ slug: "mat-pilates", categoryId: pilatesCategory.id, name: "Mat Pilates", description: "Core-driven pilates session suitable for all levels.", imageUrl: SEEDED_CLASS_IMAGES.matPilates, defaultDurationMinutes: 30, defaultCapacity: COLLECTIVE_SESSION_CAPACITY, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 10 });
+  const reformerFoundations = await upsertClassType({ slug: "reformer-foundations", categoryId: pilatesCategory.id, name: "Reformer Foundations", description: "Small group reformer fundamentals for technique and control.", imageUrl: SEEDED_CLASS_IMAGES.reformerFoundations, defaultDurationMinutes: 30, defaultCapacity: COLLECTIVE_SESSION_CAPACITY, pricingMode: ServicePricingMode.PLAN_ONLY, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 20 });
+  const functionalStrength = await upsertClassType({ slug: "functional-strength", categoryId: fitnessCategory.id, name: "Functional Strength", description: "Strength and conditioning with athletic movement patterns.", imageUrl: SEEDED_CLASS_IMAGES.functionalStrength, defaultDurationMinutes: 30, defaultCapacity: COLLECTIVE_SESSION_CAPACITY, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 10 });
+  const privateReformerCoaching = await upsertClassType({ slug: "private-reformer-coaching", categoryId: privateCategory.id, name: "Private Reformer Coaching", description: "Private 1:1 or duo coaching on the reformer.", imageUrl: SEEDED_CLASS_IMAGES.privateReformerCoaching, defaultDurationMinutes: 30, defaultCapacity: 1, pricingMode: ServicePricingMode.PLAN_ONLY, serviceScope: EntitlementScope.PRIVATE_CLASSES, sortOrder: 10 });
 
   const vinyasaTemplate = await upsertClassTemplate({ slug: "vinyasa-flow-brussels", classTypeId: vinyasaYoga.id, defaultTeacherId: teachers.anaId, title: "Vinyasa Flow Brussels", description: "A full-spectrum vinyasa class with warm-up, flow and cooldown.", location: "Ixelles Studio A", defaultCapacity: COLLECTIVE_SESSION_CAPACITY, defaultDurationMinutes: 30 });
   const rocketTemplate = await upsertClassTemplate({ slug: "rocket-yoga-power-sequence", classTypeId: rocketYoga.id, defaultTeacherId: teachers.sofiaId, title: "Rocket Yoga Power Sequence", description: "Progressive rocket yoga with core and inversion prep.", location: "Ixelles Studio B", defaultCapacity: COLLECTIVE_SESSION_CAPACITY, defaultDurationMinutes: 30 });
@@ -1050,7 +1132,9 @@ async function seedLearningFromJson() {
     const category = asRequiredString(pickFirstDefined(item, ["category", "Category"]));
     if (!legacyId || !title || !category) throw new Error(`courses[${index}] is missing required fields (ID/Title/Category) in ${learningJsonPath}`);
     const priority = asOptionalNumber(pickFirstDefined(item, ["priority", "Priority"])) ?? index + 1;
-    courseInputs.push({ legacyId, title, description: asOptionalString(pickFirstDefined(item, ["description", "Description"])), shortDescription: asOptionalString(pickFirstDefined(item, ["shortDescription", "Short Description"])), category, categoryType: asOptionalString(pickFirstDefined(item, ["categoryType", "Category Type"])), categoryLevel: asOptionalString(pickFirstDefined(item, ["categoryLevel", "Category Level"])), thumbnail: assertLearningImagePath(asOptionalString(pickFirstDefined(item, ["thumbnail", "Thumbnail"])), `courses[${index}].thumbnail`) ?? undefined, videoUrl: asOptionalString(pickFirstDefined(item, ["videoUrl", "VideoURL"])), priority });
+    const thumbnailInput = asOptionalString(pickFirstDefined(item, ["thumbnail", "Thumbnail"]));
+    const thumbnailCanonical = thumbnailInput ? toCanonicalSeedImagePath(thumbnailInput) : undefined;
+    courseInputs.push({ legacyId, title, description: asOptionalString(pickFirstDefined(item, ["description", "Description"])), shortDescription: asOptionalString(pickFirstDefined(item, ["shortDescription", "Short Description"])), category, categoryType: asOptionalString(pickFirstDefined(item, ["categoryType", "Category Type"])), categoryLevel: asOptionalString(pickFirstDefined(item, ["categoryLevel", "Category Level"])), thumbnail: assertLearningImagePath(thumbnailCanonical, `courses[${index}].thumbnail`) ?? undefined, videoUrl: asOptionalString(pickFirstDefined(item, ["videoUrl", "VideoURL"])), priority });
   }
 
   const programInputs: LearningProgramSeedInput[] = [];
@@ -1062,7 +1146,10 @@ async function seedLearningFromJson() {
       const courseType = asRequiredString(pickFirstDefined(item, ["courseType", "CourseType"]));
       const title = asRequiredString(pickFirstDefined(item, ["title", "Title"]));
       if (!legacyId || !mainTitle || !courseType || !title) throw new Error(`programs[${index}] is missing required fields in ${learningJsonPath}`);
-      programInputs.push({ legacyId, mainTitle, mainDescription: asOptionalString(pickFirstDefined(item, ["mainDescription", "MainDescription"])), courseType, title, description1: asOptionalString(pickFirstDefined(item, ["description1", "Description1"])), description2: asOptionalString(pickFirstDefined(item, ["description2", "Description2"])), description3: asOptionalString(pickFirstDefined(item, ["description3", "Description3"])), videoPromo: asOptionalString(pickFirstDefined(item, ["videoPromo", "VideoPromo"])), picture1: assertLearningImagePath(asOptionalString(pickFirstDefined(item, ["picture1", "Picture1"])), `programs[${index}].picture1`) ?? undefined, picture2: assertLearningImagePath(asOptionalString(pickFirstDefined(item, ["picture2", "Picture2"])), `programs[${index}].picture2`) ?? undefined, picture3: assertLearningImagePath(asOptionalString(pickFirstDefined(item, ["picture3", "Picture3"])), `programs[${index}].picture3`) ?? undefined });
+      const picture1Input = asOptionalString(pickFirstDefined(item, ["picture1", "Picture1"]));
+      const picture2Input = asOptionalString(pickFirstDefined(item, ["picture2", "Picture2"]));
+      const picture3Input = asOptionalString(pickFirstDefined(item, ["picture3", "Picture3"]));
+      programInputs.push({ legacyId, mainTitle, mainDescription: asOptionalString(pickFirstDefined(item, ["mainDescription", "MainDescription"])), courseType, title, description1: asOptionalString(pickFirstDefined(item, ["description1", "Description1"])), description2: asOptionalString(pickFirstDefined(item, ["description2", "Description2"])), description3: asOptionalString(pickFirstDefined(item, ["description3", "Description3"])), videoPromo: asOptionalString(pickFirstDefined(item, ["videoPromo", "VideoPromo"])), picture1: assertLearningImagePath(picture1Input ? toCanonicalSeedImagePath(picture1Input) : undefined, `programs[${index}].picture1`) ?? undefined, picture2: assertLearningImagePath(picture2Input ? toCanonicalSeedImagePath(picture2Input) : undefined, `programs[${index}].picture2`) ?? undefined, picture3: assertLearningImagePath(picture3Input ? toCanonicalSeedImagePath(picture3Input) : undefined, `programs[${index}].picture3`) ?? undefined });
     }
   } else {
     const seedByCategory = new Map<string, { summary?: string; thumbnail?: string; videoUrl?: string }>();
@@ -1087,6 +1174,50 @@ async function seedLearningFromJson() {
   await prisma.learningProgram.deleteMany({ where: { legacyId: { notIn: programInputs.map((p) => p.legacyId) } } });
 
   console.info(`[seed:dev] Learning content seeded from JSON: programs=${programInputs.length}, courses=${courseInputs.length}.`);
+}
+
+async function syncSeedMediaFilesFromDatabase(): Promise<SeedMediaSyncSummary> {
+  const [users, classTypes, programs, courses, storeAssets] = await prisma.$transaction([
+    prisma.user.findMany({ where: { image: { startsWith: "/uploads/" } }, select: { image: true } }),
+    prisma.classType.findMany({ where: { imageUrl: { startsWith: "/uploads/" } }, select: { imageUrl: true } }),
+    prisma.learningProgram.findMany({
+      where: {
+        OR: [
+          { picture1: { startsWith: "/uploads/" } },
+          { picture2: { startsWith: "/uploads/" } },
+          { picture3: { startsWith: "/uploads/" } },
+        ],
+      },
+      select: { picture1: true, picture2: true, picture3: true },
+    }),
+    prisma.learningCourse.findMany({ where: { thumbnail: { startsWith: "/uploads/" } }, select: { thumbnail: true } }),
+    prisma.mediaAsset.findMany({ where: { path: { startsWith: "/uploads/products/" } }, select: { path: true } }),
+  ]);
+
+  const paths = new Set<string>();
+  for (const row of users) if (row.image) paths.add(row.image);
+  for (const row of classTypes) if (row.imageUrl) paths.add(row.imageUrl);
+  for (const row of programs) {
+    if (row.picture1) paths.add(row.picture1);
+    if (row.picture2) paths.add(row.picture2);
+    if (row.picture3) paths.add(row.picture3);
+  }
+  for (const row of courses) if (row.thumbnail) paths.add(row.thumbnail);
+  for (const row of storeAssets) paths.add(row.path);
+
+  let copiedCount = 0;
+  let existingCount = 0;
+  for (const mediaPath of paths) {
+    const result = await syncSeedMediaPath(mediaPath);
+    if (result === "copied") copiedCount += 1;
+    else existingCount += 1;
+  }
+
+  return {
+    copiedCount,
+    existingCount,
+    verifiedCount: paths.size,
+  };
 }
 
 // ─── Verification ─────────────────────────────────────────────────────────────
@@ -1151,6 +1282,12 @@ export async function runDevelopmentSeed(): Promise<void> {
   const schedulingSummary = await seedScheduling({ anaId: users.teachers.ana.id, elenaId: users.teachers.elena.id, sofiaId: users.teachers.sofia.id });
   await seedLearningFromJson();
   await seedAgendaSchedule();
+  const mediaSyncSummary = await syncSeedMediaFilesFromDatabase();
+  console.info(
+    `[seed:dev] Seed media sync: copied=${mediaSyncSummary.copiedCount}, existing=${mediaSyncSummary.existingCount}.`,
+  );
+  const seededMediaPathCount = await verifySeededMediaReferences(prisma);
+  console.info(`[seed:dev] Seeded media verified: ${seededMediaPathCount} canonical /uploads paths.`);
   await verifyCleanSeed(users.client.email, schedulingSummary);
 
   console.info(

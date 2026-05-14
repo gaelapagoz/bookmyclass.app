@@ -149,8 +149,8 @@ describe("learning importer payload parsing", () => {
     const result = parsePayload(raw);
 
     expect(result.payload).toBeNull();
-    expect(result.errors).toContain("programs[0].Picture1 must use /images/learning/*.jpg.");
-    expect(result.errors).toContain("courses[0].Thumbnail (or thumbnail) must use /images/learning/*.jpg.");
+    expect(result.errors).toContain("programs[0].Picture1 must use /uploads/learning/* (legacy /images/learning/* only for migration).");
+    expect(result.errors).toContain("courses[0].Thumbnail (or thumbnail) must use /uploads/learning/* (legacy /images/learning/* only for migration).");
   });
 
   it("reports duplicate IDs and duplicate program courseType values", () => {

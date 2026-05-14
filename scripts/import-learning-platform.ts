@@ -172,7 +172,7 @@ export function parsePayload(raw: unknown): { payload: LearningImportPayload | n
       ["Picture3", picture3],
     ] as const) {
       if (value && !isLearningImagePath(value)) {
-        errors.push(`programs[${index}].${field} must use /images/learning/*.jpg.`);
+        errors.push(`programs[${index}].${field} must use /uploads/learning/* (legacy /images/learning/* only for migration).`);
       }
     }
 
@@ -217,7 +217,7 @@ export function parsePayload(raw: unknown): { payload: LearningImportPayload | n
 
     const thumbnail = asOptionalString(pickFirstDefined(item, ["thumbnail", "Thumbnail"]));
     if (thumbnail && !isLearningImagePath(thumbnail)) {
-      errors.push(`courses[${index}].Thumbnail (or thumbnail) must use /images/learning/*.jpg.`);
+      errors.push(`courses[${index}].Thumbnail (or thumbnail) must use /uploads/learning/* (legacy /images/learning/* only for migration).`);
     }
 
     courses.push({

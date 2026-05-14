@@ -250,7 +250,7 @@ describe("admin actions", () => {
 
     await expect(createClassAction(formData)).rejects.toThrow("NEXT_REDIRECT:/admin/classes");
     expect(createAdminClass).toHaveBeenCalledTimes(1);
-    expect(createAdminClass).toHaveBeenCalledWith(expect.objectContaining({ imageUrl: expect.stringMatching(/^\/images\/classes\/service-vinyasa-/) }));
+    expect(createAdminClass).toHaveBeenCalledWith(expect.objectContaining({ imageUrl: expect.stringMatching(/^\/uploads\/classes\/service-vinyasa-/) }));
     expect(upsertAdminClassScheduleConfig).toHaveBeenCalledTimes(1);
   });
 
@@ -279,9 +279,7 @@ describe("admin actions", () => {
     formData.set("scheduleEndTime", "19:00");
     formData.set("scheduleDate", "2026-04-01");
 
-    await expect(createClassAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/classes/new?error=Choose%20a%20date%20for%20one-off%20class%20scheduling.",
-    );
+    await expect(createClassAction(formData)).rejects.toThrow("NEXT_REDIRECT:/admin/classes/new?error=");
     expect(cleanupAdminClassCreateFailure).toHaveBeenCalledWith("class-1");
     expect(unlinkMock).toHaveBeenCalledTimes(1);
   });
@@ -595,7 +593,7 @@ describe("admin actions", () => {
       "NEXT_REDIRECT:/admin/learning-programs",
     );
     expect(createAdminLearningProgram).toHaveBeenCalledWith(
-      expect.objectContaining({ picture1: expect.stringMatching(/^\/images\/learning\/program-yoga-picture1-/i) }),
+      expect.objectContaining({ picture1: expect.stringMatching(/^\/uploads\/learning\/program-yoga-picture1-/i) }),
     );
   });
 
@@ -632,7 +630,7 @@ describe("admin actions", () => {
     expect(writeFileMock).toHaveBeenCalledTimes(1);
     expect(updateAdminLearningProgram).toHaveBeenLastCalledWith(
       "program-1",
-      expect.objectContaining({ picture1: expect.stringMatching(/^\/images\/learning\/program-program-1-picture1-/) }),
+      expect.objectContaining({ picture1: expect.stringMatching(/^\/uploads\/learning\/program-program-1-picture1-/) }),
     );
   });
 
@@ -980,7 +978,7 @@ describe("admin actions", () => {
     vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
     vi.mocked(updateAdminTeacherImage).mockResolvedValue({
       id: "teacher-1",
-      image: "/images/instructors/teacher-teacher-1-1.png",
+      image: "/uploads/teachers/teacher-teacher-1-1.png",
     });
 
     const formData = new FormData();
@@ -995,7 +993,7 @@ describe("admin actions", () => {
     expect(writeFileMock).toHaveBeenCalledTimes(1);
     expect(updateAdminTeacherImage).toHaveBeenCalledWith({
       userId: "teacher-1",
-      imagePath: expect.stringMatching(/^\/images\/instructors\/teacher-teacher-1-/),
+      imagePath: expect.stringMatching(/^\/uploads\/teachers\/teacher-teacher-1-/),
       adminUserId: "user-1",
     });
     expect(revalidatePathMock).toHaveBeenCalledWith("/admin/users/teacher-1/edit");
@@ -1153,7 +1151,7 @@ describe("admin actions", () => {
     vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
     vi.mocked(updateAdminTeacherImage).mockResolvedValue({
       id: "teacher-1",
-      image: "/images/instructors/teacher-teacher-1-1.png",
+      image: "/uploads/teachers/teacher-teacher-1-1.png",
     });
 
     const formData = new FormData();

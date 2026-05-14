@@ -1,6 +1,7 @@
 import { Role } from "@prisma/client";
 import { prisma } from "../db";
 import { getPublicTeacherName } from "./teacher-display";
+import { getCanonicalMediaRenderState } from "@/lib/media";
 
 export type PublicInstructor = {
   bio: string;
@@ -32,10 +33,26 @@ export async function getPublicInstructors(): Promise<PublicInstructor[]> {
     },
   });
 
-  return teachers.map((teacher) => ({
-    id: teacher.id,
-    name: getPublicTeacherName(teacher),
-    bio: teacher.teacherProfile?.bio?.trim() ?? "",
-    imageUrl: teacher.image?.trim() ?? "",
-  }));
+  return Promise.all(
+    teachers.map(async (teacher) => ({
+      id: teacher.id,
+      name: getPublicTeacherName(teacher),
+      bio: teacher.teacherProfile?.bio?.trim() ?? "",
+      imageUrl: await getTeacherImageUrl(teacher.image),
+    })),
+  );
+}
+
+async function getTeacherImageUrl(imagePath: string | null): Promise<string> {
+  const trimmed = imagePath?.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (trimmed.startsWith("/uploads/")) {
+    const renderState = await getCanonicalMediaRenderState(trimmed, { allowedFolders: ["teachers"] });
+    return renderState.src ?? "";
+  }
+
+  return trimmed;
 }

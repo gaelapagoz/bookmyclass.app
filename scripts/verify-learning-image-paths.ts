@@ -15,7 +15,7 @@ type LearningSeed = {
 
 function assertLearningImage(value: string | null | undefined, label: string) {
   if (value && !isLearningImagePath(value)) {
-    throw new Error(`${label} must use /images/learning/*.jpg. Received: ${value}`);
+    throw new Error(`${label} must use a canonical learning image path under /uploads/learning/*.jpg (legacy /images/learning/* only for migration). Received: ${value}`);
   }
 }
 

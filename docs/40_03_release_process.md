@@ -176,9 +176,9 @@ Notes:
 - The deploy script creates `/var/www/bookmyclass-homesite/images/homesite`
   automatically and copies committed homesite images from
   `public/images/homesite`; no manual symlink or manual `mkdir` is required.
-- Store product upload media is separate: uploaded product images must resolve
-  from persistent `/uploads/...` storage backed by `UPLOADS_DIR`, not from the
-  release-local `public/` folder or `.next`.
+- Uploaded image media must resolve from persistent `/uploads/...` storage backed
+  by `UPLOADS_DIR`, not from the release-local `public/` folder or `.next`.
+  Canonical folders are `teachers`, `classes`, `learning`, and `products`.
 
 ---
 
@@ -240,7 +240,7 @@ npm run verify:media-runtime
 * `npx prisma generate` regenerates Prisma client artifacts for the checked out version
 * `npm run build` builds the Next.js application
 * `pm2 restart bookmyclass-app --update-env` restarts the app with the current environment
-* `npm run verify:media-runtime` checks persistent media storage and `/uploads/...` public path generation
+* `npm run verify:media-runtime` checks persistent media storage and `/uploads/...` public path generation for all canonical image folders
 
 ### Rules
 
@@ -346,7 +346,7 @@ flags — Stripe catalog sync and live price IDs are the gate.
 - [ ] Gift-card purchase flow completes against live Stripe; issuance email delivered with code.
 - [ ] Gift-card code redemption credits wallet balance.
 - [ ] Health endpoint returns 200.
-- [ ] Uploaded product images render from `/uploads/...` after deploy/restart.
+- [ ] Uploaded teacher, booking service, learning, and Store product images render from `/uploads/...` after deploy/restart.
 - [ ] Static homesite screenshots render without a manual symlink.
 
 **Canonical references:**
@@ -450,7 +450,7 @@ curl -i https://<ENV_DOMAIN>/api/health
 - E2E coverage matrix check must pass (`npm run qa:e2e:coverage`)
 - Store production catalog readiness must pass (`npm run verify:catalog:production`)
 - Gift-card maintenance verification must pass (`npm run verify:gift-card-maintenance`)
-- Media runtime verification must pass when Store uploads are in scope (`npm run verify:media-runtime`)
+- Media runtime verification must pass when uploaded image media is in scope (`npm run verify:media-runtime`)
 - Prisma migration status must be valid
 
 Defined in:

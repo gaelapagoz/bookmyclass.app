@@ -1,8 +1,13 @@
-import { assertSafeMediaPublicPath } from "@/lib/media";
+import { assertCanonicalMediaPublicPath, assertSafeMediaPublicPath } from "@/lib/media";
 
 export function isLearningImagePath(value: string): boolean {
   try {
-    assertSafeMediaPublicPath(value.trim(), ["/images/learning"]);
+    const trimmed = value.trim();
+    if (trimmed.startsWith("/uploads/")) {
+      assertCanonicalMediaPublicPath(trimmed, ["learning"]);
+    } else {
+      assertSafeMediaPublicPath(trimmed, ["/images/learning"]);
+    }
     return /\.(jpe?g|png|webp)$/i.test(value.trim());
   } catch {
     return false;
@@ -29,7 +34,7 @@ export function assertLearningImagePath(
   const normalized = normalizeLearningImagePath(value);
 
   if (typeof value === "string" && value.trim() && !normalized) {
-    throw new Error(`${fieldName} must use a JPG, PNG, or WEBP file under /images/learning/.`);
+    throw new Error(`${fieldName} must use a JPG, PNG, or WEBP file under /uploads/learning/ (legacy /images/learning/ is accepted for migration only).`);
   }
 
   return normalized;

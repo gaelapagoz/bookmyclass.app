@@ -3,7 +3,7 @@ import path from "node:path";
 export const DEFAULT_PUBLIC_UPLOADS_BASE_PATH = "/uploads";
 export const DEFAULT_LOCAL_UPLOADS_DIR = path.join(
   /* turbopackIgnore: true */ process.cwd(),
-  "public",
+  ".local",
   "uploads",
 );
 

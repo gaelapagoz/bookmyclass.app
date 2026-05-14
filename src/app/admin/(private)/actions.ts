@@ -61,7 +61,12 @@ import { requireAdminSession } from "@/lib/auth/require-auth";
 import { upsertActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
 import { updateClientMessageStatus } from "@/lib/client-messages/client-message-service";
 import { isLearningImagePath } from "@/lib/learning/image-paths";
-import { SecureMediaError, storeSecureImageWithPathPersistence, type SecureMediaFile } from "@/lib/media";
+import {
+  CanonicalMediaError,
+  storeCanonicalImageWithPathPersistence,
+  type CanonicalMediaFile,
+  type CanonicalMediaFolder,
+} from "@/lib/media";
 import { normalizeMarketingContentJson } from "@/lib/marketing/marketing-renderer";
 import { clearPublicCatalogueCaches } from "@/lib/public-catalogue/catalogue-service";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
@@ -524,7 +529,7 @@ function getPrismaErrorMessage(error: unknown): string {
 }
 
 function getAdminActionErrorMessage(error: unknown): string {
-  if (error instanceof SecureMediaError) {
+  if (error instanceof CanonicalMediaError) {
     if (error.code === "FILE_TOO_LARGE") {
       return "Image must be 5MB or less.";
     }
@@ -791,7 +796,7 @@ function mapTeacherImageMimeTypeToExtension(mimeType: string): string | null {
   return null;
 }
 
-function getOptionalImageFile(formData: FormData, fieldName: string): SecureMediaFile | null {
+function getOptionalImageFile(formData: FormData, fieldName: string): CanonicalMediaFile | null {
   const file = formData.get(fieldName);
   if (!(file instanceof File) || file.size < 1) {
     return null;
@@ -801,16 +806,15 @@ function getOptionalImageFile(formData: FormData, fieldName: string): SecureMedi
 }
 
 async function storeAdminImageWithPersistence(input: {
-  file: SecureMediaFile;
-  folder: "/images/classes" | "/images/instructors" | "/images/learning";
+  file: CanonicalMediaFile;
+  folder: CanonicalMediaFolder;
   filenamePrefix: string;
   persistPath: (publicPath: string) => Promise<void>;
 }) {
-  return storeSecureImageWithPathPersistence({
+  return storeCanonicalImageWithPathPersistence({
     file: input.file,
     folder: input.folder,
     filenamePrefix: input.filenamePrefix,
-    allowedFolders: [input.folder],
     persistPath: input.persistPath,
   });
 }
@@ -847,7 +851,7 @@ async function storeLearningProgramImageUploadsForCreate(input: {
 
       const stored = await storeAdminImageWithPersistence({
         file: upload,
-        folder: "/images/learning",
+          folder: "learning",
         filenamePrefix: `program-${payload.courseType}-${field}`,
         persistPath: async () => undefined,
       });
@@ -878,7 +882,7 @@ async function persistLearningProgramImageUploads(input: {
 
     await storeAdminImageWithPersistence({
       file: upload,
-      folder: "/images/learning",
+      folder: "learning",
       filenamePrefix: `program-${input.programId}-${field}`,
       persistPath: async (publicPath) => {
         payload[field] = publicPath;
@@ -1081,7 +1085,7 @@ export async function createClassAction(formData: FormData) {
       try {
         await storeAdminImageWithPersistence({
           file: classImage,
-          folder: "/images/classes",
+          folder: "classes",
           filenamePrefix: `service-${parsed.data.name}`,
           persistPath: async (publicPath) => {
             let createdClassId: string | null = null;
@@ -2140,7 +2144,7 @@ export async function uploadTeacherImageAction(formData: FormData) {
   try {
     await storeAdminImageWithPersistence({
       file,
-      folder: "/images/instructors",
+      folder: "teachers",
       filenamePrefix: `teacher-${userId}`,
       persistPath: async (publicPath) => {
         await updateAdminTeacherImage({
@@ -2177,7 +2181,7 @@ export async function uploadClassImageAction(formData: FormData) {
   try {
     await storeAdminImageWithPersistence({
       file,
-      folder: "/images/classes",
+      folder: "classes",
       filenamePrefix: `service-${classTypeId}`,
       persistPath: async (publicPath) => {
         await updateAdminClassImage({

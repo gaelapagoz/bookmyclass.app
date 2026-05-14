@@ -158,7 +158,7 @@ bash scripts/local-uat-security-collect-metrics.sh /tmp/local-uat-security-<time
 CONFIRM_UAT_DB_RESET=YES TARGET_TAG=vX.Y.Z BASE_URL=https://uat.bookmyclass.app bash scripts/uat-reset-and-verify.sh
 ```
 
-- After reseed, verify learning thumbnails and program images in DB are first-party (`/images/learning/*.jpg`) before running ZAP baseline.
+- After reseed, verify learning thumbnails and program images in DB use canonical uploaded media paths (`/uploads/learning/*`) before running ZAP baseline.
 
 ## 9) Safety reminders
 
@@ -286,5 +286,5 @@ Expected after remediation:
 - Current CSRF defense is same-origin validation (Origin/Referer) for non-auth mutations and server actions.
 - ZAP may still report token-style CSRF findings because no synchronizer-token marker is emitted by this model.
 - Edge/static header coverage is now explicitly configured for `/robots.txt` and `/_next/static/*` surfaces we control. Remaining header findings on Cloudflare-managed `cdn-cgi/*` paths may still be expected.
-- Learning images are first-party only and must remain under `/images/learning/*.jpg` in seed data, DB rows, and runtime output.
+- Learning images are first-party only and must remain under canonical `/uploads/learning/*` in DB rows and runtime output. Legacy `/images/learning/*` values are migration-only.
 

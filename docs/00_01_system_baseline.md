@@ -330,7 +330,8 @@ Evidence label legend used in this file:
   - Evidence status: Confirmed from repo.
 - Static asset handling:
   - Static files in `public/`; standard Next.js static handling.
-  - Uploaded Store product media uses persistent `UPLOADS_DIR` and public paths under `/uploads/...`; production must not store uploads inside the release-local `public/` folder.
+  - Uploaded image media for teachers, booking services, online learning, and Store products uses persistent `UPLOADS_DIR` and public paths under `/uploads/...`; production must not store uploads inside the release-local `public/` folder.
+  - Canonical uploaded image folders are `/uploads/teachers`, `/uploads/classes`, `/uploads/learning`, and `/uploads/products`.
   - Static homesite screenshot assets are committed under `public/images/homesite` and are copied into the nginx homesite document root by deploy scripts.
   - Evidence status: Confirmed from repo.
 - Environment separation:

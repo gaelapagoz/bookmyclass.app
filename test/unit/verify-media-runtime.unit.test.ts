@@ -24,7 +24,17 @@ describe("verifyMediaRuntime", () => {
     const result = await verifyMediaRuntime();
 
     expect(result.uploadsDir).toBe(path.resolve(uploadsDir));
-    expect(result.testPublicPath).toMatch(/^\/uploads\/products\/\.media-runtime-[0-9a-f-]+\.txt$/);
-    expect(result.testPublicPath).not.toContain(path.resolve(uploadsDir));
+    expect(result.testPublicPaths).toHaveLength(4);
+    expect(result.testPublicPaths).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^\/uploads\/teachers\/\.media-runtime-[0-9a-f-]+\.txt$/),
+        expect.stringMatching(/^\/uploads\/classes\/\.media-runtime-[0-9a-f-]+\.txt$/),
+        expect.stringMatching(/^\/uploads\/learning\/\.media-runtime-[0-9a-f-]+\.txt$/),
+        expect.stringMatching(/^\/uploads\/products\/\.media-runtime-[0-9a-f-]+\.txt$/),
+      ]),
+    );
+    for (const testPublicPath of result.testPublicPaths) {
+      expect(testPublicPath).not.toContain(path.resolve(uploadsDir));
+    }
   });
 });
