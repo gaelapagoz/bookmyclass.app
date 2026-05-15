@@ -84,7 +84,7 @@ const futureWindowEndUtc = new Date(seedDayUtc);
 futureWindowEndUtc.setUTCDate(futureWindowEndUtc.getUTCDate() + SEED_FUTURE_DAYS);
 futureWindowEndUtc.setUTCHours(23, 59, 59, 999);
 
-const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9]+$/;
+const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9_]+$/;
 
 type CatalogStripePriceEnvSpec = { productName: string; lookupKey: string; envVarName: string };
 

@@ -48,7 +48,7 @@ const PERF_FUTURE_DAYS = 120;
 const PERF_RANDOM_SEED = 20260419;
 const PERF_SESSION_CAPACITY = 15;
 
-const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9]+$/;
+const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9_]+$/;
 
 type CatalogStripePriceEnvSpec = { productName: string; lookupKey: string; envVarName: string };
 

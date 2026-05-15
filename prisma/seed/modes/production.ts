@@ -75,7 +75,7 @@ const PROD_BOOKING_DAYS = 120; // pre-populate bookings this far ahead
 const PROD_RANDOM_SEED = 20260420;
 const PROD_SESSION_CAPACITY = 15;
 
-const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9]+$/;
+const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9_]+$/;
 
 type CatalogStripePriceEnvSpec = { productName: string; lookupKey: string; envVarName: string };
 
