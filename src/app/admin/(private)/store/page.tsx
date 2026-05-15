@@ -128,7 +128,7 @@ export default async function AdminStorePage() {
           <div>
             <h2 className="text-xl font-semibold text-[#1f2735]">Gift Cards</h2>
             <p className="mt-1 text-sm text-[#4b5a72]">
-              Gift-card denominations are EUR one-time products with a 500 EUR maximum per denomination.
+              Gift-card denominations are EUR one-time products with no maximum denomination cap.
             </p>
           </div>
           <Link href="/admin/store/gift-cards/new" className="rounded-md bg-[#1d3652] px-3 py-2 text-sm text-white">

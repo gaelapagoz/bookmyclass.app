@@ -38,7 +38,7 @@ export default async function AdminStoreGiftCardsPage() {
           <h1 className="text-2xl font-semibold text-[#1f2735]">Store: Gift Cards</h1>
           <p className="mt-1 text-sm text-[#4b5a72]">
             Manage sellable gift-card denominations. EUR only, one-time, Stripe sync required.
-            Max 500 EUR per denomination. Gift-card wallets and redemption history are under Sales.
+            No denomination cap. Gift-card wallets and redemption history are under Sales.
           </p>
         </div>
         <Link

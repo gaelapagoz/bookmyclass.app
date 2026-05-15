@@ -16,8 +16,6 @@ import { hashGiftCardPayload } from "./gift-card-payload-hash";
 import { lockGiftCardWallet } from "./gift-card-wallet-lock";
 import {
   GIFT_CARD_CURRENCY_CODE,
-  GIFT_CARD_MAX_REDEMPTION_MINOR,
-  GIFT_CARD_MAX_WALLET_BALANCE_MINOR,
   type GiftCardActor,
   type GiftCardRedemptionMutation,
   type GiftCardWalletBalance,
@@ -380,10 +378,6 @@ export async function activateGiftCardValue(input: ActivateGiftCardInput): Promi
       }
     }
 
-    if (wallet.balanceMinor + input.amountMinor > GIFT_CARD_MAX_WALLET_BALANCE_MINOR) {
-      throw giftCardError(giftCardErrorCodes.walletCapExceeded);
-    }
-
     const ledgerEntry = await createLedgerEntry(
       tx,
       {
@@ -469,10 +463,6 @@ export async function activatePaidGiftCardOrder(input: ActivatePaidGiftCardOrder
       (total, item) => total + item.amountMinor,
       0,
     );
-    if (wallet.balanceMinor + activationTotalMinor > GIFT_CARD_MAX_WALLET_BALANCE_MINOR) {
-      throw giftCardError(giftCardErrorCodes.walletCapExceeded);
-    }
-
     for (const item of itemsToActivate) {
       const ledgerEntry = await createLedgerEntry(tx, {
         walletId: wallet.id,
@@ -510,10 +500,6 @@ export async function reserveGiftCardValue(input: ReserveGiftCardInput): Promise
   assertCurrency(currencyCode);
   assertPositiveAmount(input.amountMinor);
   assertIdempotencyKey(input.idempotencyKey);
-  if (input.amountMinor > GIFT_CARD_MAX_REDEMPTION_MINOR) {
-    throw giftCardError(giftCardErrorCodes.amountInvalid);
-  }
-
   const payloadHash = hashGiftCardPayload({
     operation: "RESERVE",
     clientId: input.clientId,

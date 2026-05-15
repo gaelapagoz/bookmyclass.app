@@ -203,7 +203,7 @@ describe("cart validation service", () => {
     expect(result.rejection.code).toBe("NON_EUR_PRICE_NOT_ALLOWED");
   });
 
-  it("rejects gift-card order totals above 500 EUR", async () => {
+  it("allows large gift-card order totals", async () => {
     const service = createCartValidationService({
       getCatalogPricesByIds: async () => [
         buildCatalogPrice({
@@ -220,9 +220,7 @@ describe("cart validation service", () => {
       lines: [{ productId: "prod_1", priceId: "price_1", quantity: 3 }],
     });
 
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("Expected rejection");
-    expect(result.rejection.code).toBe("GIFT_CARD_ORDER_TOTAL_EXCEEDED");
+    expect(result.ok).toBe(true);
   });
 
   it("rejects merchandise quantities above 10 per product", async () => {

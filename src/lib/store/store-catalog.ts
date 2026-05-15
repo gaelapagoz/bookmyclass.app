@@ -1,6 +1,4 @@
 import {
-  OrderStatus,
-  PaymentStatus,
   PriceType,
   ProductType,
   StripeSyncStatus,
@@ -12,17 +10,13 @@ import { isStripePriceIdAllowedForRuntime } from "@/lib/catalog/checkout-readine
 import { STORE_PRODUCT_TYPES, isStoreProductType } from "@/lib/catalog/product-scopes";
 import {
   STORE_CURRENCY_CODE,
-  STORE_MAX_GIFT_CARD_ORDER_TOTAL_MINOR,
-  STORE_MAX_WALLET_BALANCE_MINOR,
   STORE_PICKUP_WORDING,
 } from "@/lib/store/store-constants";
 import type { MediaAssetReadModel } from "@/lib/media/product-media-service";
 import { getCanonicalMediaRenderState } from "@/lib/media";
 export {
   STORE_CURRENCY_CODE,
-  STORE_MAX_GIFT_CARD_ORDER_TOTAL_MINOR,
   STORE_MAX_MERCHANDISE_QUANTITY_PER_PRODUCT,
-  STORE_MAX_WALLET_BALANCE_MINOR,
   STORE_PICKUP_WORDING,
 } from "@/lib/store/store-constants";
 
@@ -60,7 +54,6 @@ export type GiftCardPriceValidationResult =
   | { ok: true }
   | { ok: false; code: string; message: string };
 
-
 export function validateGiftCardPriceForCheckoutExposure(input: {
   productType: ProductType;
   priceType: PriceType;
@@ -91,10 +84,6 @@ export function validateGiftCardPriceForCheckoutExposure(input: {
 
   if (!Number.isInteger(input.unitAmountMinor) || input.unitAmountMinor <= 0) {
     return { ok: false, code: "INVALID_AMOUNT", message: "Gift-card prices must be greater than zero." };
-  }
-
-  if (input.unitAmountMinor > STORE_MAX_GIFT_CARD_ORDER_TOTAL_MINOR) {
-    return { ok: false, code: "AMOUNT_EXCEEDS_CAP", message: "Gift-card prices must not exceed 500 EUR." };
   }
 
   if (
@@ -248,83 +237,6 @@ export async function listStoreCatalogReadModels(): Promise<StoreCatalogReadMode
   return visible;
 }
 
-export async function assertGiftCardWalletCapPrecheck(input: {
-  clientId: string;
-  newGiftCardOrderTotalMinor: number;
-}) {
-  if (!Number.isInteger(input.newGiftCardOrderTotalMinor) || input.newGiftCardOrderTotalMinor < 0) {
-    throw new Error("Gift-card order total must be a non-negative integer.");
-  }
-
-  const [wallet, pendingGiftCardOrders] = await Promise.all([
-    prisma.giftCardWallet.findUnique({
-      where: {
-        clientId_currencyCode: {
-          clientId: input.clientId,
-          currencyCode: STORE_CURRENCY_CODE,
-        },
-      },
-      select: { balanceMinor: true },
-    }),
-    prisma.order.findMany({
-      where: {
-        clientId: input.clientId,
-        currencyCode: STORE_CURRENCY_CODE,
-        status: { in: [OrderStatus.DRAFT, OrderStatus.PLACED] },
-        OR: [
-          {
-            payments: {
-              some: {
-                status: PaymentStatus.PENDING,
-              },
-            },
-          },
-          {
-            payments: {
-              none: {},
-            },
-          },
-        ],
-        items: {
-          some: {
-            product: {
-              productType: ProductType.GIFT_CARD,
-            },
-          },
-        },
-      },
-      select: {
-        items: {
-          where: {
-            product: {
-              productType: ProductType.GIFT_CARD,
-            },
-          },
-          select: {
-            lineTotalAmountMinor: true,
-          },
-        },
-      },
-    }),
-  ]);
-
-  const balanceMinor = wallet?.balanceMinor ?? 0;
-  const pendingGiftCardOrderValueMinor = pendingGiftCardOrders.reduce(
-    (sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + item.lineTotalAmountMinor, 0),
-    0,
-  );
-  const projectedBalanceMinor =
-    balanceMinor + pendingGiftCardOrderValueMinor + input.newGiftCardOrderTotalMinor;
-
-  return {
-    ok: projectedBalanceMinor <= STORE_MAX_WALLET_BALANCE_MINOR,
-    balanceMinor,
-    pendingGiftCardOrderValueMinor,
-    newGiftCardOrderTotalMinor: input.newGiftCardOrderTotalMinor,
-    projectedBalanceMinor,
-    maxWalletBalanceMinor: STORE_MAX_WALLET_BALANCE_MINOR,
-  };
-}
 
 export const listStoreCatalog = listStoreCatalogReadModels;
 

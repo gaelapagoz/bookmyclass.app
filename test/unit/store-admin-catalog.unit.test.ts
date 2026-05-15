@@ -48,14 +48,8 @@ describe("validateGiftCardAdminPriceInput", () => {
     expect(validateGiftCardAdminPriceInput({ unitAmountMinor: 2500 })).toEqual({ ok: true });
   });
 
-  it("accepts exactly 500 EUR (50000 minor)", () => {
-    expect(validateGiftCardAdminPriceInput({ unitAmountMinor: 50_000 })).toEqual({ ok: true });
-  });
-
-  it("rejects amount > 500 EUR (50001 minor)", () => {
-    const result = validateGiftCardAdminPriceInput({ unitAmountMinor: 50_001 });
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe("AMOUNT_EXCEEDS_CAP");
+  it("accepts high denominations", () => {
+    expect(validateGiftCardAdminPriceInput({ unitAmountMinor: 1_000_000_000 })).toEqual({ ok: true });
   });
 
   it("rejects zero amount", () => {
@@ -195,4 +189,3 @@ describe("isCatalogPriceCheckoutReady — live-price validation", () => {
     ).toBe(false);
   });
 });
-

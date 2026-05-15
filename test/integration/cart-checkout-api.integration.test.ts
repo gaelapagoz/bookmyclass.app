@@ -508,18 +508,11 @@ describe("POST /api/cart/checkout", () => {
     expect(secondBody.idempotency.replayed).toBe(true);
   });
 
-  it("rejects gift-card checkout through route when wallet cap would be exceeded", async () => {
+  it("allows high-value gift-card checkout through route", async () => {
     const client = await seedClient({ verified: true });
     const { product, price } = await seedCheckoutReadyCatalog({
       productType: ProductType.GIFT_CARD,
-      unitAmountMinor: 15_000,
-    });
-    await prisma.giftCardWallet.create({
-      data: {
-        clientId: client.id,
-        currencyCode: "EUR",
-        balanceMinor: 90_000,
-      },
+      unitAmountMinor: 5_000_000,
     });
 
     vi.mocked(auth).mockResolvedValue({
@@ -531,75 +524,7 @@ describe("POST /api/cart/checkout", () => {
       createRequest({
         key: "cartchk_123e4567-e89b-12d3-a456-426614174251",
         body: {
-          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
-          clientCartVersion: "v1",
-        },
-      }),
-    );
-
-    expect(response.status).toBe(422);
-    await expect(response.json()).resolves.toMatchObject({
-      code: "GIFT_CARD_WALLET_CAP_EXCEEDED",
-    });
-    expect(createStripeCheckoutSessionWithIdempotencyMock).not.toHaveBeenCalled();
-    await expect(prisma.order.count({ where: { clientId: client.id } })).resolves.toBe(0);
-  });
-
-  it("counts only pending unpaid gift-card orders for route wallet cap checks", async () => {
-    const client = await seedClient({ verified: true });
-    const { product, price } = await seedCheckoutReadyCatalog({
-      productType: ProductType.GIFT_CARD,
-      unitAmountMinor: 15_000,
-    });
-    await prisma.giftCardWallet.create({
-      data: {
-        clientId: client.id,
-        currencyCode: "EUR",
-        balanceMinor: 60_000,
-      },
-    });
-    await prisma.order.create({
-      data: {
-        clientId: client.id,
-        subtotalAmountMinor: 30_000,
-        totalAmountMinor: 30_000,
-        currencyCode: "EUR",
-        status: OrderStatus.PLACED,
-        items: {
-          create: {
-            productId: product.id,
-            priceId: price.id,
-            quantity: 2,
-            productNameSnapshot: product.name,
-            priceNameSnapshot: price.name,
-            unitAmountMinor: 15_000,
-            lineSubtotalAmountMinor: 30_000,
-            lineTotalAmountMinor: 30_000,
-            currencyCode: "EUR",
-          },
-        },
-        payments: {
-          create: {
-            status: PaymentStatus.FAILED,
-            method: PaymentMethod.CARD,
-            provider: PaymentProvider.STRIPE,
-            amountMinor: 30_000,
-            currencyCode: "EUR",
-          },
-        },
-      },
-    });
-
-    vi.mocked(auth).mockResolvedValue({
-      user: { id: client.id, name: client.name, email: client.email },
-      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-    });
-
-    const response = await cartCheckoutRoute(
-      createRequest({
-        key: "cartchk_123e4567-e89b-12d3-a456-426614174252",
-        body: {
-          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          lines: [{ productId: product.id, priceId: price.id, quantity: 2 }],
           clientCartVersion: "v1",
         },
       }),
@@ -635,6 +560,49 @@ describe("POST /api/cart/checkout", () => {
     await expect(response.json()).resolves.toMatchObject({ code: "CART_VALIDATION_FAILED" });
     expect(createStripeCheckoutSessionWithIdempotencyMock).not.toHaveBeenCalled();
     await expect(prisma.order.count({ where: { clientId: client.id } })).resolves.toBe(0);
+  });
+
+  it("builds store Stripe line items from inline price_data even when stored Stripe price ID is stale", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.MERCHANDISE,
+      stripePriceId: "price_E2eMerchYogaMat",
+      unitAmountMinor: 4500,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_123e4567-e89b-12d3-a456-426614174254",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(createStripeCheckoutSessionWithIdempotencyMock).toHaveBeenCalledTimes(1);
+
+    const stripeArgs = createStripeCheckoutSessionWithIdempotencyMock.mock.calls[0]?.[0] as
+      | { params?: Record<string, unknown> }
+      | undefined;
+    const lineItems = stripeArgs?.params?.line_items as Array<Record<string, unknown>> | undefined;
+    const firstLine = lineItems?.[0];
+
+    expect(firstLine?.price).toBeUndefined();
+    expect(firstLine?.quantity).toBe(1);
+    expect(firstLine?.price_data).toMatchObject({
+      currency: "eur",
+      unit_amount: 4500,
+      product_data: {
+        name: product.name,
+      },
+    });
   });
 
   it("returns IDEMPOTENCY_IN_PROGRESS for existing in-flight record", async () => {

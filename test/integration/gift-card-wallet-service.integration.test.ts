@@ -603,4 +603,32 @@ describe("gift card wallet foundation", () => {
       }),
     ).rejects.toThrow();
   });
+
+  it("allows high-value activation and redemption reservation without fixed cap", async () => {
+    const client = await createClient();
+    const { order, orderItem } = await createGiftCardOrder(client.id, 1_800_00);
+
+    const activation = await activateGiftCardValue({
+      actor,
+      clientId: client.id,
+      orderId: order.id,
+      orderItemId: orderItem.id,
+      amountMinor: 1_800_00,
+      idempotencyKey: `gift-card:activation:orderItem:${orderItem.id}`,
+    });
+
+    expect(activation.wallet.balanceMinor).toBe(1_800_00);
+
+    const reserveOrder = await createOrder(client.id);
+    const reserve = await reserveGiftCardValue({
+      actor,
+      clientId: client.id,
+      orderId: reserveOrder.id,
+      amountMinor: 1_500_00,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      idempotencyKey: `gift-card:reserve:order:${reserveOrder.id}`,
+    });
+
+    expect(reserve.redemption.reservedAmountMinor).toBe(1_500_00);
+  });
 });

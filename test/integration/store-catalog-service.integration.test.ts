@@ -1,20 +1,14 @@
 import "./helpers/setup-env";
 
 import {
-  OrderStatus,
-  PaymentMethod,
-  PaymentProvider,
-  PaymentStatus,
   PriceType,
   ProductType,
-  Role,
   StripeSyncStatus,
 } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   STORE_PICKUP_WORDING,
-  assertGiftCardWalletCapPrecheck,
   listStoreCatalogReadModels,
   validateGiftCardPriceForCheckoutExposure,
 } from "../../src/lib/store/store-catalog";
@@ -230,10 +224,7 @@ describe("store catalog service", () => {
       ok: false,
       code: "INVALID_CURRENCY",
     });
-    expect(validateGiftCardPriceForCheckoutExposure({ ...base, unitAmountMinor: 50_001 })).toMatchObject({
-      ok: false,
-      code: "AMOUNT_EXCEEDS_CAP",
-    });
+    expect(validateGiftCardPriceForCheckoutExposure({ ...base, unitAmountMinor: 50_001 })).toEqual({ ok: true });
     expect(validateGiftCardPriceForCheckoutExposure({ ...base, priceType: PriceType.RECURRING })).toMatchObject({
       ok: false,
       code: "INVALID_PRICE_TYPE",
@@ -269,132 +260,5 @@ describe("store catalog service", () => {
       code: "STRIPE_NOT_READY",
     });
   });
-
-  it("includes pending gift-card orders in wallet cap pre-check", async () => {
-    const product = await createTestGiftCardProduct({
-      slug: "store-gift-card-25-eur",
-      lookupKey: "store-gift-card-25-eur-once-v1",
-    });
-    const price = await prisma.price.findFirstOrThrow({ where: { productId: product.id }, select: { id: true, name: true, unitAmountMinor: true } });
-    const client = await prisma.user.create({
-      data: { name: "Store Client", email: "store.client@example.test", role: Role.CLIENT },
-      select: { id: true },
-    });
-    await prisma.giftCardWallet.create({
-      data: { clientId: client.id, currencyCode: "EUR", balanceMinor: 60_000 },
-    });
-
-    const pendingOrder = await prisma.order.create({
-      data: {
-        clientId: client.id,
-        subtotalAmountMinor: 30_000,
-        totalAmountMinor: 30_000,
-        currencyCode: "EUR",
-        status: OrderStatus.PLACED,
-        items: {
-          create: {
-            productId: product.id,
-            priceId: price.id,
-            quantity: 12,
-            productNameSnapshot: "Gift Card €25",
-            priceNameSnapshot: price.name,
-            unitAmountMinor: 2_500,
-            lineSubtotalAmountMinor: 30_000,
-            lineTotalAmountMinor: 30_000,
-            currencyCode: "EUR",
-          },
-        },
-        payments: {
-          create: {
-            status: PaymentStatus.PENDING,
-            method: PaymentMethod.CARD,
-            provider: PaymentProvider.STRIPE,
-            amountMinor: 30_000,
-            currencyCode: "EUR",
-          },
-        },
-      },
-      select: { id: true },
-    });
-
-    const blocked = await assertGiftCardWalletCapPrecheck({
-      clientId: client.id,
-      newGiftCardOrderTotalMinor: 15_000,
-    });
-    await prisma.order.update({ where: { id: pendingOrder.id }, data: { status: OrderStatus.PAID } });
-    const allowed = await assertGiftCardWalletCapPrecheck({
-      clientId: client.id,
-      newGiftCardOrderTotalMinor: 15_000,
-    });
-
-    expect(blocked).toMatchObject({
-      ok: false,
-      balanceMinor: 60_000,
-      pendingGiftCardOrderValueMinor: 30_000,
-      projectedBalanceMinor: 105_000,
-    });
-    expect(allowed).toMatchObject({
-      ok: true,
-      pendingGiftCardOrderValueMinor: 0,
-      projectedBalanceMinor: 75_000,
-    });
-  });
-
-  it("excludes failed-payment placed gift-card orders from wallet cap pre-check", async () => {
-    const product = await createTestGiftCardProduct({
-      slug: "store-gift-card-25-eur",
-      lookupKey: "store-gift-card-25-eur-once-v1",
-    });
-    const price = await prisma.price.findFirstOrThrow({ where: { productId: product.id }, select: { id: true, name: true, unitAmountMinor: true } });
-    const client = await prisma.user.create({
-      data: { name: "Store Client", email: "store.failed.client@example.test", role: Role.CLIENT },
-      select: { id: true },
-    });
-    await prisma.giftCardWallet.create({
-      data: { clientId: client.id, currencyCode: "EUR", balanceMinor: 60_000 },
-    });
-
-    await prisma.order.create({
-      data: {
-        clientId: client.id,
-        subtotalAmountMinor: 30_000,
-        totalAmountMinor: 30_000,
-        currencyCode: "EUR",
-        status: OrderStatus.PLACED,
-        items: {
-          create: {
-            productId: product.id,
-            priceId: price.id,
-            quantity: 12,
-            productNameSnapshot: "Gift Card €25",
-            priceNameSnapshot: price.name,
-            unitAmountMinor: 2_500,
-            lineSubtotalAmountMinor: 30_000,
-            lineTotalAmountMinor: 30_000,
-            currencyCode: "EUR",
-          },
-        },
-        payments: {
-          create: {
-            status: PaymentStatus.FAILED,
-            method: PaymentMethod.CARD,
-            provider: PaymentProvider.STRIPE,
-            amountMinor: 30_000,
-            currencyCode: "EUR",
-          },
-        },
-      },
-    });
-
-    await expect(
-      assertGiftCardWalletCapPrecheck({
-        clientId: client.id,
-        newGiftCardOrderTotalMinor: 15_000,
-      }),
-    ).resolves.toMatchObject({
-      ok: true,
-      pendingGiftCardOrderValueMinor: 0,
-      projectedBalanceMinor: 75_000,
-    });
-  });
 });
+

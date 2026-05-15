@@ -86,14 +86,11 @@ export default async function AdminStoreGiftCardNewPage({
               type="number"
               step="0.01"
               min="0.01"
-              max="500"
               required
               placeholder="e.g. 75.00"
               className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
             />
-            <span className="mt-1 block text-xs text-[#64748b]">
-              Maximum 500 EUR per gift card.
-            </span>
+            <span className="mt-1 block text-xs text-[#64748b]">No maximum denomination cap.</span>
           </label>
           <label className="block text-sm text-[#334155]">
             Price Label

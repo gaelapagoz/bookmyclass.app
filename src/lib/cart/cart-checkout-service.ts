@@ -26,7 +26,6 @@ import {
   getStripeServerEnv,
 } from "@/lib/payments/stripe";
 import { isCatalogPriceCheckoutReady } from "@/lib/catalog/checkout-readiness";
-import { assertGiftCardWalletCapPrecheck } from "@/lib/store/store-catalog";
 import { checkAndRecordDbRateLimit } from "@/lib/security/db-rate-limit";
 import {
   captureGiftCardRedemption,
@@ -318,12 +317,6 @@ function createCompletedResponse(input: {
       }),
     },
   };
-}
-
-function sumGiftCardOrderTotalMinor(validation: Extract<CartValidationResult, { ok: true }>): number {
-  return validation.repricedLines
-    .filter((line) => line.productType === ProductType.GIFT_CARD)
-    .reduce((sum, line) => sum + line.lineSubtotalAmountMinor, 0);
 }
 
 async function isEligibleCheckoutClient(userId: string): Promise<boolean> {
@@ -1353,34 +1346,6 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     return redemptionExceedsOrderResponse;
   }
 
-  const giftCardOrderTotalMinor = sumGiftCardOrderTotalMinor(validation);
-  if (giftCardOrderTotalMinor > 0) {
-    const walletCap = await assertGiftCardWalletCapPrecheck({
-      clientId: input.userId,
-      newGiftCardOrderTotalMinor: giftCardOrderTotalMinor,
-    });
-
-    if (!walletCap.ok) {
-      const walletCapResponse = createErrorResponse({
-        status: 422,
-        code: "GIFT_CARD_WALLET_CAP_EXCEEDED",
-        message: "Gift-card purchase would exceed the 1,000 EUR wallet balance cap.",
-        idempotency: {
-          key: input.idempotencyKey,
-          state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,
-          replayed: false,
-        },
-      });
-
-      await persistTerminalResponse({
-        id: idempotencyRecordId,
-        response: walletCapResponse,
-      });
-
-      return walletCapResponse;
-    }
-  }
-
   let orderPayment: CartCheckoutPaymentRefs;
   try {
     orderPayment = await resolveOrCreateOrderPayment({
@@ -1504,10 +1469,22 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
                     name: "Store checkout remaining balance",
                   },
                   unit_amount: orderPayment.stripeAmountMinor,
-                },
-                quantity: 1,
               },
-            ]
+              quantity: 1,
+            },
+          ]
+          : cartHasStoreItems
+            ? validation.repricedLines.map((line) => ({
+                price_data: {
+                  currency: line.currencyCode.toLowerCase(),
+                  product_data: {
+                    name: line.productName,
+                    description: line.productDescription ?? undefined,
+                  },
+                  unit_amount: line.unitAmountMinor,
+                },
+                quantity: line.quantity,
+              }))
           : validation.repricedLines.map((line) => {
               const stripePriceId = stripePriceIdsByLocalPriceId.get(line.priceId);
               if (!stripePriceId) {

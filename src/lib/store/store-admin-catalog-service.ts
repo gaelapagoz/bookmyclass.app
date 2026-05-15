@@ -4,7 +4,6 @@ import { PriceType, ProductType, StripeSyncStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
   STORE_CURRENCY_CODE,
-  STORE_MAX_GIFT_CARD_ORDER_TOTAL_MINOR,
   STORE_PICKUP_WORDING,
 } from "@/lib/store/store-constants";
 import type { MediaAssetReadModel } from "@/lib/media/product-media-service";
@@ -47,9 +46,6 @@ export function validateGiftCardAdminPriceInput(input: {
 }): StoreAdminValidationResult {
   if (!Number.isInteger(input.unitAmountMinor) || input.unitAmountMinor <= 0) {
     return { ok: false, code: "INVALID_AMOUNT", message: "Gift-card price must be greater than zero." };
-  }
-  if (input.unitAmountMinor > STORE_MAX_GIFT_CARD_ORDER_TOTAL_MINOR) {
-    return { ok: false, code: "AMOUNT_EXCEEDS_CAP", message: "Gift-card price must not exceed 500 EUR." };
   }
   return { ok: true };
 }

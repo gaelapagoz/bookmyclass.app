@@ -6,7 +6,6 @@ import {
 } from "@/lib/cart/cart-contract";
 import {
   STORE_CURRENCY_CODE,
-  STORE_MAX_GIFT_CARD_ORDER_TOTAL_MINOR,
   STORE_MAX_MERCHANDISE_QUANTITY_PER_PRODUCT,
 } from "@/lib/store/store-constants";
 import type {
@@ -295,19 +294,6 @@ export function validateCartAgainstCatalog(input: {
       cartHash,
       normalizedLines,
       rejection: createCartValidationRejection("MIXED_PRICE_TYPES_NOT_ALLOWED"),
-    };
-  }
-
-  const giftCardTotalMinor = repricedLines
-    .filter((line) => line.productType === ProductType.GIFT_CARD)
-    .reduce((sum, line) => sum + line.lineSubtotalAmountMinor, 0);
-  if (giftCardTotalMinor > STORE_MAX_GIFT_CARD_ORDER_TOTAL_MINOR) {
-    return {
-      ok: false,
-      composition: resolveComposition(repricedLines),
-      cartHash,
-      normalizedLines,
-      rejection: createCartValidationRejection("GIFT_CARD_ORDER_TOTAL_EXCEEDED"),
     };
   }
 
