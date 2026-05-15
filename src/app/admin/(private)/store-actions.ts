@@ -189,7 +189,6 @@ export async function archiveStoreMerchandiseAction(id: string) {
 
 export async function createStoreGiftCardAction(formData: FormData) {
   const session = await requireAdminSession();
-  await assertSameOriginServerAction();
   const imageFile = getImageFile(formData);
 
   const parsed = giftCardSchema.safeParse({
@@ -207,6 +206,7 @@ export async function createStoreGiftCardAction(formData: FormData) {
   }
 
   try {
+    await assertSameOriginServerAction();
     if (imageFile) {
       await validateProductImageUpload(imageFile);
     }

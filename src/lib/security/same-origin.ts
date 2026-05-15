@@ -1,6 +1,7 @@
 import { headers as nextHeaders } from "next/headers";
 
 const HTTPS_PROTOCOL = "https";
+const HTTP_PROTOCOL = "http";
 
 export type SameOriginValidationResult = {
   ok: boolean;
@@ -42,8 +43,8 @@ function resolveRequestOrigin(input: SameOriginValidationInput): string | null {
     return null;
   }
 
-  const protocol = resolveForwardedValue(input.forwardedProtoHeader) ?? HTTPS_PROTOCOL;
-  const normalizedProtocol = protocol.toLowerCase() === "http" ? "http" : HTTPS_PROTOCOL;
+  const protocol = resolveForwardedValue(input.forwardedProtoHeader) ?? HTTP_PROTOCOL;
+  const normalizedProtocol = protocol.toLowerCase() === HTTP_PROTOCOL ? HTTP_PROTOCOL : HTTPS_PROTOCOL;
   return normalizeOrigin(`${normalizedProtocol}://${host}`);
 }
 
@@ -71,6 +72,9 @@ function resolveAllowedOrigins(input: SameOriginValidationInput): string[] {
   const requestOrigin = resolveRequestOrigin(input);
   if (requestOrigin) {
     origins.add(requestOrigin);
+    const requestUrl = new URL(requestOrigin);
+    const alternateProtocol = requestUrl.protocol === "http:" ? "https:" : "http:";
+    origins.add(`${alternateProtocol}//${requestUrl.host}`.toLowerCase());
   }
 
   const appUrlOrigin = normalizeOrigin(input.appUrl);

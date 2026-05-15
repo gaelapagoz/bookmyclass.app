@@ -25,6 +25,13 @@ const eslintConfig = defineConfig([
       }],
     },
   },
+  {
+    files: ["scripts/**/*.cjs"],
+    rules: {
+      // CommonJS scripts intentionally use `require`/`module.exports`.
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

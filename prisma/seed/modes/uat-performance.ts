@@ -28,8 +28,13 @@ import {
 import { hash } from "bcryptjs";
 import prisma from "../../../src/lib/db";
 import { AGENDA_SCHEDULE } from "../data/schedule";
+import { STORE_CATALOG_PRODUCT_COUNT, STORE_CATALOG_PRODUCTS } from "../data/store-catalog";
 import { createSeededRng } from "../utils/deterministic-random";
 import {
+  buildSeedMediaPlan,
+  buildStoreSeedAssetFilename,
+  readSeedFileSizeBytes,
+  syncSeedMediaAsset,
   syncSeedMediaPath,
   toCanonicalSeedImagePath,
   verifySeededMediaReferences,
@@ -54,6 +59,11 @@ const PURCHASABLE_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[] = 
   { productName: "Monthly Recurrent Collective Subscription", lookupKey: "monthly-unlimited-collective-eur-monthly-v1", envVarName: "STRIPE_PRICE_ID_MONTHLY_UNLIMITED_COLLECTIVE" },
   { productName: "5-Ticket Private Classes", lookupKey: "qa-private-5-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_PRIVATE_5_PACK" },
   { productName: "10-Ticket Private Classes", lookupKey: "qa-private-10-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_PRIVATE_10_PACK" },
+  ...STORE_CATALOG_PRODUCTS.map((product) => ({
+    productName: product.name,
+    lookupKey: product.price.lookupKey,
+    envVarName: product.price.stripePriceEnvVarName,
+  })),
 ];
 
 const seedDayUtc = new Date();
@@ -372,6 +382,77 @@ async function seedCatalog(stripePriceIdByLookupKey: Record<string, string>) {
   console.info("[seed:perf] Catalog seeded (6 products).");
 }
 
+async function seedStoreCatalog(stripePriceIdByLookupKey: Record<string, string>) {
+  const [firstAdmin] = await prisma.user.findMany({
+    where: { role: { in: [Role.ADMIN, Role.MASTER_ADMIN] } },
+    orderBy: { createdAt: "asc" },
+    take: 1,
+    select: { id: true },
+  });
+  if (!firstAdmin) {
+    throw new Error("Store seed media requires an existing admin user.");
+  }
+
+  let copiedCount = 0;
+  let existingCount = 0;
+
+  for (const item of STORE_CATALOG_PRODUCTS) {
+    const product = await upsertProduct({
+      slug: item.slug,
+      name: item.name,
+      description: item.description,
+      productType: item.productType,
+      sortOrder: item.sortOrder,
+    });
+    await upsertPrice({
+      productId: product.id,
+      lookupKey: item.price.lookupKey,
+      stripePriceId: stripePriceIdByLookupKey[item.price.lookupKey],
+      name: item.price.name,
+      priceType: item.price.priceType,
+      currencyCode: item.price.currencyCode,
+      unitAmountMinor: item.price.unitAmountMinor,
+    });
+
+    const storageFilename = buildStoreSeedAssetFilename(item.slug);
+    const publicPath = `/uploads/products/${storageFilename}`;
+    const mediaPlan = buildSeedMediaPlan(publicPath, {
+      sourceFolder: "products",
+      sourceFilename: item.seedImageSourceFilename,
+    });
+    const syncResult = await syncSeedMediaAsset(mediaPlan);
+    if (syncResult === "copied") copiedCount += 1;
+    else existingCount += 1;
+
+    const sizeBytes = await readSeedFileSizeBytes(mediaPlan.destinationAbsolutePath);
+    const mediaAsset = await prisma.mediaAsset.upsert({
+      where: { path: publicPath },
+      update: {
+        mimeType: "image/jpeg",
+        sizeBytes,
+        originalFilename: storageFilename,
+        storageFilename,
+        uploadedById: firstAdmin.id,
+      },
+      create: {
+        path: publicPath,
+        mimeType: "image/jpeg",
+        sizeBytes,
+        originalFilename: storageFilename,
+        storageFilename,
+        uploadedById: firstAdmin.id,
+      },
+    });
+    await prisma.product.update({
+      where: { id: product.id },
+      data: { imageAssetId: mediaAsset.id },
+    });
+  }
+  console.info(
+    `[seed:perf] Store catalog seeded: ${STORE_CATALOG_PRODUCTS.length} products (gift cards + merchandise, pickup-only). mediaCopied=${copiedCount}, mediaExisting=${existingCount}.`,
+  );
+}
+
 // ─── Class schedule helpers ───────────────────────────────────────────────────
 
 async function upsertClassCategory(input: { slug: string; name: string; description: string; sortOrder: number }) {
@@ -601,7 +682,8 @@ async function verifyPerfSeed(summary: { pastSessionCount: number; futureSession
   if (totalClients !== PERF_CLIENT_COUNT) throw new Error(`Perf seed verification: expected ${PERF_CLIENT_COUNT} clients, got ${totalClients}.`);
   if (totalAdmins !== 2) throw new Error(`Perf seed verification: expected 2 admins, got ${totalAdmins}.`);
   if (totalTeachers !== 3) throw new Error(`Perf seed verification: expected 3 teachers, got ${totalTeachers}.`);
-  if (totalProducts !== 6) throw new Error(`Perf seed verification: expected 6 products, got ${totalProducts}.`);
+  const expectedProductCount = 6 + STORE_CATALOG_PRODUCT_COUNT;
+  if (totalProducts !== expectedProductCount) throw new Error(`Perf seed verification: expected ${expectedProductCount} products, got ${totalProducts}.`);
   if (scheduleCount === 0) throw new Error("Perf seed verification: no agenda schedule entries found.");
   if (summary.futureSessionCount === 0) throw new Error("Perf seed verification: no future sessions generated.");
 
@@ -647,6 +729,7 @@ export async function runUatPerformanceSeed(): Promise<void> {
   const { teachers, clients } = await seedUsers();
   await seedBookingPolicy();
   await seedCatalog(stripePriceIdByLookupKey);
+  await seedStoreCatalog(stripePriceIdByLookupKey);
   await seedAgendaSchedule();
   const summary = await seedSchedulingAndBookings({ teachers: { anaId: teachers.ana.id, elenaId: teachers.elena.id, sofiaId: teachers.sofia.id }, clients });
   const mediaSyncSummary = await syncSeedMediaFilesFromDatabase();

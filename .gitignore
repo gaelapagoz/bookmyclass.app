@@ -85,3 +85,5 @@ security-output/
 /artifacts
 
 *.zip
+
+.tmp_ci_logs

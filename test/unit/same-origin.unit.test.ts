@@ -45,6 +45,20 @@ describe("same-origin validation", () => {
     expect(result.reason).toContain("Origin mismatch");
   });
 
+  it("accepts localhost http origin when forwarded proto is missing", () => {
+    const result = validateSameOrigin(
+      createInput({
+        originHeader: "http://localhost:3000",
+        forwardedHostHeader: "localhost:3000",
+        forwardedProtoHeader: null,
+        appUrl: null,
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.providedOrigin).toBe("http://localhost:3000");
+  });
+
   it("rejects when both origin and referer are missing", () => {
     const result = validateSameOrigin(
       createInput({

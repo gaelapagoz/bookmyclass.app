@@ -141,7 +141,7 @@ describe("admin Store image edit pages", () => {
       }),
     );
 
-    expect(container.querySelector("form")?.getAttribute("enctype")).toBe("multipart/form-data");
+    expect(container.querySelector("form")?.getAttribute("enctype")).toBeNull();
     const imageInput = screen.getByLabelText(/product image/i);
     expect(imageInput).toHaveAttribute("name", "image");
     expect(imageInput).toHaveAttribute("type", "file");
@@ -154,7 +154,7 @@ describe("admin Store image edit pages", () => {
       }),
     );
 
-    expect(container.querySelector("form")?.getAttribute("enctype")).toBe("multipart/form-data");
+    expect(container.querySelector("form")?.getAttribute("enctype")).toBeNull();
     const imageInput = screen.getByLabelText(/product image/i);
     expect(imageInput).toHaveAttribute("name", "image");
     expect(imageInput).toHaveAttribute("type", "file");

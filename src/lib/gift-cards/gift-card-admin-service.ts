@@ -363,6 +363,127 @@ export async function getAdminGiftCardWalletLookup(input: {
   };
 }
 
+export async function listAdminIssuedGiftCardCodes(input: {
+  readonly actor: AdminActor;
+  readonly recipientEmail?: string;
+} & PageInput) {
+  assertAdmin(input.actor);
+  const { page, pageSize, skip } = normalizePage(input);
+  const recipientEmail = input.recipientEmail?.trim() ?? "";
+  const where: Prisma.GiftCardCodeWhereInput = recipientEmail
+    ? { recipientEmail: { contains: recipientEmail, mode: "insensitive" } }
+    : {};
+
+  const [items, totalItems] = await prisma.$transaction([
+    prisma.giftCardCode.findMany({
+      where,
+      orderBy: [{ issuedAt: "desc" }, { id: "desc" }],
+      skip,
+      take: pageSize,
+      select: {
+        id: true,
+        status: true,
+        amountMinor: true,
+        currencyCode: true,
+        recipientEmail: true,
+        source: true,
+        issuedAt: true,
+        redeemedAt: true,
+        maskedCode: true,
+        emailStatus: true,
+        purchasedBy: { select: { id: true, name: true, email: true } },
+        generatedBy: { select: { id: true, name: true, email: true } },
+        redeemedBy: { select: { id: true, name: true, email: true } },
+      },
+    }),
+    prisma.giftCardCode.count({ where }),
+  ]);
+
+  return {
+    items,
+    page,
+    pageSize,
+    totalItems,
+    totalPages: Math.max(1, Math.ceil(totalItems / pageSize)),
+  };
+}
+
+export async function listAdminGiftCardWalletBalances(input: {
+  readonly actor: AdminActor;
+  readonly query?: string;
+} & PageInput) {
+  assertAdmin(input.actor);
+  const { page, pageSize, skip } = normalizePage(input);
+  const query = input.query?.trim() ?? "";
+
+  const where: Prisma.GiftCardWalletWhereInput = query.length > 0
+    ? {
+        client: {
+          role: Role.CLIENT,
+          OR: [
+            { name: { contains: query, mode: "insensitive" } },
+            { email: { contains: query, mode: "insensitive" } },
+          ],
+        },
+      }
+    : { client: { role: Role.CLIENT } };
+
+  const [wallets, totalItems] = await prisma.$transaction([
+    prisma.giftCardWallet.findMany({
+      where,
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      skip,
+      take: pageSize,
+      select: {
+        id: true,
+        clientId: true,
+        currencyCode: true,
+        balanceMinor: true,
+        updatedAt: true,
+        client: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        ledgerEntries: {
+          where: { entryType: GiftCardLedgerEntryType.ACTIVATION },
+          select: { happenedAt: true },
+          orderBy: [{ happenedAt: "desc" }],
+        },
+      },
+    }),
+    prisma.giftCardWallet.count({ where }),
+  ]);
+
+  const items = await Promise.all(wallets.map(async (wallet) => {
+    const activeGiftCards = await prisma.giftCardCode.count({
+      where: {
+        redeemedById: wallet.clientId,
+        status: GiftCardCodeStatus.REDEEMED,
+      },
+    });
+    const lastActivityAt = wallet.ledgerEntries[0]?.happenedAt ?? wallet.updatedAt;
+    return {
+      walletId: wallet.id,
+      client: wallet.client,
+      currencyCode: wallet.currencyCode,
+      balanceMinor: wallet.balanceMinor,
+      activeGiftCards,
+      lastActivityAt,
+    };
+  }));
+
+  return {
+    items,
+    page,
+    pageSize,
+    totalItems,
+    totalPages: Math.max(1, Math.ceil(totalItems / pageSize)),
+  };
+}
+
 export async function addGiftCardReconciliationNote(input: {
   readonly actor: AdminActor;
   readonly caseId: string;

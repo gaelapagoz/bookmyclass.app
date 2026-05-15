@@ -88,7 +88,7 @@ const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9]+$/;
 
 type CatalogStripePriceEnvSpec = { productName: string; lookupKey: string; envVarName: string };
 
-// Subscription / class prices — always required for dev seed to succeed.
+// Purchasable catalog prices (subscriptions/classes/store) — always required for dev seed to succeed.
 const REQUIRED_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[] = [
   { productName: "Collective Class Drop-In", lookupKey: "collective-drop-in-eur-once-v1", envVarName: "STRIPE_PRICE_ID_COLLECTIVE_DROP_IN" },
   { productName: "5-Ticket Collective Classes", lookupKey: "qa-collective-5-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_COLLECTIVE_5_PACK" },
@@ -96,15 +96,12 @@ const REQUIRED_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[] = [
   { productName: "Monthly Recurrent Collective Subscription", lookupKey: "monthly-unlimited-collective-eur-monthly-v1", envVarName: "STRIPE_PRICE_ID_MONTHLY_UNLIMITED_COLLECTIVE" },
   { productName: "5-Ticket Private Classes", lookupKey: "qa-private-5-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_PRIVATE_5_PACK" },
   { productName: "10-Ticket Private Classes", lookupKey: "qa-private-10-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_PRIVATE_10_PACK" },
+  ...STORE_CATALOG_PRODUCTS.map((product) => ({
+    productName: product.name,
+    lookupKey: product.price.lookupKey,
+    envVarName: product.price.stripePriceEnvVarName,
+  })),
 ];
-
-// Store prices — optional in dev/UAT. Products are seeded with PENDING status when missing.
-// Provide the env vars to make store products checkout-ready in development.
-const OPTIONAL_STORE_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[] = STORE_CATALOG_PRODUCTS.map((product) => ({
-  productName: product.name,
-  lookupKey: product.price.lookupKey,
-  envVarName: product.price.stripePriceEnvVarName,
-}));
 
 const DEFAULT_LEARNING_SEED_JSON_PATH = resolve(process.cwd(), "prisma", "seed-data", "learning-content.json");
 
@@ -234,32 +231,7 @@ function resolveRequiredCatalogStripePriceIds(): Record<string, string> {
     throw new Error(`Seed validation failed for purchasable catalog Stripe price configuration.\n${details}`);
   }
 
-  console.info("[seed:dev] Subscription/class Stripe price configuration validated.");
-  return stripePriceIdByLookupKey;
-}
-
-function resolveOptionalStoreCatalogStripePriceIds(): Record<string, string> {
-  const stripePriceIdByLookupKey: Record<string, string> = {};
-  const missing: string[] = [];
-  const invalid: Array<{ envVarName: string; value: string }> = [];
-
-  for (const spec of OPTIONAL_STORE_CATALOG_STRIPE_PRICE_ENV_SPECS) {
-    const value = process.env[spec.envVarName]?.trim();
-    if (!value) { missing.push(spec.envVarName); continue; }
-    if (!STRIPE_PRICE_ID_PATTERN.test(value)) { invalid.push({ envVarName: spec.envVarName, value }); continue; }
-    stripePriceIdByLookupKey[spec.lookupKey] = value;
-  }
-
-  if (missing.length > 0) {
-    console.warn(`[seed:dev] Store Stripe price IDs not set (store products will be seeded as PENDING/not checkout-ready): ${missing.join(", ")}`);
-  }
-  if (invalid.length > 0) {
-    console.warn(`[seed:dev] Invalid store Stripe price ID values (ignored): ${invalid.map((e) => `${e.envVarName}=${e.value}`).join(", ")}`);
-  }
-  if (Object.keys(stripePriceIdByLookupKey).length > 0) {
-    console.info(`[seed:dev] Store Stripe price IDs resolved: ${Object.keys(stripePriceIdByLookupKey).length}/${OPTIONAL_STORE_CATALOG_STRIPE_PRICE_ENV_SPECS.length}`);
-  }
-
+  console.info("[seed:dev] Purchasable catalog Stripe price configuration validated.");
   return stripePriceIdByLookupKey;
 }
 
@@ -499,7 +471,7 @@ async function upsertEntitlementRule(input: { productId: string; entitlementType
 
 async function assertPurchasableCatalogStripePriceIdsPersisted() {
   const requiredLookupKeys = REQUIRED_CATALOG_STRIPE_PRICE_ENV_SPECS.map((s) => s.lookupKey);
-  const storeLookupKeys = OPTIONAL_STORE_CATALOG_STRIPE_PRICE_ENV_SPECS.map((s) => s.lookupKey);
+  const storeLookupKeys = STORE_CATALOG_PRODUCTS.map((s) => s.price.lookupKey);
 
   // Verify required subscription prices are all seeded and SYNCED.
   const requiredPrices = await prisma.price.findMany({
@@ -515,7 +487,7 @@ async function assertPurchasableCatalogStripePriceIdsPersisted() {
   if (nonSyncedRequired.length > 0) throw new Error(`Seed verification failed: non-SYNCED subscription prices: ${nonSyncedRequired.join(", ")}`);
   console.info(`[seed:dev] Verified ${requiredPrices.length} subscription/class Stripe-linked prices (SYNCED).`);
 
-  // Verify store prices are seeded (status may be PENDING if env vars were not provided).
+  // Verify store prices are seeded and checkout-ready.
   const storePrices = await prisma.price.findMany({
     where: { lookupKey: { in: storeLookupKeys } },
     select: { lookupKey: true, stripePriceId: true, stripeSyncStatus: true },
@@ -525,10 +497,8 @@ async function assertPurchasableCatalogStripePriceIdsPersisted() {
   if (missingStoreRows.length > 0) throw new Error(`Seed verification failed: missing store catalog prices for: ${missingStoreRows.join(", ")}`);
   const storeSynced = storePrices.filter((p) => p.stripeSyncStatus === StripeSyncStatus.SYNCED).length;
   const storePending = storePrices.filter((p) => p.stripeSyncStatus === StripeSyncStatus.PENDING).length;
-  if (storePending > 0) {
-    console.warn(`[seed:dev] ${storePending} store prices are PENDING (no Stripe price IDs provided). /store will show those products as not checkout-ready.`);
-  }
-  console.info(`[seed:dev] Verified ${storePrices.length} store prices: ${storeSynced} SYNCED, ${storePending} PENDING.`);
+  if (storePending > 0) throw new Error(`Seed verification failed: ${storePending} store prices are PENDING.`);
+  console.info(`[seed:dev] Verified ${storePrices.length} store prices: ${storeSynced} SYNCED.`);
 }
 
 async function seedCatalog(stripePriceIdByLookupKey: Record<string, string>) {
@@ -1269,9 +1239,7 @@ async function verifyCleanSeed(clientEmail: string, schedulingSummary: Awaited<R
 
 export async function runDevelopmentSeed(): Promise<void> {
   console.info("[seed:dev] Starting development seed (mode: development — identical for DEV and UAT).");
-  const requiredPriceIds = resolveRequiredCatalogStripePriceIds();
-  const optionalStorePriceIds = resolveOptionalStoreCatalogStripePriceIds();
-  const stripePriceIdByLookupKey = { ...requiredPriceIds, ...optionalStorePriceIds };
+  const stripePriceIdByLookupKey = resolveRequiredCatalogStripePriceIds();
   await purgeForCleanSeed();
   const users = await seedUsers();
   await seedBookingPolicy();

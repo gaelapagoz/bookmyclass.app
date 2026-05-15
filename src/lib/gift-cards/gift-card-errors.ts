@@ -25,6 +25,10 @@ export const giftCardErrorCodes = {
   walletInvariantFailed: "GIFT_CARD_WALLET_INVARIANT_FAILED",
   walletSuspended: "GIFT_CARD_WALLET_SUSPENDED",
   giftCardCodeConcurrentRedemption: "GIFT_CARD_CODE_CONCURRENT_REDEMPTION",
+  adminActorForbidden: "GIFT_CARD_ADMIN_ACTOR_FORBIDDEN",
+  adminIdempotencyPayloadMismatch: "GIFT_CARD_ADMIN_IDEMPOTENCY_PAYLOAD_MISMATCH",
+  adminEmailDeliveryFailed: "GIFT_CARD_ADMIN_EMAIL_DELIVERY_FAILED",
+  codeNotVoidable: "GIFT_CARD_CODE_NOT_VOIDABLE",
 } as const;
 
 export function giftCardError(code: string): GiftCardError {

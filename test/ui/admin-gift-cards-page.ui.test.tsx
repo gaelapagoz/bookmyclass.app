@@ -2,13 +2,13 @@
 
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
-import { GiftCardReconciliationStatus, GiftCardWalletStatus, Role } from "@prisma/client";
+import { Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   requireAdminSession: vi.fn(),
-  getWalletLookup: vi.fn(),
-  listCases: vi.fn(),
+  listWalletBalances: vi.fn(),
+  listIssuedCodes: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-auth", () => ({
@@ -16,10 +16,8 @@ vi.mock("@/lib/auth/require-auth", () => ({
 }));
 
 vi.mock("@/lib/gift-cards/gift-card-admin-service", () => ({
-  GIFT_CARD_RESOLUTION_NOTE_DISCLAIMER:
-    "Operational note only. This does not adjust wallet balance or payment state.",
-  getAdminGiftCardWalletLookup: mocks.getWalletLookup,
-  listAdminGiftCardReconciliationCases: mocks.listCases,
+  listAdminGiftCardWalletBalances: mocks.listWalletBalances,
+  listAdminIssuedGiftCardCodes: mocks.listIssuedCodes,
 }));
 
 import AdminGiftCardsPage from "../../src/app/admin/(private)/gift-cards/page";
@@ -31,123 +29,99 @@ describe("admin gift cards page", () => {
     mocks.requireAdminSession.mockResolvedValue({
       user: { id: "admin-1", role: Role.ADMIN },
     });
-    mocks.getWalletLookup.mockReset();
-    mocks.listCases.mockReset();
-    mocks.listCases.mockResolvedValue({
+    mocks.listWalletBalances.mockReset();
+    mocks.listWalletBalances.mockResolvedValue({
       items: [],
       page: 1,
       pageSize: 20,
       totalItems: 0,
       totalPages: 1,
-      metadata: { resolvedCasesHiddenByDefault: true },
+    });
+    mocks.listIssuedCodes.mockResolvedValue({
+      items: [],
+      page: 1,
+      pageSize: 20,
+      totalItems: 0,
+      totalPages: 1,
     });
   });
 
-  it("renders empty-wallet lookup state for a valid client without a wallet", async () => {
-    mocks.getWalletLookup.mockResolvedValue({
-      client: { id: "client-1", name: "Client One", email: "client@example.test", role: Role.CLIENT },
-      wallet: null,
-      ledgerEntries: [],
-      redemptions: [],
-      reconciliationCases: [],
-      pagination: { page: 1, pageSize: 20, totalItems: 0, totalPages: 1 },
-    });
-
+  it("renders wallet list empty state", async () => {
     render(
       await AdminGiftCardsPage({
-        searchParams: Promise.resolve({ clientId: "client-1" }),
+        searchParams: Promise.resolve({}),
       }),
     );
 
     expect(screen.getByRole("heading", { name: "Gift Cards" })).toBeVisible();
-    expect(screen.getByText("No EUR gift-card wallet exists for this client.")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Generate Gift Card" })).toBeVisible();
+    expect(screen.getByText("No wallet balances found.")).toBeVisible();
   });
 
-  it("renders invalid client lookup feedback", async () => {
-    mocks.getWalletLookup.mockRejectedValue(new Error("GIFT_CARD_CLIENT_NOT_FOUND"));
-
-    render(
-      await AdminGiftCardsPage({
-        searchParams: Promise.resolve({ clientId: "missing-client" }),
-      }),
-    );
-
-    expect(screen.getByText("Unable to find a client wallet lookup for the supplied client ID.")).toBeVisible();
-  });
-
-  it("passes default and resolved filters to the service", async () => {
+  it("passes default query params to wallet listing service", async () => {
     render(await AdminGiftCardsPage({ searchParams: Promise.resolve({}) }));
-    expect(mocks.listCases).toHaveBeenLastCalledWith(
-      expect.objectContaining({ status: undefined, page: 1, pageSize: 20 }),
+    expect(mocks.listWalletBalances).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: "", page: 1, pageSize: 20 }),
     );
+    expect(mocks.listIssuedCodes).toHaveBeenLastCalledWith(
+      expect.objectContaining({ recipientEmail: "", page: 1, pageSize: 20 }),
+    );
+  });
 
-    mocks.listCases.mockClear();
-    mocks.listCases.mockResolvedValue({
+  it("renders wallet rows from name/email search results", async () => {
+    mocks.listWalletBalances.mockResolvedValue({
       items: [
         {
-          id: "case-1",
+          walletId: "wallet-1",
           client: { id: "client-1", name: "Client One", email: "client@example.test" },
-          status: GiftCardReconciliationStatus.RESOLVED,
-          reason: "reviewed",
-          createdAt: now,
+          currencyCode: "EUR",
+          balanceMinor: 7500,
+          activeGiftCards: 2,
+          lastActivityAt: now,
         },
       ],
       page: 1,
       pageSize: 20,
       totalItems: 1,
       totalPages: 1,
-      metadata: { resolvedCasesHiddenByDefault: false },
     });
 
     render(
       await AdminGiftCardsPage({
-        searchParams: Promise.resolve({ status: "RESOLVED" }),
+        searchParams: Promise.resolve({ query: "client@example.test" }),
       }),
     );
 
-    expect(mocks.listCases).toHaveBeenLastCalledWith(
-      expect.objectContaining({ status: GiftCardReconciliationStatus.RESOLVED }),
+    expect(mocks.listWalletBalances).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: "client@example.test" }),
     );
-    expect(screen.getByText("RESOLVED")).toBeVisible();
+    expect(screen.getByText("Client One")).toBeVisible();
+    expect(screen.getByText("client@example.test")).toBeVisible();
   });
 
-  it("renders wallet balances and read-only rows without exposing mutation controls to ADMIN", async () => {
-    mocks.getWalletLookup.mockResolvedValue({
-      client: { id: "client-1", name: "Client One", email: "client@example.test", role: Role.CLIENT },
-      wallet: {
-        id: "wallet-1",
-        clientId: "client-1",
-        currencyCode: "EUR",
-        balanceMinor: 7_500,
-        status: GiftCardWalletStatus.ACTIVE,
-        reservedAmountMinor: 0,
-        availableBalanceMinor: 7_500,
-        createdAt: now,
-        updatedAt: now,
-      },
-      ledgerEntries: [
-        {
-          id: "ledger-1",
-          entryType: "CAPTURE",
-          amountMinor: 2_500,
-          currencyCode: "EUR",
-          orderId: "order-1",
-          happenedAt: now,
-        },
-      ],
-      redemptions: [],
-      reconciliationCases: [],
-      pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1 },
-    });
-
+  it("renders wallets section without reconciliation controls", async () => {
     render(
       await AdminGiftCardsPage({
-        searchParams: Promise.resolve({ clientId: "client-1" }),
+        searchParams: Promise.resolve({}),
       }),
     );
 
-    expect(screen.getAllByText(/75/)[0]).toBeVisible();
-    expect(screen.getByText("CAPTURE")).toBeVisible();
-    expect(screen.queryByText("Resolve via API after verification")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Wallets / Balances" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Reconciliation Cases" })).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Search by client name or email")).toBeVisible();
+  });
+
+  it("supports issued gift card search by recipient email and hides actions column", async () => {
+    render(
+      await AdminGiftCardsPage({
+        searchParams: Promise.resolve({ issuedRecipientEmail: "recipient@example.test" }),
+      }),
+    );
+
+    expect(mocks.listIssuedCodes).toHaveBeenLastCalledWith(
+      expect.objectContaining({ recipientEmail: "recipient@example.test" }),
+    );
+    expect(screen.getByPlaceholderText("Search by recipient email")).toBeVisible();
+    expect(screen.queryByRole("columnheader", { name: "Actions" })).not.toBeInTheDocument();
   });
 });

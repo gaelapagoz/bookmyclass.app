@@ -40,6 +40,8 @@
     "db:seed:dev": "dotenv -e .env.local -- cross-env BOOKMYCLASS_SEED_MODE=development prisma db seed",
     "db:seed:uat-performance": "dotenv -e .env.local -- cross-env BOOKMYCLASS_SEED_MODE=uat-performance prisma db seed",
     "db:seed:prod": "dotenv -e .env.production -- cross-env BOOKMYCLASS_SEED_MODE=production prisma db seed",
+    "db:unlock:admin-abuse": "dotenv -e .env.local -- tsx scripts/unlock-admin-login-abuse.ts",
+    "db:ensure:dev-admin": "dotenv -e .env.local -- tsx scripts/ensure-dev-admin.ts",
     "k6:discover:uat": "tsx scripts/k6-discover-uat.ts",
     "qa:e2e:coverage": "tsx scripts/e2e-coverage-report.ts",
     "test:uat:smoke": "tsx scripts/uat-smoke-check.ts",

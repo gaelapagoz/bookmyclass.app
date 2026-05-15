@@ -24,7 +24,7 @@ describe("sendGiftCardIssuanceEmail", () => {
     expect(emails).toHaveLength(1);
     const email = emails[0]!;
     expect(email.to).toContain("buyer@example.test");
-    expect(email.subject).toContain("€25.00");
+    expect(email.subject).toBe("Your gift card code");
     expect(email.html).toContain("AABBCCDD-11223344-AABBCCDD-11223344");
     expect(email.context).toBe("gift-card-issuance");
   });
@@ -51,6 +51,21 @@ describe("sendGiftCardIssuanceEmail", () => {
 
     const emails = getCapturedTestEmails();
     expect(emails[0]?.html).toContain("Hi there,");
+  });
+
+  it("escapes admin message HTML before interpolation", async () => {
+    await sendGiftCardIssuanceEmail({
+      to: "safe@example.test",
+      purchaserName: null,
+      recipientName: "Recipient",
+      adminMessage: "<img src=x onerror=alert(1)>\nhello",
+      plaintextCode: "FFFFFFFF-FFFFFFFF-FFFFFFFF-FFFFFFFF",
+      amountMinor: 5000,
+    });
+
+    const html = getCapturedTestEmails()[0]?.html ?? "";
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;<br />hello");
+    expect(html).not.toContain("<img src=x onerror=alert(1)>");
   });
 });
 

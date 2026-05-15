@@ -39,12 +39,12 @@ describe("adminNavConfig - Store navigation structure", () => {
     expect(hrefs).not.toContain("/admin/gift-cards");
   });
 
-  it("Sales group contains Gift Card Wallets entry pointing to /admin/gift-cards", () => {
+  it("Sales group contains Gift Cards entry pointing to /admin/gift-cards", () => {
     const sales = getGroup("sales");
     expect(sales).toBeDefined();
     const walletEntry = sales!.children.find((child) => child.href === "/admin/gift-cards");
     expect(walletEntry).toBeDefined();
-    expect(walletEntry!.label).toBe("Gift Card Wallets");
+    expect(walletEntry!.label).toBe("Gift Cards");
   });
 
   it("Catalog group still contains Booking Services and Plans", () => {

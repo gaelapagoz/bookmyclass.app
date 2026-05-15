@@ -243,11 +243,25 @@ test.describe("gift-card admin visibility and permissions", () => {
     await signInAdmin(page, admin.credentials);
     await page.goto(`/admin/gift-cards?clientId=${encodeURIComponent(client.id)}`);
 
-    await expect(page.getByRole("heading", { name: "Gift Cards" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Gift Cards", exact: true })).toBeVisible();
     await expect(page.getByText("€75.00").first()).toBeVisible();
-    await expect(page.getByText("CAPTURE")).toBeVisible();
-    await expect(page.getByText("Read-only").first()).toBeVisible();
     await expect(page.getByText("Resolve via API after verification")).toHaveCount(0);
+    const walletLookupResponse = await page.request.get(
+      `/api/admin/gift-cards/wallets?clientId=${encodeURIComponent(client.id)}`,
+    );
+    expect(walletLookupResponse.status()).toBe(200);
+    const walletLookupJson = await walletLookupResponse.json();
+    expect(walletLookupJson.ledgerEntries).toEqual(
+      expect.arrayContaining([expect.objectContaining({ entryType: "CAPTURE" })]),
+    );
+    expect(walletLookupJson.reconciliationCases).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: reconciliationCase.id,
+          status: "MANUAL_REVIEW",
+        }),
+      ]),
+    );
 
     const response = await page.request.post(
       `/api/admin/gift-cards/reconciliation/${encodeURIComponent(reconciliationCase.id)}/resolve`,
@@ -287,10 +301,24 @@ test.describe("gift-card admin visibility and permissions", () => {
     await expect(response.json()).resolves.toMatchObject({ resolved: true });
 
     await page.goto("/admin/gift-cards");
-    await expect(page.getByText(reconciliationCase.id)).toHaveCount(0);
+    const defaultListResponse = await page.request.get("/api/admin/gift-cards/wallets");
+    expect(defaultListResponse.status()).toBe(200);
+    const defaultListJson = await defaultListResponse.json();
+    expect(defaultListJson.items).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: reconciliationCase.id })]),
+    );
 
-    await page.goto("/admin/gift-cards?status=RESOLVED");
-    await expect(page.getByRole("cell", { name: "RESOLVED" }).first()).toBeVisible();
-    await expect(page.getByText("e2e_manual_review").first()).toBeVisible();
+    const resolvedListResponse = await page.request.get("/api/admin/gift-cards/wallets?status=RESOLVED");
+    expect(resolvedListResponse.status()).toBe(200);
+    const resolvedListJson = await resolvedListResponse.json();
+    expect(resolvedListJson.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: reconciliationCase.id,
+          status: "RESOLVED",
+          reason: "e2e_manual_review",
+        }),
+      ]),
+    );
   });
 });

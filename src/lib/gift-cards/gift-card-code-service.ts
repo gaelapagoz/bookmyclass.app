@@ -1,11 +1,22 @@
 import { createHash, randomBytes } from "node:crypto";
-import { GiftCardCodeStatus, Prisma, Role } from "@prisma/client";
+import {
+  GiftCardCodeEmailStatus,
+  GiftCardCodeSource,
+  GiftCardCodeStatus,
+  OrderStatus,
+  PriceType,
+  Prisma,
+  ProductType,
+  Role,
+  StripeSyncStatus,
+} from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { activateGiftCardValue } from "./gift-card-wallet-service";
 import { createGiftCardManualReviewCase } from "./gift-card-reconciliation-service";
 import { emitGiftCardAlertEvent } from "./gift-card-events";
-import { GiftCardError, GiftCardIdempotencyConflictError, giftCardErrorCodes } from "./gift-card-errors";
+import { giftCardError, GiftCardError, GiftCardIdempotencyConflictError, giftCardErrorCodes } from "./gift-card-errors";
 import { GIFT_CARD_CURRENCY_CODE } from "./gift-card-types";
+import { z } from "zod";
 
 const GIFT_CARD_CODE_EXPIRY_DAYS =
   typeof process.env.GIFT_CARD_CODE_EXPIRY_DAYS === "string" &&
@@ -19,6 +30,40 @@ export type IssueGiftCardCodeInput = {
   readonly purchasedById: string;
   readonly amountMinor: number;
   readonly currencyCode?: string;
+};
+
+export type GenerateAdminGiftCardCodeInput = {
+  readonly actor: { readonly userId: string; readonly role: Role };
+  readonly generatedById?: string;
+  readonly idempotencyKey: string;
+  readonly amountMinor: number;
+  readonly recipientEmail: string;
+  readonly recipientName?: string | null;
+  readonly adminMessage?: string | null;
+  readonly adminReason: string;
+  readonly expiresAt?: Date | string | null;
+  readonly currencyCode?: string;
+};
+
+export type GenerateAdminGiftCardCodeResult = {
+  readonly id: string;
+  readonly source: GiftCardCodeSource;
+  readonly status: GiftCardCodeStatus;
+  readonly maskedCode: string;
+  readonly amountMinor: number;
+  readonly currencyCode: string;
+  readonly recipientEmail: string;
+  readonly recipientName: string | null;
+  readonly issuedAt: Date;
+  readonly emailStatus: GiftCardCodeEmailStatus;
+  readonly emailSentAt: Date | null;
+};
+
+export type VoidGiftCardCodeInput = {
+  readonly codeId: string;
+  readonly actor: { readonly userId: string; readonly role: Role };
+  readonly actorUserId?: string;
+  readonly reason: string;
 };
 
 export type IssueGiftCardCodeResult =
@@ -65,6 +110,119 @@ function restoreCodeFormat(normalized: string): string {
   return `${normalized.slice(0, 8)}-${normalized.slice(8, 16)}-${normalized.slice(16, 24)}-${normalized.slice(24, 32)}`;
 }
 
+function normalizeNullableText(value: string | null | undefined): string | null {
+  const normalized = value?.trim() ?? "";
+  return normalized.length > 0 ? normalized : null;
+}
+
+async function createAdminGeneratedOrderContext(input: {
+  generatedById: string;
+  amountMinor: number;
+  currencyCode: string;
+}) {
+  const suffix = randomBytes(6).toString("hex");
+  const product = await prisma.product.create({
+    data: {
+      name: "Admin Gift Card Issuance",
+      slug: `admin-gift-card-${suffix}`,
+      productType: ProductType.GIFT_CARD,
+      isActive: false,
+      isArchived: true,
+      sortOrder: 0,
+    },
+    select: { id: true },
+  });
+
+  const price = await prisma.price.create({
+    data: {
+      productId: product.id,
+      lookupKey: `admin-gift-card-${suffix}`,
+      stripePriceId: null,
+      stripeSyncStatus: StripeSyncStatus.PENDING,
+      name: "Admin Gift Card Issuance",
+      priceType: PriceType.ONE_TIME,
+      currencyCode: input.currencyCode,
+      unitAmountMinor: input.amountMinor,
+      isActive: false,
+      isArchived: true,
+    },
+    select: { id: true },
+  });
+
+  const order = await prisma.order.create({
+    data: {
+      clientId: input.generatedById,
+      subtotalAmountMinor: input.amountMinor,
+      totalAmountMinor: input.amountMinor,
+      currencyCode: input.currencyCode,
+      status: OrderStatus.PAID,
+    },
+    select: { id: true },
+  });
+
+  const orderItem = await prisma.orderItem.create({
+    data: {
+      orderId: order.id,
+      productId: product.id,
+      priceId: price.id,
+      productNameSnapshot: "Admin Gift Card Issuance",
+      priceNameSnapshot: "Admin Gift Card Issuance",
+      quantity: 1,
+      unitAmountMinor: input.amountMinor,
+      lineSubtotalAmountMinor: input.amountMinor,
+      lineTotalAmountMinor: input.amountMinor,
+      currencyCode: input.currencyCode,
+    },
+    select: { id: true },
+  });
+
+  return {
+    orderId: order.id,
+    orderItemId: orderItem.id,
+  };
+}
+
+const adminGiftCardInputSchema = z.object({
+  actor: z.object({
+    userId: z.string().trim().min(1),
+    role: z.enum([Role.ADMIN, Role.MASTER_ADMIN]),
+  }),
+  generatedById: z.string().trim().min(1).optional(),
+  idempotencyKey: z.string().trim().min(1).max(200),
+  amountMinor: z.number().int().positive(),
+  recipientEmail: z.email().trim().toLowerCase(),
+  recipientName: z.string().trim().max(200).optional().nullable(),
+  adminMessage: z.string().trim().max(2000).optional().nullable(),
+  adminReason: z.string().trim().min(1).max(500),
+  expiresAt: z.coerce.date().optional().nullable(),
+  currencyCode: z.string().trim().toUpperCase().optional(),
+});
+
+const voidGiftCardInputSchema = z.object({
+  codeId: z.string().trim().min(1),
+  actor: z.object({
+    userId: z.string().trim().min(1),
+    role: z.enum([Role.ADMIN, Role.MASTER_ADMIN]),
+  }),
+  actorUserId: z.string().trim().min(1).optional(),
+  reason: z.string().trim().min(1).max(500),
+});
+
+async function assertTrustedAdminActor(trustedActor: { userId: string; role: Role }): Promise<void> {
+  if (trustedActor.role !== Role.ADMIN && trustedActor.role !== Role.MASTER_ADMIN) {
+    throw giftCardError(giftCardErrorCodes.adminActorForbidden);
+  }
+
+  const persistedActor = await prisma.user.findUnique({
+    where: { id: trustedActor.userId },
+    select: { role: true },
+  });
+
+  if (!persistedActor || persistedActor.role !== trustedActor.role) {
+    throw giftCardError(giftCardErrorCodes.adminActorForbidden);
+  }
+}
+
 export async function issueGiftCardCode(input: IssueGiftCardCodeInput): Promise<IssueGiftCardCodeResult> {
   const currencyCode = input.currencyCode ?? GIFT_CARD_CURRENCY_CODE;
 
@@ -89,6 +247,7 @@ export async function issueGiftCardCode(input: IssueGiftCardCodeInput): Promise<
   try {
     await prisma.giftCardCode.create({
       data: {
+        source: GiftCardCodeSource.PURCHASED,
         orderId: input.orderId,
         orderItemId: input.orderItemId,
         purchasedById: input.purchasedById,
@@ -233,15 +392,269 @@ export async function issueGiftCardCodesForOrder(input: {
   }
 }
 
+export async function generateAdminGiftCardCode(input: GenerateAdminGiftCardCodeInput): Promise<GenerateAdminGiftCardCodeResult> {
+  const parsed = adminGiftCardInputSchema.parse(input);
+  await assertTrustedAdminActor(parsed.actor);
+  if (parsed.generatedById && parsed.generatedById !== parsed.actor.userId) {
+    throw giftCardError(giftCardErrorCodes.adminActorForbidden);
+  }
+  const currencyCode = parsed.currencyCode ?? GIFT_CARD_CURRENCY_CODE;
+  const expiresAt = parsed.expiresAt ?? null;
+  if (expiresAt && expiresAt.getTime() <= Date.now()) {
+    throw new Error("GIFT_CARD_EXPIRY_IN_PAST");
+  }
+  const normalizedRecipientName = normalizeNullableText(parsed.recipientName);
+  const normalizedAdminMessage = normalizeNullableText(parsed.adminMessage);
+
+  const pendingOrFailedForSameIntent = await prisma.giftCardCode.findFirst({
+    where: {
+      source: GiftCardCodeSource.ADMIN_GENERATED,
+      generatedById: parsed.actor.userId,
+      amountMinor: parsed.amountMinor,
+      currencyCode,
+      recipientEmail: parsed.recipientEmail,
+      recipientName: normalizedRecipientName,
+      adminMessage: normalizedAdminMessage,
+      adminReason: parsed.adminReason,
+      expiresAt,
+      status: GiftCardCodeStatus.ISSUED,
+      emailStatus: { in: [GiftCardCodeEmailStatus.PENDING, GiftCardCodeEmailStatus.FAILED] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      source: true,
+      status: true,
+      maskedCode: true,
+      amountMinor: true,
+      currencyCode: true,
+      recipientEmail: true,
+      recipientName: true,
+      issuedAt: true,
+      emailStatus: true,
+      emailSentAt: true,
+    },
+  });
+
+  if (pendingOrFailedForSameIntent) {
+    return pendingOrFailedForSameIntent as GenerateAdminGiftCardCodeResult;
+  }
+
+  const existingByKey = await prisma.giftCardCode.findUnique({
+    where: { adminIdempotencyKey: parsed.idempotencyKey },
+    select: {
+      id: true,
+      source: true,
+      status: true,
+      maskedCode: true,
+      amountMinor: true,
+      currencyCode: true,
+      recipientEmail: true,
+      recipientName: true,
+      adminMessage: true,
+      adminReason: true,
+      expiresAt: true,
+      generatedById: true,
+      issuedAt: true,
+      emailStatus: true,
+      emailSentAt: true,
+    },
+  });
+  if (existingByKey) {
+    const samePayload =
+      existingByKey.generatedById === parsed.actor.userId &&
+      existingByKey.amountMinor === parsed.amountMinor &&
+      existingByKey.currencyCode === currencyCode &&
+      existingByKey.recipientEmail === parsed.recipientEmail &&
+      (existingByKey.recipientName ?? null) === normalizedRecipientName &&
+      (existingByKey.adminMessage ?? null) === normalizedAdminMessage &&
+      (existingByKey.adminReason ?? "") === parsed.adminReason &&
+      (existingByKey.expiresAt?.getTime() ?? null) === (expiresAt?.getTime() ?? null);
+
+    if (!samePayload) {
+      throw giftCardError(giftCardErrorCodes.adminIdempotencyPayloadMismatch);
+    }
+    return existingByKey as GenerateAdminGiftCardCodeResult;
+  }
+
+  const plaintextCode = generatePlaintextCode();
+  const codeHash = hashCode(plaintextCode);
+  const maskedCode = maskCode(plaintextCode);
+  const issuedAt = new Date();
+  const orderContext = await createAdminGeneratedOrderContext({
+    generatedById: parsed.actor.userId,
+    amountMinor: parsed.amountMinor,
+    currencyCode,
+  });
+
+  let created: GenerateAdminGiftCardCodeResult;
+  try {
+    created = await prisma.giftCardCode.create({
+      data: {
+        source: GiftCardCodeSource.ADMIN_GENERATED,
+        adminIdempotencyKey: parsed.idempotencyKey,
+        orderId: orderContext.orderId,
+        orderItemId: orderContext.orderItemId,
+        purchasedById: null,
+        generatedById: parsed.actor.userId,
+        recipientEmail: parsed.recipientEmail,
+        recipientName: normalizedRecipientName,
+        adminMessage: normalizedAdminMessage,
+        adminReason: parsed.adminReason,
+        codeHash,
+        maskedCode,
+        amountMinor: parsed.amountMinor,
+        currencyCode,
+        status: GiftCardCodeStatus.ISSUED,
+        issuedAt,
+        expiresAt,
+        emailStatus: GiftCardCodeEmailStatus.PENDING,
+      },
+      select: {
+        id: true,
+        source: true,
+        status: true,
+        maskedCode: true,
+        amountMinor: true,
+        currencyCode: true,
+        recipientEmail: true,
+        recipientName: true,
+        issuedAt: true,
+        emailStatus: true,
+        emailSentAt: true,
+      },
+    }) as GenerateAdminGiftCardCodeResult;
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      const raceExisting = await prisma.giftCardCode.findUnique({
+        where: { adminIdempotencyKey: parsed.idempotencyKey },
+        select: {
+          id: true,
+          source: true,
+          status: true,
+          maskedCode: true,
+          amountMinor: true,
+          currencyCode: true,
+          recipientEmail: true,
+          recipientName: true,
+          issuedAt: true,
+          emailStatus: true,
+          emailSentAt: true,
+        },
+      });
+      if (raceExisting) {
+        return raceExisting as GenerateAdminGiftCardCodeResult;
+      }
+    }
+    throw error;
+  }
+
+  try {
+    const { sendGiftCardIssuanceEmail } = await import("@/lib/email/gift-card-email");
+    await sendGiftCardIssuanceEmail({
+      to: parsed.recipientEmail,
+      purchaserName: null,
+      recipientName: parsed.recipientName ?? null,
+      adminMessage: parsed.adminMessage ?? null,
+      plaintextCode,
+      amountMinor: parsed.amountMinor,
+      currencyCode,
+    });
+
+    const updated = await prisma.giftCardCode.update({
+      where: { id: created.id },
+      data: {
+        emailStatus: GiftCardCodeEmailStatus.SENT,
+        emailSentAt: new Date(),
+      },
+      select: {
+        id: true,
+        source: true,
+        status: true,
+        maskedCode: true,
+        amountMinor: true,
+        currencyCode: true,
+        recipientEmail: true,
+        recipientName: true,
+        issuedAt: true,
+        emailStatus: true,
+        emailSentAt: true,
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        actorId: parsed.actor.userId,
+        actionType: "GIFT_CARD_CODE_ADMIN_GENERATED",
+        entityType: "GiftCardCode",
+        entityId: created.id,
+        metadata: {
+          source: "gift-card-code-service",
+          idempotencyKey: parsed.idempotencyKey,
+          recipientEmail: parsed.recipientEmail,
+        },
+      },
+    });
+    return updated as GenerateAdminGiftCardCodeResult;
+  } catch (_emailError) {
+    await prisma.giftCardCode.update({
+      where: { id: created.id },
+      data: {
+        emailStatus: GiftCardCodeEmailStatus.FAILED,
+      },
+    });
+    throw giftCardError(giftCardErrorCodes.adminEmailDeliveryFailed);
+  }
+}
+
+export async function voidGiftCardCode(input: VoidGiftCardCodeInput): Promise<{ codeId: string; status: GiftCardCodeStatus }> {
+  const parsed = voidGiftCardInputSchema.parse(input);
+  await assertTrustedAdminActor(parsed.actor);
+  if (parsed.actorUserId && parsed.actorUserId !== parsed.actor.userId) {
+    throw giftCardError(giftCardErrorCodes.adminActorForbidden);
+  }
+
+  const updated = await prisma.giftCardCode.updateMany({
+    where: {
+      id: parsed.codeId,
+      status: GiftCardCodeStatus.ISSUED,
+    },
+    data: {
+      status: GiftCardCodeStatus.VOIDED,
+      voidedById: parsed.actor.userId,
+      voidedAt: new Date(),
+      voidReason: parsed.reason,
+    },
+  });
+
+  if (updated.count === 0) {
+    throw giftCardError(giftCardErrorCodes.codeNotVoidable);
+  }
+
+  await prisma.auditLog.create({
+    data: {
+      actorId: parsed.actor.userId,
+      actionType: "GIFT_CARD_CODE_VOIDED",
+      entityType: "GiftCardCode",
+      entityId: parsed.codeId,
+      metadata: {
+        reason: parsed.reason,
+        source: "gift-card-code-service",
+      },
+    },
+  });
+
+  return { codeId: parsed.codeId, status: GiftCardCodeStatus.VOIDED };
+}
+
 export async function lookupGiftCardCodeForRedemption(plaintextCode: string): Promise<{
   id: string;
-  orderId: string;
-  orderItemId: string;
+  orderId: string | null;
+  orderItemId: string | null;
   status: GiftCardCodeStatus;
   amountMinor: number;
   currencyCode: string;
   expiresAt: Date | null;
-  purchasedById: string;
+  purchasedById: string | null;
 } | null> {
   const normalized = normalizeInputCode(plaintextCode);
   const formatted = restoreCodeFormat(normalized);
@@ -313,12 +726,11 @@ export async function redeemGiftCardCode(input: RedeemGiftCardCodeInput): Promis
   if (record.status !== GiftCardCodeStatus.ISSUED) {
     throw genericError;
   }
-
   try {
     const activation = await activateGiftCardValue({
       actor: { type: "USER", userId: input.redeemerUserId, role: Role.CLIENT },
       clientId: input.redeemerClientId,
-      orderId: record.orderId,
+      orderId: record.orderId ?? undefined,
       orderItemId: record.orderItemId,
       amountMinor: record.amountMinor,
       currencyCode: record.currencyCode,

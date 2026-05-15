@@ -194,6 +194,17 @@ enum GiftCardCodeStatus {
   EXPIRED
 }
 
+enum GiftCardCodeSource {
+  PURCHASED
+  ADMIN_GENERATED
+}
+
+enum GiftCardCodeEmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 enum CheckoutSource {
   BOOKING_FLOW
   SUBSCRIPTION_CATALOG
@@ -350,6 +361,8 @@ model User {
   resolvedGiftCardReconciliationCases GiftCardReconciliationCase[] @relation("GiftCardReconciliationResolvedBy")
   purchasedGiftCardCodes              GiftCardCode[]               @relation("PurchasedGiftCards")
   redeemedGiftCardCodes               GiftCardCode[]               @relation("RedeemedGiftCards")
+  generatedGiftCardCodes              GiftCardCode[]               @relation("GeneratedGiftCards")
+  voidedGiftCardCodes                 GiftCardCode[]               @relation("VoidedGiftCards")
   createdLoyaltyCoupons               LoyaltyCoupon[]              @relation("LoyaltyCouponCreatedBy")
   voidedLoyaltyCoupons                LoyaltyCoupon[]              @relation("LoyaltyCouponVoidedBy")
   createdLoyaltyRewardRules           LoyaltyRewardRule[]          @relation("LoyaltyRewardRuleCreatedBy")
@@ -1008,10 +1021,22 @@ model GiftCardReconciliationCase {
 
 model GiftCardCode {
   id            String             @id @default(cuid())
-  orderId       String
-  orderItemId   String             @unique
-  purchasedById String
+  source        GiftCardCodeSource @default(PURCHASED)
+  adminIdempotencyKey String?      @unique
+  orderId       String?
+  orderItemId   String?            @unique
+  purchasedById String?
+  generatedById String?
   redeemedById  String?
+  recipientEmail String?
+  recipientName String?
+  adminMessage  String?
+  adminReason   String?
+  voidedById    String?
+  voidedAt      DateTime?
+  voidReason    String?
+  emailStatus   GiftCardCodeEmailStatus?
+  emailSentAt   DateTime?
   codeHash      String             @unique
   maskedCode    String
   amountMinor   Int
@@ -1023,14 +1048,19 @@ model GiftCardCode {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
-  order       Order     @relation(fields: [orderId], references: [id])
-  orderItem   OrderItem @relation(fields: [orderItemId], references: [id])
-  purchasedBy User      @relation("PurchasedGiftCards", fields: [purchasedById], references: [id])
+  order       Order?    @relation(fields: [orderId], references: [id])
+  orderItem   OrderItem? @relation(fields: [orderItemId], references: [id])
+  purchasedBy User?     @relation("PurchasedGiftCards", fields: [purchasedById], references: [id])
+  generatedBy User?     @relation("GeneratedGiftCards", fields: [generatedById], references: [id])
   redeemedBy  User?     @relation("RedeemedGiftCards", fields: [redeemedById], references: [id])
+  voidedBy    User?     @relation("VoidedGiftCards", fields: [voidedById], references: [id])
 
   @@index([purchasedById])
+  @@index([generatedById])
   @@index([redeemedById])
+  @@index([voidedById])
   @@index([status])
+  @@index([source, status])
 }
 
 model CartCheckoutIdempotency {

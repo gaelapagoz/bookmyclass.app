@@ -30,7 +30,7 @@ type ActivateGiftCardInput = {
   readonly actor: GiftCardActor;
   readonly clientId: string;
   readonly orderId?: string;
-  readonly orderItemId: string;
+  readonly orderItemId?: string | null;
   readonly paymentId?: string;
   readonly amountMinor: number;
   readonly currencyCode?: string;
@@ -321,15 +321,13 @@ export async function activateGiftCardValue(input: ActivateGiftCardInput): Promi
   assertCurrency(currencyCode);
   assertPositiveAmount(input.amountMinor);
   assertIdempotencyKey(input.idempotencyKey);
-  if (!input.orderItemId.trim()) {
-    throw giftCardError(giftCardErrorCodes.activationOrderItemRequired);
-  }
+  const orderItemId = input.orderItemId?.trim() || null;
 
   const payloadHash = hashGiftCardPayload({
     operation: "ACTIVATION",
     clientId: input.clientId,
     orderId: input.orderId,
-    orderItemId: input.orderItemId,
+    orderItemId: orderItemId ?? undefined,
     paymentId: input.paymentId,
     amountMinor: input.amountMinor,
     currencyCode,
@@ -345,9 +343,11 @@ export async function activateGiftCardValue(input: ActivateGiftCardInput): Promi
       };
     }
 
-    const duplicateActivation = await findActivationByOrderItem(tx, input.orderItemId);
-    if (duplicateActivation) {
-      throw giftCardError(giftCardErrorCodes.activationOrderItemAlreadyExists);
+    if (orderItemId) {
+      const duplicateActivation = await findActivationByOrderItem(tx, orderItemId);
+      if (duplicateActivation) {
+        throw giftCardError(giftCardErrorCodes.activationOrderItemAlreadyExists);
+      }
     }
 
     const wallet = await getOrCreateLockedWallet(tx, input.clientId, currencyCode);
@@ -359,9 +359,11 @@ export async function activateGiftCardValue(input: ActivateGiftCardInput): Promi
         idempotent: true,
       };
     }
-    const lockedDuplicateActivation = await findActivationByOrderItem(tx, input.orderItemId);
-    if (lockedDuplicateActivation) {
-      throw giftCardError(giftCardErrorCodes.activationOrderItemAlreadyExists);
+    if (orderItemId) {
+      const lockedDuplicateActivation = await findActivationByOrderItem(tx, orderItemId);
+      if (lockedDuplicateActivation) {
+        throw giftCardError(giftCardErrorCodes.activationOrderItemAlreadyExists);
+      }
     }
 
     if (input.atomicMarkCodeRedeemed) {
@@ -387,7 +389,7 @@ export async function activateGiftCardValue(input: ActivateGiftCardInput): Promi
         amountMinor: input.amountMinor,
         currencyCode,
         orderId: input.orderId,
-        orderItemId: input.orderItemId,
+        orderItemId,
         paymentId: input.paymentId,
         idempotencyKey: input.idempotencyKey,
         payloadHash,

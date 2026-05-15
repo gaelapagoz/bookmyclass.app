@@ -16,6 +16,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { auth } from "@/auth";
 
 import { GET as walletLookupRoute } from "../../src/app/api/admin/gift-cards/wallets/route";
+import { POST as createAdminCodeRoute } from "../../src/app/api/admin/gift-cards/codes/route";
+import { POST as voidAdminCodeRoute } from "../../src/app/api/admin/gift-cards/codes/[codeId]/void/route";
 import { POST as noteRoute } from "../../src/app/api/admin/gift-cards/reconciliation/[caseId]/note/route";
 import { POST as resolveRoute } from "../../src/app/api/admin/gift-cards/reconciliation/[caseId]/resolve/route";
 import { activateGiftCardValue, captureGiftCardRedemption, reserveGiftCardValue } from "../../src/lib/gift-cards/gift-card-wallet-service";
@@ -43,6 +45,10 @@ function request(url: string, body?: object) {
 
 function routeContext(caseId: string) {
   return { params: Promise.resolve({ caseId }) };
+}
+
+function voidRouteContext(codeId: string) {
+  return { params: Promise.resolve({ codeId }) };
 }
 
 async function createUser(role: Role) {
@@ -285,6 +291,90 @@ describe("gift-card admin visibility and permissions", () => {
       routeContext(reconciliationCase.id),
     );
     expect(clientResolve.status).toBe(403);
+  });
+
+  it("enforces permissions for admin gift-card code create route (CLIENT blocked, ADMIN and MASTER_ADMIN allowed)", async () => {
+    const admin = await createUser(Role.ADMIN);
+    const master = await createUser(Role.MASTER_ADMIN);
+    const client = await createUser(Role.CLIENT);
+
+    const unauthCreate = await createAdminCodeRoute(
+      request("http://localhost/api/admin/gift-cards/codes", {
+        idempotencyKey: `unauth-create-${Date.now()}`,
+        amountMinor: 2500,
+        recipientEmail: "recipient@example.test",
+        adminReason: "qa permission test",
+      }),
+    );
+    expect(unauthCreate.status).toBe(401);
+
+    vi.mocked(auth).mockResolvedValue({ user: { id: client.id } } as never);
+    const clientCreate = await createAdminCodeRoute(
+      request("http://localhost/api/admin/gift-cards/codes", {
+        idempotencyKey: `client-create-${Date.now()}`,
+        amountMinor: 2500,
+        recipientEmail: "recipient@example.test",
+        adminReason: "qa permission test",
+      }),
+    );
+    expect(clientCreate.status).toBe(403);
+
+    vi.mocked(auth).mockResolvedValue({ user: { id: admin.id } } as never);
+    const adminCreate = await createAdminCodeRoute(
+      request("http://localhost/api/admin/gift-cards/codes", {
+        idempotencyKey: `admin-create-${Date.now()}`,
+        amountMinor: 2500,
+        recipientEmail: "recipient@example.test",
+        adminReason: "qa permission test",
+      }),
+    );
+    expect(adminCreate.status).toBe(201);
+
+    vi.mocked(auth).mockResolvedValue({ user: { id: master.id } } as never);
+    const masterCreate = await createAdminCodeRoute(
+      request("http://localhost/api/admin/gift-cards/codes", {
+        idempotencyKey: `master-create-${Date.now()}`,
+        amountMinor: 2500,
+        recipientEmail: "recipient@example.test",
+        adminReason: "qa permission test",
+      }),
+    );
+    expect(masterCreate.status).toBe(201);
+  });
+
+  it("enforces permissions for admin gift-card code void route (CLIENT blocked, ADMIN allowed)", async () => {
+    const admin = await createUser(Role.ADMIN);
+    const client = await createUser(Role.CLIENT);
+
+    vi.mocked(auth).mockResolvedValue({ user: { id: admin.id } } as never);
+    const createResponse = await createAdminCodeRoute(
+      request("http://localhost/api/admin/gift-cards/codes", {
+        idempotencyKey: `void-target-${Date.now()}`,
+        amountMinor: 2500,
+        recipientEmail: "recipient@example.test",
+        adminReason: "qa void permission test",
+      }),
+    );
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json() as { id: string };
+
+    vi.mocked(auth).mockResolvedValue(null);
+    const unauthVoid = await voidAdminCodeRoute(
+      request(`http://localhost/api/admin/gift-cards/codes/${created.id}/void`, {
+        reason: "Unauth void",
+      }),
+      voidRouteContext(created.id),
+    );
+    expect(unauthVoid.status).toBe(401);
+
+    vi.mocked(auth).mockResolvedValue({ user: { id: client.id } } as never);
+    const clientVoid = await voidAdminCodeRoute(
+      request(`http://localhost/api/admin/gift-cards/codes/${created.id}/void`, {
+        reason: "Client void",
+      }),
+      voidRouteContext(created.id),
+    );
+    expect(clientVoid.status).toBe(403);
   });
 
   it("returns ledger history in newest-first paginated order", async () => {
@@ -596,5 +686,42 @@ describe("gift-card admin visibility and permissions", () => {
     await expect(resolvedList.json()).resolves.toMatchObject({
       items: [expect.objectContaining({ id: reconciliationCase.id, status: "RESOLVED" })],
     });
+  });
+
+  it("ignores forged actor fields in request body and binds issuance/void actor from admin session", async () => {
+    const admin = await createUser(Role.ADMIN);
+    const forged = await createUser(Role.CLIENT);
+    vi.mocked(auth).mockResolvedValue({ user: { id: admin.id } } as never);
+
+    const createResponse = await createAdminCodeRoute(
+      request("http://localhost/api/admin/gift-cards/codes", {
+        idempotencyKey: `admin-api-forged-${Date.now()}`,
+        amountMinor: 3500,
+        recipientEmail: "recipient@example.test",
+        adminReason: "Security hardening test",
+        actor: { userId: forged.id, role: Role.CLIENT },
+        generatedById: forged.id,
+      }),
+    );
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json() as { id: string };
+    const createdCode = await prisma.giftCardCode.findUniqueOrThrow({ where: { id: created.id } });
+    expect(createdCode.generatedById).toBe(admin.id);
+    expect(createdCode.generatedById).not.toBe(forged.id);
+
+    const voidResponse = await voidAdminCodeRoute(
+      request(`http://localhost/api/admin/gift-cards/codes/${created.id}/void`, {
+        reason: "Void for trust-boundary verification",
+        actor: { userId: forged.id, role: Role.CLIENT },
+        actorUserId: forged.id,
+      }),
+      voidRouteContext(created.id),
+    );
+
+    expect(voidResponse.status).toBe(200);
+    const voided = await prisma.giftCardCode.findUniqueOrThrow({ where: { id: created.id } });
+    expect(voided.voidedById).toBe(admin.id);
+    expect(voided.voidedById).not.toBe(forged.id);
   });
 });

@@ -5,6 +5,11 @@ import { buildBaseSecurityHeaders } from "./src/lib/security/response-security";
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactCompiler: true,
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "6mb",
+    },
+  },
   async headers() {
     const staticAndMetaHeaders = buildBaseSecurityHeaders({
       appUrl: process.env.APP_URL,

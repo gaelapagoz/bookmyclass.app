@@ -46,7 +46,7 @@ export const adminNavConfig: AdminNavItem[] = [
     children: [
       { type: "link", href: "/admin/orders", label: "Orders" },
       { type: "link", href: "/admin/subscriptions", label: "Subscriptions" },
-      { type: "link", href: "/admin/gift-cards", label: "Gift Card Wallets" },
+      { type: "link", href: "/admin/gift-cards", label: "Gift Cards" },
     ],
   },
   {
