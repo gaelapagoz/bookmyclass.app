@@ -37,10 +37,42 @@ APP_DIR="$2"
 APP_NAME="$3"
 HOMESITE_PUBLISH_DIR="$4"
 BASE_URL="$5"
+RUN_DIR="$(pwd)"
 
+log_step() {
+  echo
+  echo "==> $*"
+}
+
+clean_git_worktree_for_exact_tag() {
+  log_step "sanitize git worktree before exact tag checkout"
+  git status --short || true
+  git diff -- > "${RUN_DIR}/remote-dirty-worktree.patch" || true
+  git status --short > "${RUN_DIR}/remote-dirty-worktree.status" || true
+  git reset --hard
+  git clean -ffd \
+    -e .env \
+    -e .env.local \
+    -e '.env.*' \
+    -e uploads \
+    -e 'uploads/**' \
+    -e public/uploads \
+    -e 'public/uploads/**'
+}
+
+log_step "checkout exact tag"
 cd "$APP_DIR"
-git fetch --all --tags
-git checkout "$TARGET_TAG"
+git fetch --all --tags --prune --force
+clean_git_worktree_for_exact_tag
+git checkout --detach "$TARGET_TAG"
+actual_head="$(git rev-parse HEAD)"
+tag_commit="$(git rev-parse "$TARGET_TAG^{commit}")"
+echo "remote_head=$actual_head"
+echo "target_tag_commit=$tag_commit"
+if [[ "$actual_head" != "$tag_commit" ]]; then
+  echo "[FAIL][tag-resolution-mismatch] head=$actual_head target_tag_commit=$tag_commit" >&2
+  exit 11
+fi
 bash "$APP_DIR/scripts/publish-homesite-assets.sh" "$APP_DIR" "$HOMESITE_PUBLISH_DIR" "$BASE_URL"
 npm ci
 npx prisma migrate deploy

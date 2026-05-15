@@ -63,6 +63,22 @@ log_step() {
   echo "==> $*"
 }
 
+clean_git_worktree_for_exact_tag() {
+  log_step "sanitize git worktree before exact tag checkout"
+  git status --short || true
+  git diff -- > "${RUN_DIR}/remote-dirty-worktree.patch" || true
+  git status --short > "${RUN_DIR}/remote-dirty-worktree.status" || true
+  git reset --hard
+  git clean -ffd \
+    -e .env \
+    -e .env.local \
+    -e '.env.*' \
+    -e uploads \
+    -e 'uploads/**' \
+    -e public/uploads \
+    -e 'public/uploads/**'
+}
+
 run_optional() {
   local description="$1"
   shift
@@ -164,18 +180,27 @@ print_failure_diagnostics() {
 
 trap 'exit_code=$?; print_failure_diagnostics "unexpected failure at line $LINENO exit=$exit_code"; exit "$exit_code"' ERR
 
+RUN_DIR="$(pwd)"
+
 log_step "runtime versions"
 node --version
 npm --version
 
 log_step "checkout exact tag"
 cd "$APP_DIR"
-git fetch --all --tags
+git fetch --all --tags --prune --force
+clean_git_worktree_for_exact_tag
 git checkout --detach "$TARGET_TAG"
 actual_head="$(git rev-parse HEAD)"
+tag_commit="$(git rev-parse "$TARGET_TAG^{commit}")"
 echo "remote_head=$actual_head"
+echo "target_tag_commit=$tag_commit"
 git log -1 --oneline
 git describe --tags --exact-match
+if [[ "$actual_head" != "$tag_commit" ]]; then
+  echo "[FAIL][tag-resolution-mismatch] head=$actual_head target_tag_commit=$tag_commit" >&2
+  exit 11
+fi
 if [[ -n "$EXPECTED_SHA" && "$actual_head" != "$EXPECTED_SHA" ]]; then
   echo "[FAIL][tag-sha-mismatch] expected_sha=$EXPECTED_SHA actual_head=$actual_head" >&2
   exit 4
