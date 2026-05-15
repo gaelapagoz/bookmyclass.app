@@ -70,6 +70,64 @@ run_optional() {
   "$@" || echo "[warn] optional command failed: $description"
 }
 
+assert_required_env_keys() {
+  local env_file="$1"
+  if [[ ! -f "$env_file" ]]; then
+    echo "[FAIL][env-missing] Required env file not found: $env_file" >&2
+    exit 5
+  fi
+
+  # shellcheck disable=SC1090
+  set -a; source "$env_file"; set +a
+
+  local missing=()
+  local required_keys=(
+    DATABASE_URL
+    AUTH_SECRET
+    APP_URL
+    STRIPE_SECRET_KEY
+    STRIPE_WEBHOOK_SECRET
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+    CRON_SECRET
+    UPLOADS_DIR
+    MARKETING_TRACKING_SECRET
+  )
+
+  for key in "${required_keys[@]}"; do
+    if [[ -z "${!key:-}" ]]; then
+      missing+=("$key")
+    fi
+  done
+
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    echo "[FAIL][env-missing] Missing required keys in $env_file: ${missing[*]}" >&2
+    exit 6
+  fi
+
+  case "${APP_URL}" in
+    http://*|https://*) ;;
+    *)
+      echo "[FAIL][env-invalid] APP_URL must be an absolute http(s) URL. Got: ${APP_URL}" >&2
+      exit 7
+      ;;
+  esac
+
+  if [[ ! "${STRIPE_SECRET_KEY}" =~ ^sk_(test|live)_ ]]; then
+    echo "[FAIL][env-invalid] STRIPE_SECRET_KEY must start with sk_test_ or sk_live_." >&2
+    exit 8
+  fi
+
+  if [[ ! "${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}" =~ ^pk_(test|live)_ ]]; then
+    echo "[FAIL][env-invalid] NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY must start with pk_test_ or pk_live_." >&2
+    exit 9
+  fi
+
+  if [[ ! "${STRIPE_WEBHOOK_SECRET}" =~ ^whsec_ ]]; then
+    echo "[FAIL][env-invalid] STRIPE_WEBHOOK_SECRET must start with whsec_." >&2
+    exit 10
+  fi
+}
+
 curl_probe() {
   local url="$1"
   local body_file status total
@@ -122,6 +180,9 @@ if [[ -n "$EXPECTED_SHA" && "$actual_head" != "$EXPECTED_SHA" ]]; then
   echo "[FAIL][tag-sha-mismatch] expected_sha=$EXPECTED_SHA actual_head=$actual_head" >&2
   exit 4
 fi
+
+log_step "validate required runtime env"
+assert_required_env_keys "$APP_DIR/.env"
 
 bash "$APP_DIR/scripts/publish-homesite-assets.sh" "$APP_DIR" "$HOMESITE_PUBLISH_DIR" "$HOMESITE_BASE_URL"
 

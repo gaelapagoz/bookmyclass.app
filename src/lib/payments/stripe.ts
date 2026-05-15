@@ -1,5 +1,4 @@
 import Stripe from "stripe";
-import { validateRuntimeEnv } from "@/lib/config/runtime-env";
 
 type StripeServerEnv = {
   appUrl: string;
@@ -36,7 +35,6 @@ export function getStripePublicEnv(): StripePublicEnv {
 let stripeClient: Stripe | null = null;
 
 export function getStripeClient(): Stripe {
-  validateRuntimeEnv();
   const env = getStripeServerEnv();
 
   if (!stripeClient) {

@@ -459,7 +459,7 @@ Evidence label legend used in this file:
 ## 16. Configuration and secrets
 - Auth/session:
   - `AUTH_SECRET` (NextAuth secret).
-  - `NEXTAUTH_SECRET` (used as fallback in marketing tracking secret chain).
+  - `NEXTAUTH_SECRET` (legacy/compat auth secret variable in some environments; canonical auth secret is `AUTH_SECRET`).
   - Evidence status: Confirmed from repo (`src/auth.ts`, `src/lib/marketing/marketing-tracking.ts`).
 - App/runtime:
   - `DATABASE_URL`, `APP_URL`, `NODE_ENV`, `NEXT_RUNTIME`, `UPLOADS_DIR`, `PUBLIC_UPLOADS_BASE_PATH`.
@@ -471,7 +471,7 @@ Evidence label legend used in this file:
   - `RESEND_API_KEY`, `EMAIL_FROM`, `CONTACT_FORM_TO_EMAIL` (homesite contact form recipient).
   - Evidence status: Confirmed from repo.
   - Marketing tracking:
-  - `MARKETING_TRACKING_SECRET` (fallback chain includes `NEXTAUTH_SECRET`, then default constant).
+  - `MARKETING_TRACKING_SECRET` (required by marketing tracking token helpers; no fallback chain).
   - Evidence status: Confirmed from repo.
 - Sentry/observability:
   - `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `NEXT_PUBLIC_SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, `NEXT_PUBLIC_SENTRY_RELEASE`, `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`, `CI`, `VERCEL_GIT_COMMIT_SHA`, `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA`, `GIT_SHA`.
