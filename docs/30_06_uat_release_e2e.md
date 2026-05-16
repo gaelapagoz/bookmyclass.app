@@ -8,7 +8,7 @@ plus operator-run UAT/manual release validation.
 
 It is intentionally narrow:
 - operator-triggered
-- non-destructive
+- deterministic against disposable staging data
 - stable against deployed UAT
 - separate from local/dev e2e coverage
 
@@ -44,24 +44,30 @@ Required:
 - `UAT_BASE_URL`
 - `UAT_E2E_EMAIL`
 - `UAT_E2E_PASSWORD`
+- `UAT_E2E_ADMIN_EMAIL`
+- `UAT_E2E_ADMIN_PASSWORD`
 
 `BASE_URL` is supported and takes precedence when explicitly set.
 
 ## GitHub Actions order
 
 When the operator runs UAT validation, `.github/workflows/staging-release.yml`
-release-tag sequence is:
-1. `regression`
-2. `e2e`
-3. `deploy_staging`
-4. `smoke_staging`
-5. `e2e_staging`
-6. `k6_smoke_staging`
-7. `zap_staging`
+release-tag sequence includes:
+1. `deploy_staging`
+2. `origin_smoke_staging`
+3. `smoke_staging`
+4. `e2e_staging`
+5. `k6_smoke_staging`
+6. `zap_staging`
 
 If `e2e_staging` fails, the workflow fails and Playwright artifacts are uploaded.
 These jobs are operator-run validation steps and are not automatic release
 blockers.
+
+Important:
+- `UAT_E2E_*` credentials configure login only; they do not auto-create users.
+- Staging release performs destructive reset + deterministic seed during `deploy_staging`, including E2E credential alignment before Playwright.
+- Production deploy remains non-destructive.
 
 Pre-deploy CI e2e and deployed-UAT release e2e are distinct:
 - `e2e` in `.github/workflows/ci.yml` is pre-deploy CI e2e

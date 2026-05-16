@@ -33,6 +33,9 @@ HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-20}"
 HEALTH_DELAY_SECONDS="${HEALTH_DELAY_SECONDS:-5}"
 EXPECTED_SHA="${EXPECTED_SHA:-}"
 PUBLISH_HOMESITE="${PUBLISH_HOMESITE:-0}"
+RESET_STAGING_DB="${RESET_STAGING_DB:-0}"
+CONFIRM_DESTRUCTIVE_STAGING_SEED="${CONFIRM_DESTRUCTIVE_STAGING_SEED:-}"
+CONFIRM_PRODUCTION_SEED="${CONFIRM_PRODUCTION_SEED:-}"
 
 NPM_CI_TIMEOUT_SECONDS="${NPM_CI_TIMEOUT_SECONDS:-300}"
 PRISMA_GENERATE_TIMEOUT_SECONDS="${PRISMA_GENERATE_TIMEOUT_SECONDS:-180}"
@@ -41,6 +44,11 @@ BUILD_TIMEOUT_SECONDS="${BUILD_TIMEOUT_SECONDS:-900}"
 NPM_PRUNE_TIMEOUT_SECONDS="${NPM_PRUNE_TIMEOUT_SECONDS:-300}"
 PM2_TIMEOUT_SECONDS="${PM2_TIMEOUT_SECONDS:-120}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-120}"
+PRISMA_RESET_TIMEOUT_SECONDS="${PRISMA_RESET_TIMEOUT_SECONDS:-300}"
+SEED_PROD_TIMEOUT_SECONDS="${SEED_PROD_TIMEOUT_SECONDS:-600}"
+SEED_UAT_PERF_TIMEOUT_SECONDS="${SEED_UAT_PERF_TIMEOUT_SECONDS:-600}"
+SEED_UAT_K6_TIMEOUT_SECONDS="${SEED_UAT_K6_TIMEOUT_SECONDS:-600}"
+SEED_STAGING_E2E_TIMEOUT_SECONDS="${SEED_STAGING_E2E_TIMEOUT_SECONDS:-300}"
 
 fail() {
   echo "[FAIL][deploy-server-tag] $*" >&2
@@ -68,6 +76,7 @@ echo "app_dir=$APP_DIR"
 echo "app_name=$APP_NAME"
 echo "release_tag=$RELEASE_TAG"
 echo "publish_homesite=$PUBLISH_HOMESITE"
+echo "reset_staging_db=$RESET_STAGING_DB"
 
 ssh_target="${REMOTE_USER}@${SSH_HOST}"
 remote_dir="/tmp/${remote_run_id}"
@@ -82,24 +91,34 @@ ssh "$ssh_target" "cat > '$remote_script'" <<'REMOTE_SCRIPT'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RELEASE_TAG="$1"
-APP_DIR="$2"
-APP_NAME="$3"
-HOMESITE_PUBLISH_DIR="$4"
-BASE_URL="$5"
-LOCAL_HEALTH_URL="$6"
-HEALTH_ATTEMPTS="$7"
-HEALTH_DELAY_SECONDS="$8"
-EXPECTED_SHA="${9:-}"
-HOMESITE_BASE_URL="${10:-https://bookmyclass.app}"
-PUBLISH_HOMESITE="${11:-0}"
-NPM_CI_TIMEOUT_SECONDS="${12:-300}"
-PRISMA_GENERATE_TIMEOUT_SECONDS="${13:-180}"
-PRISMA_MIGRATE_TIMEOUT_SECONDS="${14:-180}"
-BUILD_TIMEOUT_SECONDS="${15:-900}"
-NPM_PRUNE_TIMEOUT_SECONDS="${16:-300}"
-PM2_TIMEOUT_SECONDS="${17:-120}"
-HEALTH_TIMEOUT_SECONDS="${18:-120}"
+TARGET_ENV="$1"
+RELEASE_TAG="$2"
+APP_DIR="$3"
+APP_NAME="$4"
+HOMESITE_PUBLISH_DIR="$5"
+BASE_URL="$6"
+LOCAL_HEALTH_URL="$7"
+HEALTH_ATTEMPTS="$8"
+HEALTH_DELAY_SECONDS="$9"
+EXPECTED_SHA="${10:-}"
+HOMESITE_BASE_URL="${11:-https://bookmyclass.app}"
+PUBLISH_HOMESITE="${12:-0}"
+NPM_CI_TIMEOUT_SECONDS="${13:-300}"
+PRISMA_GENERATE_TIMEOUT_SECONDS="${14:-180}"
+PRISMA_MIGRATE_TIMEOUT_SECONDS="${15:-180}"
+BUILD_TIMEOUT_SECONDS="${16:-900}"
+NPM_PRUNE_TIMEOUT_SECONDS="${17:-300}"
+PM2_TIMEOUT_SECONDS="${18:-120}"
+HEALTH_TIMEOUT_SECONDS="${19:-120}"
+RESET_STAGING_DB="${20:-0}"
+CONFIRM_DESTRUCTIVE_STAGING_SEED="${21:-}"
+CONFIRM_PRODUCTION_SEED="${22:-}"
+PRISMA_RESET_TIMEOUT_SECONDS="${23:-300}"
+SEED_PROD_TIMEOUT_SECONDS="${24:-600}"
+SEED_UAT_PERF_TIMEOUT_SECONDS="${25:-600}"
+SEED_UAT_K6_TIMEOUT_SECONDS="${26:-600}"
+CONFIRM_TARGET="${27:-}"
+SEED_STAGING_E2E_TIMEOUT_SECONDS="${28:-300}"
 
 LOCK_FILE="/tmp/bookmyclass-deploy.lock"
 DEPLOY_FAILED=0
@@ -176,6 +195,60 @@ load_env_file() {
   set +a
 }
 
+is_disposable_target_env() {
+  [[ "$TARGET_ENV" == "uat" || "$TARGET_ENV" == "staging" || "$TARGET_ENV" == "demo" ]]
+}
+
+is_production_target_env() {
+  [[ "$TARGET_ENV" == "production" || "$TARGET_ENV" == "prod" ]]
+}
+
+is_production_url() {
+  local value="${1:-}"
+  [[ "$value" == "https://bookmyclass.app" || "$value" == "https://www.bookmyclass.app" ]]
+}
+
+guard_destructive_staging_seed() {
+  log_step "validate destructive staging seed guards"
+
+  is_disposable_target_env || {
+    echo "[FAIL][guard] TARGET_ENV must be one of: uat|staging|demo" >&2
+    exit 41
+  }
+  ! is_production_target_env || {
+    echo "[FAIL][guard] TARGET_ENV must not be production/prod for destructive staging reset" >&2
+    exit 42
+  }
+  [[ "$CONFIRM_DESTRUCTIVE_STAGING_SEED" == "YES" ]] || {
+    echo "[FAIL][guard] CONFIRM_DESTRUCTIVE_STAGING_SEED must equal YES" >&2
+    exit 43
+  }
+  [[ "${CONFIRM_TARGET:-}" != "production" ]] || {
+    echo "[FAIL][guard] CONFIRM_TARGET=production is incompatible with destructive staging reset" >&2
+    exit 44
+  }
+
+  local app_url="${APP_URL:-}"
+  local nextauth_url="${NEXTAUTH_URL:-}"
+  local auth_url="${AUTH_URL:-}"
+  local runtime_base_url="${BASE_URL:-}"
+  ! is_production_url "$app_url" || { echo "[FAIL][guard] APP_URL points to production hostname" >&2; exit 45; }
+  ! is_production_url "$nextauth_url" || { echo "[FAIL][guard] NEXTAUTH_URL points to production hostname" >&2; exit 46; }
+  ! is_production_url "$auth_url" || { echo "[FAIL][guard] AUTH_URL points to production hostname" >&2; exit 47; }
+  ! is_production_url "$runtime_base_url" || { echo "[FAIL][guard] BASE_URL points to production hostname" >&2; exit 48; }
+
+  if [[ -n "${DATABASE_URL:-}" ]]; then
+    local db_lower
+    db_lower="$(echo "${DATABASE_URL}" | tr '[:upper:]' '[:lower:]')"
+    if [[ "$db_lower" == *"bookmyclass-app-postgres"* || "$db_lower" == *"46.62.208.152"* ]]; then
+      echo "[FAIL][guard] DATABASE_URL appears production-like; refusing destructive staging reset." >&2
+      exit 49
+    fi
+  fi
+
+  echo "[guard] destructive staging seed guard passed"
+}
+
 print_pre_diagnostics() {
   log_step "pre-deploy diagnostics"
   echo "hostname=$(hostname)"
@@ -243,6 +316,21 @@ run_with_timeout "$PRISMA_GENERATE_TIMEOUT_SECONDS" "generate prisma client" npx
 run_with_timeout "$PRISMA_MIGRATE_TIMEOUT_SECONDS" "apply prisma migrations" npx prisma migrate deploy
 run_with_timeout "$BUILD_TIMEOUT_SECONDS" "build next application" npm run build
 
+if [[ "$RESET_STAGING_DB" == "1" ]]; then
+  guard_destructive_staging_seed
+  run_with_timeout "$PRISMA_RESET_TIMEOUT_SECONDS" "destructive staging database reset" npx prisma migrate reset --force --skip-seed
+  run_with_timeout "$SEED_PROD_TIMEOUT_SECONDS" "seed prod baseline data for staging validation" env CONFIRM_PRODUCTION_SEED="$CONFIRM_PRODUCTION_SEED" npm run db:seed:prod
+  run_with_timeout "$SEED_UAT_PERF_TIMEOUT_SECONDS" "seed uat performance data for staging validation" npm run db:seed:uat-performance
+  run_with_timeout "$SEED_UAT_K6_TIMEOUT_SECONDS" "seed uat k6 cohort data for staging validation" env UAT_K6_SEED=1 npm run db:seed:uat:k6
+  run_with_timeout "$SEED_STAGING_E2E_TIMEOUT_SECONDS" "align staging e2e credential fixtures" env UAT_E2E_SEED=1 npm run db:seed:staging:e2e
+  run_with_timeout "$SEED_STAGING_E2E_TIMEOUT_SECONDS" "verify staging e2e credential fixtures" npm run db:verify:staging:e2e
+  log_step "staging reset/seed summary"
+  echo "seed_baseline=completed"
+  echo "seed_uat_performance=completed"
+  echo "seed_uat_k6=completed"
+  echo "seed_staging_e2e_credentials=completed"
+fi
+
 if [[ "$PUBLISH_HOMESITE" == "1" ]]; then
   run_with_timeout 180 "publish homesite assets (explicitly enabled)" bash "$APP_DIR/scripts/homesite-server-publish-assets.sh" "$APP_DIR" "$HOMESITE_PUBLISH_DIR" "$HOMESITE_BASE_URL"
 else
@@ -290,7 +378,7 @@ REMOTE_SCRIPT="$1"; REMOTE_LOG="$2"; REMOTE_STATUS="$3"; shift 3
 ( set +e; "$REMOTE_SCRIPT" "$@" >"$REMOTE_LOG" 2>&1; printf "%s\n" "$?" >"$REMOTE_STATUS" ) </dev/null >/dev/null 2>&1 &
 REMOTE_START
 ssh "$ssh_target" "chmod 700 '$remote_start'"
-ssh "$ssh_target" "'$remote_start' '$remote_script' '$remote_log' '$remote_status' '$RELEASE_TAG' '$APP_DIR' '$APP_NAME' '$HOMESITE_PUBLISH_DIR' '$BASE_URL' '$LOCAL_HEALTH_URL' '$HEALTH_ATTEMPTS' '$HEALTH_DELAY_SECONDS' '$EXPECTED_SHA' '$HOMESITE_BASE_URL' '$PUBLISH_HOMESITE' '$NPM_CI_TIMEOUT_SECONDS' '$PRISMA_GENERATE_TIMEOUT_SECONDS' '$PRISMA_MIGRATE_TIMEOUT_SECONDS' '$BUILD_TIMEOUT_SECONDS' '$NPM_PRUNE_TIMEOUT_SECONDS' '$PM2_TIMEOUT_SECONDS' '$HEALTH_TIMEOUT_SECONDS'"
+ssh "$ssh_target" "'$remote_start' '$remote_script' '$remote_log' '$remote_status' '$TARGET_ENV' '$RELEASE_TAG' '$APP_DIR' '$APP_NAME' '$HOMESITE_PUBLISH_DIR' '$BASE_URL' '$LOCAL_HEALTH_URL' '$HEALTH_ATTEMPTS' '$HEALTH_DELAY_SECONDS' '$EXPECTED_SHA' '$HOMESITE_BASE_URL' '$PUBLISH_HOMESITE' '$NPM_CI_TIMEOUT_SECONDS' '$PRISMA_GENERATE_TIMEOUT_SECONDS' '$PRISMA_MIGRATE_TIMEOUT_SECONDS' '$BUILD_TIMEOUT_SECONDS' '$NPM_PRUNE_TIMEOUT_SECONDS' '$PM2_TIMEOUT_SECONDS' '$HEALTH_TIMEOUT_SECONDS' '$RESET_STAGING_DB' '$CONFIRM_DESTRUCTIVE_STAGING_SEED' '$CONFIRM_PRODUCTION_SEED' '$PRISMA_RESET_TIMEOUT_SECONDS' '$SEED_PROD_TIMEOUT_SECONDS' '$SEED_UAT_PERF_TIMEOUT_SECONDS' '$SEED_UAT_K6_TIMEOUT_SECONDS' '$CONFIRM_TARGET' '$SEED_STAGING_E2E_TIMEOUT_SECONDS'"
 
 last_lines=0
 remote_exit=""

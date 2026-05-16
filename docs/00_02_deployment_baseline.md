@@ -75,6 +75,8 @@ Rules:
 - Never deploy directly to production from main.
 - Production deployment remains explicit and operator-approved.
 - UAT is operational for manual operator validation and is not an automatic gate.
+- Staging/UAT demo validation environment is disposable by design: staging deploy may run destructive DB reset + deterministic reseed when explicitly gated.
+- Production deploy must never run destructive DB reset/seed.
 - During the demo stage, `UAT_*` GitHub Actions secrets may intentionally point
   at the same production/demo server values. This must be visible in workflow
   logs as a warning, but it is not a deploy blocker while the operator approves
@@ -143,4 +145,5 @@ Use this source order when current implementation work conflicts with older docs
 
 Rule:
 - Never deploy directly to production from main
+- Staging destructive reset/seed is staging-only and must be guarded; production reset/seed remains prohibited.
 

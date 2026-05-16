@@ -10,11 +10,6 @@ function requiredEnv(name: CredentialKey): string {
   return value;
 }
 
-function optionalEnv(name: CredentialKey): string | null {
-  const value = process.env[name]?.trim();
-  return value && value.length > 0 ? value : null;
-}
-
 async function expectHomePageMarker(page: Page) {
   const body = await page.locator("body").innerText();
   const hasPrimaryCta = body.includes("Book a Class");
@@ -54,7 +49,7 @@ test.describe("deployed staging (UAT-backed) release checks", () => {
     await expect(page.getByRole("heading", { name: "Client Dashboard" })).toBeVisible();
 
     await page.goto("/subscription");
-    await expect(page.getByText(/\b(€|EUR|month|session|class)\b/i).first()).toBeVisible();
+    await expect(page.getByText(/\b(EUR|month|session|class)\b/i).first()).toBeVisible();
 
     await page.goto("/book-a-class");
     await expect(page.getByText(/\b(book|class|session|checkout|payment)\b/i).first()).toBeVisible();
@@ -67,8 +62,8 @@ test.describe("deployed staging (UAT-backed) release checks", () => {
   });
 
   test("admin login reaches admin dashboard or sessions", async ({ page }) => {
-    const adminEmail = optionalEnv("UAT_E2E_ADMIN_EMAIL") ?? requiredEnv("UAT_E2E_EMAIL");
-    const adminPassword = optionalEnv("UAT_E2E_ADMIN_PASSWORD") ?? requiredEnv("UAT_E2E_PASSWORD");
+    const adminEmail = requiredEnv("UAT_E2E_ADMIN_EMAIL");
+    const adminPassword = requiredEnv("UAT_E2E_ADMIN_PASSWORD");
 
     await signIn(page, adminEmail, adminPassword);
     await page.goto("/admin");

@@ -236,7 +236,7 @@ jobs:
           echo "ssh_target_alias=deploy-target"
           echo "app_dir=${APP_DIR:-<default from script>}"
           echo "app_name=${APP_NAME:-<default from script>}"
-          TARGET_ENV=uat SSH_HOST="deploy-target" RELEASE_TAG="${TARGET_TAG}" bash scripts/deploy-server-tag.sh 2>&1 | tee "${EVIDENCE_ROOT}/deploy-command.log"
+          TARGET_ENV=uat SSH_HOST="deploy-target" RELEASE_TAG="${TARGET_TAG}" RESET_STAGING_DB=1 CONFIRM_DESTRUCTIVE_STAGING_SEED=YES CONFIRM_PRODUCTION_SEED=bookmyclass-prod-seed bash scripts/deploy-server-tag.sh 2>&1 | tee "${EVIDENCE_ROOT}/deploy-command.log"
 
       - name: Collect remote staging deploy logs on failure
         if: failure()
@@ -473,8 +473,12 @@ jobs:
       STAGING_BASE_URL: ${{ secrets.UAT_BASE_URL }}
       UAT_E2E_EMAIL: ${{ secrets.UAT_E2E_EMAIL }}
       UAT_E2E_PASSWORD: ${{ secrets.UAT_E2E_PASSWORD }}
+      UAT_E2E_ADMIN_EMAIL: ${{ secrets.UAT_E2E_ADMIN_EMAIL }}
+      UAT_E2E_ADMIN_PASSWORD: ${{ secrets.UAT_E2E_ADMIN_PASSWORD }}
       STAGING_E2E_EMAIL: ${{ secrets.UAT_E2E_EMAIL }}
       STAGING_E2E_PASSWORD: ${{ secrets.UAT_E2E_PASSWORD }}
+      STAGING_E2E_ADMIN_EMAIL: ${{ secrets.UAT_E2E_ADMIN_EMAIL }}
+      STAGING_E2E_ADMIN_PASSWORD: ${{ secrets.UAT_E2E_ADMIN_PASSWORD }}
 
     steps:
       - name: Check out exact pushed tag
@@ -493,6 +497,14 @@ jobs:
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
+
+      - name: Validate required staging E2E credentials
+        run: |
+          set -euo pipefail
+          [[ -n "${UAT_E2E_EMAIL:-}" ]] || { echo "Missing UAT_E2E_EMAIL"; exit 1; }
+          [[ -n "${UAT_E2E_PASSWORD:-}" ]] || { echo "Missing UAT_E2E_PASSWORD"; exit 1; }
+          [[ -n "${UAT_E2E_ADMIN_EMAIL:-}" ]] || { echo "Missing UAT_E2E_ADMIN_EMAIL for admin release flow."; exit 1; }
+          [[ -n "${UAT_E2E_ADMIN_PASSWORD:-}" ]] || { echo "Missing UAT_E2E_ADMIN_PASSWORD for admin release flow."; exit 1; }
 
       - name: Run deployed staging release e2e
         run: |
@@ -520,6 +532,7 @@ jobs:
       BASE_URL: ${{ secrets.UAT_BASE_URL }}
       STAGE_PROFILE: smoke
       K6_SCENARIO_SET: non_booking_smoke
+      RUN_STAGING_K6_SEED: ${{ vars.RUN_STAGING_K6_SEED || '0' }}
       EVIDENCE_ROOT: artifacts/staging-k6
 
     steps:
@@ -539,6 +552,15 @@ jobs:
 
       - name: Setup k6
         uses: grafana/setup-k6-action@v1
+
+      - name: Guard k6 seed requirements for booking scenario sets
+        run: |
+          set -euo pipefail
+          if [[ "${K6_SCENARIO_SET}" != "non_booking_smoke" && "${RUN_STAGING_K6_SEED}" != "YES" ]]; then
+            echo "K6_SCENARIO_SET=${K6_SCENARIO_SET} requires explicit staging k6 data prep approval." >&2
+            echo "Set RUN_STAGING_K6_SEED=YES and run approved staging k6 seed preparation before this job." >&2
+            exit 1
+          fi
 
       - name: Run k6 smoke against deployed staging
         run: |
