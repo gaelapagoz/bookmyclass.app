@@ -79,10 +79,13 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      - name: Apply migrations to temporary tag sanity database
+        run: npx prisma migrate deploy
+
       - name: Build application
         run: npm run build
 
-      - name: Check Prisma migration status
+      - name: Verify temporary database has all migrations applied
         run: npx prisma migrate status
 
       - name: Validate required UAT compatibility secrets are present
