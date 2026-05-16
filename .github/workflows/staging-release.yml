@@ -267,10 +267,142 @@ jobs:
           path: artifacts/staging-deploy
           if-no-files-found: ignore
 
-  smoke_staging:
+  post_deploy_health_staging:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     needs: deploy_staging
+    environment: uat
+    env:
+      BASE_URL: ${{ secrets.UAT_BASE_URL }}
+      REMOTE_HOST: ${{ secrets.UAT_SSH_HOST }}
+      REMOTE_PORT: ${{ secrets.UAT_SSH_PORT }}
+      REMOTE_USER: ${{ secrets.UAT_SSH_USER }}
+      CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_ID }}
+      CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+      APP_NAME: ${{ secrets.UAT_PM2_APP_NAME }}
+      EVIDENCE_ROOT: artifacts/staging-post-deploy-health
+      HEALTH_ATTEMPTS: "12"
+      HEALTH_DELAY_SECONDS: "10"
+
+    steps:
+      - name: Install cloudflared
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.ssh"
+          chmod 700 "${HOME}/.ssh"
+
+          curl -L -o /tmp/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+          sudo install -m 0755 /tmp/cloudflared /usr/bin/cloudflared
+          /usr/bin/cloudflared version
+
+      - name: Configure SSH with Cloudflare Access
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.ssh"
+          chmod 700 "${HOME}/.ssh"
+
+          printf '%s\n' "${{ secrets.UAT_SSH_PRIVATE_KEY }}" > "${HOME}/.ssh/id_ed25519"
+          chmod 600 "${HOME}/.ssh/id_ed25519"
+          printf '%s\n' "${{ secrets.UAT_SSH_KNOWN_HOSTS }}" > "${HOME}/.ssh/known_hosts"
+          chmod 600 "${HOME}/.ssh/known_hosts"
+
+          cat > "${HOME}/.ssh/config" <<EOF
+          Host deploy-target
+            HostName ${{ secrets.UAT_SSH_HOST }}
+            Port ${{ secrets.UAT_SSH_PORT }}
+            User ${{ secrets.UAT_SSH_USER }}
+            IdentityFile ~/.ssh/id_ed25519
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            ServerAliveInterval 30
+            ServerAliveCountMax 6
+            ProxyCommand /usr/bin/cloudflared access ssh --hostname %h
+          EOF
+          chmod 600 "${HOME}/.ssh/config"
+
+      - name: Public health gate and classification diagnostics
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE_ROOT}"
+          LOG_FILE="${EVIDENCE_ROOT}/post-deploy-health.log"
+          : > "${LOG_FILE}"
+          public_url="${BASE_URL%/}/api/health"
+
+          echo "public_health_url=${public_url}" | tee -a "${LOG_FILE}"
+          public_ok=0
+          for attempt in $(seq 1 "${HEALTH_ATTEMPTS}"); do
+            echo "attempt=${attempt}/${HEALTH_ATTEMPTS} url=${public_url}" | tee -a "${LOG_FILE}"
+            http_code="$(curl -sS -L --connect-timeout 10 --max-time 20 -o "${EVIDENCE_ROOT}/public-health-body.txt" -w "%{http_code}" "${public_url}" || true)"
+            echo "public_health_code=${http_code}" | tee -a "${LOG_FILE}"
+            echo "--- public health body ---" | tee -a "${LOG_FILE}"
+            cat "${EVIDENCE_ROOT}/public-health-body.txt" | tee -a "${LOG_FILE}" || true
+            echo "--- end public health body ---" | tee -a "${LOG_FILE}"
+            if [[ "${http_code}" == "200" ]]; then
+              public_ok=1
+              break
+            fi
+            sleep "${HEALTH_DELAY_SECONDS}"
+          done
+
+          if [[ "${public_ok}" -eq 1 ]]; then
+            echo "[PASS] post_deploy_health_staging public health returned 200" | tee -a "${LOG_FILE}"
+            exit 0
+          fi
+
+          export CLOUDFLARE_ACCESS_CLIENT_ID="${CLOUDFLARE_ACCESS_CLIENT_ID}"
+          export CLOUDFLARE_ACCESS_CLIENT_SECRET="${CLOUDFLARE_ACCESS_CLIENT_SECRET}"
+
+          if ! ssh deploy-target 'echo "ssh_ok=1"'; then
+            echo "[CASE E] SSH connectivity to deploy-target failed" | tee -a "${LOG_FILE}"
+            exit 1
+          fi
+
+          ssh deploy-target "set -euo pipefail
+            APP_NAME='${APP_NAME}'
+            echo '--- remote diagnostics start ---'
+            echo \"hostname=\$(hostname)\"
+            echo \"whoami=\$(whoami)\"
+            date -u
+            echo '[F] resource pressure snapshot'
+            uptime || true
+            free -h || true
+            df -h || true
+            ps -eo pid,ppid,stat,pcpu,pmem,etime,cmd --sort=-pcpu | head -n 40 || true
+            ps -eo pid,ppid,stat,pcpu,pmem,etime,cmd | egrep 'next build|next-swc|tsc|turbo|npm|prisma|node' | grep -v egrep || true
+            echo '[B/C/D] process and local health snapshot'
+            pm2 status || true
+            pm2 describe \"\$APP_NAME\" || true
+            pm2 logs \"\$APP_NAME\" --lines 150 --nostream || true
+            echo '--- local app probes ---'
+            curl -i -sS --max-time 20 http://127.0.0.1:3000/api/health || true
+            curl -i -sS --max-time 20 http://127.0.0.1:3000/ || true
+            echo '--- port listeners ---'
+            ss -ltnp || true
+            ss -ltnp | grep ':3000' || true
+            echo '[A] nginx and proxy snapshot'
+            systemctl is-active nginx || true
+            nginx -t || true
+            tail -n 100 /var/log/nginx/error.log || true
+            tail -n 100 /var/log/nginx/access.log || true
+            echo '--- remote diagnostics end ---'
+          " 2>&1 | tee -a "${LOG_FILE}"
+
+          echo "[FAIL] public health never reached 200; see diagnostics log for case classification evidence." | tee -a "${LOG_FILE}"
+          exit 1
+
+      - name: Upload post-deploy health diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-post-deploy-health-${{ github.ref_name }}
+          path: artifacts/staging-post-deploy-health
+          if-no-files-found: ignore
+
+  smoke_staging:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: post_deploy_health_staging
     env:
       STAGING_BASE_URL: ${{ secrets.UAT_BASE_URL }}
       BASE_URL: ${{ secrets.UAT_BASE_URL }}
@@ -292,11 +424,12 @@ jobs:
 
       - name: Run staging smoke checks
         run: |
+          set -euo pipefail
           mkdir -p artifacts/staging-smoke
           npm run test:staging:smoke 2>&1 | tee artifacts/staging-smoke/smoke.log
 
-      - name: Upload staging smoke evidence on failure
-        if: failure()
+      - name: Upload staging smoke evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: staging-smoke-evidence-${{ github.ref_name }}
@@ -336,11 +469,12 @@ jobs:
 
       - name: Run deployed staging release e2e
         run: |
+          set -euo pipefail
           mkdir -p artifacts/staging-e2e
           npm run test:e2e:staging 2>&1 | tee artifacts/staging-e2e/e2e.log
 
-      - name: Upload staging e2e artifacts on failure
-        if: failure()
+      - name: Upload staging e2e artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: staging-e2e-artifacts-${{ github.ref_name }}
@@ -353,7 +487,7 @@ jobs:
   k6_smoke_staging:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    needs: e2e_staging
+    needs: prepare_k6_staging_data
     env:
       BASE_URL: ${{ secrets.UAT_BASE_URL }}
       STAGE_PROFILE: smoke
@@ -380,6 +514,7 @@ jobs:
 
       - name: Run k6 smoke against deployed staging
         run: |
+          set -euo pipefail
           mkdir -p artifacts/staging-k6
           bash scripts/performance-server-run-smoke.sh 2>&1 | tee artifacts/staging-k6/k6-smoke.log
 
@@ -389,6 +524,108 @@ jobs:
         with:
           name: staging-k6-artifacts-${{ github.ref_name }}
           path: artifacts/staging-k6
+          if-no-files-found: ignore
+
+  prepare_k6_staging_data:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: e2e_staging
+    environment: uat
+    env:
+      REMOTE_HOST: ${{ secrets.UAT_SSH_HOST }}
+      REMOTE_PORT: ${{ secrets.UAT_SSH_PORT }}
+      REMOTE_USER: ${{ secrets.UAT_SSH_USER }}
+      CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_ID }}
+      CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+      APP_DIR: ${{ secrets.UAT_APP_DIR }}
+      RUN_STAGING_K6_SEED: ${{ vars.RUN_STAGING_K6_SEED || 'NO' }}
+      K6_SCENARIO_SET: non_booking_smoke
+      EVIDENCE_ROOT: artifacts/staging-k6-seed
+
+    steps:
+      - name: Install cloudflared
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.ssh"
+          chmod 700 "${HOME}/.ssh"
+
+          curl -L -o /tmp/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+          sudo install -m 0755 /tmp/cloudflared /usr/bin/cloudflared
+          /usr/bin/cloudflared version
+
+      - name: Configure SSH with Cloudflare Access
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.ssh"
+          chmod 700 "${HOME}/.ssh"
+
+          printf '%s\n' "${{ secrets.UAT_SSH_PRIVATE_KEY }}" > "${HOME}/.ssh/id_ed25519"
+          chmod 600 "${HOME}/.ssh/id_ed25519"
+          printf '%s\n' "${{ secrets.UAT_SSH_KNOWN_HOSTS }}" > "${HOME}/.ssh/known_hosts"
+          chmod 600 "${HOME}/.ssh/known_hosts"
+
+          cat > "${HOME}/.ssh/config" <<EOF
+          Host deploy-target
+            HostName ${{ secrets.UAT_SSH_HOST }}
+            Port ${{ secrets.UAT_SSH_PORT }}
+            User ${{ secrets.UAT_SSH_USER }}
+            IdentityFile ~/.ssh/id_ed25519
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            ServerAliveInterval 30
+            ServerAliveCountMax 6
+            ProxyCommand /usr/bin/cloudflared access ssh --hostname %h
+          EOF
+          chmod 600 "${HOME}/.ssh/config"
+
+      - name: Prepare staging k6 data (guarded)
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE_ROOT}"
+          LOG_FILE="${EVIDENCE_ROOT}/prepare-k6-staging-data.log"
+          : > "${LOG_FILE}"
+          echo "k6_scenario_set=${K6_SCENARIO_SET}" | tee -a "${LOG_FILE}"
+          echo "run_staging_k6_seed=${RUN_STAGING_K6_SEED}" | tee -a "${LOG_FILE}"
+          echo "ssh_target_alias=deploy-target" | tee -a "${LOG_FILE}"
+
+          case "${K6_SCENARIO_SET}" in
+            non_booking_smoke|full_smoke|booking_only_smoke)
+              scenario_requires_seed="yes"
+              ;;
+            *)
+              scenario_requires_seed="unknown"
+              ;;
+          esac
+
+          if [[ "${scenario_requires_seed}" == "unknown" ]]; then
+            echo "[FAIL] Unsupported/unknown K6_SCENARIO_SET=${K6_SCENARIO_SET} for seed policy." | tee -a "${LOG_FILE}"
+            exit 1
+          fi
+
+          if [[ "${RUN_STAGING_K6_SEED}" != "YES" ]]; then
+            echo "[FAIL] Scenario set ${K6_SCENARIO_SET} requires seeded k6 cohorts/users. Set RUN_STAGING_K6_SEED=YES to allow staging DB seed preparation." | tee -a "${LOG_FILE}"
+            exit 1
+          fi
+
+          export CLOUDFLARE_ACCESS_CLIENT_ID="${CLOUDFLARE_ACCESS_CLIENT_ID}"
+          export CLOUDFLARE_ACCESS_CLIENT_SECRET="${CLOUDFLARE_ACCESS_CLIENT_SECRET}"
+
+          ssh deploy-target "set -euo pipefail
+            cd '${APP_DIR:-/var/www/bookmyclass}'
+            set -a
+            . ./.env
+            set +a
+            npm run db:seed:uat-performance
+            UAT_K6_SEED=1 npm run db:seed:server:k6
+          " 2>&1 | tee -a "${LOG_FILE}"
+
+      - name: Upload staging k6 seed evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-k6-seed-evidence-${{ github.ref_name }}
+          path: artifacts/staging-k6-seed
           if-no-files-found: ignore
 
   zap_staging:

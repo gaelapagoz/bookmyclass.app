@@ -33,6 +33,7 @@ if ! command -v k6 >/dev/null 2>&1; then
 fi
 
 (
+  set -euo pipefail
   cd "$REPO_ROOT"
   BASE_URL="$BASE_URL" npm run k6:discover:server 2>&1 | tee "$run_dir/k6-discover.log"
   cp k6/data/services.json "$run_dir/discovered-services.json"

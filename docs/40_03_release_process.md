@@ -62,16 +62,26 @@ Demo-stage topology note:
 For `v*` tag pushes, workflow `.github/workflows/staging-release.yml` runs:
 1. `tag_sanity` (lightweight tag/build/migration/status/secret-target checks)
 2. `deploy_staging` (exact tag deploy over SSH)
-3. `smoke_staging` (public staging smoke checks)
-4. `e2e_staging` (narrow deployed staging release e2e)
-5. `k6_smoke_staging` (short non-booking k6 smoke profile)
-6. `zap_staging` (OWASP ZAP baseline)
+3. `post_deploy_health_staging` (hard deployed-environment health gate + diagnostics)
+4. `smoke_staging` (public staging smoke checks)
+5. `e2e_staging` (narrow deployed staging release e2e)
+6. `prepare_k6_staging_data` (guarded remote staging DB seed for k6 cohorts when approved)
+7. `k6_smoke_staging` (short non-booking k6 smoke profile)
+8. `zap_staging` (OWASP ZAP baseline)
 
 Flat release view:
-- `tag_sanity -> deploy_staging -> smoke_staging -> e2e_staging -> k6_smoke_staging -> zap_staging`
+- `tag_sanity -> deploy_staging -> post_deploy_health_staging -> smoke_staging -> e2e_staging -> prepare_k6_staging_data -> k6_smoke_staging -> zap_staging`
 
 These jobs are operator-run validation steps and are not automatic release
 blockers.
+
+Validation gate behavior:
+- Smoke, E2E, and k6 are hard release gates in staging release workflow execution.
+- Steps that pipe command output to `tee` must run under `set -euo pipefail` so failures from the left side of the pipeline are not masked.
+- `post_deploy_health_staging` is the first hard deployed-environment gate after deploy. If public `/api/health` is not `200`, the workflow collects SSH diagnostics and fails before smoke/E2E/k6/ZAP.
+- k6 staging seed preparation is explicit and operator-guarded (`RUN_STAGING_K6_SEED=YES`) and runs on the staging server only after health/smoke/e2e gates.
+- k6 staging seed preparation uses non-reset seed commands only (`db:seed:uat-performance` and `UAT_K6_SEED=1 npm run db:seed:server:k6`); destructive reset commands are not part of staging release workflow.
+- Existing GitHub secrets remain `UAT_*` for compatibility; no required `STAGING_*` secret renaming is introduced.
 
 Compatibility notes:
 - GitHub secret names remain `UAT_*` for backward compatibility.
