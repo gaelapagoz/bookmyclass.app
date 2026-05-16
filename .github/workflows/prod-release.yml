@@ -89,8 +89,9 @@ jobs:
 
       - name: Deploy exact tag to production over SSH
         run: |
+          set -euo pipefail
           mkdir -p artifacts/prod-deploy
-          TARGET_ENV=production SSH_HOST="${REMOTE_HOST}" RELEASE_TAG="${TARGET_TAG}" CONFIRM_TARGET=production bash scripts/deploy-server-tag.sh 2>&1 | tee artifacts/prod-deploy/deploy-command.log
+          TARGET_ENV=production SSH_HOST="deploy-target" RELEASE_TAG="${TARGET_TAG}" CONFIRM_TARGET=production bash scripts/deploy-server-tag.sh 2>&1 | tee artifacts/prod-deploy/deploy-command.log
 
       - name: Upload production deploy artifacts on failure
         if: failure()
@@ -124,6 +125,7 @@ jobs:
 
       - name: Run production smoke checks
         run: |
+          set -euo pipefail
           mkdir -p artifacts/prod-smoke
           npm run test:uat:smoke 2>&1 | tee artifacts/prod-smoke/smoke.log
 

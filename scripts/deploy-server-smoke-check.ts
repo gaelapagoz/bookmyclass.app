@@ -15,7 +15,9 @@
  */
 const DEFAULT_BASE_URL = "https://demo.bookmyclass.app";
 const BASE_URL = (process.env.BASE_URL ?? process.env.STAGING_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
-const REQUEST_TIMEOUT_MS = Number(process.env.UAT_SMOKE_TIMEOUT_MS ?? 8000);
+const REQUEST_TIMEOUT_MS = Number(process.env.SMOKE_TIMEOUT_MS ?? process.env.UAT_SMOKE_TIMEOUT_MS ?? 8000);
+const SMOKE_RETRIES = Number(process.env.SMOKE_RETRIES ?? 1);
+const SMOKE_RETRY_DELAY_MS = Number(process.env.SMOKE_RETRY_DELAY_MS ?? 0);
 const STORE_ACTIVE = (process.env.STORE_ACTIVE ?? "auto").toLowerCase();
 
 type SmokeCheck = {
@@ -51,71 +53,86 @@ function baseChecks(): SmokeCheck[] {
 }
 
 async function runCheck(baseUrl: string, check: SmokeCheck): Promise<{ pass: boolean; message: string; status?: number }> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const url = `${baseUrl}${check.path}`;
+  const attempts = Math.max(1, SMOKE_RETRIES);
 
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      signal: controller.signal,
-      redirect: "follow",
-      cache: "no-store",
-    });
-    clearTimeout(timeout);
+  let lastResult: { pass: boolean; message: string; status?: number } | null = null;
 
-    if (response.status >= 500) {
-      return {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        signal: controller.signal,
+        redirect: "follow",
+        cache: "no-store",
+      });
+      clearTimeout(timeout);
+
+      if (response.status >= 500) {
+        lastResult = {
+          pass: false,
+          status: response.status,
+          message: `${check.id} FAILED: ${url} returned ${response.status} (5xx is not allowed).`,
+        };
+      } else if (!check.allowedStatuses.includes(response.status)) {
+        lastResult = {
+          pass: false,
+          status: response.status,
+          message: `${check.id} FAILED: ${url} returned ${response.status} (allowed: ${check.allowedStatuses.join(", ")}).`,
+        };
+      } else if (!check.containsText) {
+        return {
+          pass: true,
+          status: response.status,
+          message: `${check.id} PASSED: ${url} returned ${response.status}.`,
+        };
+      } else {
+        const bodyText = await response.text();
+        if (!bodyText.includes(check.containsText)) {
+          lastResult = {
+            pass: false,
+            status: response.status,
+            message: `${check.id} FAILED: ${url} did not contain expected marker "${check.containsText}".`,
+          };
+        } else {
+          return {
+            pass: true,
+            status: response.status,
+            message: `${check.id} PASSED: ${url} returned ${response.status} with expected marker.`,
+          };
+        }
+      }
+    } catch (error) {
+      clearTimeout(timeout);
+      const reason = error instanceof Error ? error.message : String(error);
+      lastResult = {
         pass: false,
-        status: response.status,
-        message: `${check.id} FAILED: ${url} returned ${response.status} (5xx is not allowed).`,
+        message: `${check.id} FAILED: ${url} request error: ${reason}`,
       };
     }
 
-    if (!check.allowedStatuses.includes(response.status)) {
-      return {
-        pass: false,
-        status: response.status,
-        message: `${check.id} FAILED: ${url} returned ${response.status} (allowed: ${check.allowedStatuses.join(", ")}).`,
-      };
+    if (attempt < attempts && SMOKE_RETRY_DELAY_MS > 0) {
+      await new Promise((resolve) => setTimeout(resolve, SMOKE_RETRY_DELAY_MS));
     }
-
-    if (!check.containsText) {
-      return {
-        pass: true,
-        status: response.status,
-        message: `${check.id} PASSED: ${url} returned ${response.status}.`,
-      };
-    }
-
-    const bodyText = await response.text();
-    if (!bodyText.includes(check.containsText)) {
-      return {
-        pass: false,
-        status: response.status,
-        message: `${check.id} FAILED: ${url} did not contain expected marker "${check.containsText}".`,
-      };
-    }
-
-    return {
-      pass: true,
-      status: response.status,
-      message: `${check.id} PASSED: ${url} returned ${response.status} with expected marker.`,
-    };
-  } catch (error) {
-    clearTimeout(timeout);
-    const reason = error instanceof Error ? error.message : String(error);
-    return {
-      pass: false,
-      message: `${check.id} FAILED: ${url} request error: ${reason}`,
-    };
   }
+
+  return (
+    lastResult ?? {
+      pass: false,
+      message: `${check.id} FAILED: ${url} check failed without a diagnostic result.`,
+    }
+  );
 }
 
 async function main() {
   console.log(`# Release smoke checks`);
   console.log(`BASE_URL=${BASE_URL}`);
   console.log(`TIMEOUT_MS=${REQUEST_TIMEOUT_MS}`);
+  console.log(`RETRIES=${Math.max(1, SMOKE_RETRIES)}`);
+  console.log(`RETRY_DELAY_MS=${SMOKE_RETRY_DELAY_MS}`);
 
   if (isProductionSplitTopology(BASE_URL)) {
     const marketingBaseUrl = normalizeUrl(process.env.MARKETING_BASE_URL ?? "https://bookmyclass.app");
