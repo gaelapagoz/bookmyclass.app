@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+﻿import { expect, test } from "@playwright/test";
 import { signInAdmin } from "./support/auth";
 import { SEEDED_ADMIN } from "./support/constants";
 
@@ -52,10 +52,11 @@ test("inbox review flow", async ({ page }) => {
 test("public contact form submit succeeds", async ({ page }) => {
   await page.goto("/");
   await page.getByPlaceholder("Name").fill("E2E Contact");
-  await page.getByPlaceholder("Email").fill("contact.e2e@example.test");
+  await page.getByPlaceholder("Email").fill("contact.e2e@bookmyclass.app");
   await page.getByPlaceholder("Phone").fill("+32000111222");
   await page.getByPlaceholder("Message").fill("E2E contact flow message.");
   await page.getByRole("button", { name: "Submit" }).click();
   await expect(page).toHaveURL(/\/\?contact=sent$/);
   await expect(page.getByText("Message sent successfully.")).toBeVisible();
 });
+

@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   const teacher = await prisma.user.create({
     data: {
       name: `E2E Unassigned Teacher ${timestamp}`,
-      email: `teacher.unassigned.${timestamp}@bookmyclass.local`,
+      email: `teacher.unassigned.${timestamp}@bookmyclass.app`,
       role: Role.TEACHER,
       teacherProfile: {
         create: {},
@@ -59,4 +59,3 @@ export async function POST(request: Request) {
 
   return Response.json({ sessionId: session.id }, { status: 200 });
 }
-

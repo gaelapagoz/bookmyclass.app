@@ -30,10 +30,10 @@ npm run demo:screenshots
 | Variable              | Required | Default                          | Description |
 |-----------------------|----------|----------------------------------|-------------|
 | `DEMO_BASE_URL`       | No       | `http://127.0.0.1:3100`          | Target environment URL |
-| `DEMO_CLIENT_EMAIL`   | No       | `client.e2e@bookmyclass.local`   | Client account email |
-| `DEMO_CLIENT_PASSWORD`| No       | `E2EPass123!`                    | Client account password |
-| `DEMO_ADMIN_EMAIL`    | No       | `admin.e2e@bookmyclass.local`    | Admin account email |
-| `DEMO_ADMIN_PASSWORD` | No       | `E2EPass123!`                    | Admin account password |
+| `DEMO_CLIENT_EMAIL`   | No       | `e2e-client@bookmyclass.app`     | Client account email |
+| `DEMO_CLIENT_PASSWORD`| No       | `Book4Ever!`                     | Client account password |
+| `DEMO_ADMIN_EMAIL`    | No       | `e2e-admin@bookmyclass.app`      | Admin account email |
+| `DEMO_ADMIN_PASSWORD` | No       | `Book4Ever!`                     | Admin account password |
 | `DEMO_SERVICE_SLUG`   | No       | `e2e-flow-class`                 | URL slug of the class used in the booking flow |
 
 The defaults point at the seeded E2E accounts, which are only present when

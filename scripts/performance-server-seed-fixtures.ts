@@ -38,11 +38,14 @@ import {
   selectSingleCollectiveRule,
 } from "./performance-server-seed-catalog-fixtures";
 import prisma from "../src/lib/db";
+import {
+  buildK6ClientEmail,
+  SEEDED_USER_PASSWORD,
+} from "../prisma/seed/seed-credentials";
 
 const TOTAL_USERS = 1200;
 const COHORT_SIZE = 400;
-const PASSWORD = "UAT.K6.Phase4!2026";
-const EMAIL_DOMAIN = "k6-uat.bookmyclass.local";
+const PASSWORD = SEEDED_USER_PASSWORD;
 const PHONE_PREFIX = "+320199";
 
 const K6_SESSION_MONTHS_AHEAD = 12;
@@ -136,7 +139,7 @@ function buildCohortUsers(params: { cohort: CohortName; start: number; count: nu
     users.push({
       cohort,
       index: cohortIndex,
-      email: `k6-uat-${cohort}-${indexKey}@${EMAIL_DOMAIN}`,
+      email: buildK6ClientEmail(globalIndex),
       name: `K6 UAT ${cohort} ${indexKey}`,
       phone: buildPhone(globalIndex),
     });
@@ -691,7 +694,7 @@ async function main() {
     `[k6-uat-seed] sessions seeded services=${sessionSeedResult.serviceCount}, rows=${sessionSeedResult.sessionRows}, range=${sessionSeedResult.startDate.toISOString()}..${sessionSeedResult.endDate.toISOString()}`,
   );
   console.info(`[k6-uat-seed] csv exported=${csvPath}`);
-  console.info(`[k6-uat-seed] credentials password=${PASSWORD}`);
+  console.info("[k6-uat-seed] credentials are seeded with shared deterministic policy.");
 }
 
 main()

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+﻿import { expect, test } from "@playwright/test";
 import {
   GiftCardLedgerEntryType,
   GiftCardReconciliationStatus,
@@ -18,15 +18,16 @@ import { hash } from "bcryptjs";
 
 import prisma from "../../src/lib/db";
 import { signInAdmin } from "./support/auth";
+import { E2E_PASSWORD } from "./support/constants";
 
-const password = "E2EPass123!";
+const password = E2E_PASSWORD;
 
 function unique(prefix: string) {
   return `${prefix}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
 }
 
 async function createStaff(role: Role.ADMIN | Role.MASTER_ADMIN) {
-  const email = `${unique(role.toLowerCase())}@example.test`;
+  const email = `${unique(role.toLowerCase())}@bookmyclass.app`;
   const passwordHash = await hash(password, 12);
   const now = new Date();
   const user = await prisma.user.create({
@@ -48,7 +49,7 @@ async function createStaff(role: Role.ADMIN | Role.MASTER_ADMIN) {
 }
 
 async function createClient() {
-  const email = `${unique("gift.client")}@example.test`;
+  const email = `${unique("gift.client")}@bookmyclass.app`;
   const now = new Date();
   return prisma.user.create({
     data: {
@@ -322,3 +323,4 @@ test.describe("gift-card admin visibility and permissions", () => {
     );
   });
 });
+

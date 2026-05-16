@@ -1,6 +1,6 @@
 /**
  * UAT Performance seed mode — for k6/load/performance testing only.
- * All users have @bookmyclass-perf.local emails, isolated from dev and production data.
+ * All seeded users use @bookmyclass.app with deterministic perf aliases.
  * Generates 120 days of future sessions with dense pre-booked patterns.
  */
 
@@ -29,6 +29,7 @@ import { hash } from "bcryptjs";
 import prisma from "../../../src/lib/db";
 import { AGENDA_SCHEDULE } from "../data/schedule";
 import { STORE_CATALOG_PRODUCT_COUNT, STORE_CATALOG_PRODUCTS } from "../data/store-catalog";
+import { buildPerfClientEmail, SEEDED_USER_PASSWORD } from "../seed-credentials";
 import { createSeededRng } from "../utils/deterministic-random";
 import {
   buildSeedMediaPlan,
@@ -208,13 +209,13 @@ async function purgeForCleanSeed() {
 
 async function seedUsers() {
   const rng = createSeededRng(PERF_RANDOM_SEED + 11);
-  const sharedPasswordHash = await hash("qwerty123456", 12);
+  const sharedPasswordHash = await hash(SEEDED_USER_PASSWORD, 12);
   const sharedEmailVerifiedAt = new Date("2026-01-01T00:00:00.000Z");
 
   const masterAdmin = await prisma.user.create({
     data: {
       name: "Perf Master Admin", firstName: "Perf", lastName: "MasterAdmin",
-      email: "masteradmin@bookmyclass-perf.local",
+      email: "master@bookmyclass.app",
       role: Role.MASTER_ADMIN, passwordHash: sharedPasswordHash,
       emailVerified: sharedEmailVerifiedAt, emailVerifiedAt: sharedEmailVerifiedAt,
       isActive: true, isInactive: false, lastLoginAt: new Date("2026-03-20T08:00:00.000Z"),
@@ -224,7 +225,7 @@ async function seedUsers() {
   const admin = await prisma.user.create({
     data: {
       name: "Perf Admin", firstName: "Perf", lastName: "Admin",
-      email: "admin@bookmyclass-perf.local",
+      email: "admin@bookmyclass.app",
       role: Role.ADMIN, passwordHash: sharedPasswordHash,
       emailVerified: sharedEmailVerifiedAt, emailVerifiedAt: sharedEmailVerifiedAt,
       isActive: true, isInactive: false, lastLoginAt: new Date("2026-03-19T11:00:00.000Z"),
@@ -234,7 +235,7 @@ async function seedUsers() {
   const ana = await prisma.user.create({
     data: {
       name: "Ana Ionescu", firstName: "Ana", lastName: "Ionescu",
-      email: "ana.ionescu@bookmyclass-perf.local",
+      email: "ana.ionescu@bookmyclass.app",
       role: Role.TEACHER, passwordHash: sharedPasswordHash,
       emailVerified: sharedEmailVerifiedAt, emailVerifiedAt: sharedEmailVerifiedAt,
       image: SEEDED_TEACHER_IMAGES.ana,
@@ -253,7 +254,7 @@ async function seedUsers() {
   const elena = await prisma.user.create({
     data: {
       name: "Elena Moreau", firstName: "Elena", lastName: "Moreau",
-      email: "elena.moreau@bookmyclass-perf.local",
+      email: "elena.moreau@bookmyclass.app",
       role: Role.TEACHER, passwordHash: sharedPasswordHash,
       emailVerified: sharedEmailVerifiedAt, emailVerifiedAt: sharedEmailVerifiedAt,
       image: SEEDED_TEACHER_IMAGES.elena,
@@ -272,7 +273,7 @@ async function seedUsers() {
   const sofia = await prisma.user.create({
     data: {
       name: "Sofia Van den Berg", firstName: "Sofia", lastName: "Van den Berg",
-      email: "sofia.vandenberg@bookmyclass-perf.local",
+      email: "sofia.vandenberg@bookmyclass.app",
       role: Role.TEACHER, passwordHash: sharedPasswordHash,
       emailVerified: sharedEmailVerifiedAt, emailVerifiedAt: sharedEmailVerifiedAt,
       image: SEEDED_TEACHER_IMAGES.sofia,
@@ -291,7 +292,7 @@ async function seedUsers() {
   const perfClients: Array<{ id: string; email: string; name: string }> = [];
   for (let index = 0; index < PERF_CLIENT_COUNT; index += 1) {
     const clientNumber = String(index + 1).padStart(3, "0");
-    const email = `perf-client-${clientNumber}@bookmyclass-perf.local`;
+    const email = buildPerfClientEmail(index + 1);
     const name = `Perf Client ${clientNumber}`;
     const verifiedAt = new Date(sharedEmailVerifiedAt);
     verifiedAt.setUTCDate(verifiedAt.getUTCDate() + (index % 30));

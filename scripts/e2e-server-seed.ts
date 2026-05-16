@@ -1,4 +1,4 @@
-/**
+﻿/**
  * E2e server seed
  *
  * Purpose:
@@ -37,6 +37,11 @@ import {
 import { hash } from "bcryptjs";
 import prisma from "../src/lib/db";
 import { runDevelopmentSeed } from "../prisma/seed/modes/development";
+import {
+  SEEDED_CANONICAL_EMAILS,
+  SEEDED_EMAIL_DOMAIN,
+  SEEDED_USER_PASSWORD,
+} from "../prisma/seed/seed-credentials";
 
 const E2E_DEV_BASELINE_STRIPE_PRICE_ENV_DEFAULTS: Record<string, string> = {
   STRIPE_PRICE_ID_COLLECTIVE_DROP_IN: "price_E2eCollectiveDropIn",
@@ -133,7 +138,7 @@ async function main() {
   await resetE2EDatabase();
   await runDevelopmentSeed();
 
-  const passwordHash = await hash("E2EPass123!", 12);
+  const passwordHash = await hash(SEEDED_USER_PASSWORD, 12);
   const now = new Date();
   const entitlementExpiry = new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000);
   const startsAtA = new Date(now.getTime() + 72 * 60 * 60 * 1000);
@@ -148,7 +153,7 @@ async function main() {
       name: "E2E Admin",
       firstName: "E2E",
       lastName: "Admin",
-      email: "admin.e2e@bookmyclass.local",
+      email: SEEDED_CANONICAL_EMAILS.e2eAdmin,
       passwordHash,
       role: Role.ADMIN,
       isActive: true,
@@ -165,7 +170,7 @@ async function main() {
       name: "E2E Teacher",
       firstName: "E2E",
       lastName: "Teacher",
-      email: "teacher.e2e@bookmyclass.local",
+      email: SEEDED_CANONICAL_EMAILS.teacher,
       passwordHash,
       role: Role.TEACHER,
       isActive: true,
@@ -190,7 +195,7 @@ async function main() {
       name: "E2E Client Credits",
       firstName: "E2E",
       lastName: "Credits",
-      email: "client.e2e@bookmyclass.local",
+      email: SEEDED_CANONICAL_EMAILS.e2eClient,
       passwordHash,
       role: Role.CLIENT,
       isActive: true,
@@ -213,7 +218,7 @@ async function main() {
       name: "E2E Client No Credits",
       firstName: "E2E",
       lastName: "NoCredits",
-      email: "client.nocredits.e2e@bookmyclass.local",
+      email: `e2e-client-nocredits@${SEEDED_EMAIL_DOMAIN}`,
       passwordHash,
       role: Role.CLIENT,
       isActive: true,
@@ -236,7 +241,7 @@ async function main() {
       name: "E2E Smoke Client",
       firstName: "E2E",
       lastName: "Smoke",
-      email: "client.smoke.e2e@bookmyclass.local",
+      email: `e2e-client-smoke@${SEEDED_EMAIL_DOMAIN}`,
       passwordHash,
       role: Role.CLIENT,
       isActive: true,
@@ -492,7 +497,7 @@ async function main() {
       userId: clientWithCredits.id,
       bookingId: null,
       name: "E2E Inbox Client",
-      email: "inbox.e2e@bookmyclass.local",
+      email: `e2e-inbox@${SEEDED_EMAIL_DOMAIN}`,
       phone: "+32000009999",
       subject: "E2E Inbox Message",
       message: "Seeded inbox message for e2e admin review flow.",
@@ -550,8 +555,8 @@ async function main() {
       subject: "E2E Campaign Subject",
       previewText: "E2E campaign preview",
       fromName: "BookMyClass E2E",
-      fromEmail: "marketing@bookmyclass.local",
-      replyTo: "support@bookmyclass.local",
+      fromEmail: `marketing@${SEEDED_EMAIL_DOMAIN}`,
+      replyTo: `support@${SEEDED_EMAIL_DOMAIN}`,
       contentJson: {
         blocks: [
           { type: "heading", text: "E2E Campaign" },
@@ -577,7 +582,7 @@ async function main() {
     recurringStripePriceId: recurringPrice?.stripePriceId ?? null,
     singlePriceId: singlePrice?.id ?? null,
     packPriceId: packPrice?.id ?? null,
-    samplePassword: "E2EPass123!",
+    samplePassword: "[redacted]",
     seededMembershipStatus: SubscriptionStatus.ACTIVE,
     seededBookingStatus: BookingStatus.CONFIRMED,
   });
@@ -591,6 +596,7 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+
 
 
 

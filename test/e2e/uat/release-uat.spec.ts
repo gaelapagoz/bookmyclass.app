@@ -1,9 +1,16 @@
 import { expect, test, type Page } from "@playwright/test";
+import { SEEDED_CANONICAL_EMAILS, SEEDED_USER_PASSWORD } from "../../../prisma/seed/seed-credentials";
 
 type CredentialKey = "UAT_E2E_EMAIL" | "UAT_E2E_PASSWORD" | "UAT_E2E_ADMIN_EMAIL" | "UAT_E2E_ADMIN_PASSWORD";
 
 function requiredEnv(name: CredentialKey): string {
   const value = process.env[name]?.trim();
+  if (!value && !process.env.CI) {
+    if (name === "UAT_E2E_EMAIL") return SEEDED_CANONICAL_EMAILS.e2eClient;
+    if (name === "UAT_E2E_PASSWORD") return SEEDED_USER_PASSWORD;
+    if (name === "UAT_E2E_ADMIN_EMAIL") return SEEDED_CANONICAL_EMAILS.e2eAdmin;
+    if (name === "UAT_E2E_ADMIN_PASSWORD") return SEEDED_USER_PASSWORD;
+  }
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }

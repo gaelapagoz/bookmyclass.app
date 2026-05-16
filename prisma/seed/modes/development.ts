@@ -1,5 +1,5 @@
-/**
- * Development seed mode — used for both DEV and UAT environments.
+﻿/**
+ * Development seed mode â€” used for both DEV and UAT environments.
  * Output is identical regardless of environment when run with BOOKMYCLASS_SEED_MODE=development.
  *
  * Includes: users, catalog, scheduling (120-day past + 14-day future),
@@ -38,6 +38,7 @@ import prisma from "../../../src/lib/db";
 import { assertLearningImagePath } from "../../../src/lib/learning/image-paths";
 import { AGENDA_SCHEDULE } from "../data/schedule";
 import { STORE_CATALOG_PRODUCT_COUNT, STORE_CATALOG_PRODUCTS } from "../data/store-catalog";
+import { SEEDED_EMAIL_DOMAIN, SEEDED_USER_PASSWORD } from "../seed-credentials";
 import { createSeededRng } from "../utils/deterministic-random";
 import {
   buildSeedMediaPlan,
@@ -50,7 +51,7 @@ import {
   verifySeededMediaReferences,
 } from "../utils/seed-media";
 
-// ─── Constants ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const SEED_CLIENT_COUNT = 150;
 const SEED_PAST_DAYS = 120;
@@ -88,7 +89,7 @@ const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9_]+$/;
 
 type CatalogStripePriceEnvSpec = { productName: string; lookupKey: string; envVarName: string };
 
-// Purchasable catalog prices (subscriptions/classes/store) — always required for dev seed to succeed.
+// Purchasable catalog prices (subscriptions/classes/store) â€” always required for dev seed to succeed.
 const REQUIRED_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[] = [
   { productName: "Collective Class Drop-In", lookupKey: "collective-drop-in-eur-once-v1", envVarName: "STRIPE_PRICE_ID_COLLECTIVE_DROP_IN" },
   { productName: "5-Ticket Collective Classes", lookupKey: "qa-collective-5-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_COLLECTIVE_5_PACK" },
@@ -121,7 +122,7 @@ const SEEDED_CLASS_IMAGES = {
   privateReformerCoaching: toCanonicalSeedImagePath("/images/classes/private-reformer-coaching.jpg"),
 } as const;
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type LearningProgramSeedInput = {
   legacyId: string; mainTitle: string; mainDescription?: string; courseType: string;
@@ -135,7 +136,7 @@ type LearningCourseSeedInput = {
   thumbnail?: string; videoUrl?: string; priority: number;
 };
 
-// ─── Utilities ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -209,7 +210,7 @@ function endOfUtcDay(value: Date): Date {
 }
 
 
-// ─── Stripe price resolution ──────────────────────────────────────────────────
+// â”€â”€â”€ Stripe price resolution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function resolveRequiredCatalogStripePriceIds(): Record<string, string> {
   const stripePriceIdByLookupKey: Record<string, string> = {};
@@ -235,7 +236,7 @@ function resolveRequiredCatalogStripePriceIds(): Record<string, string> {
   return stripePriceIdByLookupKey;
 }
 
-// ─── Purge ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Purge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function purgeForCleanSeed() {
   await prisma.marketingCampaignLinkClick.deleteMany();
@@ -295,17 +296,17 @@ async function purgeForCleanSeed() {
   await prisma.user.deleteMany();
 }
 
-// ─── Users ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function seedUsers() {
   const rng = createSeededRng(SEED_RANDOM_SEED + 11);
-  const sharedPasswordHash = await hash("qwerty123456", 12);
+  const sharedPasswordHash = await hash(SEEDED_USER_PASSWORD, 12);
   const sharedEmailVerifiedAt = new Date("2026-01-01T00:00:00.000Z");
 
   const masterAdmin = await prisma.user.create({
     data: {
       name: "Master Admin", firstName: "Master", lastName: "Admin",
-      email: "masteradmin@yogapilatesfitness.local",
+      email: "master@bookmyclass.app",
       role: Role.MASTER_ADMIN, passwordHash: sharedPasswordHash,
       emailVerified: sharedEmailVerifiedAt, emailVerifiedAt: sharedEmailVerifiedAt,
       isActive: true, isInactive: false, lastLoginAt: new Date("2026-03-20T08:00:00.000Z"),
@@ -315,7 +316,7 @@ async function seedUsers() {
   const admin = await prisma.user.create({
     data: {
       name: "Admin User", firstName: "Admin", lastName: "User",
-      email: "admin@yogapilatesfitness.local",
+      email: "admin@bookmyclass.app",
       role: Role.ADMIN, passwordHash: sharedPasswordHash,
       emailVerified: sharedEmailVerifiedAt, emailVerifiedAt: sharedEmailVerifiedAt,
       isActive: true, isInactive: false, lastLoginAt: new Date("2026-03-19T11:00:00.000Z"),
@@ -325,7 +326,7 @@ async function seedUsers() {
   const ana = await prisma.user.create({
     data: {
       name: "Ana Ionescu", firstName: "Ana", lastName: "Ionescu",
-      email: "ana.ionescu@yogapilatesfitness.local",
+      email: "ana.ionescu@bookmyclass.app",
       role: Role.TEACHER, passwordHash: sharedPasswordHash,
       emailVerified: sharedEmailVerifiedAt, emailVerifiedAt: sharedEmailVerifiedAt,
       image: SEEDED_TEACHER_IMAGES.ana,
@@ -344,7 +345,7 @@ async function seedUsers() {
   const elena = await prisma.user.create({
     data: {
       name: "Elena Moreau", firstName: "Elena", lastName: "Moreau",
-      email: "elena.moreau@yogapilatesfitness.local",
+      email: "elena.moreau@bookmyclass.app",
       role: Role.TEACHER, passwordHash: sharedPasswordHash,
       emailVerified: sharedEmailVerifiedAt, emailVerifiedAt: sharedEmailVerifiedAt,
       image: SEEDED_TEACHER_IMAGES.elena,
@@ -363,7 +364,7 @@ async function seedUsers() {
   const sofia = await prisma.user.create({
     data: {
       name: "Sofia Van den Berg", firstName: "Sofia", lastName: "Van den Berg",
-      email: "sofia.vandenberg@yogapilatesfitness.local",
+      email: "sofia.vandenberg@bookmyclass.app",
       role: Role.TEACHER, passwordHash: sharedPasswordHash,
       emailVerified: sharedEmailVerifiedAt, emailVerifiedAt: sharedEmailVerifiedAt,
       image: SEEDED_TEACHER_IMAGES.sofia,
@@ -382,7 +383,7 @@ async function seedUsers() {
   const client = await prisma.user.create({
     data: {
       name: "Client User", firstName: "Client", lastName: "User",
-      email: "client@yogapilatesfitness.local",
+      email: "client@bookmyclass.app",
       role: Role.CLIENT, passwordHash: sharedPasswordHash,
       emailVerified: sharedEmailVerifiedAt, emailVerifiedAt: sharedEmailVerifiedAt,
       isActive: true, isInactive: false, lastLoginAt: new Date("2026-03-10T18:45:00.000Z"),
@@ -408,7 +409,7 @@ async function seedUsers() {
   for (let index = 0; index < selectedCandidates.length; index += 1) {
     const candidate = selectedCandidates[index]!;
     const fullName = `${candidate.firstName} ${candidate.lastName}`;
-    const email = `${slugifyNamePart(candidate.firstName)}.${slugifyNamePart(candidate.lastName)}.${String(index + 1).padStart(3, "0")}@yogapilatesfitness.local`;
+    const email = `${slugifyNamePart(candidate.firstName)}.${slugifyNamePart(candidate.lastName)}.${String(index + 1).padStart(3, "0")}@${SEEDED_EMAIL_DOMAIN}`;
     const verifiedAt = new Date(sharedEmailVerifiedAt);
     verifiedAt.setUTCDate(verifiedAt.getUTCDate() + (index % 30));
     const lastLoginAt = new Date(seedDayUtc);
@@ -429,7 +430,7 @@ async function seedUsers() {
   return { masterAdmin, admin, teachers: { ana, elena, sofia }, client };
 }
 
-// ─── Booking policy ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Booking policy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function seedBookingPolicy() {
   await prisma.bookingPolicy.upsert({
@@ -439,7 +440,7 @@ async function seedBookingPolicy() {
   });
 }
 
-// ─── Catalog helpers ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Catalog helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function upsertProduct(input: { slug: string; name: string; description: string; productType: ProductType; sortOrder: number }) {
   return prisma.product.upsert({
@@ -599,7 +600,7 @@ async function seedStoreCatalog(stripePriceIdByLookupKey: Record<string, string>
   );
 }
 
-// ─── Class schedule helpers ───────────────────────────────────────────────────
+// â”€â”€â”€ Class schedule helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function upsertClassCategory(input: { slug: string; name: string; description: string; sortOrder: number }) {
   return prisma.classCategory.upsert({
@@ -633,7 +634,7 @@ async function upsertStudioSession(input: { classTemplateId: string; recurringRu
   });
 }
 
-// ─── Marketing demo data ──────────────────────────────────────────────────────
+// â”€â”€â”€ Marketing demo data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function seedMarketingDemoData(input: { createdById: string }) {
   const announcementCategory = await prisma.marketingCategory.upsert({
@@ -651,28 +652,28 @@ async function seedMarketingDemoData(input: { createdById: string }) {
 
   const draftCampaign = await prisma.marketingCampaign.upsert({
     where: { id: "seed-marketing-draft-campaign" },
-    update: { name: "Beta Welcome Announcement Draft", status: MarketingCampaignStatus.DRAFT, categoryId: announcementCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "Welcome to our beta studio updates", previewText: "A quick look at what members can expect this month.", fromName: "BookMyClass Studio", fromEmail: "hello@bookmyclass.local", replyTo: "support@bookmyclass.local", contentJson: { blocks: [{ type: "heading", text: "Welcome to BookMyClass Beta" }, { type: "paragraph", text: "Thanks for joining us." }, { type: "button", text: "View classes", url: "https://bookmyclass.local/book-a-class" }] }, htmlSnapshot: null, sentAt: null, createdById: input.createdById },
-    create: { id: "seed-marketing-draft-campaign", name: "Beta Welcome Announcement Draft", status: MarketingCampaignStatus.DRAFT, categoryId: announcementCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "Welcome to our beta studio updates", previewText: "A quick look at what members can expect this month.", fromName: "BookMyClass Studio", fromEmail: "hello@bookmyclass.local", replyTo: "support@bookmyclass.local", contentJson: { blocks: [{ type: "heading", text: "Welcome to BookMyClass Beta" }, { type: "paragraph", text: "Thanks for joining us." }, { type: "button", text: "View classes", url: "https://bookmyclass.local/book-a-class" }] }, createdById: input.createdById },
+    update: { name: "Beta Welcome Announcement Draft", status: MarketingCampaignStatus.DRAFT, categoryId: announcementCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "Welcome to our beta studio updates", previewText: "A quick look at what members can expect this month.", fromName: "BookMyClass Studio", fromEmail: "hello@bookmyclass.app", replyTo: "support@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "Welcome to BookMyClass Beta" }, { type: "paragraph", text: "Thanks for joining us." }, { type: "button", text: "View classes", url: "https://bookmyclass.app/book-a-class" }] }, htmlSnapshot: null, sentAt: null, createdById: input.createdById },
+    create: { id: "seed-marketing-draft-campaign", name: "Beta Welcome Announcement Draft", status: MarketingCampaignStatus.DRAFT, categoryId: announcementCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "Welcome to our beta studio updates", previewText: "A quick look at what members can expect this month.", fromName: "BookMyClass Studio", fromEmail: "hello@bookmyclass.app", replyTo: "support@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "Welcome to BookMyClass Beta" }, { type: "paragraph", text: "Thanks for joining us." }, { type: "button", text: "View classes", url: "https://bookmyclass.app/book-a-class" }] }, createdById: input.createdById },
   });
 
   const sentCampaignSentAt = new Date("2026-03-25T10:00:00.000Z");
   const sentCampaign = await prisma.marketingCampaign.upsert({
     where: { id: "seed-marketing-sent-campaign" },
-    update: { name: "Spring Studio Promotion", status: MarketingCampaignStatus.SENT, categoryId: promotionCategory.id, audienceType: MarketingAudienceType.PAYING_SUBSCRIBERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "Spring promo: extra classes this week", previewText: "Members get bonus class access while spots last.", fromName: "BookMyClass Studio", fromEmail: "offers@bookmyclass.local", replyTo: "support@bookmyclass.local", contentJson: { blocks: [{ type: "heading", text: "Spring Promo Is Live" }, { type: "paragraph", text: "Book this week's classes early." }] }, htmlSnapshot: "<html><body><h2>Spring Promo Is Live</h2></body></html>", sentAt: sentCampaignSentAt, createdById: input.createdById },
-    create: { id: "seed-marketing-sent-campaign", name: "Spring Studio Promotion", status: MarketingCampaignStatus.SENT, categoryId: promotionCategory.id, audienceType: MarketingAudienceType.PAYING_SUBSCRIBERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "Spring promo: extra classes this week", previewText: "Members get bonus class access while spots last.", fromName: "BookMyClass Studio", fromEmail: "offers@bookmyclass.local", replyTo: "support@bookmyclass.local", contentJson: { blocks: [{ type: "heading", text: "Spring Promo Is Live" }, { type: "paragraph", text: "Book this week's classes early." }] }, htmlSnapshot: "<html><body><h2>Spring Promo Is Live</h2></body></html>", sentAt: sentCampaignSentAt, createdById: input.createdById },
+    update: { name: "Spring Studio Promotion", status: MarketingCampaignStatus.SENT, categoryId: promotionCategory.id, audienceType: MarketingAudienceType.PAYING_SUBSCRIBERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "Spring promo: extra classes this week", previewText: "Members get bonus class access while spots last.", fromName: "BookMyClass Studio", fromEmail: "offers@bookmyclass.app", replyTo: "support@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "Spring Promo Is Live" }, { type: "paragraph", text: "Book this week's classes early." }] }, htmlSnapshot: "<html><body><h2>Spring Promo Is Live</h2></body></html>", sentAt: sentCampaignSentAt, createdById: input.createdById },
+    create: { id: "seed-marketing-sent-campaign", name: "Spring Studio Promotion", status: MarketingCampaignStatus.SENT, categoryId: promotionCategory.id, audienceType: MarketingAudienceType.PAYING_SUBSCRIBERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "Spring promo: extra classes this week", previewText: "Members get bonus class access while spots last.", fromName: "BookMyClass Studio", fromEmail: "offers@bookmyclass.app", replyTo: "support@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "Spring Promo Is Live" }, { type: "paragraph", text: "Book this week's classes early." }] }, htmlSnapshot: "<html><body><h2>Spring Promo Is Live</h2></body></html>", sentAt: sentCampaignSentAt, createdById: input.createdById },
   });
 
   const recipientFixtures = [
-    { id: "seed-mkt-recipient-01", email: "alice.seed+marketing@bookmyclass.local", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-03-25T10:01:00.000Z"), deliveredAt: new Date("2026-03-25T10:01:20.000Z"), openedAt: new Date("2026-03-25T10:10:00.000Z"), clickedAt: new Date("2026-03-25T10:12:00.000Z"), unsubscribedAt: null },
-    { id: "seed-mkt-recipient-02", email: "beatrice.seed+marketing@bookmyclass.local", status: MarketingRecipientStatus.SENT, sentAt: new Date("2026-03-25T10:02:00.000Z"), deliveredAt: null, openedAt: null, clickedAt: null, unsubscribedAt: null },
-    { id: "seed-mkt-recipient-03", email: "celine.seed+marketing@bookmyclass.local", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-03-25T10:03:00.000Z"), deliveredAt: new Date("2026-03-25T10:03:10.000Z"), openedAt: new Date("2026-03-25T10:14:00.000Z"), clickedAt: null, unsubscribedAt: null },
-    { id: "seed-mkt-recipient-04", email: "diana.seed+marketing@bookmyclass.local", status: MarketingRecipientStatus.BOUNCED, sentAt: new Date("2026-03-25T10:04:00.000Z"), deliveredAt: null, openedAt: null, clickedAt: null, unsubscribedAt: null },
-    { id: "seed-mkt-recipient-05", email: "eva.seed+marketing@bookmyclass.local", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-03-25T10:05:00.000Z"), deliveredAt: new Date("2026-03-25T10:05:12.000Z"), openedAt: new Date("2026-03-25T10:20:00.000Z"), clickedAt: new Date("2026-03-25T10:24:00.000Z"), unsubscribedAt: null },
-    { id: "seed-mkt-recipient-06", email: "fatima.seed+marketing@bookmyclass.local", status: MarketingRecipientStatus.FAILED, sentAt: null, deliveredAt: null, openedAt: null, clickedAt: null, unsubscribedAt: null },
-    { id: "seed-mkt-recipient-07", email: "grace.seed+marketing@bookmyclass.local", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-03-25T10:06:00.000Z"), deliveredAt: new Date("2026-03-25T10:06:14.000Z"), openedAt: null, clickedAt: null, unsubscribedAt: null },
-    { id: "seed-mkt-recipient-08", email: "hana.seed+marketing@bookmyclass.local", status: MarketingRecipientStatus.SENT, sentAt: new Date("2026-03-25T10:07:00.000Z"), deliveredAt: null, openedAt: null, clickedAt: null, unsubscribedAt: null },
-    { id: "seed-mkt-recipient-09", email: "ines.seed+marketing@bookmyclass.local", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-03-25T10:08:00.000Z"), deliveredAt: new Date("2026-03-25T10:08:16.000Z"), openedAt: new Date("2026-03-25T10:18:00.000Z"), clickedAt: new Date("2026-03-25T10:31:00.000Z"), unsubscribedAt: new Date("2026-03-25T10:40:00.000Z") },
-    { id: "seed-mkt-recipient-10", email: "jade.seed+marketing@bookmyclass.local", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-03-25T10:09:00.000Z"), deliveredAt: new Date("2026-03-25T10:09:14.000Z"), openedAt: null, clickedAt: null, unsubscribedAt: null },
+    { id: "seed-mkt-recipient-01", email: "alice.seed+marketing@bookmyclass.app", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-03-25T10:01:00.000Z"), deliveredAt: new Date("2026-03-25T10:01:20.000Z"), openedAt: new Date("2026-03-25T10:10:00.000Z"), clickedAt: new Date("2026-03-25T10:12:00.000Z"), unsubscribedAt: null },
+    { id: "seed-mkt-recipient-02", email: "beatrice.seed+marketing@bookmyclass.app", status: MarketingRecipientStatus.SENT, sentAt: new Date("2026-03-25T10:02:00.000Z"), deliveredAt: null, openedAt: null, clickedAt: null, unsubscribedAt: null },
+    { id: "seed-mkt-recipient-03", email: "celine.seed+marketing@bookmyclass.app", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-03-25T10:03:00.000Z"), deliveredAt: new Date("2026-03-25T10:03:10.000Z"), openedAt: new Date("2026-03-25T10:14:00.000Z"), clickedAt: null, unsubscribedAt: null },
+    { id: "seed-mkt-recipient-04", email: "diana.seed+marketing@bookmyclass.app", status: MarketingRecipientStatus.BOUNCED, sentAt: new Date("2026-03-25T10:04:00.000Z"), deliveredAt: null, openedAt: null, clickedAt: null, unsubscribedAt: null },
+    { id: "seed-mkt-recipient-05", email: "eva.seed+marketing@bookmyclass.app", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-03-25T10:05:00.000Z"), deliveredAt: new Date("2026-03-25T10:05:12.000Z"), openedAt: new Date("2026-03-25T10:20:00.000Z"), clickedAt: new Date("2026-03-25T10:24:00.000Z"), unsubscribedAt: null },
+    { id: "seed-mkt-recipient-06", email: "fatima.seed+marketing@bookmyclass.app", status: MarketingRecipientStatus.FAILED, sentAt: null, deliveredAt: null, openedAt: null, clickedAt: null, unsubscribedAt: null },
+    { id: "seed-mkt-recipient-07", email: "grace.seed+marketing@bookmyclass.app", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-03-25T10:06:00.000Z"), deliveredAt: new Date("2026-03-25T10:06:14.000Z"), openedAt: null, clickedAt: null, unsubscribedAt: null },
+    { id: "seed-mkt-recipient-08", email: "hana.seed+marketing@bookmyclass.app", status: MarketingRecipientStatus.SENT, sentAt: new Date("2026-03-25T10:07:00.000Z"), deliveredAt: null, openedAt: null, clickedAt: null, unsubscribedAt: null },
+    { id: "seed-mkt-recipient-09", email: "ines.seed+marketing@bookmyclass.app", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-03-25T10:08:00.000Z"), deliveredAt: new Date("2026-03-25T10:08:16.000Z"), openedAt: new Date("2026-03-25T10:18:00.000Z"), clickedAt: new Date("2026-03-25T10:31:00.000Z"), unsubscribedAt: new Date("2026-03-25T10:40:00.000Z") },
+    { id: "seed-mkt-recipient-10", email: "jade.seed+marketing@bookmyclass.app", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-03-25T10:09:00.000Z"), deliveredAt: new Date("2026-03-25T10:09:14.000Z"), openedAt: null, clickedAt: null, unsubscribedAt: null },
   ];
 
   for (const recipient of recipientFixtures) {
@@ -685,13 +686,13 @@ async function seedMarketingDemoData(input: { createdById: string }) {
 
   const firstLink = await prisma.marketingCampaignLink.upsert({
     where: { token: "seed-mkt-link-bookings" },
-    update: { campaignId: sentCampaign.id, url: "https://bookmyclass.local/dashboard/bookings", clickCount: 0 },
-    create: { campaignId: sentCampaign.id, url: "https://bookmyclass.local/dashboard/bookings", token: "seed-mkt-link-bookings", clickCount: 0 },
+    update: { campaignId: sentCampaign.id, url: "https://bookmyclass.app/dashboard/bookings", clickCount: 0 },
+    create: { campaignId: sentCampaign.id, url: "https://bookmyclass.app/dashboard/bookings", token: "seed-mkt-link-bookings", clickCount: 0 },
   });
   const secondLink = await prisma.marketingCampaignLink.upsert({
     where: { token: "seed-mkt-link-subscription" },
-    update: { campaignId: sentCampaign.id, url: "https://bookmyclass.local/subscription", clickCount: 0 },
-    create: { campaignId: sentCampaign.id, url: "https://bookmyclass.local/subscription", token: "seed-mkt-link-subscription", clickCount: 0 },
+    update: { campaignId: sentCampaign.id, url: "https://bookmyclass.app/subscription", clickCount: 0 },
+    create: { campaignId: sentCampaign.id, url: "https://bookmyclass.app/subscription", token: "seed-mkt-link-subscription", clickCount: 0 },
   });
 
   const clickFixtures = [
@@ -714,15 +715,15 @@ async function seedMarketingDemoData(input: { createdById: string }) {
   await prisma.marketingCampaignLink.update({ where: { id: secondLink.id }, data: { clickCount: secondLinkClickCount } });
 
   await prisma.marketingUnsubscribe.upsert({
-    where: { email: "ines.seed+marketing@bookmyclass.local" },
+    where: { email: "ines.seed+marketing@bookmyclass.app" },
     update: { userId: null, unsubscribedAt: new Date("2026-03-25T10:40:00.000Z") },
-    create: { email: "ines.seed+marketing@bookmyclass.local", userId: null, unsubscribedAt: new Date("2026-03-25T10:40:00.000Z") },
+    create: { email: "ines.seed+marketing@bookmyclass.app", userId: null, unsubscribedAt: new Date("2026-03-25T10:40:00.000Z") },
   });
 
   console.info(`[seed:dev] Marketing demo data ready (draft=${draftCampaign.id}, sent=${sentCampaign.id}).`);
 }
 
-// ─── Agenda schedule ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Agenda schedule â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function seedAgendaSchedule() {
   for (let index = 0; index < AGENDA_SCHEDULE.length; index += 1) {
@@ -753,7 +754,7 @@ async function seedAgendaSchedule() {
   console.info(`[seed:dev] Agenda schedule seeded: ${AGENDA_SCHEDULE.length} entries.`);
 }
 
-// ─── Scheduling ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Scheduling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaId: string }) {
   const rng = createSeededRng(SEED_RANDOM_SEED + 97);
@@ -1082,7 +1083,7 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
   };
 }
 
-// ─── Learning (from JSON) ─────────────────────────────────────────────────────
+// â”€â”€â”€ Learning (from JSON) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function seedLearningFromJson() {
   const learningJsonPath = resolve(process.env.LEARNING_SEED_JSON_PATH?.trim() || DEFAULT_LEARNING_SEED_JSON_PATH);
@@ -1190,7 +1191,7 @@ async function syncSeedMediaFilesFromDatabase(): Promise<SeedMediaSyncSummary> {
   };
 }
 
-// ─── Verification ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Verification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function verifyCleanSeed(clientEmail: string, schedulingSummary: Awaited<ReturnType<typeof seedScheduling>>) {
   const [totalClients, verifiedActiveClientsWithProfile, totalAdminsAndMasterAdmins, totalTeachers] = await prisma.$transaction([
@@ -1235,10 +1236,10 @@ async function verifyCleanSeed(clientEmail: string, schedulingSummary: Awaited<R
   console.info(`[seed:dev] Verification passed. clients=${totalClients}, products=${productCount}, pastSessions=${collectivePastSessionsCount}, futureSessions=${collectiveFutureSessionsCount}, scheduleEntries=${scheduleCount}.`);
 }
 
-// ─── Entry point ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function runDevelopmentSeed(): Promise<void> {
-  console.info("[seed:dev] Starting development seed (mode: development — identical for DEV and UAT).");
+  console.info("[seed:dev] Starting development seed (mode: development â€” identical for DEV and UAT).");
   const stripePriceIdByLookupKey = resolveRequiredCatalogStripePriceIds();
   await purgeForCleanSeed();
   const users = await seedUsers();
@@ -1262,3 +1263,4 @@ export async function runDevelopmentSeed(): Promise<void> {
     `[seed:dev] Completed: clients=${schedulingSummary.clientsSeeded}, pastSessions=${schedulingSummary.pastSessionsCount}, futureSessions=${schedulingSummary.futureSessionsCount}, pastBookings=${schedulingSummary.pastBookingsCount}, futureBookings=${schedulingSummary.futureBookingsCount}, orders=${schedulingSummary.ordersCreatedCount}.`,
   );
 }
+

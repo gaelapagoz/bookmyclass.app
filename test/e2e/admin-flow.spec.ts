@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+﻿import { expect, test } from "@playwright/test";
 import { signInAdmin } from "./support/auth";
 import { prepareCheckInWindowBookingForTest } from "./support/e2e-api";
 import { SEEDED_ADMIN } from "./support/constants";
@@ -9,7 +9,7 @@ test.describe("admin attendance and kiosk flow", () => {
   // @covers admin-kiosk-access
   test("admin can launch kiosk and check in client", async ({ page }) => {
     const prepared = await prepareCheckInWindowBookingForTest(page.request, {
-      clientEmail: `e2e.admin.kiosk.${Date.now()}@example.test`,
+      clientEmail: `e2e.admin.kiosk.${Date.now()}@bookmyclass.app`,
       mode: "in_window",
     });
 
@@ -25,7 +25,7 @@ test.describe("admin attendance and kiosk flow", () => {
   // @covers admin-attendance-finalization
   test("admin can finalize attendance from session edit", async ({ page }) => {
     const prepared = await prepareCheckInWindowBookingForTest(page.request, {
-      clientEmail: `e2e.admin.attendance.${Date.now()}@example.test`,
+      clientEmail: `e2e.admin.attendance.${Date.now()}@bookmyclass.app`,
       mode: "in_window",
     });
 
@@ -40,3 +40,4 @@ test.describe("admin attendance and kiosk flow", () => {
     await expect(attendeeRow.getByText("Attendance: ATTENDED")).toBeVisible();
   });
 });
+

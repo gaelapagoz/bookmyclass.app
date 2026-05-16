@@ -101,7 +101,20 @@ This preserves immutable tag deployment because deploy and smoke jobs both use `
 - `UAT_BASE_URL`
 - `UAT_E2E_EMAIL`
 - `UAT_E2E_PASSWORD`
+- `UAT_E2E_ADMIN_EMAIL`
+- `UAT_E2E_ADMIN_PASSWORD`
 - `E2E_TEST_SECRET`
+
+Canonical UAT seeded credentials:
+- `UAT_E2E_EMAIL=e2e-client@bookmyclass.app`
+- `UAT_E2E_PASSWORD=Book4Ever!`
+- `UAT_E2E_ADMIN_EMAIL=e2e-admin@bookmyclass.app`
+- `UAT_E2E_ADMIN_PASSWORD=Book4Ever!`
+
+Seeded credential policy:
+- Deterministic seed/test/demo users use only `@bookmyclass.app` emails.
+- Deterministic seed/test/demo passwords use `Book4Ever!`.
+- This does not apply to real human production accounts.
 
 ### Optional repository/environment variables
 

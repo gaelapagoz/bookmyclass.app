@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+﻿import { expect, test } from "@playwright/test";
 import { PriceType } from "@prisma/client";
 import { openBookingFormFromFirstAvailableSlot, submitBookingWithPaymentOption } from "./support/booking";
 import { signInClient, signUpPublicUser } from "./support/auth";
@@ -24,7 +24,7 @@ import {
 test.describe("critical client flows", () => {
   test.describe.configure({ mode: "serial" });
 
-  const signupEmail = `e2e.signup.${Date.now()}@example.test`;
+  const signupEmail = `e2e.signup.${Date.now()}@bookmyclass.app`;
 
   // @covers customer-sign-up
   // @covers customer-verify-email
@@ -415,7 +415,7 @@ test.describe("critical client flows", () => {
   // @covers cross-password-reset-security-flow
   // @covers customer-reset-password
   test("password reset completes and token is single-use", async ({ page }) => {
-    const resetEmail = `e2e.pwreset.${Date.now()}@example.test`;
+    const resetEmail = `e2e.pwreset.${Date.now()}@bookmyclass.app`;
     await createVerifiedClientForTest(page.request, { email: resetEmail, password: E2E_PASSWORD });
     await page.context().clearCookies();
 
@@ -443,3 +443,4 @@ test.describe("critical client flows", () => {
     await expect(page.getByText("Reset link is invalid or expired.")).toBeVisible();
   });
 });
+

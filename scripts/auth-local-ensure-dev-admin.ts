@@ -17,10 +17,14 @@ import { Role, UserActivationStatus } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 import prisma from "../src/lib/db";
+import {
+  SEEDED_CANONICAL_EMAILS,
+  SEEDED_USER_PASSWORD,
+} from "../prisma/seed/seed-credentials";
 
-const DEV_ADMIN_EMAIL = "admin@yogapilatesfitness.local";
-const DEV_MASTER_ADMIN_EMAIL = "masteradmin@yogapilatesfitness.local";
-const DEV_PASSWORD = "qwerty123456";
+const DEV_ADMIN_EMAIL = SEEDED_CANONICAL_EMAILS.admin;
+const DEV_MASTER_ADMIN_EMAIL = SEEDED_CANONICAL_EMAILS.masterAdmin;
+const DEV_PASSWORD = SEEDED_USER_PASSWORD;
 
 async function upsertStaffUser(input: { email: string; role: Role; firstName: string; lastName: string }) {
   const passwordHash = await hash(DEV_PASSWORD, 12);

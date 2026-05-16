@@ -45,6 +45,7 @@
                     "db:seed:staging:e2e":  "tsx scripts/seed-staging-e2e.ts",
                     "db:seed:uat:e2e":  "npm run db:seed:staging:e2e",
                     "db:verify:staging:e2e":  "tsx scripts/verify-staging-e2e-seed.ts",
+                    "verify:seed:credential-policy": "tsx scripts/verify-seed-credential-policy.ts",
                     "db:seed:prod":  "dotenv -e .env -- cross-env BOOKMYCLASS_SEED_MODE=production prisma db seed",
                     "db:unlock:admin-abuse":  "dotenv -e .env -- tsx scripts/auth-server-unlock-admin-login-abuse.ts",
                     "db:ensure:dev-admin":  "dotenv -e .env -- tsx scripts/auth-local-ensure-dev-admin.ts",

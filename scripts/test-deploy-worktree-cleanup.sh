@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 #
 # Test deploy worktree cleanup
 #
@@ -25,7 +25,7 @@ cd "$repo_dir"
 
 git init -q
 git config user.name "deploy-test"
-git config user.email "deploy-test@example.com"
+git config user.email "deploy-test@bookmyclass.app"
 
 mkdir -p src scripts public/uploads uploads
 echo "first" > src/changed.txt
@@ -71,3 +71,4 @@ grep -q "^second$" src/changed.txt
 test -s "${RUN_DIR}/remote-dirty-worktree.status"
 
 echo "[PASS] cleanup allows deterministic tag checkout and preserves env/uploads"
+

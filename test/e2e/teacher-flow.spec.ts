@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+﻿import { expect, test } from "@playwright/test";
 
 import { signInAdmin, signInClient, signInTeacher } from "./support/auth";
 import {
@@ -45,7 +45,7 @@ test.describe("teacher flow", () => {
     await expect(page.getByTestId("teacher-session-roster")).toBeVisible();
 
     const clientOptionValue = await page
-      .getByRole("option", { name: /client\.e2e@bookmyclass\.local/i })
+      .getByRole("option", { name: /e2e-client@bookmyclass\.app/i })
       .getAttribute("value");
     expect(clientOptionValue).toBeTruthy();
     await page.getByRole("combobox", { name: "Client" }).selectOption(clientOptionValue as string);
@@ -70,7 +70,7 @@ test.describe("teacher flow", () => {
     await sessionLink.click();
 
     const clientOptionValue = await page
-      .getByRole("option", { name: /client\.nocredits\.e2e@bookmyclass\.local/i })
+      .getByRole("option", { name: /e2e-client-nocredits@bookmyclass\.app/i })
       .getAttribute("value");
     expect(clientOptionValue).toBeTruthy();
     await page.getByRole("combobox", { name: "Client" }).selectOption(clientOptionValue as string);
@@ -82,7 +82,7 @@ test.describe("teacher flow", () => {
 
   // @covers teacher-kiosk-checkin
   test("teacher can check in a client from kiosk for a selected session", async ({ page }) => {
-    const isolatedClientEmail = `e2e.kiosk.${Date.now()}@example.test`;
+    const isolatedClientEmail = `e2e.kiosk.${Date.now()}@bookmyclass.app`;
     const prepared = await prepareCheckInWindowBookingForTest(page.request, {
       clientEmail: isolatedClientEmail,
     });
@@ -98,7 +98,7 @@ test.describe("teacher flow", () => {
 
   // @covers admin-kiosk-access
   test("admin can access kiosk and check in a client", async ({ page }) => {
-    const isolatedClientEmail = `e2e.kiosk.admin.${Date.now()}@example.test`;
+    const isolatedClientEmail = `e2e.kiosk.admin.${Date.now()}@bookmyclass.app`;
     const prepared = await prepareCheckInWindowBookingForTest(page.request, {
       clientEmail: isolatedClientEmail,
       mode: "in_window",
@@ -114,7 +114,7 @@ test.describe("teacher flow", () => {
 
   // @covers teacher-kiosk-checkin-window-before-blocked
   test("kiosk check-in is blocked before check-in window", async ({ page }) => {
-    const isolatedClientEmail = `e2e.kiosk.before.${Date.now()}@example.test`;
+    const isolatedClientEmail = `e2e.kiosk.before.${Date.now()}@bookmyclass.app`;
     const prepared = await prepareCheckInWindowBookingForTest(page.request, {
       clientEmail: isolatedClientEmail,
       mode: "before_window",
@@ -129,7 +129,7 @@ test.describe("teacher flow", () => {
 
   // @covers teacher-kiosk-checkin-window-after-blocked
   test("kiosk check-in is blocked after check-in window", async ({ page }) => {
-    const isolatedClientEmail = `e2e.kiosk.after.${Date.now()}@example.test`;
+    const isolatedClientEmail = `e2e.kiosk.after.${Date.now()}@bookmyclass.app`;
     const prepared = await prepareCheckInWindowBookingForTest(page.request, {
       clientEmail: isolatedClientEmail,
       mode: "after_window",
@@ -144,7 +144,7 @@ test.describe("teacher flow", () => {
 
   // @covers teacher-kiosk-private-class-excluded
   test("private class session is excluded from kiosk check-in route", async ({ page }) => {
-    const isolatedClientEmail = `e2e.kiosk.private.${Date.now()}@example.test`;
+    const isolatedClientEmail = `e2e.kiosk.private.${Date.now()}@bookmyclass.app`;
     const prepared = await prepareCheckInWindowBookingForTest(page.request, {
       clientEmail: isolatedClientEmail,
       mode: "in_window",
@@ -158,7 +158,7 @@ test.describe("teacher flow", () => {
 
   // @covers teacher-staff-attendance-marking
   test("teacher can privately mark attendance from session detail", async ({ page }) => {
-    const isolatedClientEmail = `e2e.staff.attendance.${Date.now()}@example.test`;
+    const isolatedClientEmail = `e2e.staff.attendance.${Date.now()}@bookmyclass.app`;
     const prepared = await prepareCheckInWindowBookingForTest(page.request, {
       clientEmail: isolatedClientEmail,
     });
@@ -186,7 +186,7 @@ test.describe("teacher flow", () => {
 
   // @covers teacher-waitlist-count-readonly
   test("teacher calendar shows waitlist count without manual waitlist controls", async ({ page }) => {
-    const clientEmail = `e2e.teacher.waitlist.${Date.now()}@example.test`;
+    const clientEmail = `e2e.teacher.waitlist.${Date.now()}@bookmyclass.app`;
     await createVerifiedClientForTest(page.request, {
       email: clientEmail,
       password: E2E_PASSWORD,
@@ -230,7 +230,7 @@ test.describe("teacher flow", () => {
     await signInTeacher(page, SEEDED_TEACHER);
     await expect(page.getByRole("heading", { name: "Teacher Dashboard" })).toBeVisible();
 
-    // Deactivate the user in the DB — simulating an admin revoking access server-side.
+    // Deactivate the user in the DB â€” simulating an admin revoking access server-side.
     await deactivateUserForTest(page.request, SEEDED_TEACHER.email);
 
     // requireTeacherSession re-checks the DB on every request; the revocation must be enforced.
@@ -279,3 +279,4 @@ test.describe("teacher flow", () => {
     await expect(page.getByText(/Too many attempts/i)).toBeVisible();
   });
 });
+

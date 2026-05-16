@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+﻿import { expect, test } from "@playwright/test";
 import { signInAdmin } from "./support/auth";
 import {
   cleanSeededClientBookingsForTest,
@@ -37,7 +37,7 @@ function toDateTimeLocalInput(date: Date): string {
 test("critical admin CRUD flows", async ({ page }) => {
   const unique = Date.now();
   const teacherName = `E2E Teacher ${unique}`;
-  const teacherEmail = `teacher.${unique}@example.test`;
+  const teacherEmail = `teacher.${unique}@bookmyclass.app`;
   const className = `E2E Service ${unique}`;
   const updatedClassName = `${className} Updated`;
   const sessionTitle = `E2E Session ${unique}`;
@@ -158,7 +158,7 @@ test("admin can manually add an eligible client from session edit roster", async
   await sessionLink.click();
 
   const clientOptionValue = await page
-    .getByRole("option", { name: /client\.e2e@bookmyclass\.local/i })
+    .getByRole("option", { name: /e2e-client@bookmyclass\.app/i })
     .getAttribute("value");
   expect(clientOptionValue).toBeTruthy();
   await page.getByRole("combobox", { name: "Client" }).selectOption(clientOptionValue as string);
@@ -182,7 +182,7 @@ test("admin can manually add a client using audited no-credit override", async (
   await sessionLink.click();
 
   const clientOptionValue = await page
-    .getByRole("option", { name: /client\.nocredits\.e2e@bookmyclass\.local/i })
+    .getByRole("option", { name: /e2e-client-nocredits@bookmyclass\.app/i })
     .getAttribute("value");
   expect(clientOptionValue).toBeTruthy();
   await page.getByRole("combobox", { name: "Client" }).selectOption(clientOptionValue as string);
@@ -197,7 +197,7 @@ test("admin can manually add a client using audited no-credit override", async (
 
 // @covers admin-waitlist-count-readonly
 test("admin calendar shows waitlist count without manual waitlist controls", async ({ page }) => {
-  const clientEmail = `e2e.admin.waitlist.${Date.now()}@example.test`;
+  const clientEmail = `e2e.admin.waitlist.${Date.now()}@bookmyclass.app`;
   await createVerifiedClientForTest(page.request, {
     email: clientEmail,
     password: E2E_PASSWORD,
@@ -221,4 +221,5 @@ test("admin calendar shows waitlist count without manual waitlist controls", asy
   await expect(page.getByRole("button", { name: /join waitlist/i })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /cancel waitlist/i })).toHaveCount(0);
 });
+
 

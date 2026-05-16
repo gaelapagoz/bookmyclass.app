@@ -219,7 +219,7 @@ export async function POST(request: Request) {
           isPublished: true,
           teacher: {
             email: {
-              equals: "teacher.e2e@bookmyclass.local",
+              equals: "teacher@bookmyclass.app",
               mode: "insensitive",
             },
           },

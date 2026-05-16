@@ -47,6 +47,19 @@ Required:
 - `UAT_E2E_ADMIN_EMAIL`
 - `UAT_E2E_ADMIN_PASSWORD`
 
+Canonical deterministic seeded credentials for UAT/staging validation:
+- `UAT_E2E_EMAIL=e2e-client@bookmyclass.app`
+- `UAT_E2E_PASSWORD=Book4Ever!`
+- `UAT_E2E_ADMIN_EMAIL=e2e-admin@bookmyclass.app`
+- `UAT_E2E_ADMIN_PASSWORD=Book4Ever!`
+
+Server `.env` (`/var/www/bookmyclass/.env`) should mirror the same values.
+
+Policy note:
+- All deterministic seeded/test/demo users use `@bookmyclass.app`.
+- All deterministic seeded/test/demo passwords use `Book4Ever!`.
+- This policy applies only to seeded/test/demo fixtures and not real human production accounts.
+
 `BASE_URL` is supported and takes precedence when explicitly set.
 
 ## GitHub Actions order

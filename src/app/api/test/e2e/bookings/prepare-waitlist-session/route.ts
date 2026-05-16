@@ -1,4 +1,4 @@
-import { BookingStatus, Role, StudioSessionStatus, WaitlistStatus } from "@prisma/client";
+﻿import { BookingStatus, Role, StudioSessionStatus, WaitlistStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { assertE2ETestRequest } from "@/lib/e2e/e2e-test-guard";
@@ -123,7 +123,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // Create a fresh ClassTemplate per call — eliminates (classTemplateId, startsAt) collision
+    // Create a fresh ClassTemplate per call â€” eliminates (classTemplateId, startsAt) collision
     // even when multiple workers call this helper concurrently.
     const ts = uniqueId();
     const template = await prisma.classTemplate.create({
@@ -175,7 +175,7 @@ export async function POST(request: Request) {
         prisma.user.create({
           data: {
             name: `E2E Waitlist Filler ${index + 1}`,
-            email: `e2e.waitlist.filler.${fillerTs}.${index}@example.test`,
+            email: `e2e.waitlist.filler.${fillerTs}.${index}@bookmyclass.app`,
             role: Role.CLIENT,
           },
         }),
@@ -222,3 +222,4 @@ export async function POST(request: Request) {
     return Response.json({ error: "Internal server error.", code: "INTERNAL_SERVER_ERROR" }, { status: 500 });
   }
 }
+

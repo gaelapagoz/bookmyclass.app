@@ -1,19 +1,20 @@
-import { expect, test } from "@playwright/test";
+﻿import { expect, test } from "@playwright/test";
 import { GiftCardCodeSource, GiftCardCodeStatus, Role, UserActivationStatus, UserCreatedVia } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 import prisma from "../../src/lib/db";
 import { signInAdmin, signInClient } from "./support/auth";
 import { clearCapturedEmailsForTest, getCapturedEmailsForTest } from "./support/e2e-api";
+import { E2E_PASSWORD } from "./support/constants";
 
-const password = "GiftCardE2EPass123!";
+const password = E2E_PASSWORD;
 
 function unique(prefix: string) {
   return `${prefix}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
 }
 
 async function createAdmin() {
-  const email = `${unique("admin.gc")}@example.test`;
+  const email = `${unique("admin.gc")}@bookmyclass.app`;
   const passwordHash = await hash(password, 12);
   const now = new Date();
   const user = await prisma.user.create({
@@ -35,7 +36,7 @@ async function createAdmin() {
 }
 
 async function createClient() {
-  const email = `${unique("client.gc")}@example.test`;
+  const email = `${unique("client.gc")}@bookmyclass.app`;
   const passwordHash = await hash(password, 12);
   const now = new Date();
   const user = await prisma.user.create({
@@ -218,3 +219,4 @@ test.describe("Admin-generated gift card lifecycle", () => {
     }
   });
 });
+

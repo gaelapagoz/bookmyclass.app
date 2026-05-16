@@ -10,13 +10,18 @@ import {
 } from "@prisma/client";
 import { hash } from "bcryptjs";
 import prisma from "../src/lib/db";
+import {
+  assertSeedEmailDomain,
+  SEEDED_CANONICAL_EMAILS,
+  SEEDED_USER_PASSWORD,
+} from "../prisma/seed/seed-credentials";
 
-function requiredEnv(names: string[]): string {
+function envOrDefault(names: string[], fallback: string): string {
   for (const name of names) {
     const value = process.env[name]?.trim();
     if (value) return value;
   }
-  throw new Error(`Missing required env var. One of: ${names.join(", ")}`);
+  return fallback;
 }
 
 function normalizeEmail(value: string): string {
@@ -223,8 +228,11 @@ async function ensureCatalog() {
 
 async function ensureBookableSession() {
   const teacher = await ensureUser({
-    email: process.env.UAT_E2E_TEACHER_EMAIL?.trim() || "staging-e2e-teacher@bookmyclass.local",
-    password: process.env.UAT_E2E_TEACHER_PASSWORD?.trim() || "Staging.E2E.Teacher.123!",
+    email: assertSeedEmailDomain(
+      normalizeEmail(process.env.UAT_E2E_TEACHER_EMAIL?.trim() || SEEDED_CANONICAL_EMAILS.teacher),
+      "UAT_E2E_TEACHER_EMAIL",
+    ),
+    password: process.env.UAT_E2E_TEACHER_PASSWORD?.trim() || SEEDED_USER_PASSWORD,
     role: Role.TEACHER,
     firstName: "Staging",
     lastName: "Teacher",
@@ -341,10 +349,21 @@ async function ensureBookableSession() {
 
 async function main() {
   assertSafetyGuards();
-  const clientEmail = requiredEnv(["UAT_E2E_CLIENT_EMAIL", "UAT_E2E_EMAIL"]);
-  const clientPassword = requiredEnv(["UAT_E2E_CLIENT_PASSWORD", "UAT_E2E_PASSWORD"]);
-  const adminEmail = requiredEnv(["UAT_E2E_ADMIN_EMAIL"]);
-  const adminPassword = requiredEnv(["UAT_E2E_ADMIN_PASSWORD"]);
+  const clientEmail = assertSeedEmailDomain(
+    normalizeEmail(
+      envOrDefault(["UAT_E2E_CLIENT_EMAIL", "UAT_E2E_EMAIL"], SEEDED_CANONICAL_EMAILS.e2eClient),
+    ),
+    "UAT_E2E_CLIENT_EMAIL/UAT_E2E_EMAIL",
+  );
+  const clientPassword = envOrDefault(
+    ["UAT_E2E_CLIENT_PASSWORD", "UAT_E2E_PASSWORD"],
+    SEEDED_USER_PASSWORD,
+  );
+  const adminEmail = assertSeedEmailDomain(
+    normalizeEmail(envOrDefault(["UAT_E2E_ADMIN_EMAIL"], SEEDED_CANONICAL_EMAILS.e2eAdmin)),
+    "UAT_E2E_ADMIN_EMAIL",
+  );
+  const adminPassword = envOrDefault(["UAT_E2E_ADMIN_PASSWORD"], SEEDED_USER_PASSWORD);
 
   const client = await ensureUser({
     email: clientEmail,

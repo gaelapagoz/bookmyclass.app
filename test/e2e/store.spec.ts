@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+﻿import { expect, test } from "@playwright/test";
 import {
   GiftCardCodeStatus,
   GiftCardLedgerEntryType,
@@ -16,13 +16,14 @@ import { createHash } from "node:crypto";
 import { hash } from "bcryptjs";
 import prisma from "../../src/lib/db";
 import { signInClient } from "./support/auth";
+import { E2E_PASSWORD } from "./support/constants";
 import {
   completeStripeCheckoutForTest,
   getCapturedEmailsForTest,
   clearCapturedEmailsForTest,
 } from "./support/e2e-api";
 
-const password = "StoreE2EPass123!";
+const password = E2E_PASSWORD;
 const E2E_GIFT_CARD_CODE = "AABBCCDD-EEFF0011-22334455-66778899";
 
 function unique(prefix: string) {
@@ -34,7 +35,7 @@ function hashGiftCardCode(code: string): string {
 }
 
 async function createVerifiedClient() {
-  const email = `${unique("store.client")}@example.test`;
+  const email = `${unique("store.client")}@bookmyclass.app`;
   const passwordHash = await hash(password, 12);
   const now = new Date();
   const user = await prisma.user.create({
@@ -193,7 +194,7 @@ test.describe("Gift-card purchase from /store", () => {
   // @covers store-gift-card-issuance-email-sent
   // @covers store-full-wallet-gift-card-purchase-flow
 
-  test("gift-card purchase from store → success page → GiftCardCode issued and issuance email sent @store", async ({ page, request }) => {
+  test("gift-card purchase from store â†’ success page â†’ GiftCardCode issued and issuance email sent @store", async ({ page, request }) => {
     const { user, credentials } = await createVerifiedClient();
     const { product: gcProduct } = await createCheckoutReadyGiftCardProduct(2_500);
 
@@ -219,7 +220,7 @@ test.describe("Gift-card purchase from /store", () => {
       await page.goto(`/store/success?session_id=${checkoutSessionId}`);
       await expect(page.getByRole("heading", { name: "Purchase Confirmed" })).toBeVisible({ timeout: 15_000 });
 
-      // Purchase issues a GiftCardCode — wallet is NOT credited at purchase time
+      // Purchase issues a GiftCardCode â€” wallet is NOT credited at purchase time
       const issuedCode = await prisma.giftCardCode.findFirst({
         where: { purchasedById: user.id },
         select: { status: true, amountMinor: true },
@@ -240,7 +241,7 @@ test.describe("Gift-card purchase from /store", () => {
   });
 
   // @store @covers store-full-wallet-gift-card-purchase-flow
-  test("full-wallet gift-card purchase → /store/success?orderId= (no Stripe redirect) @store", async ({ page }) => {
+  test("full-wallet gift-card purchase â†’ /store/success?orderId= (no Stripe redirect) @store", async ({ page }) => {
     const { user, credentials } = await createVerifiedClient();
     const { product: gcProduct } = await createCheckoutReadyGiftCardProduct(2_000);
 
@@ -353,7 +354,7 @@ test.describe("Dashboard wallet balance breakdown", () => {
 
 test.describe("Gift-card code redemption", () => {
   // @store @covers store-gift-card-redeem-code
-  test("client redeems a valid gift card code → wallet balance increases @store", async ({ page }) => {
+  test("client redeems a valid gift card code â†’ wallet balance increases @store", async ({ page }) => {
     const { user, credentials } = await createVerifiedClient();
     const { product: gcProduct, price: gcPrice } = await createCheckoutReadyGiftCardProduct(2_500);
 
@@ -432,7 +433,7 @@ test.describe("Gift-card code redemption", () => {
   });
 
   // @store @covers store-gift-card-redeem-rate-limited
-  test("redemption rate limit — 6th attempt within window shows rate-limited error @store", async ({ page }) => {
+  test("redemption rate limit â€” 6th attempt within window shows rate-limited error @store", async ({ page }) => {
     const { user, credentials } = await createVerifiedClient();
     const { product: gcProduct } = await createCheckoutReadyGiftCardProduct(1_000);
 
@@ -460,3 +461,4 @@ test.describe("Gift-card code redemption", () => {
     }
   });
 });
+

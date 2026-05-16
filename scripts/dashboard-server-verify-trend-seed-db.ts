@@ -96,7 +96,7 @@ async function getTrendCoverage(databaseUrl: string, asOf: string | null): Promi
   await client.connect();
 
   const marker = "seed-demo-trend";
-  const markerEmail = "seed-demo-trend@yogapilatesfitness.local";
+  const markerEmail = "seed-demo-trend@bookmyclass.app";
   const result = await client.query<{
     session_days: string;
     order_days: string;

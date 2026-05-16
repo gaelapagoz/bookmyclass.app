@@ -1,21 +1,29 @@
 import { ProductType, Role, StudioSessionStatus, UserActivationStatus } from "@prisma/client";
+import { compare } from "bcryptjs";
 import prisma from "../src/lib/db";
-
-function requiredEnv(names: string[]): string {
-  for (const name of names) {
-    const value = process.env[name]?.trim();
-    if (value) return value;
-  }
-  throw new Error(`Missing required env var. One of: ${names.join(", ")}`);
-}
+import {
+  SEEDED_EMAIL_DOMAIN,
+  SEEDED_USER_PASSWORD,
+} from "../prisma/seed/seed-credentials";
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
 
 async function main() {
-  const clientEmail = normalizeEmail(requiredEnv(["UAT_E2E_CLIENT_EMAIL", "UAT_E2E_EMAIL"]));
-  const adminEmail = normalizeEmail(requiredEnv(["UAT_E2E_ADMIN_EMAIL"]));
+  const clientEmail = normalizeEmail(
+    process.env.UAT_E2E_CLIENT_EMAIL?.trim() ||
+      process.env.UAT_E2E_EMAIL?.trim() ||
+      `e2e-client@${SEEDED_EMAIL_DOMAIN}`,
+  );
+  const adminEmail = normalizeEmail(
+    process.env.UAT_E2E_ADMIN_EMAIL?.trim() || `e2e-admin@${SEEDED_EMAIL_DOMAIN}`,
+  );
+  const clientPassword =
+    process.env.UAT_E2E_CLIENT_PASSWORD?.trim() ||
+    process.env.UAT_E2E_PASSWORD?.trim() ||
+    SEEDED_USER_PASSWORD;
+  const adminPassword = process.env.UAT_E2E_ADMIN_PASSWORD?.trim() || SEEDED_USER_PASSWORD;
 
   const client = await prisma.user.findUnique({
     where: { email: clientEmail },
@@ -26,6 +34,7 @@ async function main() {
       activationStatus: true,
       emailVerified: true,
       emailVerifiedAt: true,
+      passwordHash: true,
     },
   });
 
@@ -38,8 +47,16 @@ async function main() {
       activationStatus: true,
       emailVerified: true,
       emailVerifiedAt: true,
+      passwordHash: true,
     },
   });
+
+  if (!clientEmail.endsWith(`@${SEEDED_EMAIL_DOMAIN}`)) {
+    throw new Error(`Client E2E email must end with @${SEEDED_EMAIL_DOMAIN}.`);
+  }
+  if (!adminEmail.endsWith(`@${SEEDED_EMAIL_DOMAIN}`)) {
+    throw new Error(`Admin E2E email must end with @${SEEDED_EMAIL_DOMAIN}.`);
+  }
 
   if (!client) throw new Error("Client E2E user missing.");
   if (client.role !== Role.CLIENT) throw new Error(`Client E2E user role mismatch: ${client.role}`);
@@ -47,6 +64,10 @@ async function main() {
     throw new Error("Client E2E user is not active.");
   }
   if (!client.emailVerified && !client.emailVerifiedAt) throw new Error("Client E2E user is not verified.");
+  if (!client.passwordHash) throw new Error("Client E2E user is missing password hash.");
+  if (!(await compare(clientPassword, client.passwordHash))) {
+    throw new Error("Client E2E password hash mismatch for configured/default credential.");
+  }
 
   if (!admin) throw new Error("Admin E2E user missing.");
   if (![Role.ADMIN, Role.MASTER_ADMIN].includes(admin.role)) {
@@ -56,6 +77,10 @@ async function main() {
     throw new Error("Admin E2E user is not active.");
   }
   if (!admin.emailVerified && !admin.emailVerifiedAt) throw new Error("Admin E2E user is not verified.");
+  if (!admin.passwordHash) throw new Error("Admin E2E user is missing password hash.");
+  if (!(await compare(adminPassword, admin.passwordHash))) {
+    throw new Error("Admin E2E password hash mismatch for configured/default credential.");
+  }
 
   const [subscriptionOfferings, bookableSessions, storeProducts] = await prisma.$transaction([
     prisma.price.count({
