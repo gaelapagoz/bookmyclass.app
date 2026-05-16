@@ -52,6 +52,8 @@ jobs:
       STAGING_PM2_APP_NAME: ${{ secrets.UAT_PM2_APP_NAME }}
       STAGING_E2E_EMAIL: ${{ secrets.UAT_E2E_EMAIL }}
       STAGING_E2E_PASSWORD: ${{ secrets.UAT_E2E_PASSWORD }}
+      STAGING_E2E_ADMIN_EMAIL: ${{ secrets.UAT_E2E_ADMIN_EMAIL }}
+      STAGING_E2E_ADMIN_PASSWORD: ${{ secrets.UAT_E2E_ADMIN_PASSWORD }}
       ALLOW_STAGING_ON_PRODUCTION_URL: ${{ vars.ALLOW_STAGING_ON_PRODUCTION_URL || '' }}
 
     steps:
@@ -103,6 +105,8 @@ jobs:
             STAGING_PM2_APP_NAME
             STAGING_E2E_EMAIL
             STAGING_E2E_PASSWORD
+            STAGING_E2E_ADMIN_EMAIL
+            STAGING_E2E_ADMIN_PASSWORD
           )
 
           missing=0
