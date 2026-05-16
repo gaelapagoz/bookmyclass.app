@@ -228,12 +228,17 @@ Run tests:
 ```bash
 npm test -- --run
 npm run test:e2e
+npm run test:e2e:install
 npm run test:staging:smoke
 npm run test:e2e:staging
 ```
 Staging command aliases intentionally reuse existing `UAT_*` configuration for
 GitHub compatibility (`test:staging:smoke` -> `test:uat:smoke`,
 `test:e2e:staging` -> `test:e2e:uat`).
+For CI Linux runners, install Playwright Chromium with system dependencies:
+```bash
+npm run test:e2e:install:deps
+```
 Run performance tests:
 ```bash
 BASE_URL=https://demo.bookmyclass.app bash scripts/performance-server-run-smoke.sh

@@ -49,20 +49,20 @@ Required:
 
 ## GitHub Actions order
 
-When the operator runs UAT validation, `.github/workflows/uat-release.yml`
+When the operator runs UAT validation, `.github/workflows/staging-release.yml`
 release-tag sequence is:
 1. `regression`
 2. `e2e`
-3. `deploy_uat`
-4. `smoke_uat`
-5. `e2e_uat`
-6. `k6_smoke_uat`
-7. `zap_uat`
+3. `deploy_staging`
+4. `smoke_staging`
+5. `e2e_staging`
+6. `k6_smoke_staging`
+7. `zap_staging`
 
-If `e2e_uat` fails, the workflow fails and Playwright artifacts are uploaded.
+If `e2e_staging` fails, the workflow fails and Playwright artifacts are uploaded.
 These jobs are operator-run validation steps and are not automatic release
 blockers.
 
 Pre-deploy CI e2e and deployed-UAT release e2e are distinct:
 - `e2e` in `.github/workflows/ci.yml` is pre-deploy CI e2e
-- `e2e_uat` in `.github/workflows/uat-release.yml` is post-deploy UAT release e2e
+- `e2e_staging` in `.github/workflows/staging-release.yml` is post-deploy UAT/staging release e2e
