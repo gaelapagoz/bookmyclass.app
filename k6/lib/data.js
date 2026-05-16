@@ -1,4 +1,6 @@
 import { SharedArray } from "k6/data";
+const CANONICAL_DOMAIN = "@bookmyclass.app";
+const CANONICAL_PASSWORD = "Book4Ever!";
 
 function parseCsvLine(line) {
   const cells = [];
@@ -55,7 +57,26 @@ function parseCsv(content) {
 
 export const users = new SharedArray("users.csv", () => {
   const raw = open("../data/users.csv");
-  return parseCsv(raw);
+  const parsed = parseCsv(raw).map((row) => ({
+    ...row,
+    email: String(row.email || "").trim().toLowerCase(),
+    password: String(row.password || "").trim() || CANONICAL_PASSWORD,
+    cohort: String(row.cohort || "").trim().toLowerCase(),
+  }));
+
+  for (const row of parsed) {
+    if (!row.email) {
+      throw new Error("k6/data/users.csv rows must include email.");
+    }
+    if (row.email.includes(".local")) {
+      throw new Error(`k6/data/users.csv contains forbidden .local email: ${row.email}`);
+    }
+    if (!row.email.endsWith(CANONICAL_DOMAIN)) {
+      throw new Error(`k6/data/users.csv must use ${CANONICAL_DOMAIN} emails. Received: ${row.email}`);
+    }
+  }
+
+  return parsed;
 });
 
 export const services = new SharedArray("services.json", () => {

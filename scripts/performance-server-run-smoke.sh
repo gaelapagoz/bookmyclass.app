@@ -19,6 +19,7 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-https://demo.bookmyclass.app}"
 STAGE_PROFILE="${STAGE_PROFILE:-smoke_booking_safe}"
 K6_SCENARIO_SET="${K6_SCENARIO_SET:-full_smoke}"
+K6_DISCOVER_SKIP_DB_USERS="${K6_DISCOVER_SKIP_DB_USERS:-1}"
 EVIDENCE_ROOT="${EVIDENCE_ROOT:-/tmp}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -35,7 +36,7 @@ fi
 (
   set -euo pipefail
   cd "$REPO_ROOT"
-  BASE_URL="$BASE_URL" npm run k6:discover:server 2>&1 | tee "$run_dir/k6-discover.log"
+  BASE_URL="$BASE_URL" K6_DISCOVER_SKIP_DB_USERS="$K6_DISCOVER_SKIP_DB_USERS" npm run k6:discover:server 2>&1 | tee "$run_dir/k6-discover.log"
   cp k6/data/services.json "$run_dir/discovered-services.json"
   cp k6/data/products.json "$run_dir/discovered-products.json"
 )

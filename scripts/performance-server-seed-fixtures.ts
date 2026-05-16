@@ -13,6 +13,7 @@
  * Usage:
  *   tsx scripts/performance-server-seed-fixtures.ts
  */
+import "dotenv/config";
 import {
   BillingInterval,
   ClientEntitlementStatus,
@@ -39,7 +40,7 @@ import {
 } from "./performance-server-seed-catalog-fixtures";
 import prisma from "../src/lib/db";
 import {
-  buildK6ClientEmail,
+  SEEDED_EMAIL_DOMAIN,
   SEEDED_USER_PASSWORD,
 } from "../prisma/seed/seed-credentials";
 
@@ -139,7 +140,7 @@ function buildCohortUsers(params: { cohort: CohortName; start: number; count: nu
     users.push({
       cohort,
       index: cohortIndex,
-      email: buildK6ClientEmail(globalIndex),
+      email: `k6-uat-${cohort}-${indexKey}@${SEEDED_EMAIL_DOMAIN}`,
       name: `K6 UAT ${cohort} ${indexKey}`,
       phone: buildPhone(globalIndex),
     });
@@ -307,6 +308,28 @@ async function resetPreviousK6State(userIds: string[]) {
     },
   });
   await prisma.order.deleteMany({ where: { clientId: { in: userIds } } });
+}
+
+async function removeLegacyK6Users() {
+  const legacyUsers = await prisma.user.findMany({
+    where: {
+      OR: [
+        { email: { startsWith: "k6-client-" } },
+        { email: { endsWith: "@k6-uat.bookmyclass.local" } },
+      ],
+    },
+    select: { id: true },
+  });
+
+  if (!legacyUsers.length) {
+    return 0;
+  }
+
+  const legacyIds = legacyUsers.map((user) => user.id);
+  await resetPreviousK6State(legacyIds);
+  await prisma.clientProfile.deleteMany({ where: { userId: { in: legacyIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: legacyIds } } });
+  return legacyIds.length;
 }
 
 async function ensureUsers(users: SeedUser[]) {
@@ -657,6 +680,7 @@ async function main() {
   const subscriptionBuyerUsers = users.filter((user) => user.cohort === COHORTS.subscriptionBuyer);
 
   const { collectiveCreditPrice, collectiveRecurringPrice, creditRule } = await resolveCatalogReferences();
+  const removedLegacyUsers = await removeLegacyK6Users();
   const userIdByEmail = await ensureUsers(users);
   await resetPreviousK6State([...userIdByEmail.values()]);
 
@@ -694,6 +718,7 @@ async function main() {
     `[k6-uat-seed] sessions seeded services=${sessionSeedResult.serviceCount}, rows=${sessionSeedResult.sessionRows}, range=${sessionSeedResult.startDate.toISOString()}..${sessionSeedResult.endDate.toISOString()}`,
   );
   console.info(`[k6-uat-seed] csv exported=${csvPath}`);
+  console.info(`[k6-uat-seed] legacy users removed=${removedLegacyUsers}`);
   console.info("[k6-uat-seed] credentials are seeded with shared deterministic policy.");
 }
 

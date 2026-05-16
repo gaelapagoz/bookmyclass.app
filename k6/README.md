@@ -148,13 +148,13 @@ Cohort usage in scenarios:
 
 Naming convention:
 
-- `k6-uat-entitlement_collective-0001@k6-uat.bookmyclass.local`
-- `k6-uat-no_entitlement-0001@k6-uat.bookmyclass.local`
-- `k6-uat-subscription_buyer-0001@k6-uat.bookmyclass.local`
+- `k6-uat-entitlement_collective-0001@bookmyclass.app`
+- `k6-uat-no_entitlement-0001@bookmyclass.app`
+- `k6-uat-subscription_buyer-0001@bookmyclass.app`
 
 Deterministic shared password:
 
-- `UAT.K6.Phase4!2026`
+- `Book4Ever!`
 
 CSV export:
 

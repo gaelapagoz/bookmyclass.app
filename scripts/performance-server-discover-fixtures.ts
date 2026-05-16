@@ -13,12 +13,18 @@
  * Usage:
  *   tsx scripts/performance-server-discover-fixtures.ts
  */
+import "dotenv/config";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { compare } from "bcryptjs";
+import { UserActivationStatus } from "@prisma/client";
+import prisma from "../src/lib/db";
+import { SEEDED_EMAIL_DOMAIN, SEEDED_USER_PASSWORD } from "../prisma/seed/seed-credentials";
 
 const DEFAULT_BASE_URL = "https://demo.bookmyclass.app";
 const SERVICES_SEED_PATH = "k6/data/services.json";
 const PRODUCTS_SEED_PATH = "k6/data/products.json";
+const USERS_SEED_PATH = "k6/data/users.csv";
 const MIN_SPARE_SPOTS = 3;
 const MAX_SESSION_POOL_SIZE = 48;
 const MIN_SESSION_POOL_SIZE = 3;
@@ -86,6 +92,14 @@ type SubscriptionCatalogItem = {
 };
 
 type JsonRecord = Record<string, unknown>;
+type K6CohortName = "entitlement_collective" | "no_entitlement" | "subscription_buyer";
+
+const REQUIRED_COHORTS: K6CohortName[] = [
+  "entitlement_collective",
+  "no_entitlement",
+  "subscription_buyer",
+];
+const COHORT_TARGET_COUNT = 400;
 
 function isObject(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -120,6 +134,38 @@ function normalizeBaseUrl(input: string | undefined): string {
   }
 
   return normalized;
+}
+
+function assertDatabaseBaseUrlAlignment(baseUrl: string): void {
+  const databaseUrl = (process.env.DATABASE_URL || "").trim();
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL is required.");
+  }
+
+  let baseHost = "";
+  let dbHost = "";
+  try {
+    baseHost = new URL(baseUrl).hostname.toLowerCase();
+  } catch {
+    return;
+  }
+  try {
+    dbHost = new URL(databaseUrl).hostname.toLowerCase();
+  } catch {
+    return;
+  }
+
+  const baseIsRemote = !["localhost", "127.0.0.1"].includes(baseHost);
+  const dbIsLocal = ["localhost", "127.0.0.1"].includes(dbHost);
+  if (baseIsRemote && dbIsLocal) {
+    throw new Error(
+      `DATABASE_URL points to local DB host '${dbHost}' while BASE_URL points to remote host '${baseHost}'. Seed/discovery users won't match remote auth DB. Point DATABASE_URL to the same environment DB as BASE_URL before running k6 discovery/smoke.`,
+    );
+  }
+}
+
+function shouldSkipDbUserDiscovery(): boolean {
+  return (process.env.K6_DISCOVER_SKIP_DB_USERS || "").trim() === "1";
 }
 
 function toDateKey(date: Date): string {
@@ -474,11 +520,131 @@ async function writePrettyJson(filePath: string, payload: unknown): Promise<void
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
+function parseK6CohortFromEmail(email: string): K6CohortName | null {
+  const normalized = String(email || "").trim().toLowerCase();
+  const match = normalized.match(/^k6-uat-(entitlement_collective|no_entitlement|subscription_buyer)-\d{4}@/);
+  if (!match) {
+    return null;
+  }
+  return match[1] as K6CohortName;
+}
+
+function csvEscape(value: string): string {
+  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+async function discoverK6UsersCsv(usersPath: string): Promise<{ rows: number; cohorts: Record<K6CohortName, number> }> {
+  const users = await prisma.user.findMany({
+    where: {
+      email: {
+        startsWith: "k6-uat-",
+      },
+    },
+    select: {
+      email: true,
+      name: true,
+      passwordHash: true,
+      isActive: true,
+      isInactive: true,
+      activationStatus: true,
+      emailVerified: true,
+      emailVerifiedAt: true,
+      clientProfile: {
+        select: {
+          phone: true,
+        },
+      },
+    },
+    orderBy: {
+      email: "asc",
+    },
+  });
+
+  const cohortCounts: Record<K6CohortName, number> = {
+    entitlement_collective: 0,
+    no_entitlement: 0,
+    subscription_buyer: 0,
+  };
+
+  const rows: string[] = ["email,password,name,phone,cohort"];
+  const uniquePasswordHashes = new Set<string>();
+  for (const user of users) {
+    const email = String(user.email || "").trim().toLowerCase();
+    if (!email.endsWith(`@${SEEDED_EMAIL_DOMAIN}`)) {
+      throw new Error(
+        `Discovered k6 user has invalid domain: ${email}. Expected @${SEEDED_EMAIL_DOMAIN} and no .local domains.`,
+      );
+    }
+    if (email.includes(".local")) {
+      throw new Error(`Discovered k6 user unexpectedly uses .local domain: ${email}`);
+    }
+
+    const cohort = parseK6CohortFromEmail(email);
+    if (!cohort) {
+      throw new Error(
+        `Discovered k6 user email does not follow required cohort pattern: ${email}`,
+      );
+    }
+
+    if (!user.isActive || user.isInactive || user.activationStatus !== UserActivationStatus.ACTIVE) {
+      throw new Error(`Discovered k6 user is not active/login-capable: ${email}`);
+    }
+
+    if (!user.emailVerified && !user.emailVerifiedAt) {
+      throw new Error(`Discovered k6 user is not verified: ${email}`);
+    }
+
+    uniquePasswordHashes.add(user.passwordHash);
+
+    const phone = String(user.clientProfile?.phone || "").trim();
+    rows.push(
+      [
+        csvEscape(email),
+        csvEscape(SEEDED_USER_PASSWORD),
+        csvEscape(String(user.name || "")),
+        csvEscape(phone),
+        csvEscape(cohort),
+      ].join(","),
+    );
+    cohortCounts[cohort] += 1;
+  }
+
+  for (const cohort of REQUIRED_COHORTS) {
+    if (cohortCounts[cohort] < COHORT_TARGET_COUNT) {
+      throw new Error(
+        `Missing required k6 cohort users. cohort=${cohort} expected>=${COHORT_TARGET_COUNT} got=${cohortCounts[cohort]}`,
+      );
+    }
+  }
+
+  for (const hash of uniquePasswordHashes) {
+    const passwordMatches = await compare(SEEDED_USER_PASSWORD, hash);
+    if (!passwordMatches) {
+      throw new Error("Discovered k6 users do not match canonical deterministic password policy.");
+    }
+  }
+
+  await writeFile(usersPath, `${rows.join("\n")}\n`, "utf8");
+  return {
+    rows: users.length,
+    cohorts: cohortCounts,
+  };
+}
+
 async function main() {
   const baseUrl = normalizeBaseUrl(process.env.BASE_URL);
+  const skipDbUsers = shouldSkipDbUserDiscovery();
+  if (!skipDbUsers) {
+    assertDatabaseBaseUrlAlignment(baseUrl);
+  }
   const servicesPath = resolve(process.cwd(), SERVICES_SEED_PATH);
   const productsPath = resolve(process.cwd(), PRODUCTS_SEED_PATH);
+  const usersPath = resolve(process.cwd(), USERS_SEED_PATH);
 
+  const userSeed = skipDbUsers ? null : await discoverK6UsersCsv(usersPath);
   const bookingSeed = await discoverCollectiveBookingSeed(baseUrl);
   const productSeed = await discoverProductSeed(baseUrl);
 
@@ -510,10 +676,24 @@ async function main() {
   console.info(`PRICE_ID=${productSeed.priceId}`);
   console.info(`UPDATED_SERVICES_FILE=${servicesPath}`);
   console.info(`UPDATED_PRODUCTS_FILE=${productsPath}`);
+  if (userSeed) {
+    console.info(`K6_USER_ROWS=${userSeed.rows}`);
+    console.info(
+      `K6_COHORT_COUNTS=entitlement_collective:${userSeed.cohorts.entitlement_collective},no_entitlement:${userSeed.cohorts.no_entitlement},subscription_buyer:${userSeed.cohorts.subscription_buyer}`,
+    );
+    console.info(`UPDATED_USERS_FILE=${usersPath}`);
+  } else {
+    console.info("K6_USER_DISCOVERY=skipped (K6_DISCOVER_SKIP_DB_USERS=1)");
+  }
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`[performance-server-discover-fixtures] failed: ${message}`);
-  process.exit(1);
-});
+main()
+  .then(async () => {
+    await prisma.$disconnect();
+  })
+  .catch(async (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[performance-server-discover-fixtures] failed: ${message}`);
+    await prisma.$disconnect();
+    process.exit(1);
+  });
