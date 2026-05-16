@@ -19,7 +19,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "node scripts/start-e2e-server.mjs",
+    command: "node scripts/e2e-local-start-server.mjs",
     url: `${appUrl}/api/health`,
     reuseExistingServer: false,
     timeout: 120_000,

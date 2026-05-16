@@ -29,7 +29,7 @@ Checkout source-of-truth contract:
 
 ## Catalog Sync Script
 
-`scripts/sync-stripe-catalog.ts` (run via `npm run stripe:catalog:sync`) is the
+`scripts/catalog-server-sync-stripe.ts` (run via `npm run stripe:catalog:sync`) is the
 authoritative tool for populating `Price.stripePriceId` from Stripe.
 
 **How it works:**
@@ -71,7 +71,7 @@ permissions, and rollback/verification steps.
 
 ## Canonical References
 - `src/lib/payments/stripe.ts`
-- `scripts/sync-stripe-catalog.ts`
+- `scripts/catalog-server-sync-stripe.ts`
 - `src/app/api/checkout/session/route.ts`
 - `src/app/api/subscription/checkout/route.ts`
 - `src/app/api/subscription/portal/route.ts`

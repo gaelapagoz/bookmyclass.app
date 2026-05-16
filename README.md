@@ -236,7 +236,7 @@ GitHub compatibility (`test:staging:smoke` -> `test:uat:smoke`,
 `test:e2e:staging` -> `test:e2e:uat`).
 Run performance tests:
 ```bash
-BASE_URL=https://demo.bookmyclass.app bash scripts/local-uat-run-smoke.sh
+BASE_URL=https://demo.bookmyclass.app bash scripts/performance-server-run-smoke.sh
 ```
 Run security tests:
 ```bash

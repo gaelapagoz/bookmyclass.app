@@ -47,11 +47,11 @@ Deprecation note:
    - `k6/data/products.json`
 3. One-command UAT discovery/update for those seed IDs:
    ```bash
-   npm run k6:discover:uat
+   npm run k6:discover:server
    ```
    Optional override:
    ```bash
-   BASE_URL=https://uat.bookmyclass.app npm run k6:discover:uat
+   BASE_URL=https://uat.bookmyclass.app npm run k6:discover:server
    ```
 
 If `SESSION_ID` is not set, booking scenarios use the discovered seed pool from `k6/data/services.json`:
@@ -63,7 +63,7 @@ Seed safety:
 - Set `BOOKING_ALLOW_STALE_SEEDED_SESSION_IDS=1` only for explicit debugging drills.
 
 Run note:
-- Prefer `k6:discover:uat` so seed data includes a real multi-session pool.
+- Prefer `k6:discover:server` so seed data includes a real multi-session pool.
 - Set explicit `SESSION_ID` only when you intentionally want a single-session run.
 
 ## Traffic split
@@ -130,7 +130,7 @@ This repository includes a dedicated UAT-only seed command for load testing coho
 ### Command
 
 ```bash
-UAT_K6_SEED=1 npm run db:seed:uat:k6
+UAT_K6_SEED=1 npm run db:seed:server:k6
 ```
 
 ### What it creates

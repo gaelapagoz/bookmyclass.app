@@ -22,7 +22,7 @@ Each item has:
 - `risk`: `critical`, `high`, `medium`, or `low`
 - `description`
 
-Coverage tags are parsed from `test/e2e/**/*.spec.ts` by `scripts/e2e-coverage-report.ts`.
+Coverage tags are parsed from `test/e2e/**/*.spec.ts` by `scripts/e2e-report-coverage.ts`.
 
 ## Active Matrix Areas
 

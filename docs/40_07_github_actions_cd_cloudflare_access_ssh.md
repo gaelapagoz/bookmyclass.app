@@ -17,7 +17,7 @@ the prod/demo topology.
 - This file for CD architecture and configuration procedures
 - `.github/workflows/staging-release.yml`, `.github/workflows/prod-release.yml`, `.github/workflows/staging-ssh-connectivity.yml`, `.github/workflows/prod-ssh-connectivity.yml` for exact execution patterns
 - `docs/40_03_release_process.md` for deployment command ordering
-- `scripts/uat-deploy-tag.sh`, `scripts/prod-deploy-tag.sh` for remote execution details
+- `scripts/deploy-server-tag.sh`, `scripts/deploy-server-tag.sh` for remote execution details
 
 ---
 
@@ -1240,7 +1240,7 @@ Trigger: Git tag push (e.g., `git push origin v1.2.3`)
 
 7. **Execute remote deploy script**
    ```bash
-   bash scripts/uat-deploy-tag.sh "${{ github.ref_name }}"
+   bash scripts/deploy-server-tag.sh "${{ github.ref_name }}"
    ```
 
 8. **Post-deploy validations** (separate jobs)
@@ -1264,7 +1264,7 @@ Trigger: Manual via `workflow_dispatch` with tag input
 
 9. **Execute remote deploy script**
    ```bash
-   bash scripts/prod-deploy-tag.sh "${{ inputs.tag }}"
+   bash scripts/deploy-server-tag.sh "${{ inputs.tag }}"
    ```
 
 10. **Post-deploy validations**
@@ -1274,7 +1274,7 @@ Trigger: Manual via `workflow_dispatch` with tag input
 
 ### 11.3 Remote Deploy Script (executed on server via SSH)
 
-**File:** `scripts/uat-deploy-tag.sh` (for UAT) or `scripts/prod-deploy-tag.sh` (for PROD)
+**File:** `scripts/deploy-server-tag.sh` (for UAT) or `scripts/deploy-server-tag.sh` (for PROD)
 
 **Flow (inside remote script, running on the server):**
 
@@ -1680,7 +1680,7 @@ systemctl status cloudflared-tunnel
 
 **Mistake:** Deploy script had:
 ```bash
-bash scripts/uat-deploy-tag.sh 2>&1 | tee /tmp/deploy.log
+bash scripts/deploy-server-tag.sh 2>&1 | tee /tmp/deploy.log
 ```
 
 **Result:** If the script failed, the workflow didn't see the exit code because `tee`'s exit code (0) was returned instead of the script's exit code.
@@ -1692,7 +1692,7 @@ bash scripts/uat-deploy-tag.sh 2>&1 | tee /tmp/deploy.log
 ```bash
 set -euo pipefail
 # ... then later:
-bash scripts/uat-deploy-tag.sh 2>&1 | tee /tmp/deploy.log
+bash scripts/deploy-server-tag.sh 2>&1 | tee /tmp/deploy.log
 # Now if the script fails, the pipeline fails and workflow sees it
 ```
 
@@ -1702,7 +1702,7 @@ Or use `pipefail` explicitly:
 - name: Deploy
   run: |
     set -o pipefail
-    bash scripts/uat-deploy-tag.sh 2>&1 | tee /tmp/deploy.log
+    bash scripts/deploy-server-tag.sh 2>&1 | tee /tmp/deploy.log
 ```
 
 **Pattern:** Always use `set -euo pipefail` at the start of shell scripts and workflows that use pipes.
@@ -2088,8 +2088,8 @@ sudo -u deploy env PM2_HOME=/home/deploy/.pm2 pm2 status
 - `.github/workflows/prod-release.yml` (PROD manual release workflow)
 - `.github/workflows/staging-ssh-connectivity.yml` (UAT SSH test workflow)
 - `.github/workflows/prod-ssh-connectivity.yml` (PROD SSH test workflow)
-- `scripts/uat-deploy-tag.sh` (UAT remote deployment script)
-- `scripts/prod-deploy-tag.sh` (PROD remote deployment script)
+- `scripts/deploy-server-tag.sh` (UAT remote deployment script)
+- `scripts/deploy-server-tag.sh` (PROD remote deployment script)
 - `docs/00_02_deployment_baseline.md` (canonical runtime facts)
 - `docs/40_03_release_process.md` (release and deployment procedures)
 - `docs/50_02_bookmyclass_server_setup_updated.md` (server bootstrap guide)

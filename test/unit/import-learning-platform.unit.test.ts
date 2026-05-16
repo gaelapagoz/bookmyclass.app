@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parsePayload } from "../../scripts/import-learning-platform";
+import { parsePayload } from "../../scripts/learning-server-import-platform";
 
 describe("learning importer payload parsing", () => {
   it("parses legacy JSON shape into normalized program/course payload", () => {

@@ -200,7 +200,7 @@ jobs:
           export CLOUDFLARE_ACCESS_CLIENT_ID="${CLOUDFLARE_ACCESS_CLIENT_ID}"
           export CLOUDFLARE_ACCESS_CLIENT_SECRET="${CLOUDFLARE_ACCESS_CLIENT_SECRET}"
           mkdir -p "${EVIDENCE_ROOT}"
-          bash scripts/uat-deploy-tag.sh "${TARGET_TAG}" 2>&1 | tee "${EVIDENCE_ROOT}/deploy-command.log"
+          TARGET_ENV=uat SSH_HOST="${REMOTE_HOST}" RELEASE_TAG="${TARGET_TAG}" bash scripts/deploy-server-tag.sh 2>&1 | tee "${EVIDENCE_ROOT}/deploy-command.log"
 
       - name: Collect remote staging deploy logs on failure
         if: failure()
@@ -342,7 +342,7 @@ jobs:
       - name: Run k6 smoke against deployed staging
         run: |
           mkdir -p artifacts/staging-k6
-          bash scripts/local-staging-run-smoke.sh 2>&1 | tee artifacts/staging-k6/k6-smoke.log
+          bash scripts/performance-server-run-smoke.sh 2>&1 | tee artifacts/staging-k6/k6-smoke.log
 
       - name: Upload staging k6 artifacts
         if: always()
@@ -370,13 +370,13 @@ jobs:
 
       - name: Ensure ZAP scripts are executable
         run: |
-          chmod +x scripts/local-staging-security-baseline.sh scripts/local-uat-security-baseline.sh scripts/local-uat-security-collect-metrics.sh
+          chmod +x scripts/security-server-run-baseline.sh scripts/security-server-collect-metrics.sh
 
       - name: Run OWASP ZAP baseline against deployed staging
         run: |
           set -euo pipefail
           mkdir -p artifacts/staging-zap
-          bash scripts/local-staging-security-baseline.sh 2>&1 | tee artifacts/staging-zap/zap-baseline.log
+          bash scripts/security-server-run-baseline.sh 2>&1 | tee artifacts/staging-zap/zap-baseline.log
 
       - name: Upload staging ZAP artifacts
         if: always()

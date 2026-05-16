@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { verifyMediaRuntime } from "../../scripts/verify-media-runtime";
+import { verifyMediaRuntime } from "../../scripts/media-server-verify-runtime";
 
 describe("verifyMediaRuntime", () => {
   const tempDirs: string[] = [];

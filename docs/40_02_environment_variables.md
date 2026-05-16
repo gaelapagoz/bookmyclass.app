@@ -87,7 +87,7 @@ In production, all 12 `STRIPE_PRICE_ID_*` values are required and the seed fails
 
 ## Stripe Catalog Sync Script (`stripe:catalog:sync`)
 
-`scripts/sync-stripe-catalog.ts` reads the local DB catalog and creates or reuses
+`scripts/catalog-server-sync-stripe.ts` reads the local DB catalog and creates or reuses
 Stripe Products/Prices. It requires only `DATABASE_URL` and `STRIPE_SECRET_KEY` at
 run time — no `STRIPE_PRICE_ID_*` env vars needed.
 
@@ -147,7 +147,7 @@ The historical/modeling flags `STORE_ENABLED`, `GIFT_CARD_PURCHASE_ENABLED`,
 `GIFT_CARD_REDEMPTION_ENABLED`, and `GIFT_CARD_MAINTENANCE_ENABLED` are not
 active runtime configuration and must not be treated as production requirements.
 
-`scripts/verify-e2e-config.ts` validates the E2E secret and required Store
+`scripts/e2e-verify-config.ts` validates the E2E secret and required Store
 Stripe price IDs before Playwright starts. It does not validate Store rollout
 feature flags.
 

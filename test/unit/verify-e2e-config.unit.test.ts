@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { verifyE2EConfig } from "../../scripts/verify-e2e-config";
+import { verifyE2EConfig } from "../../scripts/e2e-verify-config";
 
 const completeEnv = {
   E2E_TEST_SECRET: "e2e-secret",

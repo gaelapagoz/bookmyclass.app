@@ -17,11 +17,11 @@ requires security evidence.
 ## Baseline execution
 
 - [ ] Run security baseline only against the operator-approved validation URL
-- [ ] Verify run artifacts are created under `/tmp/local-uat-security-<timestamp>-baseline`
+- [ ] Verify run artifacts are created under `/tmp/server-security-<timestamp>-baseline`
 - [ ] If seed data changed (for example learning thumbnails), run reset/reseed before baseline so DB content matches the validated tag
 - [ ] Verify artifacts include HTML report, JSON report, stdout log, exit code, run metadata
 
-- [ ] Run `bash scripts/security-check-headers.sh` and verify root + robots/static coverage
+- [ ] Run `bash scripts/security-server-check-headers.sh` and verify root + robots/static coverage
 ## Normalization and triage
 
 - [ ] Verify `normalized-summary.md` and `normalized-summary.json` exist

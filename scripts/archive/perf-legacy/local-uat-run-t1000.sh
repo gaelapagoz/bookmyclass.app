@@ -7,7 +7,7 @@ K6_SCENARIO_SET="${K6_SCENARIO_SET:-full_smoke}"
 EVIDENCE_ROOT="${EVIDENCE_ROOT:-/tmp}"
 
 timestamp_utc="$(date -u +%Y%m%dT%H%M%SZ)"
-run_dir="${EVIDENCE_ROOT%/}/local-uat-perf-${timestamp_utc}-${STAGE_PROFILE}"
+run_dir="${EVIDENCE_ROOT%/}/server-perf-${timestamp_utc}-${STAGE_PROFILE}"
 mkdir -p "$run_dir"
 
 if ! command -v k6 >/dev/null 2>&1; then

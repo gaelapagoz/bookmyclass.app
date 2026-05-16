@@ -23,7 +23,7 @@ import {
   syncOnePrice,
   validateStorePrice,
   verifyPriceMatch,
-} from "../../scripts/sync-stripe-catalog";
+} from "../../scripts/catalog-server-sync-stripe";
 import { BillingInterval, PriceType, ProductType, StripeSyncStatus } from "@prisma/client";
 
 // ── Test fixtures ──────────────────────────────────────────────────────────────

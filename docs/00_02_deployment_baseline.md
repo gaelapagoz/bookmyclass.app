@@ -53,7 +53,7 @@ Production root cron should include these managed operational jobs:
 - DB backup runs daily at 02:30 UTC.
 - Local app healthcheck runs every 5 minutes.
 - The previous daily `0 3 * * *` maintenance cron is insufficient for booking/cart cleanup and should be replaced.
-- Install and verify with `scripts/prod-install-cron.sh` and `scripts/prod-verify-cron.sh`; both scripts default to `/var/www/bookmyclass` and `https://bookmyclass.app` while allowing `APP_DIR` and `BASE_URL` overrides.
+- Install and verify with `scripts/cron-server-install-services.sh` and `scripts/cron-server-verify-services.sh`; both scripts default to `/var/www/bookmyclass` and `https://bookmyclass.app` while allowing `APP_DIR` and `BASE_URL` overrides.
 
 ## Deployment Flow (Canonical)
 

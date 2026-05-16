@@ -90,7 +90,7 @@ jobs:
       - name: Deploy exact tag to production over SSH
         run: |
           mkdir -p artifacts/prod-deploy
-          bash scripts/prod-deploy-tag.sh "${TARGET_TAG}" 2>&1 | tee artifacts/prod-deploy/deploy-command.log
+          TARGET_ENV=production SSH_HOST="${REMOTE_HOST}" RELEASE_TAG="${TARGET_TAG}" CONFIRM_TARGET=production bash scripts/deploy-server-tag.sh 2>&1 | tee artifacts/prod-deploy/deploy-command.log
 
       - name: Upload production deploy artifacts on failure
         if: failure()

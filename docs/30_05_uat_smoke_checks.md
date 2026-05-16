@@ -29,7 +29,7 @@ The smoke script supports two topologies:
   - `https://demo.bookmyclass.app/api/health` returns `200` with `{"ok":true...}`
 
 Script location:
-- `scripts/uat-smoke-check.ts`
+- `scripts/deploy-server-smoke-check.ts`
 
 NPM command:
 - `npm run test:uat:smoke`

@@ -16,9 +16,9 @@ Purpose: define the local, repo-owned UAT security baseline flow using Dockerize
 
 ## 1) Scripts
 
-- Baseline runner: `scripts/local-uat-security-baseline.sh`
-- Summary normalizer: `scripts/local-uat-security-collect-metrics.sh`
-- Header forensics runner: `scripts/local-uat-header-forensics.sh`
+- Baseline runner: `scripts/security-server-run-baseline.sh`
+- Summary normalizer: `scripts/security-server-collect-metrics.sh`
+- Header forensics runner: `scripts/security-server-header-forensics.sh`
 
 ## 2) Local baseline run
 
@@ -26,7 +26,7 @@ Run this UAT example only when the operator approves security validation for the
 target tag.
 
 ```bash
-BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-security-baseline.sh
+BASE_URL=https://uat.bookmyclass.app bash scripts/security-server-run-baseline.sh
 ```
 
 Behavior:
@@ -34,7 +34,7 @@ Behavior:
 - refuses non-UAT-like targets
 - refuses to run if current commit is not exactly on a tag
 - runs Dockerized ZAP stable image
-- stores timestamped artifacts under `/tmp/local-uat-security-<timestamp>-baseline`
+- stores timestamped artifacts under `/tmp/server-security-<timestamp>-baseline`
 - runs normalization automatically after scan
 
 Default image:
@@ -61,12 +61,12 @@ If detection fails or custom pathing is needed, set `HOST_WORK_DIR` explicitly.
 Example:
 
 ```bash
-HOST_WORK_DIR="$(pwd -W)" BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-security-baseline.sh
+HOST_WORK_DIR="$(pwd -W)" BASE_URL=https://uat.bookmyclass.app bash scripts/security-server-run-baseline.sh
 ```
 
 ## 4) Captured artifacts per run
 
-Inside each run directory (`/tmp/local-uat-security-<timestamp>-baseline`):
+Inside each run directory (`/tmp/server-security-<timestamp>-baseline`):
 
 - `zap-baseline-report.html`
 - `zap-baseline-report.json`
@@ -110,7 +110,7 @@ Initial rules:
 If needed, run classifier separately against a run directory:
 
 ```bash
-bash scripts/local-uat-security-collect-metrics.sh /tmp/local-uat-security-<timestamp>-baseline
+bash scripts/security-server-collect-metrics.sh /tmp/server-security-<timestamp>-baseline
 ```
 
 If run dir is omitted, latest matching run folder is used.
@@ -136,16 +136,16 @@ operator-run manual release validation evidence.
 
 ```bash
 # 1) deploy tag to UAT
-TARGET_TAG=vX.Y.Z bash scripts/uat-deploy-tag.sh
+TARGET_TAG=vX.Y.Z bash scripts/deploy-server-tag.sh
 
 # 2) verify tag on UAT
-EXPECTED_TAG=vX.Y.Z bash scripts/uat-verify-tag.sh
+EXPECTED_TAG=vX.Y.Z bash scripts/deploy-server-verify-tag.sh
 
 # 3) local security baseline against UAT
-BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-security-baseline.sh
+BASE_URL=https://uat.bookmyclass.app bash scripts/security-server-run-baseline.sh
 
 # 4) explicit re-run of normalizer (optional)
-bash scripts/local-uat-security-collect-metrics.sh /tmp/local-uat-security-<timestamp>-baseline
+bash scripts/security-server-collect-metrics.sh /tmp/server-security-<timestamp>-baseline
 ```
 
 ## 8.1) Seed data refresh requirement for learning image migrations
@@ -155,7 +155,7 @@ bash scripts/local-uat-security-collect-metrics.sh /tmp/local-uat-security-<time
 - For UAT validation after seed-content changes, run the destructive reset/reseed flow from a tag before security scan:
 
 ```bash
-CONFIRM_UAT_DB_RESET=YES TARGET_TAG=vX.Y.Z BASE_URL=https://uat.bookmyclass.app bash scripts/uat-reset-and-verify.sh
+CONFIRM_UAT_DB_RESET=YES TARGET_TAG=vX.Y.Z BASE_URL=https://uat.bookmyclass.app bash scripts/db-server-reset-and-verify.sh
 ```
 
 - After reseed, verify learning thumbnails and program images in DB use canonical uploaded media paths (`/uploads/learning/*`) before running ZAP baseline.
@@ -179,13 +179,13 @@ Public-only check:
 Only run this if UAT was operator-approved for the release.
 
 ```bash
-BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-header-forensics.sh
+BASE_URL=https://uat.bookmyclass.app bash scripts/security-server-header-forensics.sh
 ```
 
 Public + origin-direct compare (when origin IP is known):
 
 ```bash
-BASE_URL=https://uat.bookmyclass.app ORIGIN_IP=<origin_ip> bash scripts/local-uat-header-forensics.sh
+BASE_URL=https://uat.bookmyclass.app ORIGIN_IP=<origin_ip> bash scripts/security-server-header-forensics.sh
 ```
 
 Optional flags:
@@ -222,7 +222,7 @@ Do not use this section for CSP redesign and do not force `Cross-Origin-Embedder
 Only run this if UAT was operator-approved for the release.
 
 ```bash
-BASE_URL=https://uat.bookmyclass.app ORIGIN_IP=<origin_ip> bash scripts/local-uat-header-forensics.sh
+BASE_URL=https://uat.bookmyclass.app ORIGIN_IP=<origin_ip> bash scripts/security-server-header-forensics.sh
 ```
 
 Proceed only if origin shows expected low-level headers and public misses them on the path classes above.
@@ -270,8 +270,8 @@ nginx -t && systemctl reload nginx
 Only run this if UAT was operator-approved for the release.
 
 ```bash
-BASE_URL=https://uat.bookmyclass.app bash scripts/security-check-headers.sh
-BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-header-forensics.sh
+BASE_URL=https://uat.bookmyclass.app bash scripts/security-server-check-headers.sh
+BASE_URL=https://uat.bookmyclass.app bash scripts/security-server-header-forensics.sh
 ```
 
 Expected after remediation:

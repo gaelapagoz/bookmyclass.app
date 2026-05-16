@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { validate } from "../../scripts/verify-dashboard-trend-seed-db";
+import { validate } from "../../scripts/dashboard-server-verify-trend-seed-db";
 
 describe("verify-dashboard-trend-seed-db rollover", () => {
   it("uses the seeded reference day instead of wall-clock today", () => {

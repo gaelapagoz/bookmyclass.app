@@ -418,7 +418,7 @@ After deploying with Sentry env vars configured, verify all core paths:
 Run this from the repo root before each production release:
 
 ```bash
-npm run ops:verify-production-readiness -- \
+npm run ops:verify-readiness -- \
   --confirm-kuma \
   --confirm-backup-heartbeat \
   --confirm-local-healthcheck \

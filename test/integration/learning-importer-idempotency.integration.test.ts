@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
-import { runLearningImport } from "../../scripts/import-learning-platform";
+import { runLearningImport } from "../../scripts/learning-server-import-platform";
 
 async function runImportWithPayload(payload: unknown) {
   const filePath = join(

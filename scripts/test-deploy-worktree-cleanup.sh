@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+#
+# Test deploy worktree cleanup
+#
+# Purpose:
+# - Operational script for this repository's server/local workflows.
+#
+# Safety:
+# - Mutating operation. Review target variables before running.
+#
+# Variables:
+# - TARGET_ENV (optional), BASE_URL (default https://demo.bookmyclass.app), APP_DIR (default /var/www/bookmyclass), APP_NAME (default bookmyclass-app).
+#
+# Usage:
+#   TARGET_ENV=staging BASE_URL=https://demo.bookmyclass.app bash scripts/test-deploy-worktree-cleanup.sh
+#
 set -euo pipefail
 
 tmp_dir="$(mktemp -d)"

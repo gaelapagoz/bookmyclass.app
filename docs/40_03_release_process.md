@@ -172,7 +172,7 @@ Notes:
 - Do not skip migrate deploy
 - Do not deploy from main
 - Homesite HTML and screenshot assets are published automatically before the app
-  build by `scripts/publish-homesite-assets.sh`.
+  build by `scripts/homesite-server-publish-assets.sh`.
 - The default homesite document root is `/var/www/bookmyclass-homesite`.
 - The deploy script creates `/var/www/bookmyclass-homesite/images/homesite`
   automatically and copies committed homesite images from
@@ -361,7 +361,7 @@ flags â€” Stripe catalog sync and live price IDs are the gate.
 
 Before deploying to production, run:
 
-npm run ops:verify-production-readiness -- \
+npm run ops:verify-readiness -- \
   --confirm-kuma \
   --confirm-backup-heartbeat \
   --confirm-local-healthcheck \
@@ -474,7 +474,7 @@ Defined in:
 - .github/workflows/ci.yml
 - .github/workflows/staging-release.yml
 - .github/workflows/prod-release.yml
-- scripts/verify-production-readiness.sh
+- scripts/ops-server-verify-readiness.sh
 - docs/50_02_bookmyclass_server_setup_updated.md
 - docs/50_13_uat_security_operator_runbook.md
 - docs/30_03_security_testing_checklist.md

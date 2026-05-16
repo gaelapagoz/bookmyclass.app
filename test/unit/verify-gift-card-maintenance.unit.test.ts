@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { verifyGiftCardMaintenance } from "../../scripts/verify-gift-card-maintenance";
+import { verifyGiftCardMaintenance } from "../../scripts/giftcard-server-verify-maintenance";
 
 function response(status: number, payload: unknown): Response {
   return new Response(JSON.stringify(payload), {

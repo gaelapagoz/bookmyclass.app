@@ -358,7 +358,7 @@ Evidence label legend used in this file:
   - Evidence status: Verified live + confirmed from deployment/config artifacts.
 - Monitoring/backup ops model (documented):
   - Uptime Kuma + Healthchecks + Netdata + local health scripts + backup scripts/heartbeat.
-  - Evidence status: Confirmed from deployment/config artifacts; Operator-stated / external to repo for current live-state (`docs/50_06_monitoring_alerting_setup.md`, `docs/50_07_monitoring_netdata_setup.md`, `docs/50_09_monitoring_system_guide.md`, `docs/50_04_db_backup_local_setup.md`, `docs/50_05_backblaze_b2_backup_setup.md`, `scripts/verify-production-readiness.sh`).
+  - Evidence status: Confirmed from deployment/config artifacts; Operator-stated / external to repo for current live-state (`docs/50_06_monitoring_alerting_setup.md`, `docs/50_07_monitoring_netdata_setup.md`, `docs/50_09_monitoring_system_guide.md`, `docs/50_04_db_backup_local_setup.md`, `docs/50_05_backblaze_b2_backup_setup.md`, `scripts/ops-server-verify-readiness.sh`).
 
 ### 11.3 Not verifiable from repo
 - Which documented production setup steps are currently active on live hosts (without live host access).
@@ -452,7 +452,7 @@ Evidence label legend used in this file:
 - Migration/release handling:
   - CI migration status check; integration tests apply test migrations in setup.
   - Release-readiness helper script exists and requires explicit operator confirmations + health check.
-  - Evidence status: Confirmed from repo (`.github/workflows/ci.yml`, `test/integration/helpers/setup-env.ts`, `scripts/verify-production-readiness.sh`).
+  - Evidence status: Confirmed from repo (`.github/workflows/ci.yml`, `test/integration/helpers/setup-env.ts`, `scripts/ops-server-verify-readiness.sh`).
 - Absent/unclear:
   - No automated production deployment workflow in repository.
   - Evidence status: Missing / not verifiable from repository.
@@ -602,13 +602,13 @@ validation and must not be treated as an automatic release gate.
   - `npm run db:verify:dashboard-seed`
   - `npm run db:verify:dashboard-trend-seed`
 - Operations:
-  - `npm run ops:verify-production-readiness -- --confirm-kuma --confirm-backup-heartbeat --confirm-local-healthcheck --confirm-latest-backup --confirm-restore-proof`
+  - `npm run ops:verify-readiness -- --confirm-kuma --confirm-backup-heartbeat --confirm-local-healthcheck --confirm-latest-backup --confirm-restore-proof`
 - Docker:
   - `docker compose up -d postgres`
 - Deploy commands/scripts in repo:
   - Tag deploy scripts exist for UAT and production:
-    `scripts/uat-deploy-tag.sh`, `scripts/prod-deploy-tag.sh`, and
-    `scripts/publish-homesite-assets.sh`.
+    `scripts/deploy-server-tag.sh`, `scripts/deploy-server-tag.sh`, and
+    `scripts/homesite-server-publish-assets.sh`.
   - Homesite HTML is sourced from `homesite/`; homesite screenshot assets are
     sourced from `public/images/homesite/` and deployed to the nginx homesite
     document root.
@@ -654,7 +654,7 @@ validation and must not be treated as an automatic release gate.
   - `docs/50_09_monitoring_system_guide.md`
   - `docs/50_10_remote_access_guide.md`
   - `docs/50_11_db_setup_guide.md`
-  - `scripts/verify-production-readiness.sh`
+  - `scripts/ops-server-verify-readiness.sh`
 
 ## Appendix D: Missing operator-supplied facts
 - Confirm Cloudflare dashboard/API ownership path for remote-managed tunnel ingress updates.

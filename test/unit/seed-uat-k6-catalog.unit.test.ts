@@ -5,9 +5,9 @@ import {
   parseLookupKeyCandidates,
   selectSingleCatalogPrice,
   selectSingleCollectiveRule,
-} from "../../scripts/seed-uat-k6-catalog";
+} from "../../scripts/performance-server-seed-catalog-fixtures";
 
-describe("seed-uat-k6 catalog selection", () => {
+describe("performance-server seed catalog selection", () => {
   it("uses deterministic fallback lookup keys when env is empty", () => {
     expect(parseLookupKeyCandidates(undefined, DEFAULT_CREDIT_LOOKUP_KEYS)).toEqual(DEFAULT_CREDIT_LOOKUP_KEYS);
   });
