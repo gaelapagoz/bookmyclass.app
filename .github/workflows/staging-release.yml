@@ -1,5 +1,5 @@
 name: Staging Release
-run-name: "staging-release • ${{ github.ref_name }}"
+run-name: "staging-release - ${{ github.ref_name }}"
 
 on:
   push:
@@ -10,8 +10,36 @@ jobs:
   tag_sanity:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: studio_tag_sanity
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d studio_tag_sanity"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
     env:
       TARGET_TAG: ${{ github.ref_name }}
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/studio_tag_sanity
+      AUTH_SECRET: ci-tag-sanity-auth-secret
+      NEXTAUTH_SECRET: ci-tag-sanity-nextauth-secret
+      APP_URL: http://localhost:3000
+      AUTH_URL: http://localhost:3000
+      NEXTAUTH_URL: http://localhost:3000
+      STRIPE_SECRET_KEY: sk_test_ci
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci
+      STRIPE_WEBHOOK_SECRET: whsec_ci
+      RESEND_API_KEY: ci-resend-key
+      EMAIL_FROM: CI <ci@example.test>
+      CONTACT_FORM_TO_EMAIL: ci-contact@example.test
+      MARKETING_TRACKING_SECRET: ci-marketing-tracking-secret
+      CRON_SECRET: ci-cron-secret
       STAGING_BASE_URL: ${{ secrets.UAT_BASE_URL }}
       STAGING_HOMESITE_BASE_URL: ${{ secrets.UAT_HOMESITE_BASE_URL }}
       STAGING_SSH_HOST: ${{ secrets.UAT_SSH_HOST }}
