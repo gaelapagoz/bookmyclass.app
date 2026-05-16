@@ -231,7 +231,12 @@ jobs:
           export CLOUDFLARE_ACCESS_CLIENT_ID="${CLOUDFLARE_ACCESS_CLIENT_ID}"
           export CLOUDFLARE_ACCESS_CLIENT_SECRET="${CLOUDFLARE_ACCESS_CLIENT_SECRET}"
           mkdir -p "${EVIDENCE_ROOT}"
-          TARGET_ENV=uat SSH_HOST="${REMOTE_HOST}" RELEASE_TAG="${TARGET_TAG}" bash scripts/deploy-server-tag.sh 2>&1 | tee "${EVIDENCE_ROOT}/deploy-command.log"
+          echo "target_tag=${TARGET_TAG}"
+          echo "target_env=uat"
+          echo "ssh_target_alias=deploy-target"
+          echo "app_dir=${APP_DIR:-<default from script>}"
+          echo "app_name=${APP_NAME:-<default from script>}"
+          TARGET_ENV=uat SSH_HOST="deploy-target" RELEASE_TAG="${TARGET_TAG}" bash scripts/deploy-server-tag.sh 2>&1 | tee "${EVIDENCE_ROOT}/deploy-command.log"
 
       - name: Collect remote staging deploy logs on failure
         if: failure()
