@@ -10,12 +10,12 @@ point to the same production/demo server values. The UAT workflow must make that
 visible with a warning, but it must not fail solely because the UAT alias targets
 the prod/demo topology.
 
-**Scope:** GitHub-hosted runners → Cloudflare Access SSH → private servers over SSH with strict host key checking, PM2 deployments, and post-deploy validation.
+**Scope:** GitHub-hosted runners â†’ Cloudflare Access SSH â†’ private servers over SSH with strict host key checking, PM2 deployments, and post-deploy validation.
 
 **Canonical Source Priority:**
 - `docs/00_02_deployment_baseline.md` for canonical runtime and release facts
 - This file for CD architecture and configuration procedures
-- `.github/workflows/uat-release.yml`, `.github/workflows/prod-release.yml`, `.github/workflows/uat-ssh-connectivity.yml`, `.github/workflows/prod-ssh-connectivity.yml` for exact execution patterns
+- `.github/workflows/staging-release.yml`, `.github/workflows/prod-release.yml`, `.github/workflows/staging-ssh-connectivity.yml`, `.github/workflows/prod-ssh-connectivity.yml` for exact execution patterns
 - `docs/40_03_release_process.md` for deployment command ordering
 - `scripts/uat-deploy-tag.sh`, `scripts/prod-deploy-tag.sh` for remote execution details
 
@@ -59,77 +59,76 @@ The key insight: **GitHub runners run in public AWS/Azure environments and canno
 ## 3. High-Level Architecture of the CD Path
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│ Developer                                                           │
-│  Create tag v1.2.3 → push origin                                    │
-└────────────────────────────────┬────────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│ GitHub                                                              │
-│  Detect tag → Trigger workflow `uat-release`                       │
-│   Job 1: regression (unit/integration tests)                      │
-│   Job 2: e2e (Playwright against test DB)                        │
-│   Job 3: deploy_uat (SSH via Cloudflare to UAT server)           │
-│   Job 4: smoke_uat (public HTTP smoke tests)                      │
-│   Job 5: e2e_uat (deployed Playwright against live UAT)          │
-│   Job 6: k6_smoke_uat (load test smoke)                         │
-│   Job 7: zap_uat (security baseline)                             │
-└────────────────────────────────┬────────────────────────────────────┘
-                                 │
-                                 ▼
-      ┌──────────────────────────────────────────────────────┐
-      │ Cloudflare Tunnel (SSH gateway)                      │
-      │  ssh-uat.bookmyclass.app → private UAT server       │
-      │  (cloudflared connector running on UAT server)      │
-      └──────────────────────────────┬──────────────────────┘
-                                 │
-                                 ▼
-      ┌──────────────────────────────────────────────────────┐
-      │ UAT Server                                           │
-      │  Execute remote shell script from GitHub workflow    │
-      │  - git checkout vX.Y.Z                              │
-      │  - npm ci && build                                  │
-      │  - prisma migrate deploy                           │
-      │  - pm2 restart bookmyclass-app-uat                 │
-      │  - Verify with health endpoint                      │
-      └──────────────────────────────┬──────────────────────┘
-                                 │
-                                 ▼
-      ┌──────────────────────────────────────────────────────┐
-      │ GitHub Actions (continued)                          │
-      │  If UAT tests pass:                                 │
-      │   → Store proof of successful tag in repo           │
-      │   → Ready for manual production promotion           │
-      └──────────────────────────────┬──────────────────────┘
-                                 │
-                                 ▼
-      ┌──────────────────────────────────────────────────────┐
-      │ GitHub (production promotion - manual)              │
-      │  Workflow: `prod-release` (workflow_dispatch)       │
-      │  Input: exact tag to promote (e.g., v1.2.3)        │
-      │  Environment protection: GitHub approval            │
-      │  Job 1: deploy_prod (SSH via Cloudflare to PROD)   │
-      │  Job 2: smoke_prod (public HTTP smoke tests)        │
-      └──────────────────────────────┬──────────────────────┘
-                                 │
-                                 ▼
-      ┌──────────────────────────────────────────────────────┐
-      │ Cloudflare Tunnel (PROD SSH gateway)                │
-      │  ssh-prod.bookmyclass.app → private PROD server     │
-      │  (cloudflared connector running on PROD server)     │
-      └──────────────────────────────┬──────────────────────┘
-                                 │
-                                 ▼
-      ┌──────────────────────────────────────────────────────┐
-      │ Production Server                                   │
-      │  Execute remote shell script from GitHub workflow    │
-      │  - git checkout vX.Y.Z                              │
-      │  - npm ci && build                                  │
-      │  - prisma migrate deploy                           │
-      │  - pm2 restart bookmyclass-app                      │
-      │  - Verify with health endpoint                      │
-      └──────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ Developer                                                           â”‚
+â”‚  Create tag v1.2.3 â†’ push origin                                    â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                 â”‚
+                                 â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ GitHub                                                              â”‚
+â”‚  Detect tag â†’ Trigger workflow `staging-release`                       â”‚
+â”‚   Job 1: tag_sanity (tag/build/migration/secret-target checks)    â”‚
+â”‚   Job 2: deploy_staging (SSH via Cloudflare to staging target)     â”‚
+â”‚   Job 3: smoke_staging (public HTTP smoke tests)                    â”‚
+â”‚   Job 4: e2e_staging (deployed Playwright against staging)          â”‚
+â”‚   Job 5: k6_smoke_staging (load test smoke)                         â”‚
+â”‚   Job 6: zap_staging (security baseline)                            â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                 â”‚
+                                 â–¼
+      â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+      â”‚ Cloudflare Tunnel (SSH gateway)                      â”‚
+      â”‚  ssh-uat.bookmyclass.app â†’ private UAT server       â”‚
+      â”‚  (cloudflared connector running on UAT server)      â”‚
+      â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                 â”‚
+                                 â–¼
+      â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+      â”‚ UAT Server                                           â”‚
+      â”‚  Execute remote shell script from GitHub workflow    â”‚
+      â”‚  - git checkout vX.Y.Z                              â”‚
+      â”‚  - npm ci && build                                  â”‚
+      â”‚  - prisma migrate deploy                           â”‚
+      â”‚  - pm2 restart bookmyclass-app-uat                 â”‚
+      â”‚  - Verify with health endpoint                      â”‚
+      â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                 â”‚
+                                 â–¼
+      â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+      â”‚ GitHub Actions (continued)                          â”‚
+      â”‚  If UAT tests pass:                                 â”‚
+      â”‚   â†’ Store proof of successful tag in repo           â”‚
+      â”‚   â†’ Ready for manual production promotion           â”‚
+      â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                 â”‚
+                                 â–¼
+      â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+      â”‚ GitHub (production promotion - manual)              â”‚
+      â”‚  Workflow: `prod-release` (workflow_dispatch)       â”‚
+      â”‚  Input: exact tag to promote (e.g., v1.2.3)        â”‚
+      â”‚  Environment protection: GitHub approval            â”‚
+      â”‚  Job 1: deploy_prod (SSH via Cloudflare to PROD)   â”‚
+      â”‚  Job 2: smoke_prod (public HTTP smoke tests)        â”‚
+      â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                 â”‚
+                                 â–¼
+      â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+      â”‚ Cloudflare Tunnel (PROD SSH gateway)                â”‚
+      â”‚  ssh-prod.bookmyclass.app â†’ private PROD server     â”‚
+      â”‚  (cloudflared connector running on PROD server)     â”‚
+      â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                 â”‚
+                                 â–¼
+      â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+      â”‚ Production Server                                   â”‚
+      â”‚  Execute remote shell script from GitHub workflow    â”‚
+      â”‚  - git checkout vX.Y.Z                              â”‚
+      â”‚  - npm ci && build                                  â”‚
+      â”‚  - prisma migrate deploy                           â”‚
+      â”‚  - pm2 restart bookmyclass-app                      â”‚
+      â”‚  - Verify with health endpoint                      â”‚
+      â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ---
@@ -138,7 +137,7 @@ The key insight: **GitHub runners run in public AWS/Azure environments and canno
 
 ### UAT Deployment
 - **Trigger:** Tag push (e.g., `git tag -a v1.2.3 && git push origin v1.2.3`)
-- **Workflow:** `.github/workflows/uat-release.yml`
+- **Workflow:** `.github/workflows/staging-release.yml`
 - **Automatic:** No; the operator runs UAT validation manually when needed
 - **Gate:** Operator-approved manual validation
 - **Environment:** `uat` (GitHub Environment)
@@ -260,7 +259,7 @@ Cloudflare Access gates SSH to authorized identities only.
 
 #### Create Access Application
 
-1. Go to **Access** → **Applications**
+1. Go to **Access** â†’ **Applications**
 2. Create new application:
    - Name: `BookMyClass UAT SSH` (or PROD)
    - Application type: SSH
@@ -275,12 +274,12 @@ Cloudflare Access gates SSH to authorized identities only.
 #### Create Access Service Token
 
 **Key Difference:** Cloudflare has two token types:
-- **API Token** (generic, for Cloudflare API operations) — do NOT use for SSH
-- **Service Token** (specific to Access applications, for automated/programmatic access) — use THIS
+- **API Token** (generic, for Cloudflare API operations) â€” do NOT use for SSH
+- **Service Token** (specific to Access applications, for automated/programmatic access) â€” use THIS
 
 Steps to create Service Token:
 
-1. Go to **Access** → **Service Tokens**
+1. Go to **Access** â†’ **Service Tokens**
 2. Create new token:
    - Name: `github-actions-uat-ssh` (or PROD)
    - Scope: Select the Access application created above
@@ -292,14 +291,14 @@ Steps to create Service Token:
    - **Save both immediately; the secret is not shown again**
 
 Store these securely:
-- `CLOUDFLARE_ACCESS_CLIENT_ID` → GitHub secret (UAT or PROD)
-- `CLOUDFLARE_ACCESS_CLIENT_SECRET` → GitHub secret (UAT or PROD)
+- `CLOUDFLARE_ACCESS_CLIENT_ID` â†’ GitHub secret (UAT or PROD)
+- `CLOUDFLARE_ACCESS_CLIENT_SECRET` â†’ GitHub secret (UAT or PROD)
 
 ---
 
 ### 5.4 Access Policy
 
-In the Access Application → **Policies** tab:
+In the Access Application â†’ **Policies** tab:
 
 1. Create a policy:
    - Action: **Allow**
@@ -375,7 +374,7 @@ cd /var/www/bookmyclass
 # Generate SSH key on server (if not present):
 ssh-keygen -t ed25519 -f ~/.ssh/github -C "deploy@server"
 
-# Add to GitHub repository deployment keys (Settings → Deploy Keys)
+# Add to GitHub repository deployment keys (Settings â†’ Deploy Keys)
 # or to a bot account with repo access
 
 # Test access:
@@ -391,11 +390,11 @@ git remote -v
 ```
 
 **Critical Issue (Troubleshooting History):**
-- GitHub Actions workflow connects to the server over Cloudflare SSH ✓
-- But the server itself must also connect to GitHub to fetch tags ✓
+- GitHub Actions workflow connects to the server over Cloudflare SSH âœ“
+- But the server itself must also connect to GitHub to fetch tags âœ“
 - These are **separate** connection paths
 - If the server cannot reach GitHub, the deploy script will fail at `git fetch --all --tags`
-- Verify server → GitHub connectivity independently
+- Verify server â†’ GitHub connectivity independently
 
 ---
 
@@ -793,11 +792,11 @@ Should succeed and show:
 ```
 uat-server
 root
-┌─────────────────────┬──────┬──────────┬──────────┐
-│ Name                │ PID  │ Mode     │ Status   │
-├─────────────────────┼──────┼──────────┼──────────┤
-│ bookmyclass-app-uat │ 1234 │ fork     │ online   │
-└─────────────────────┴──────┴──────────┴──────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ Name                â”‚ PID  â”‚ Mode     â”‚ Status   â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚ bookmyclass-app-uat â”‚ 1234 â”‚ fork     â”‚ online   â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ---
@@ -878,7 +877,7 @@ GitHub must be configured with:
 
 ### 8.1 GitHub Environments
 
-Go to repository **Settings → Environments**.
+Go to repository **Settings â†’ Environments**.
 
 #### Create UAT Environment
 
@@ -891,7 +890,7 @@ Go to repository **Settings → Environments**.
 
 1. **Name:** `production`
 2. **Deployment protection rules:**
-   - ✓ **Require reviewers** (minimum 1, recommend matching your org policy)
+   - âœ“ **Require reviewers** (minimum 1, recommend matching your org policy)
    - Reviewers can be: individual users or CODEOWNERS
 3. **Create**
 
@@ -905,7 +904,7 @@ Secrets are stored per environment and are encrypted.
 
 #### UAT Secrets
 
-In **Settings → Environments → uat → Add secret**, create:
+In **Settings â†’ Environments â†’ uat â†’ Add secret**, create:
 
 | Secret Name | Value | Notes |
 |---|---|---|
@@ -914,15 +913,15 @@ In **Settings → Environments → uat → Add secret**, create:
 | `UAT_SSH_USER` | `root` | Linux user (or `deploy` if available) |
 | `UAT_SSH_PRIVATE_KEY` | (entire private key from `cat ~/.ssh/bookmyclass_deploy`) | Must include `-----BEGIN` and `-----END` lines |
 | `UAT_SSH_KNOWN_HOSTS` | (entire known_hosts line from `grep ssh-uat.bookmyclass.app ~/.ssh/known_hosts`) | Single line, exact format |
-| `UAT_CLOUDFLARE_ACCESS_CLIENT_ID` | (Service token Client ID from Cloudflare) | From Cloudflare Access → Service Tokens |
-| `UAT_CLOUDFLARE_ACCESS_CLIENT_SECRET` | (Service token Client Secret from Cloudflare) | From Cloudflare Access → Service Tokens |
+| `UAT_CLOUDFLARE_ACCESS_CLIENT_ID` | (Service token Client ID from Cloudflare) | From Cloudflare Access â†’ Service Tokens |
+| `UAT_CLOUDFLARE_ACCESS_CLIENT_SECRET` | (Service token Client Secret from Cloudflare) | From Cloudflare Access â†’ Service Tokens |
 | `UAT_BASE_URL` | `https://uat.bookmyclass.app` | Public URL for smoke tests |
 | `UAT_APP_DIR` | `/var/www/bookmyclass` | Application directory on server |
 | `UAT_PM2_APP_NAME` | `bookmyclass-app-uat` | Exact PM2 app name (confirmed in deployment baseline) |
 
 #### Production Secrets
 
-In **Settings → Environments → production → Add secret**, create:
+In **Settings â†’ Environments â†’ production â†’ Add secret**, create:
 
 | Secret Name | Value | Notes |
 |---|---|---|
@@ -931,8 +930,8 @@ In **Settings → Environments → production → Add secret**, create:
 | `PROD_SSH_USER` | **Operator confirmation required** | Use `root` unless confirmed otherwise; see section 10 on how to verify |
 | `PROD_SSH_PRIVATE_KEY` | (entire private key) | Must include `-----BEGIN` and `-----END` lines |
 | `PROD_SSH_KNOWN_HOSTS` | (entire known_hosts line) | Single line, exact format |
-| `PROD_CLOUDFLARE_ACCESS_CLIENT_ID` | (Service token Client ID from Cloudflare) | From Cloudflare Access → Service Tokens |
-| `PROD_CLOUDFLARE_ACCESS_CLIENT_SECRET` | (Service token Client Secret from Cloudflare) | From Cloudflare Access → Service Tokens |
+| `PROD_CLOUDFLARE_ACCESS_CLIENT_ID` | (Service token Client ID from Cloudflare) | From Cloudflare Access â†’ Service Tokens |
+| `PROD_CLOUDFLARE_ACCESS_CLIENT_SECRET` | (Service token Client Secret from Cloudflare) | From Cloudflare Access â†’ Service Tokens |
 | `PROD_BASE_URL` | `https://bookmyclass.app` | Public URL for smoke tests |
 
 ---
@@ -943,7 +942,7 @@ Variables are non-secret and visible in workflow runs. Use for values that are s
 
 #### UAT Variables (optional, can also be secrets)
 
-In **Settings → Environments → uat → Add variable**, create:
+In **Settings â†’ Environments â†’ uat â†’ Add variable**, create:
 
 | Variable Name | Value | Notes |
 |---|---|---|
@@ -952,7 +951,7 @@ In **Settings → Environments → uat → Add variable**, create:
 
 #### Production Variables (must use this for PROD since APP_DIR/PM2_APP_NAME need confirmation)
 
-In **Settings → Environments → production → Add variable**, create:
+In **Settings â†’ Environments â†’ production â†’ Add variable**, create:
 
 | Variable Name | Value | Notes |
 |---|---|---|
@@ -978,10 +977,10 @@ In **Settings → Environments → production → Add variable**, create:
 
 **For Production Only:**
 
-Go to **Settings → Environments → production → Deployment protection rules**.
+Go to **Settings â†’ Environments â†’ production â†’ Deployment protection rules**.
 
 Enable:
-- ✓ **Require reviewers** (minimum 1)
+- âœ“ **Require reviewers** (minimum 1)
 - Optional: **Restrict deployments to a subset of users, teams, or roles**
 
 **Effect:** When `.github/workflows/prod-release.yml` runs with `environment: production`, it will pause and wait for a reviewer to approve before executing the job. This prevents accidental production deploys.
@@ -1000,29 +999,29 @@ Enable:
 
 | Item | Value | Status |
 |---|---|---|
-| GitHub Environment Name | `uat` | ✓ Confirmed |
-| Cloudflare Public Hostname | `ssh-uat.bookmyclass.app` | ✓ Confirmed |
-| SSH Host | `ssh-uat.bookmyclass.app` | ✓ Confirmed |
-| SSH Port | `22` | ✓ Confirmed |
-| SSH User | `root` | ✓ Confirmed |
-| Base URL (public) | `https://uat.bookmyclass.app` | ✓ Confirmed |
-| App Directory | `/var/www/bookmyclass` | ✓ Confirmed |
-| PM2 App Name | `bookmyclass-app-uat` | ✓ Confirmed |
-| Database Container | `bookmyclass-uat-postgres` | ✓ Confirmed |
-| Database Name | `bookmyclass_uat` | ✓ Confirmed |
-| Database User | `bookmyclass_user` | ✓ Confirmed |
-| App Port (localhost) | `3000` | ✓ Confirmed |
-| Health Check Endpoint | `/api/health` | ✓ Confirmed |
+| GitHub Environment Name | `uat` | âœ“ Confirmed |
+| Cloudflare Public Hostname | `ssh-uat.bookmyclass.app` | âœ“ Confirmed |
+| SSH Host | `ssh-uat.bookmyclass.app` | âœ“ Confirmed |
+| SSH Port | `22` | âœ“ Confirmed |
+| SSH User | `root` | âœ“ Confirmed |
+| Base URL (public) | `https://uat.bookmyclass.app` | âœ“ Confirmed |
+| App Directory | `/var/www/bookmyclass` | âœ“ Confirmed |
+| PM2 App Name | `bookmyclass-app-uat` | âœ“ Confirmed |
+| Database Container | `bookmyclass-uat-postgres` | âœ“ Confirmed |
+| Database Name | `bookmyclass_uat` | âœ“ Confirmed |
+| Database User | `bookmyclass_user` | âœ“ Confirmed |
+| App Port (localhost) | `3000` | âœ“ Confirmed |
+| Health Check Endpoint | `/api/health` | âœ“ Confirmed |
 
 ### Cloudflare UAT Service Token (Generate Steps)
 
-1. Go to Cloudflare Zero Trust → Access → Service Tokens
+1. Go to Cloudflare Zero Trust â†’ Access â†’ Service Tokens
 2. Create token:
    - Name: `github-actions-uat-ssh`
    - Scope: Select the `BookMyClass UAT SSH` Access application
 3. Copy:
-   - `Client ID` → GitHub secret `UAT_CLOUDFLARE_ACCESS_CLIENT_ID`
-   - `Client Secret` → GitHub secret `UAT_CLOUDFLARE_ACCESS_CLIENT_SECRET`
+   - `Client ID` â†’ GitHub secret `UAT_CLOUDFLARE_ACCESS_CLIENT_ID`
+   - `Client Secret` â†’ GitHub secret `UAT_CLOUDFLARE_ACCESS_CLIENT_SECRET`
 
 ### SSH Key for UAT (Generate Steps)
 
@@ -1035,13 +1034,13 @@ Enable:
    ```bash
    cat ~/.ssh/bookmyclass-deploy-uat
    ```
-   → GitHub secret `UAT_SSH_PRIVATE_KEY`
+   â†’ GitHub secret `UAT_SSH_PRIVATE_KEY`
 
 3. Copy public key:
    ```bash
    cat ~/.ssh/bookmyclass-deploy-uat.pub
    ```
-   → Add to UAT server's `~/.ssh/authorized_keys` for the SSH user (root)
+   â†’ Add to UAT server's `~/.ssh/authorized_keys` for the SSH user (root)
 
 ### Known Hosts for UAT (Collect Steps)
 
@@ -1056,7 +1055,7 @@ Enable:
    ```bash
    grep ssh-uat.bookmyclass.app ~/.ssh/known_hosts
    ```
-   → GitHub secret `UAT_SSH_KNOWN_HOSTS`
+   â†’ GitHub secret `UAT_SSH_KNOWN_HOSTS`
 
 ---
 
@@ -1068,19 +1067,19 @@ The following must be verified on the production server by someone with direct a
 
 | Item | Current Value | Status | How to Verify |
 |---|---|---|---|
-| GitHub Environment Name | `production` | ✓ Confirmed in code | Defined in `.github/workflows/prod-release.yml` |
-| Cloudflare Public Hostname | `ssh-prod.bookmyclass.app` | ✓ Confirmed in code | Defined in workflows |
-| SSH Host | `ssh-prod.bookmyclass.app` | ✓ Confirmed in code | Defined in workflows |
-| SSH Port | `22` | ✓ Confirmed (standard) | Standard SSH port |
-| SSH User | **Operator confirmation required** | ⚠ Unknown | See step A below |
-| Base URL (public) | `https://bookmyclass.app` | ✓ Confirmed in code | Deployed application public URL |
-| App Directory | **Operator confirmation required** | ⚠ Unknown | See step B below |
-| PM2 App Name | `bookmyclass-app` | ⚠ Likely but not confirmed | See step C below |
-| Database Container | **Operator confirmation required** | ⚠ Unknown | See step D below |
-| Database Name | **Operator confirmation required** | ⚠ Unknown | See step D below |
-| Database User | **Operator confirmation required** | ⚠ Unknown | See step D below |
-| App Port (localhost) | `3000` | ✓ Confirmed | Standard app port |
-| Health Check Endpoint | `/api/health` | ✓ Confirmed | Built-in Next.js health route |
+| GitHub Environment Name | `production` | âœ“ Confirmed in code | Defined in `.github/workflows/prod-release.yml` |
+| Cloudflare Public Hostname | `ssh-prod.bookmyclass.app` | âœ“ Confirmed in code | Defined in workflows |
+| SSH Host | `ssh-prod.bookmyclass.app` | âœ“ Confirmed in code | Defined in workflows |
+| SSH Port | `22` | âœ“ Confirmed (standard) | Standard SSH port |
+| SSH User | **Operator confirmation required** | âš  Unknown | See step A below |
+| Base URL (public) | `https://bookmyclass.app` | âœ“ Confirmed in code | Deployed application public URL |
+| App Directory | **Operator confirmation required** | âš  Unknown | See step B below |
+| PM2 App Name | `bookmyclass-app` | âš  Likely but not confirmed | See step C below |
+| Database Container | **Operator confirmation required** | âš  Unknown | See step D below |
+| Database Name | **Operator confirmation required** | âš  Unknown | See step D below |
+| Database User | **Operator confirmation required** | âš  Unknown | See step D below |
+| App Port (localhost) | `3000` | âœ“ Confirmed | Standard app port |
+| Health Check Endpoint | `/api/health` | âœ“ Confirmed | Built-in Next.js health route |
 
 ---
 
@@ -1128,11 +1127,11 @@ pm2 status
 
 Expected output:
 ```
-┌─────────────────────┬──────┬──────────┬──────────┐
-│ Name                │ PID  │ Mode     │ Status   │
-├─────────────────────┼──────┼──────────┼──────────┤
-│ bookmyclass-app     │ 1234 │ fork     │ online   │
-└─────────────────────┴──────┴──────────┴──────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ Name                â”‚ PID  â”‚ Mode     â”‚ Status   â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚ bookmyclass-app     â”‚ 1234 â”‚ fork     â”‚ online   â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 If the name is different (e.g., `my-app` or `bmc-prod`), use that exact name.
@@ -1164,7 +1163,7 @@ postgresql://<db-user>:<password>@localhost:5432/<db-name>?schema=public
 
 Once you've verified the production values by running the above commands, create the production GitHub secrets and variables:
 
-**Production Secrets** (Settings → Environments → production → Add secret):
+**Production Secrets** (Settings â†’ Environments â†’ production â†’ Add secret):
 
 | Secret Name | Value |
 |---|---|
@@ -1175,7 +1174,7 @@ Once you've verified the production values by running the above commands, create
 | `PROD_CLOUDFLARE_ACCESS_CLIENT_SECRET` | (from Cloudflare) |
 | `PROD_BASE_URL` | `https://bookmyclass.app` |
 
-**Production Variables** (Settings → Environments → production → Add variable):
+**Production Variables** (Settings â†’ Environments â†’ production â†’ Add variable):
 
 | Variable Name | Value |
 |---|---|
@@ -1188,11 +1187,11 @@ Once you've verified the production values by running the above commands, create
 
 Both UAT and PROD workflows follow the same core pattern. Here's what happens inside each deploy job:
 
-### 11.1 UAT Workflow Pattern (`.github/workflows/uat-release.yml`)
+### 11.1 UAT Workflow Pattern (`.github/workflows/staging-release.yml`)
 
 Trigger: Git tag push (e.g., `git push origin v1.2.3`)
 
-**Steps in `deploy_uat` job:**
+**Steps in `deploy_staging` job:**
 
 1. **Install cloudflared**
    ```bash
@@ -1245,10 +1244,10 @@ Trigger: Git tag push (e.g., `git push origin v1.2.3`)
    ```
 
 8. **Post-deploy validations** (separate jobs)
-   - `smoke_uat`: health checks and API tests
-   - `e2e_uat`: Playwright e2e against deployed app
-   - `k6_smoke_uat`: load test smoke
-   - `zap_uat`: OWASP ZAP security scan
+   - `smoke_staging`: health checks and API tests
+   - `e2e_staging`: Playwright e2e against deployed app
+   - `k6_smoke_staging`: load test smoke
+   - `zap_staging`: OWASP ZAP security scan
 
 ---
 
@@ -1349,13 +1348,13 @@ Before running a real deploy, test whether SSH through Cloudflare works end-to-e
 
 **Use these dedicated workflows to verify connectivity without deploying:**
 
-- `.github/workflows/uat-ssh-connectivity.yml` (manual trigger)
+- `.github/workflows/staging-ssh-connectivity.yml` (manual trigger)
 - `.github/workflows/prod-ssh-connectivity.yml` (manual trigger)
 
 **How to run:**
 
-1. Go to GitHub → Actions
-2. Select `uat-ssh-connectivity` or `prod-ssh-connectivity`
+1. Go to GitHub â†’ Actions
+2. Select `staging-ssh-connectivity` or `prod-ssh-connectivity`
 3. Click **Run workflow**
 4. Wait for job to complete
 
@@ -1371,11 +1370,11 @@ Before running a real deploy, test whether SSH through Cloudflare works end-to-e
 ```
 uat-server
 root
-┌─────────────────────┬──────┬──────────┬──────────┐
-│ Name                │ PID  │ Mode     │ Status   │
-├─────────────────────┼──────┼──────────┼──────────┤
-│ bookmyclass-app-uat │ 1234 │ fork     │ online   │
-└─────────────────────┴──────┴──────────┴──────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ Name                â”‚ PID  â”‚ Mode     â”‚ Status   â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚ bookmyclass-app-uat â”‚ 1234 â”‚ fork     â”‚ online   â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 **If this fails:** Your Cloudflare tunnel, SSH key, or Cloudflare Access token is misconfigured. Debug locally before running the full deploy workflow.
@@ -1421,7 +1420,7 @@ root
 
 ### Phase 4: Standalone SSH Connectivity Testing
 
-- [ ] Trigger `uat-ssh-connectivity` workflow manually
+- [ ] Trigger `staging-ssh-connectivity` workflow manually
 - [ ] Verify workflow succeeds (shows hostname, whoami, pm2 status)
 - [ ] If it fails, debug Cloudflare/SSH issues before proceeding
 - [ ] Trigger `prod-ssh-connectivity` workflow manually
@@ -1431,14 +1430,14 @@ root
 
 - [ ] Create a test release tag (e.g., `git tag -a v0.1.0-cd-test`)
 - [ ] Push tag to GitHub
-- [ ] Go to Actions and monitor `uat-release` workflow
-- [ ] Verify all jobs complete: regression, e2e, deploy_uat, smoke_uat, e2e_uat, k6_smoke_uat, zap_uat
+- [ ] Go to Actions and monitor `staging-release` workflow
+- [ ] Verify all jobs complete: tag_sanity, deploy_staging, smoke_staging, e2e_staging, k6_smoke_staging, zap_staging
 - [ ] If any job fails, check logs and fix the issue
 - [ ] On success, UAT is running the test tag
 
 ### Phase 6: Test Production Approval and Deploy
 
-- [ ] Go to Actions → `prod-release`
+- [ ] Go to Actions â†’ `prod-release`
 - [ ] Click **Run workflow**
 - [ ] Enter the same tag that was tested on UAT (e.g., `v0.1.0-cd-test`)
 - [ ] Workflow starts and pauses at "Waiting for approval"
@@ -1465,10 +1464,10 @@ This section captures real issues encountered during setup and deployment.
 **Result:** Workflow fails with "authentication failed" or "not authorized".
 
 **Fix:** Use **Access Service Token** (not API Token). These are different:
-- **API Token** → for calling Cloudflare's REST API
-- **Access Service Token** → for authenticating to Cloudflare Zero Trust Access applications
+- **API Token** â†’ for calling Cloudflare's REST API
+- **Access Service Token** â†’ for authenticating to Cloudflare Zero Trust Access applications
 
-**Check:** Go to **Cloudflare Zero Trust → Access → Service Tokens**. You should see tokens listed. If empty, you haven't created one yet.
+**Check:** Go to **Cloudflare Zero Trust â†’ Access â†’ Service Tokens**. You should see tokens listed. If empty, you haven't created one yet.
 
 ---
 
@@ -1508,7 +1507,7 @@ journalctl -u cloudflared-tunnel -n 20
 2. Select the tunnel (`bookmyclass-uat-tunnel`)
 3. Go to **Public Hostname** tab
 4. Verify the hostname is listed:
-   - `ssh-uat.bookmyclass.app` → `127.0.0.1:22` (Origin)
+   - `ssh-uat.bookmyclass.app` â†’ `127.0.0.1:22` (Origin)
 
 If not listed, add it. The tunnel should then accept connections.
 
@@ -1598,10 +1597,10 @@ Host deploy-target
 
 **Fix:** Ensure environment name is exact:
 - Workflow: `environment: production`
-- Secrets stored in: **Settings → Environments → production**
+- Secrets stored in: **Settings â†’ Environments â†’ production**
 
 Check in GitHub:
-1. Go to **Settings → Environments**
+1. Go to **Settings â†’ Environments**
 2. Verify environment name matches workflows
 3. Verify secrets are in the correct environment (not repository-wide)
 
@@ -1743,11 +1742,11 @@ This gives the app time to boot before declaring success.
 
 **Result:** Deploy script failed at `git fetch` step even though SSH to server worked fine.
 
-**Why:** SSH from GitHub runner to server (Cloudflare tunnel) ≠ SSH from server to GitHub. These are separate network connections.
+**Why:** SSH from GitHub runner to server (Cloudflare tunnel) â‰  SSH from server to GitHub. These are separate network connections.
 
 **Lesson:** SSH between runner and server is **not** the same as server's access to GitHub. Verify both:
-- [ ] GitHub runner can SSH to server (Cloudflare tunnel) — tested by connectivity workflow
-- [ ] Server can reach GitHub (or has SSH keys set up) — test: `ssh -i ~/.ssh/github -T git@github.com`
+- [ ] GitHub runner can SSH to server (Cloudflare tunnel) â€” tested by connectivity workflow
+- [ ] Server can reach GitHub (or has SSH keys set up) â€” test: `ssh -i ~/.ssh/github -T git@github.com`
 
 **Fix:** Ensure server has SSH keys for GitHub or can access via HTTPS:
 
@@ -1792,7 +1791,7 @@ pm2 describe bookmyclass-app
 ```
 
 **Store in GitHub secrets/variables** (see section 8):
-- UAT: `UAT_PM2_APP_NAME=bookmyclass-app-uat` ✓ confirmed
+- UAT: `UAT_PM2_APP_NAME=bookmyclass-app-uat` âœ“ confirmed
 - PROD: `PROD_PM2_APP_NAME=bookmyclass-app` (MUST be verified on server)
 
 ---
@@ -1913,17 +1912,16 @@ Use this checklist to verify UAT CD is fully operational:
   - [ ] Database container is running and accessible
 
 - [ ] **Workflow testing**
-  - [ ] Run `uat-ssh-connectivity` workflow manually; verify it succeeds
+  - [ ] Run `staging-ssh-connectivity` workflow manually; verify it succeeds
   - [ ] Create a test tag (`git tag -a v0.1.0-test && git push origin v0.1.0-test`)
-  - [ ] Verify `uat-release` workflow is triggered automatically
-  - [ ] All UAT workflow jobs complete successfully:
-    - [ ] `regression` passes
-    - [ ] `e2e` passes
-    - [ ] `deploy_uat` succeeds (SSH, git checkout, build, PM2 restart)
-    - [ ] `smoke_uat` passes
-    - [ ] `e2e_uat` passes
-    - [ ] `k6_smoke_uat` passes
-    - [ ] `zap_uat` completes
+  - [ ] Verify `staging-release` workflow is triggered automatically
+  - [ ] All staging workflow jobs complete successfully:
+    - [ ] `tag_sanity` passes
+    - [ ] `deploy_staging` succeeds (SSH, git checkout, build, PM2 restart)
+    - [ ] `smoke_staging` passes
+    - [ ] `e2e_staging` passes
+    - [ ] `k6_smoke_staging` passes
+    - [ ] `zap_staging` completes
   - [ ] UAT server is running the test tag (`git describe --tags --exact-match` shows `v0.1.0-test`)
   - [ ] Health endpoint returns 200 (`curl https://uat.bookmyclass.app/api/health`)
 
@@ -2059,11 +2057,11 @@ git tag -a v1.2.3 -m "Release v1.2.3"
 git push origin v1.2.3
 
 # Manual trigger for PROD deployment
-# Go to GitHub → Actions → prod-release → Run workflow
+# Go to GitHub â†’ Actions â†’ prod-release â†’ Run workflow
 # Enter tag in prompt and submit
 
 # View workflow logs
-# Go to GitHub → Actions → Select workflow run → Click job name
+# Go to GitHub â†’ Actions â†’ Select workflow run â†’ Click job name
 ```
 
 ### Troubleshooting
@@ -2086,9 +2084,9 @@ sudo -u deploy env PM2_HOME=/home/deploy/.pm2 pm2 status
 
 ## Canonical References
 
-- `.github/workflows/uat-release.yml` (UAT automated release workflow)
+- `.github/workflows/staging-release.yml` (UAT automated release workflow)
 - `.github/workflows/prod-release.yml` (PROD manual release workflow)
-- `.github/workflows/uat-ssh-connectivity.yml` (UAT SSH test workflow)
+- `.github/workflows/staging-ssh-connectivity.yml` (UAT SSH test workflow)
 - `.github/workflows/prod-ssh-connectivity.yml` (PROD SSH test workflow)
 - `scripts/uat-deploy-tag.sh` (UAT remote deployment script)
 - `scripts/prod-deploy-tag.sh` (PROD remote deployment script)

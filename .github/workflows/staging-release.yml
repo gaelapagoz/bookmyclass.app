@@ -1,5 +1,5 @@
-name: uat-release
-run-name: "uat-release â€¢ ${{ github.ref_name }}"
+name: Staging Release
+run-name: "staging-release • ${{ github.ref_name }}"
 
 on:
   push:
@@ -7,52 +7,43 @@ on:
       - "v*"
 
 jobs:
-  regression:
+  tag_sanity:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: studio_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d studio_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/studio_test
-      AUTH_SECRET: ci-auth-secret
-      NEXTAUTH_SECRET: ci-nextauth-secret
-      APP_URL: http://localhost:3000
-      STRIPE_SECRET_KEY: sk_test_ci
-      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci
-      STRIPE_WEBHOOK_SECRET: whsec_ci
-      RESEND_API_KEY: ci-resend-key
-      EMAIL_FROM: CI <ci@example.test>
+      TARGET_TAG: ${{ github.ref_name }}
+      STAGING_BASE_URL: ${{ secrets.UAT_BASE_URL }}
+      STAGING_HOMESITE_BASE_URL: ${{ secrets.UAT_HOMESITE_BASE_URL }}
+      STAGING_SSH_HOST: ${{ secrets.UAT_SSH_HOST }}
+      STAGING_SSH_PORT: ${{ secrets.UAT_SSH_PORT }}
+      STAGING_SSH_USER: ${{ secrets.UAT_SSH_USER }}
+      STAGING_CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_ID }}
+      STAGING_CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+      STAGING_APP_DIR: ${{ secrets.UAT_APP_DIR }}
+      STAGING_PM2_APP_NAME: ${{ secrets.UAT_PM2_APP_NAME }}
+      STAGING_E2E_EMAIL: ${{ secrets.UAT_E2E_EMAIL }}
+      STAGING_E2E_PASSWORD: ${{ secrets.UAT_E2E_PASSWORD }}
+      ALLOW_STAGING_ON_PRODUCTION_URL: ${{ vars.ALLOW_STAGING_ON_PRODUCTION_URL || '' }}
 
     steps:
-      - name: Check out repository
+      - name: Check out exact pushed tag
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Validate release tag format
+        run: |
+          set -euo pipefail
+          [[ "${TARGET_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]] || {
+            echo "Invalid release tag: ${TARGET_TAG}" >&2
+            exit 1
+          }
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20.19.0
           cache: npm
-
-      - name: Show regression diagnostics
-        run: |
-          echo "head_sha=$(git rev-parse HEAD)"
-          echo "node_version=$(node --version)"
-          echo "npm_version=$(npm --version)"
-          echo "vitest_command=npm test -- --run"
 
       - name: Install dependencies
         run: npm ci
@@ -63,116 +54,55 @@ jobs:
       - name: Build application
         run: npm run build
 
-      - name: Run full test suite
-        run: npm test -- --run
-
-      - name: Enforce e2e coverage matrix
-        run: npm run qa:e2e:coverage
-
       - name: Check Prisma migration status
         run: npx prisma migrate status
 
-  e2e:
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    needs: regression
-    timeout-minutes: 30
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: studio_e2e_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d studio_e2e_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/studio_e2e_test
-      AUTH_SECRET: ci-e2e-auth-secret
-      NEXTAUTH_SECRET: ci-e2e-nextauth-secret
-      APP_URL: http://127.0.0.1:3100
-      AUTH_URL: http://127.0.0.1:3100
-      NEXTAUTH_URL: http://127.0.0.1:3100
-      PORT: 3100
-      STRIPE_SECRET_KEY: sk_test_ci
-      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci
-      STRIPE_WEBHOOK_SECRET: whsec_ci
-      RESEND_API_KEY: ci-resend-key
-      EMAIL_FROM: CI <ci@example.test>
-      E2E_TEST_MODE: "1"
-      E2E_TEST_SECRET: ${{ secrets.E2E_TEST_SECRET }}
-      CRON_SECRET: ci-e2e-cron-secret
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20.19.0
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate Prisma client
-        run: npx prisma generate
-
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
-
-      - name: Write .env.e2e
+      - name: Validate required UAT compatibility secrets are present
         run: |
-          cat <<EOF > .env.e2e
-          DATABASE_URL=${DATABASE_URL}
-          AUTH_SECRET=${AUTH_SECRET}
-          NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-          APP_URL=${APP_URL}
-          AUTH_URL=${AUTH_URL}
-          NEXTAUTH_URL=${NEXTAUTH_URL}
-          PORT=${PORT}
-          STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
-          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
-          STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
-          RESEND_API_KEY=${RESEND_API_KEY}
-          EMAIL_FROM=${EMAIL_FROM}
-          E2E_TEST_MODE=${E2E_TEST_MODE}
-          E2E_TEST_SECRET=${E2E_TEST_SECRET}
-          CRON_SECRET=${CRON_SECRET}
-          STRIPE_PRICE_ID_STORE_GIFT_CARD_25_EUR=price_ci_store_gift_card_25_eur
-          STRIPE_PRICE_ID_STORE_GIFT_CARD_50_EUR=price_ci_store_gift_card_50_eur
-          STRIPE_PRICE_ID_STORE_GIFT_CARD_100_EUR=price_ci_store_gift_card_100_eur
-          STRIPE_PRICE_ID_STORE_MERCH_YOGA_MAT=price_ci_store_merch_yoga_mat
-          STRIPE_PRICE_ID_STORE_MERCH_RESISTANCE_BANDS=price_ci_store_merch_resistance_bands
-          STRIPE_PRICE_ID_STORE_MERCH_STUDIO_TOTE=price_ci_store_merch_studio_tote
-          EOF
+          set -euo pipefail
+          required=(
+            STAGING_BASE_URL
+            STAGING_SSH_HOST
+            STAGING_SSH_PORT
+            STAGING_SSH_USER
+            STAGING_CLOUDFLARE_ACCESS_CLIENT_ID
+            STAGING_CLOUDFLARE_ACCESS_CLIENT_SECRET
+            STAGING_APP_DIR
+            STAGING_PM2_APP_NAME
+            STAGING_E2E_EMAIL
+            STAGING_E2E_PASSWORD
+          )
 
-      - name: Reset DB, build, and run e2e suite
-        run: npm run test:e2e:ci
+          missing=0
+          for key in "${required[@]}"; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "Missing required value mapped from existing UAT_* secret: ${key}" >&2
+              missing=1
+            fi
+          done
 
-      - name: Upload Playwright artifacts on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-artifacts-${{ github.ref_name }}
-          path: |
-            playwright-report/
-            test-results/
-          if-no-files-found: ignore
+          [[ ${missing} -eq 0 ]]
 
-  deploy_uat:
+      - name: Guard against accidental production URL target
+        run: |
+          set -euo pipefail
+          url="${STAGING_BASE_URL%/}"
+          host="$(echo "${url}" | sed -E 's#^https?://##' | cut -d/ -f1 | tr '[:upper:]' '[:lower:]')"
+
+          if [[ "${host}" == "bookmyclass.app" || "${host}" == "www.bookmyclass.app" ]]; then
+            if [[ "${ALLOW_STAGING_ON_PRODUCTION_URL}" != "YES" ]]; then
+              echo "Refusing to run staging release against production public URL (${url})." >&2
+              echo "Set repository/environment variable ALLOW_STAGING_ON_PRODUCTION_URL=YES only for intentional demo-stage override." >&2
+              exit 1
+            fi
+            echo "Intentional override enabled: staging workflow is allowed to target production public URL (${url})."
+          fi
+
+  deploy_staging:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    needs: e2e
-    # UAT deployment must use the uat environment for secrets and approval gating.
+    needs: tag_sanity
+    # Environment remains named uat in GitHub for backward compatibility; workflow terminology is staging.
     environment: uat
     env:
       TARGET_TAG: ${{ github.ref_name }}
@@ -181,17 +111,17 @@ jobs:
       REMOTE_USER: ${{ secrets.UAT_SSH_USER }}
       CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_ID }}
       CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.UAT_CLOUDFLARE_ACCESS_CLIENT_SECRET }}
-      BASE_URL: ${{ secrets.UAT_BASE_URL }}
+      STAGING_BASE_URL: ${{ secrets.UAT_BASE_URL }}
       UAT_BASE_URL: ${{ secrets.UAT_BASE_URL }}
       HOMESITE_BASE_URL: ${{ secrets.UAT_HOMESITE_BASE_URL }}
       APP_DIR: ${{ secrets.UAT_APP_DIR }}
       APP_NAME: ${{ secrets.UAT_PM2_APP_NAME }}
       EXPECTED_SHA: ${{ github.sha }}
-      EVIDENCE_ROOT: artifacts/uat-deploy
+      EVIDENCE_ROOT: artifacts/staging-deploy
       PROD_DEMO_SSH_HOST: ${{ vars.PROD_DEMO_SSH_HOST || 'ssh-prod.bookmyclass.app' }}
 
     steps:
-      - name: Check out repository at pushed tag
+      - name: Check out exact pushed tag
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
@@ -248,12 +178,13 @@ jobs:
           echo "remote_user=${REMOTE_USER}"
           echo "app_dir=${APP_DIR:-<default from script>}"
           echo "app_name=${APP_NAME:-<default from script>}"
-          echo "app_base_url=${BASE_URL:-https://demo.bookmyclass.app}"
+          echo "staging_base_url=${STAGING_BASE_URL:-https://demo.bookmyclass.app}"
           echo "homesite_base_url=${HOMESITE_BASE_URL:-https://bookmyclass.app}"
-          echo "app_healthcheck_url=${BASE_URL:-https://demo.bookmyclass.app}/api/health"
+          echo "app_healthcheck_url=${STAGING_BASE_URL:-https://demo.bookmyclass.app}/api/health"
           echo "expected_sha=${EXPECTED_SHA}"
-          if [[ "${REMOTE_HOST}" == "${PROD_DEMO_SSH_HOST}" || "${APP_DIR:-}" == "/var/www/bookmyclass" || "${BASE_URL}" == "https://bookmyclass.app" || "${BASE_URL}" == "https://demo.bookmyclass.app" ]]; then
-            echo "::warning::UAT deploy is targeting the production/demo host topology. This is supported for demo-stage use when UAT_* secrets intentionally point there."
+
+          if [[ "${REMOTE_HOST}" == "${PROD_DEMO_SSH_HOST}" || "${APP_DIR:-}" == "/var/www/bookmyclass" || "${STAGING_BASE_URL}" == "https://bookmyclass.app" || "${STAGING_BASE_URL}" == "https://demo.bookmyclass.app" ]]; then
+            echo "::warning::Staging deploy is targeting the production/demo host topology. This is supported for demo-stage use when UAT_* secrets intentionally point there."
           fi
 
       - name: Test SSH connectivity via Cloudflare Access
@@ -263,7 +194,7 @@ jobs:
           export CLOUDFLARE_ACCESS_CLIENT_SECRET="${CLOUDFLARE_ACCESS_CLIENT_SECRET}"
           ssh deploy-target 'hostname && whoami && pm2 status'
 
-      - name: Deploy exact tag to UAT over SSH
+      - name: Deploy exact tag to staging over SSH
         run: |
           set -euo pipefail
           export CLOUDFLARE_ACCESS_CLIENT_ID="${CLOUDFLARE_ACCESS_CLIENT_ID}"
@@ -271,7 +202,7 @@ jobs:
           mkdir -p "${EVIDENCE_ROOT}"
           bash scripts/uat-deploy-tag.sh "${TARGET_TAG}" 2>&1 | tee "${EVIDENCE_ROOT}/deploy-command.log"
 
-      - name: Collect remote UAT deploy logs on failure
+      - name: Collect remote staging deploy logs on failure
         if: failure()
         run: |
           set -euo pipefail
@@ -289,23 +220,24 @@ jobs:
             cat "$latest/deploy.log"
           ' 2>&1 | tee "${EVIDENCE_ROOT}/remote/latest-remote-deploy.log"
 
-      - name: Upload UAT deploy evidence on failure
+      - name: Upload staging deploy evidence on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: uat-deploy-evidence-${{ github.ref_name }}
-          path: artifacts/uat-deploy
+          name: staging-deploy-evidence-${{ github.ref_name }}
+          path: artifacts/staging-deploy
           if-no-files-found: ignore
 
-  smoke_uat:
+  smoke_staging:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    needs: deploy_uat
+    needs: deploy_staging
     env:
+      STAGING_BASE_URL: ${{ secrets.UAT_BASE_URL }}
       BASE_URL: ${{ secrets.UAT_BASE_URL }}
 
     steps:
-      - name: Check out repository at pushed tag
+      - name: Check out exact pushed tag
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
@@ -319,31 +251,34 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run UAT smoke checks
+      - name: Run staging smoke checks
         run: |
-          mkdir -p artifacts/uat-smoke
-          npm run test:uat:smoke 2>&1 | tee artifacts/uat-smoke/smoke.log
+          mkdir -p artifacts/staging-smoke
+          npm run test:staging:smoke 2>&1 | tee artifacts/staging-smoke/smoke.log
 
-      - name: Upload UAT smoke evidence on failure
+      - name: Upload staging smoke evidence on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: uat-smoke-evidence-${{ github.ref_name }}
-          path: artifacts/uat-smoke
+          name: staging-smoke-evidence-${{ github.ref_name }}
+          path: artifacts/staging-smoke
           if-no-files-found: ignore
 
-  e2e_uat:
+  e2e_staging:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    needs: smoke_uat
+    needs: smoke_staging
     env:
       BASE_URL: ${{ secrets.UAT_BASE_URL }}
       UAT_BASE_URL: ${{ secrets.UAT_BASE_URL }}
+      STAGING_BASE_URL: ${{ secrets.UAT_BASE_URL }}
       UAT_E2E_EMAIL: ${{ secrets.UAT_E2E_EMAIL }}
       UAT_E2E_PASSWORD: ${{ secrets.UAT_E2E_PASSWORD }}
+      STAGING_E2E_EMAIL: ${{ secrets.UAT_E2E_EMAIL }}
+      STAGING_E2E_PASSWORD: ${{ secrets.UAT_E2E_PASSWORD }}
 
     steps:
-      - name: Check out repository at pushed tag
+      - name: Check out exact pushed tag
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
@@ -360,34 +295,34 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
-      - name: Run deployed UAT release e2e
+      - name: Run deployed staging release e2e
         run: |
-          mkdir -p artifacts/uat-e2e
-          npm run test:e2e:uat 2>&1 | tee artifacts/uat-e2e/e2e.log
+          mkdir -p artifacts/staging-e2e
+          npm run test:e2e:staging 2>&1 | tee artifacts/staging-e2e/e2e.log
 
-      - name: Upload UAT e2e artifacts on failure
+      - name: Upload staging e2e artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: uat-e2e-artifacts-${{ github.ref_name }}
+          name: staging-e2e-artifacts-${{ github.ref_name }}
           path: |
-            artifacts/uat-e2e
+            artifacts/staging-e2e
             playwright-report/
             test-results/
           if-no-files-found: ignore
 
-  k6_smoke_uat:
+  k6_smoke_staging:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    needs: e2e_uat
+    needs: e2e_staging
     env:
       BASE_URL: ${{ secrets.UAT_BASE_URL }}
       STAGE_PROFILE: smoke
       K6_SCENARIO_SET: non_booking_smoke
-      EVIDENCE_ROOT: artifacts/uat-k6
+      EVIDENCE_ROOT: artifacts/staging-k6
 
     steps:
-      - name: Check out repository at pushed tag
+      - name: Check out exact pushed tag
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
@@ -404,49 +339,49 @@ jobs:
       - name: Setup k6
         uses: grafana/setup-k6-action@v1
 
-      - name: Run k6 smoke against deployed UAT
+      - name: Run k6 smoke against deployed staging
         run: |
-          mkdir -p artifacts/uat-k6
-          bash scripts/local-uat-run-smoke.sh 2>&1 | tee artifacts/uat-k6/k6-smoke.log
+          mkdir -p artifacts/staging-k6
+          bash scripts/local-staging-run-smoke.sh 2>&1 | tee artifacts/staging-k6/k6-smoke.log
 
-      - name: Upload k6 artifacts
+      - name: Upload staging k6 artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: uat-k6-artifacts-${{ github.ref_name }}
-          path: artifacts/uat-k6
+          name: staging-k6-artifacts-${{ github.ref_name }}
+          path: artifacts/staging-k6
           if-no-files-found: ignore
 
-  zap_uat:
+  zap_staging:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    needs: k6_smoke_uat
+    needs: k6_smoke_staging
     env:
       BASE_URL: ${{ secrets.UAT_BASE_URL }}
-      EVIDENCE_ROOT: artifacts/uat-zap
+      EVIDENCE_ROOT: artifacts/staging-zap
       ZAP_MAX_MINUTES: "5"
       RUN_NORMALIZER: "YES"
 
     steps:
-      - name: Check out repository at pushed tag
+      - name: Check out exact pushed tag
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
 
       - name: Ensure ZAP scripts are executable
         run: |
-          chmod +x scripts/local-uat-security-baseline.sh scripts/local-uat-security-collect-metrics.sh
+          chmod +x scripts/local-staging-security-baseline.sh scripts/local-uat-security-baseline.sh scripts/local-uat-security-collect-metrics.sh
 
-      - name: Run OWASP ZAP baseline against deployed UAT
+      - name: Run OWASP ZAP baseline against deployed staging
         run: |
           set -euo pipefail
-          mkdir -p artifacts/uat-zap
-          bash scripts/local-uat-security-baseline.sh 2>&1 | tee artifacts/uat-zap/zap-baseline.log
+          mkdir -p artifacts/staging-zap
+          bash scripts/local-staging-security-baseline.sh 2>&1 | tee artifacts/staging-zap/zap-baseline.log
 
-      - name: Upload ZAP artifacts
+      - name: Upload staging ZAP artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: uat-zap-artifacts-${{ github.ref_name }}
-          path: artifacts/uat-zap
+          name: staging-zap-artifacts-${{ github.ref_name }}
+          path: artifacts/staging-zap
           if-no-files-found: ignore

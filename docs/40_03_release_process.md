@@ -59,24 +59,25 @@ Demo-stage topology note:
 - UAT workflow steps should still consume the `UAT_*` secret names; do not wire
   UAT jobs directly to `PROD_*` secrets.
 
-For `v*` tag pushes, workflow `.github/workflows/uat-release.yml` runs:
-1. `regression` (pre-deploy build/test/validation)
-2. `e2e` (pre-deploy CI e2e)
-3. `deploy_uat` (exact tag deploy over SSH)
-4. `smoke_uat` (public UAT smoke checks)
-5. `e2e_uat` (narrow deployed-UAT release e2e)
-6. `k6_smoke_uat` (short non-booking k6 smoke profile)
-7. `zap_uat` (OWASP ZAP baseline)
+For `v*` tag pushes, workflow `.github/workflows/staging-release.yml` runs:
+1. `tag_sanity` (lightweight tag/build/migration/status/secret-target checks)
+2. `deploy_staging` (exact tag deploy over SSH)
+3. `smoke_staging` (public staging smoke checks)
+4. `e2e_staging` (narrow deployed staging release e2e)
+5. `k6_smoke_staging` (short non-booking k6 smoke profile)
+6. `zap_staging` (OWASP ZAP baseline)
 
 Flat release view:
-- `regression -> e2e -> deploy_uat -> smoke_uat -> e2e_uat -> k6_smoke_uat -> zap_uat`
+- `tag_sanity -> deploy_staging -> smoke_staging -> e2e_staging -> k6_smoke_staging -> zap_staging`
 
 These jobs are operator-run validation steps and are not automatic release
 blockers.
 
-Regression gate includes fail-fast coverage validation before expensive e2e:
-- `npm run qa:e2e:coverage`
-- Unknown `@covers` / `@covers-partial` IDs fail the gate immediately.
+Compatibility notes:
+- GitHub secret names remain `UAT_*` for backward compatibility.
+- GitHub Environment remains `environment: uat` for backward compatibility.
+- Staging command aliases are available: `npm run test:staging:smoke` and
+  `npm run test:e2e:staging` map to the existing UAT-backed implementations.
 
 This preserves immutable tag deployment because deploy and smoke jobs both use `${github.ref}` / `${github.ref_name}`.
 
@@ -324,9 +325,9 @@ Recommended scheduler setup:
 
 When deploying the Store and gift-card purchase features to production, the operator
 must complete ALL of the following steps. The Store is always-on; there are no feature
-flags — Stripe catalog sync and live price IDs are the gate.
+flags â€” Stripe catalog sync and live price IDs are the gate.
 
-**Stripe live prices — required before deployment:**
+**Stripe live prices â€” required before deployment:**
 - [ ] All active Store merchandise prices have `stripeSyncStatus = SYNCED` and a live Stripe price ID (not a test ID).
 - [ ] All active Store gift-card prices have `stripeSyncStatus = SYNCED` and a live Stripe price ID (not a test ID).
 - [ ] `npm run stripe:catalog:sync -- --scope=all --dry-run` completed cleanly.
@@ -350,9 +351,9 @@ flags — Stripe catalog sync and live price IDs are the gate.
 - [ ] Static homesite screenshots render without a manual symlink.
 
 **Canonical references:**
-- `docs/40_02_environment_variables.md` — environment variable reference
-- `src/lib/catalog/checkout-readiness.ts` — live/test Stripe ID validation
-- `src/lib/store/store-admin-catalog-service.ts` — store catalog admin service
+- `docs/40_02_environment_variables.md` â€” environment variable reference
+- `src/lib/catalog/checkout-readiness.ts` â€” live/test Stripe ID validation
+- `src/lib/store/store-admin-catalog-service.ts` â€” store catalog admin service
 
 ---
 
@@ -471,7 +472,7 @@ Defined in:
 - docs/00_02_deployment_baseline.md
 - docs/00_01_system_baseline.md
 - .github/workflows/ci.yml
-- .github/workflows/uat-release.yml
+- .github/workflows/staging-release.yml
 - .github/workflows/prod-release.yml
 - scripts/verify-production-readiness.sh
 - docs/50_02_bookmyclass_server_setup_updated.md

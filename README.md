@@ -228,16 +228,21 @@ Run tests:
 ```bash
 npm test -- --run
 npm run test:e2e
+npm run test:staging:smoke
+npm run test:e2e:staging
 ```
+Staging command aliases intentionally reuse existing `UAT_*` configuration for
+GitHub compatibility (`test:staging:smoke` -> `test:uat:smoke`,
+`test:e2e:staging` -> `test:e2e:uat`).
 Run performance tests:
 ```bash
-BASE_URL=https://uat.bookmyclass.app bash scripts/local-uat-run-smoke.sh
+BASE_URL=https://demo.bookmyclass.app bash scripts/local-uat-run-smoke.sh
 ```
 Run security tests:
 ```bash
 docker run --rm -v "$(pwd -W):/zap/wrk/:rw" -t ghcr.io/zaproxy/zaproxy:stable \
   zap-baseline.py \
-  -t https://uat.bookmyclass.app \
+  -t https://demo.bookmyclass.app \
   -r zap-baseline-report.html \
   -d
 ```

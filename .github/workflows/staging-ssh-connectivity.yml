@@ -1,11 +1,12 @@
-name: uat-ssh-connectivity
+name: Staging SSH Connectivity
 
 on:
   workflow_dispatch:
 
 jobs:
-  test_uat_ssh:
+  test_staging_ssh:
     runs-on: ubuntu-latest
+    # Environment remains named uat in GitHub for backward compatibility; workflow terminology is staging.
     environment: uat
     env:
       REMOTE_HOST: ${{ secrets.UAT_SSH_HOST }}
@@ -51,7 +52,7 @@ jobs:
           EOF
           chmod 600 "${HOME}/.ssh/config"
 
-      - name: Test SSH connectivity via Cloudflare Access
+      - name: Test staging SSH connectivity via Cloudflare Access
         run: |
           set -euo pipefail
           export CLOUDFLARE_ACCESS_CLIENT_ID="${CLOUDFLARE_ACCESS_CLIENT_ID}"

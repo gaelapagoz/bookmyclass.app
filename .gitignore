@@ -87,3 +87,5 @@ security-output/
 *.zip
 
 .tmp_ci_logs
+
+tools

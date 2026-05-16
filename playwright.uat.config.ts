@@ -1,6 +1,6 @@
 import { defineConfig } from "@playwright/test";
 
-const uatBaseUrl = process.env.BASE_URL ?? process.env.UAT_BASE_URL ?? "https://uat.bookmyclass.app";
+const uatBaseUrl = process.env.BASE_URL ?? process.env.UAT_BASE_URL ?? "https://demo.bookmyclass.app";
 
 export default defineConfig({
   testDir: "./test/e2e/uat",
