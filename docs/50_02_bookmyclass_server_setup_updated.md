@@ -284,10 +284,11 @@ certbot --nginx -d bookmyclass.app -d www.bookmyclass.app
 cd /var/www/bookmyclass
 git fetch --all --tags
 git checkout vX.Y.Z
-npm ci
-npx prisma migrate deploy
+npm ci --include=dev
 npx prisma generate
+npx prisma migrate deploy
 npm run build
+npm prune --omit=dev
 pm2 restart bookmyclass-app --update-env
 npm run verify:media-runtime
 ```
@@ -314,10 +315,11 @@ For UAT and Production, after checking out the release tag, use this command ord
 ```bash
 git fetch --all --tags
 git checkout vX.Y.Z
-npm ci
-npx prisma migrate deploy
+npm ci --include=dev
 npx prisma generate
+npx prisma migrate deploy
 npm run build
+npm prune --omit=dev
 pm2 restart bookmyclass-app --update-env
 npm run verify:media-runtime
 ```
@@ -326,20 +328,23 @@ npm run verify:media-runtime
 
 * `git fetch --all --tags` pulls latest remote refs and tags
 * `git checkout vX.Y.Z` switches the server to the exact release version
-* `npm ci` installs dependencies exactly from `package-lock.json`
+* `npm ci --include=dev` installs dependencies exactly from `package-lock.json` with temporary build-time devDependencies
 * `npx prisma migrate deploy` applies committed migrations to the target database
 * `npx prisma generate` regenerates Prisma client artifacts for the checked out version
 * `npm run build` builds the Next.js application
+* `npm prune --omit=dev` removes devDependencies before runtime activation
 * `pm2 restart bookmyclass-app --update-env` restarts the app with the current environment
 * `npm run verify:media-runtime` confirms persistent upload storage is writable and returns `/uploads/...` paths for all canonical image folders
 
 ### Rules
 
 * Always deploy from a tag, never from `main`
-* Always run `npm ci` before build on UAT/Production
+* Always run `npm ci --include=dev` before build on UAT/Production
 * Always run `npx prisma migrate deploy` before `npx prisma generate`
 * Always run `npx prisma generate` before `npm run build`
+* Always run `npm prune --omit=dev` after build and before PM2 restart/reload
 * Always restart PM2 only after a successful build
+* Never run `prisma migrate reset` or seed commands during normal UAT/production deploy
 
 ### Notes
 

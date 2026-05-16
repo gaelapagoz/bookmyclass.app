@@ -30,6 +30,17 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "scripts/**", "prisma/seed.ts", "test/**"]
+  "exclude": [
+    "node_modules",
+    "scripts/**",
+    "prisma/seed.ts",
+    "test/**",
+    "vitest.config.ts",
+    "playwright.config.ts",
+    "playwright.uat.config.ts",
+    "playwright.demo.config.ts",
+    "test-results/**",
+    "playwright-report/**"
+  ]
 }
 

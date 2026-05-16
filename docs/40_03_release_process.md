@@ -160,10 +160,11 @@ Run on target server:
 
 git fetch --all --tags
 git checkout vX.Y.Z
-npm ci
-npx prisma migrate deploy
+npm ci --include=dev
 npx prisma generate
+npx prisma migrate deploy
 npm run build
+npm prune --omit=dev
 pm2 restart bookmyclass-app --update-env
 npm run verify:media-runtime
 
@@ -171,8 +172,8 @@ Notes:
 - PM2 app name: bookmyclass-app
 - Do not skip migrate deploy
 - Do not deploy from main
-- Homesite HTML and screenshot assets are published automatically before the app
-  build by `scripts/homesite-server-publish-assets.sh`.
+- Runtime must end with production dependencies only (`npm prune --omit=dev` before PM2 restart/reload).
+- Homesite HTML and screenshot assets are published only when explicitly enabled (`PUBLISH_HOMESITE=1`) in deploy automation.
 - The default homesite document root is `/var/www/bookmyclass-homesite`.
 - The deploy script creates `/var/www/bookmyclass-homesite/images/homesite`
   automatically and copies committed homesite images from
@@ -224,10 +225,11 @@ For UAT and Production, after checking out the release tag, use this command ord
 ```bash
 git fetch --all --tags
 git checkout vX.Y.Z
-npm ci
-npx prisma migrate deploy
+npm ci --include=dev
 npx prisma generate
+npx prisma migrate deploy
 npm run build
+npm prune --omit=dev
 pm2 restart bookmyclass-app --update-env
 npm run verify:media-runtime
 ```
@@ -236,20 +238,23 @@ npm run verify:media-runtime
 
 * `git fetch --all --tags` pulls latest remote refs and tags
 * `git checkout vX.Y.Z` switches the server to the exact release version
-* `npm ci` installs dependencies exactly from `package-lock.json`
+* `npm ci --include=dev` installs lockfile dependencies including temporary build-time devDependencies
 * `npx prisma migrate deploy` applies committed migrations to the target database
 * `npx prisma generate` regenerates Prisma client artifacts for the checked out version
 * `npm run build` builds the Next.js application
+* `npm prune --omit=dev` removes devDependencies before runtime activation
 * `pm2 restart bookmyclass-app --update-env` restarts the app with the current environment
 * `npm run verify:media-runtime` checks persistent media storage and `/uploads/...` public path generation for all canonical image folders
 
 ### Rules
 
 * Always deploy from a tag, never from `main`
-* Always run `npm ci` before build on UAT/Production
+* Always run `npm ci --include=dev` before build on UAT/Production
 * Always run `npx prisma migrate deploy` before `npx prisma generate`
 * Always run `npx prisma generate` before `npm run build`
+* Always run `npm prune --omit=dev` after build and before PM2 restart/reload
 * Always restart PM2 only after a successful build
+* Never run `prisma migrate reset` or seed commands during normal UAT/production deploy
 * Never use destructive database reset commands for UAT or Production catalog setup
 
 ### Notes

@@ -248,11 +248,14 @@ jobs:
           ssh deploy-target 'set -euo pipefail
             latest="$(find /tmp -maxdepth 1 -type d -name "uat-deploy-*" -printf "%T@ %p\n" 2>/dev/null | sort -nr | head -n 1 | cut -d" " -f2- || true)"
             if [[ -z "$latest" ]]; then
-              echo "[warn] no /tmp/uat-deploy-* directory found"
+              latest="$(find /tmp -maxdepth 1 -type d -name "*-deploy-*" -printf "%T@ %p\n" 2>/dev/null | sort -nr | head -n 1 | cut -d" " -f2- || true)"
+            fi
+            if [[ -z "$latest" ]]; then
+              echo "[warn] no /tmp/*-deploy-* directory found"
               exit 0
             fi
             echo "latest_remote_deploy_dir=$latest"
-            find /tmp -maxdepth 2 -path "/tmp/uat-deploy-*/deploy.log" -printf "%p\n" | sort
+            find /tmp -maxdepth 2 -path "/tmp/*-deploy-*/deploy.log" -printf "%p\n" | sort
             cat "$latest/deploy.log"
           ' 2>&1 | tee "${EVIDENCE_ROOT}/remote/latest-remote-deploy.log"
 
