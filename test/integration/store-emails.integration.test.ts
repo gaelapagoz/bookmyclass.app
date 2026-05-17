@@ -1,11 +1,18 @@
 import "./helpers/setup-env";
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { prisma } from "./helpers/db";
 import { clearCapturedTestEmails, getCapturedTestEmails } from "../../src/lib/email/resend-delivery";
 import { sendGiftCardIssuanceEmail } from "../../src/lib/email/gift-card-email";
 import { sendStorePurchaseConfirmationEmail } from "../../src/lib/email/store-email";
+import { resetDb } from "./helpers/reset-db";
 
 beforeEach(() => {
+  clearCapturedTestEmails();
+});
+
+beforeEach(async () => {
+  await resetDb();
   clearCapturedTestEmails();
   process.env.E2E_TEST_MODE = "1";
 });
@@ -18,6 +25,7 @@ describe("sendGiftCardIssuanceEmail", () => {
       plaintextCode: "AABBCCDD-11223344-AABBCCDD-11223344",
       amountMinor: 2500,
       currencyCode: "EUR",
+      idempotencyKey: "test:gift-card-issuance:1",
     });
 
     const emails = getCapturedTestEmails();
@@ -35,6 +43,7 @@ describe("sendGiftCardIssuanceEmail", () => {
       purchaserName: "Alice",
       plaintextCode: "FFFFFFFF-FFFFFFFF-FFFFFFFF-FFFFFFFF",
       amountMinor: 5000,
+      idempotencyKey: "test:gift-card-issuance:2",
     });
 
     const emails = getCapturedTestEmails();
@@ -47,6 +56,7 @@ describe("sendGiftCardIssuanceEmail", () => {
       purchaserName: null,
       plaintextCode: "FFFFFFFF-FFFFFFFF-FFFFFFFF-FFFFFFFF",
       amountMinor: 5000,
+      idempotencyKey: "test:gift-card-issuance:3",
     });
 
     const emails = getCapturedTestEmails();
@@ -61,11 +71,13 @@ describe("sendGiftCardIssuanceEmail", () => {
       adminMessage: "<img src=x onerror=alert(1)>\nhello",
       plaintextCode: "FFFFFFFF-FFFFFFFF-FFFFFFFF-FFFFFFFF",
       amountMinor: 5000,
+      idempotencyKey: "test:gift-card-issuance:4",
     });
 
     const html = getCapturedTestEmails()[0]?.html ?? "";
-    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;<br />hello");
     expect(html).not.toContain("<img src=x onerror=alert(1)>");
+    expect(html).toMatch(/&(?:amp;)+lt;img src=x onerror=alert\(1\)&(?:amp;)+gt;/);
+    expect(html).toMatch(/&(?:amp;)+lt;br \/&(?:amp;)+gt;hello/);
   });
 });
 
@@ -75,6 +87,7 @@ describe("sendStorePurchaseConfirmationEmail", () => {
       to: "buyer@example.test",
       purchaserName: "Bob Test",
       orderId: "test-order-123",
+      idempotencyKey: "test:store-purchase:order-123",
       items: [
         { name: "Studio Tote Bag", quantity: 1, unitAmountMinor: 2200, currencyCode: "EUR" },
       ],
@@ -90,11 +103,31 @@ describe("sendStorePurchaseConfirmationEmail", () => {
     expect(email.context).toBe("store-purchase-confirmation");
   });
 
+  it("creates one outbox event for duplicate idempotency key submissions", async () => {
+    const idempotencyKey = "test:store-purchase:dedupe";
+    const payload = {
+      to: "dupe@example.test",
+      purchaserName: "Dupe",
+      orderId: "test-order-dedupe",
+      idempotencyKey,
+      items: [{ name: "Yoga Mat", quantity: 1, unitAmountMinor: 1500, currencyCode: "EUR" }],
+    };
+
+    await sendStorePurchaseConfirmationEmail(payload);
+    await sendStorePurchaseConfirmationEmail(payload);
+
+    const events = await prisma.emailAutomationEvent.findMany({
+      where: { idempotencyKey },
+    });
+    expect(events).toHaveLength(1);
+  });
+
   it("includes pickup-at-studio instruction", async () => {
     await sendStorePurchaseConfirmationEmail({
       to: "pickup@example.test",
       purchaserName: null,
       orderId: "test-order-456",
+      idempotencyKey: "test:store-purchase:order-456",
       items: [
         { name: "Yoga Mat", quantity: 2, unitAmountMinor: 1500, currencyCode: "EUR" },
       ],

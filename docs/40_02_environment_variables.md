@@ -23,10 +23,12 @@ Purpose: define environment-variable expectations by runtime context using repos
 - Provider send path uses:
   - `RESEND_API_KEY`
   - `EMAIL_FROM`
+  - `MARKETING_TRACKING_SECRET`
 - Homesite contact form send path also requires:
   - `CONTACT_FORM_TO_EMAIL`
   - Expected configured value: `gaelapagoz@gmail.com`
 - In production, sender policy is enforced in code: sender must use verified `@bookmyclass.app` domain when provider delivery is used.
+- Canonical email architecture is unconditional: there are no `ENABLED`, `PAUSED`, or `DISABLED` environment variables for email architecture or email families.
 
 ## Contact Form Abuse Guard
 - `TRUST_X_FORWARDED_FOR` (optional, default fail-closed when unset)

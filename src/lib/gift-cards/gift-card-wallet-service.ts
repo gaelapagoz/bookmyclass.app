@@ -121,12 +121,18 @@ async function getExistingLedgerByKey(tx: Tx, idempotencyKey: string, payloadHas
 function isRetryableMutationRace(error: unknown): boolean {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     const rawCode = (error.meta as { code?: string } | undefined)?.code;
-    return error.code === "P2002" || error.code === "P2010" || error.code === "P2034" || rawCode === "40001" || rawCode === "40P01" || rawCode === "23505";
+    return error.code === "P2002"
+      || error.code === "P2010"
+      || error.code === "P2034"
+      || rawCode === "40001"
+      || rawCode === "40P01"
+      || rawCode === "23505"
+      || rawCode === "25P02";
   }
 
   const cause = (error as { cause?: { code?: string; originalCode?: string } })?.cause;
   const code = cause?.code ?? cause?.originalCode;
-  return code === "40001" || code === "40P01" || code === "23505";
+  return code === "40001" || code === "40P01" || code === "23505" || code === "25P02";
 }
 
 async function runGiftCardTransaction<T>(callback: (tx: Tx) => Promise<T>): Promise<T> {
@@ -218,13 +224,16 @@ async function getOrCreateLockedWallet(tx: Tx, clientId: string, currencyCode: s
   }
 }
 
-async function findActivationByOrderItem(tx: Tx, orderItemId: string): Promise<{ id: string } | null> {
+async function findActivationByOrderItem(
+  tx: Tx,
+  orderItemId: string,
+): Promise<{ id: string; walletId: string; idempotencyKey: string; payloadHash: string } | null> {
   return tx.giftCardLedgerEntry.findFirst({
     where: {
       orderItemId,
       entryType: GiftCardLedgerEntryType.ACTIVATION,
     },
-    select: { id: true },
+    select: { id: true, walletId: true, idempotencyKey: true, payloadHash: true },
   });
 }
 
@@ -346,6 +355,16 @@ export async function activateGiftCardValue(input: ActivateGiftCardInput): Promi
     if (orderItemId) {
       const duplicateActivation = await findActivationByOrderItem(tx, orderItemId);
       if (duplicateActivation) {
+        if (duplicateActivation.idempotencyKey === input.idempotencyKey) {
+          if (duplicateActivation.payloadHash !== payloadHash) {
+            throw new GiftCardIdempotencyConflictError();
+          }
+          return {
+            wallet: await tx.giftCardWallet.findUniqueOrThrow({ where: { id: duplicateActivation.walletId } }),
+            ledgerEntry: await tx.giftCardLedgerEntry.findUniqueOrThrow({ where: { id: duplicateActivation.id } }),
+            idempotent: true,
+          };
+        }
         throw giftCardError(giftCardErrorCodes.activationOrderItemAlreadyExists);
       }
     }
@@ -362,6 +381,16 @@ export async function activateGiftCardValue(input: ActivateGiftCardInput): Promi
     if (orderItemId) {
       const lockedDuplicateActivation = await findActivationByOrderItem(tx, orderItemId);
       if (lockedDuplicateActivation) {
+        if (lockedDuplicateActivation.idempotencyKey === input.idempotencyKey) {
+          if (lockedDuplicateActivation.payloadHash !== payloadHash) {
+            throw new GiftCardIdempotencyConflictError();
+          }
+          return {
+            wallet: await tx.giftCardWallet.findUniqueOrThrow({ where: { id: lockedDuplicateActivation.walletId } }),
+            ledgerEntry: await tx.giftCardLedgerEntry.findUniqueOrThrow({ where: { id: lockedDuplicateActivation.id } }),
+            idempotent: true,
+          };
+        }
         throw giftCardError(giftCardErrorCodes.activationOrderItemAlreadyExists);
       }
     }

@@ -2,9 +2,16 @@ import { CartCheckoutIdempotencyState } from "@prisma/client";
 import { cleanupStaleWebhookReceipts } from "@/lib/public-booking/webhook-receipt-cleanup";
 import { expireStaleBookingDrafts } from "@/lib/public-booking/booking-draft-service";
 import { prisma } from "@/lib/db";
+import {
+  dispatchEmailAutomationBatch,
+} from "@/lib/email/email-automation-dispatcher-service";
 
 const CART_IDEMPOTENCY_TERMINAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const CART_IDEMPOTENCY_IN_PROGRESS_RETENTION_MS = 60 * 60 * 1000; // 1 hour
+
+const CLEANUP_ERROR_CODE = "WEBHOOK_RECEIPT_CLEANUP_FAILED";
+const CART_IDEMPOTENCY_ERROR_CODE = "CART_CHECKOUT_IDEMPOTENCY_CLEANUP_FAILED";
+const DISPATCH_ERROR_CODE = "EMAIL_AUTOMATION_DISPATCH_FAILED";
 
 async function cleanupStaleCartCheckoutIdempotency(): Promise<{ deletedCount: number }> {
   const now = new Date();
@@ -49,18 +56,43 @@ export async function GET(request: Request) {
     cleanupStaleWebhookReceipts(),
     cleanupStaleCartCheckoutIdempotency(),
   ]);
+  const dispatcherResult = await Promise.allSettled([
+    dispatchEmailAutomationBatch({
+      workerId: "cron-maintenance",
+      maxEvents: 25,
+      leaseMs: 30_000,
+    }),
+  ]).then((results) => results[0]);
 
   const expiredDrafts = draftsResult.status === "fulfilled" ? draftsResult.value.expiredCount : 0;
   const cleanedWebhooks = cleanupResult.status === "fulfilled" ? cleanupResult.value.cleanedCount : null;
-  const cleanupError = cleanupResult.status === "rejected" ? String(cleanupResult.reason) : null;
+  const cleanupError = cleanupResult.status === "rejected" ? CLEANUP_ERROR_CODE : null;
   const deletedCartIdempotency = cartIdempotencyResult.status === "fulfilled" ? cartIdempotencyResult.value.deletedCount : null;
-  const cartIdempotencyError = cartIdempotencyResult.status === "rejected" ? String(cartIdempotencyResult.reason) : null;
+  const cartIdempotencyError = cartIdempotencyResult.status === "rejected" ? CART_IDEMPOTENCY_ERROR_CODE : null;
+  const dispatchResult = dispatcherResult.status === "fulfilled" ? dispatcherResult.value : null;
+  const dispatchError = dispatcherResult.status === "rejected" ? DISPATCH_ERROR_CODE : null;
+  const cleanupErrorDetail = cleanupResult.status === "rejected" ? String(cleanupResult.reason) : null;
+  const cartIdempotencyErrorDetail =
+    cartIdempotencyResult.status === "rejected" ? String(cartIdempotencyResult.reason) : null;
+  const dispatchErrorDetail = dispatcherResult.status === "rejected" ? String(dispatcherResult.reason) : null;
 
   if (cleanupError) {
-    console.error("[cron/maintenance] webhook receipt cleanup failed", { error: cleanupError });
+    console.error("[cron/maintenance] webhook receipt cleanup failed", {
+      code: CLEANUP_ERROR_CODE,
+      error: cleanupErrorDetail,
+    });
   }
   if (cartIdempotencyError) {
-    console.error("[cron/maintenance] cart checkout idempotency cleanup failed", { error: cartIdempotencyError });
+    console.error("[cron/maintenance] cart checkout idempotency cleanup failed", {
+      code: CART_IDEMPOTENCY_ERROR_CODE,
+      error: cartIdempotencyErrorDetail,
+    });
+  }
+  if (dispatchError) {
+    console.error("[cron/maintenance] email automation dispatch failed", {
+      code: DISPATCH_ERROR_CODE,
+      error: dispatchErrorDetail,
+    });
   }
 
   return Response.json({
@@ -68,7 +100,9 @@ export async function GET(request: Request) {
     expiredBookingDrafts: expiredDrafts,
     cleanedWebhookReceipts: cleanedWebhooks,
     deletedCartCheckoutIdempotency: deletedCartIdempotency,
+    emailAutomationDispatch: dispatchResult,
     ...(cleanupError ? { cleanupError } : {}),
     ...(cartIdempotencyError ? { cartIdempotencyError } : {}),
+    ...(dispatchError ? { dispatchError } : {}),
   });
 }

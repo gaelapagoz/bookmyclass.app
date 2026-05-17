@@ -368,9 +368,9 @@ const learningProgramSchema = z.object({
   description2: z.string().optional(),
   description3: z.string().optional(),
   videoPromo: z.string().optional(),
-  picture1: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/ JPG, PNG, or WEBP files."),
-  picture2: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/ JPG, PNG, or WEBP files."),
-  picture3: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/ JPG, PNG, or WEBP files."),
+  picture1: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /uploads/learning/ (legacy /images/learning/ allowed), JPG, PNG, or WEBP files."),
+  picture2: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /uploads/learning/ (legacy /images/learning/ allowed), JPG, PNG, or WEBP files."),
+  picture3: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /uploads/learning/ (legacy /images/learning/ allowed), JPG, PNG, or WEBP files."),
 });
 
 const learningVideoSchema = z.object({
@@ -380,7 +380,7 @@ const learningVideoSchema = z.object({
   category: z.string().min(1),
   categoryType: z.string().optional(),
   categoryLevel: z.string().optional(),
-  thumbnail: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /images/learning/ JPG, PNG, or WEBP files."),
+  thumbnail: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /uploads/learning/ (legacy /images/learning/ allowed), JPG, PNG, or WEBP files."),
   videoUrl: z.string().optional(),
   priority: z.coerce.number().int(),
 });

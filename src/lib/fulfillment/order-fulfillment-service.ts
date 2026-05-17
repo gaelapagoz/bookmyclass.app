@@ -7,12 +7,16 @@ import {
   PaymentStatus,
   PriceType,
   ProductType,
+  Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { issueGiftCardCodesForOrder } from "@/lib/gift-cards/gift-card-code-service";
 import { consumeCredit } from "@/lib/credits/credit-service";
 
 const PURCHASE_CONFIRMATION_EMAIL_SENT = "PURCHASE_CONFIRMATION_EMAIL_SENT";
+const PURCHASE_CONFIRMATION_EMAIL_FAILED = "PURCHASE_CONFIRMATION_EMAIL_FAILED";
+const STORE_PURCHASE_CONFIRMATION_EMAIL_SENT = "STORE_PURCHASE_CONFIRMATION_EMAIL_SENT";
+const STORE_PURCHASE_CONFIRMATION_EMAIL_FAILED = "STORE_PURCHASE_CONFIRMATION_EMAIL_FAILED";
 
 function buildLedgerIdempotencyKey(
   prefix: string,
@@ -244,6 +248,55 @@ async function recordPurchaseConfirmationEmailSent(input: {
   });
 }
 
+async function hasStoreConfirmationEmailBeenSent(orderId: string): Promise<boolean> {
+  const existing = await prisma.auditLog.findFirst({
+    where: {
+      actionType: STORE_PURCHASE_CONFIRMATION_EMAIL_SENT,
+      entityType: "Order",
+      entityId: orderId,
+    },
+    select: { id: true },
+  });
+
+  return existing !== null;
+}
+
+async function recordStoreConfirmationEmailSent(input: {
+  orderId: string;
+  clientId: string;
+  itemCount: number;
+}): Promise<void> {
+  await prisma.auditLog.create({
+    data: {
+      actorId: input.clientId,
+      actionType: STORE_PURCHASE_CONFIRMATION_EMAIL_SENT,
+      entityType: "Order",
+      entityId: input.orderId,
+      metadata: {
+        source: "order-fulfillment-service",
+        itemCount: input.itemCount,
+      },
+    },
+  });
+}
+
+async function recordLifecycleEmailFailure(input: {
+  actionType: string;
+  orderId: string;
+  clientId: string;
+  metadata: Record<string, unknown>;
+}): Promise<void> {
+  await prisma.auditLog.create({
+    data: {
+      actorId: input.clientId,
+      actionType: input.actionType,
+      entityType: "Order",
+      entityId: input.orderId,
+      metadata: input.metadata as Prisma.InputJsonValue,
+    },
+  });
+}
+
 /**
  * Fulfills a paid cart order: issues gift card codes, grants entitlements,
  * and sends confirmation emails. Safe to call multiple times (idempotent).
@@ -376,6 +429,7 @@ export async function fulfillPaidCartOrder(input: {
           currencyCode: order.currencyCode,
           walletAmountMinor,
           stripeAmountMinor,
+          idempotencyKey: `payment:purchase-confirmation:${order.id}`,
         });
         await recordPurchaseConfirmationEmailSent({
           orderId: order.id,
@@ -390,28 +444,54 @@ export async function fulfillPaidCartOrder(input: {
         "[fulfillment] purchase confirmation email failed",
         emailError instanceof Error ? emailError.message : String(emailError),
       );
+      await recordLifecycleEmailFailure({
+        actionType: PURCHASE_CONFIRMATION_EMAIL_FAILED,
+        orderId: order.id,
+        clientId: input.clientId,
+        metadata: {
+          source: "order-fulfillment-service",
+          context: "purchase-confirmation",
+        },
+      });
     }
   }
 
   if (merchandiseItems.length > 0 && purchaser?.email) {
     try {
-      const { sendStorePurchaseConfirmationEmail } = await import("@/lib/email/store-email");
-      await sendStorePurchaseConfirmationEmail({
-        to: purchaser.email,
-        purchaserName: purchaser.name,
-        orderId: order.id,
-        items: merchandiseItems.map((item) => ({
-          name: item.productNameSnapshot,
-          quantity: item.quantity,
-          unitAmountMinor: item.price.unitAmountMinor,
-          currencyCode: item.currencyCode,
-        })),
-      });
+      if (!(await hasStoreConfirmationEmailBeenSent(order.id))) {
+        const { sendStorePurchaseConfirmationEmail } = await import("@/lib/email/store-email");
+        await sendStorePurchaseConfirmationEmail({
+          to: purchaser.email,
+          purchaserName: purchaser.name,
+          orderId: order.id,
+          idempotencyKey: `store:purchase-confirmation:${order.id}`,
+          items: merchandiseItems.map((item) => ({
+            name: item.productNameSnapshot,
+            quantity: item.quantity,
+            unitAmountMinor: item.price.unitAmountMinor,
+            currencyCode: item.currencyCode,
+          })),
+        });
+        await recordStoreConfirmationEmailSent({
+          orderId: order.id,
+          clientId: input.clientId,
+          itemCount: merchandiseItems.length,
+        });
+      }
     } catch (emailError) {
       console.error(
         "[fulfillment] merchandise confirmation email failed",
         emailError instanceof Error ? emailError.message : String(emailError),
       );
+      await recordLifecycleEmailFailure({
+        actionType: STORE_PURCHASE_CONFIRMATION_EMAIL_FAILED,
+        orderId: order.id,
+        clientId: input.clientId,
+        metadata: {
+          source: "order-fulfillment-service",
+          context: "store-purchase-confirmation",
+        },
+      });
     }
   }
 }

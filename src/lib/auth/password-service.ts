@@ -1,9 +1,9 @@
 import { UserActivationStatus } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import { compare, hash } from "bcryptjs";
+import { enqueuePasswordResetEmailFastLane, resolveAppUrl } from "@/lib/auth/auth-email-fast-lane-service";
 import { createInMemoryTtlCache } from "@/lib/cache/in-memory-ttl-cache";
 import { prisma } from "@/lib/db";
-import { isDeterministicEmailDeliveryMode, sendEmailViaResend } from "@/lib/email/resend-delivery";
 
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
@@ -19,8 +19,7 @@ export type PasswordServiceErrorCode =
   | "PASSWORD_MISMATCH"
   | "INVALID_CURRENT_PASSWORD"
   | "PASSWORD_NOT_SET"
-  | "TOKEN_INVALID_OR_EXPIRED"
-  | "PASSWORD_RESET_DELIVERY_FAILED";
+  | "TOKEN_INVALID_OR_EXPIRED";
 
 export class PasswordServiceError extends Error {
   constructor(
@@ -39,10 +38,6 @@ export type PasswordResetEmailPayload = {
 };
 
 type PasswordResetDebugMeta = Record<string, unknown>;
-
-type ResendSendResult = {
-  id: string | null;
-};
 
 function shouldLogPasswordResetDebug(): boolean {
   return process.env.NODE_ENV !== "production" && process.env.AUTH_DEBUG_PASSWORD_RESET === "1";
@@ -124,34 +119,6 @@ function getPasswordResetRateLimitDelegateOrThrow() {
     upsert: typeof prisma.passwordResetRateLimit.upsert;
     deleteMany: typeof prisma.passwordResetRateLimit.deleteMany;
   };
-}
-
-async function sendPasswordResetEmailViaResend(
-  payload: PasswordResetEmailPayload,
-): Promise<ResendSendResult> {
-  const from = process.env.EMAIL_FROM?.trim() || (isDeterministicEmailDeliveryMode() ? "Book My Class Test <no-reply@test.local>" : "");
-  logPasswordResetDebug("env-check", {
-    hasEmailFrom: Boolean(from),
-    hasAppUrl: Boolean(process.env.APP_URL?.trim()),
-  });
-  if (!from) {
-    throw new Error("Missing EMAIL_FROM.");
-  }
-
-  const result = await sendEmailViaResend({
-    context: "password-reset",
-    from,
-    to: payload.to,
-    subject: "Reset your password",
-    html: `
-      <p>Hello ${payload.userName},</p>
-      <p>We received a request to reset your password.</p>
-      <p><a href="${payload.resetUrl}">Reset your password</a></p>
-      <p>This link expires in ${payload.expiresInMinutes} minutes and can only be used once.</p>
-    `,
-  });
-
-  return { id: result.messageId };
 }
 
 async function shouldRateLimitForgotPasswordRequest(email: string, now: Date): Promise<boolean> {
@@ -266,7 +233,6 @@ export async function requestPasswordReset(input: {
   email: string;
   appUrl?: string;
   now?: Date;
-  sendResetEmail?: (payload: PasswordResetEmailPayload) => Promise<ResendSendResult | void>;
 }): Promise<{ outcome: "SKIPPED" | "SENT" }> {
   const passwordResetToken = getPasswordResetTokenDelegateOrThrow();
   logPasswordResetDebug("request-entered");
@@ -331,35 +297,30 @@ export async function requestPasswordReset(input: {
     expiresAtIso: expiresAt.toISOString(),
   });
 
-  const appUrl = input.appUrl ?? process.env.APP_URL ?? "http://localhost:3000";
+  const appUrl = resolveAppUrl(input.appUrl);
   const resetUrl = `${appUrl.replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(resetToken)}`;
   logPasswordResetDebug("reset-url-built", {
     appUrl,
     hasTokenInUrl: resetUrl.includes("token="),
   });
-  const sendEmail = input.sendResetEmail ?? sendPasswordResetEmailViaResend;
 
   try {
-    logPasswordResetDebug("resend-send-started", {
+    logPasswordResetDebug("fast-lane-enqueue-started", {
       recipientDomain: user.email.split("@")[1] ?? "unknown",
     });
-    const result = await sendEmail({
+    await enqueuePasswordResetEmailFastLane({
       to: user.email,
       userName: user.name,
       resetUrl,
       expiresInMinutes: Math.floor(PASSWORD_RESET_TTL_MS / (60 * 1000)),
+      idempotencyKey: `auth.password-reset:${user.id}:${resetTokenHash}`,
+      now,
     });
-    logPasswordResetDebug("resend-send-succeeded", {
-      resendId:
-        typeof result === "object" &&
-        result !== null &&
-        "id" in result &&
-        typeof (result as { id?: unknown }).id === "string"
-          ? (result as { id: string }).id
-          : null,
+    logPasswordResetDebug("fast-lane-enqueue-succeeded", {
+      userId: user.id,
     });
   } catch (error) {
-    console.error("[password-reset] resend-send-failed", {
+    console.error("[password-reset] auth-fast-lane-failed", {
       userId: user.id,
       emailDomain: user.email.split("@")[1] ?? "unknown",
       errorName: error instanceof Error ? error.name : null,
@@ -369,10 +330,7 @@ export async function requestPasswordReset(input: {
           ? JSON.stringify(error, Object.getOwnPropertyNames(error))
           : String(error),
     });
-    throw new PasswordServiceError(
-      "PASSWORD_RESET_DELIVERY_FAILED",
-      "Password reset email delivery failed.",
-    );
+    throw error;
   }
 
   return { outcome: "SENT" };

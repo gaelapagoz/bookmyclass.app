@@ -93,9 +93,6 @@ describe("Auth pages UI", () => {
     render(await ForgotPasswordPage({ searchParams: Promise.resolve({ sent: "1" }) }));
     expect(screen.getByText("If an account exists for that email, a reset link has been sent.")).toBeInTheDocument();
 
-    render(await ForgotPasswordPage({ searchParams: Promise.resolve({ error: "delivery_failed" }) }));
-    expect(screen.getByText("We could not send reset email right now. Please try again in a few minutes.")).toBeInTheDocument();
-
     render(await ForgotPasswordPage({ searchParams: Promise.resolve({ error: "request_failed" }) }));
     expect(screen.getByText("Password reset is temporarily unavailable. Please try again shortly.")).toBeInTheDocument();
   });

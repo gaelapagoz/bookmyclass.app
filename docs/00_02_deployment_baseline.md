@@ -31,6 +31,7 @@ If a setup/runbook file conflicts with this file, treat this file as authoritati
 | Canonical auth secret env var | `AUTH_SECRET` | Confirmed from code/runtime | `NEXTAUTH_SECRET` appears only as fallback in one marketing helper. |
 | Canonical Stripe env vars | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Confirmed from code/runtime | Seed/test-only Stripe price IDs are separate from core runtime Stripe keys. |
 | Production email sender policy | `EMAIL_FROM` must use verified `@bookmyclass.app` sender domain when provider delivery is enabled | Confirmed from code/runtime | Test/e2e deterministic bypass does not require provider send. |
+| Email architecture env controls | none | Required | Canonical email platform is unconditional; no ENABLED/PAUSED/DISABLED email architecture or email-family variables are supported. |
 
 ## Last Verified
 

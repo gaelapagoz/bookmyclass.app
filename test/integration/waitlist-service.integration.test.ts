@@ -13,7 +13,7 @@ import {
   SubscriptionStatus,
   WaitlistStatus,
 } from "@prisma/client";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "./helpers/db";
 import { createClassCategory, createClassType } from "./helpers/factories";
 import { resetDb } from "./helpers/reset-db";
@@ -23,7 +23,6 @@ import {
   WaitlistServiceError,
 } from "../../src/lib/public-booking/waitlist-service";
 import { cancelClientBooking } from "../../src/lib/dashboard/dashboard-service";
-import { clearCapturedTestEmails, getCapturedTestEmails } from "../../src/lib/email/resend-delivery";
 
 async function createClient(label: string) {
   const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -228,11 +227,38 @@ async function fillSessionToCapacity(sessionId: string, capacity: number) {
   return bookings;
 }
 
+async function seedWaitlistPromotionTemplate() {
+  await prisma.emailTemplate.upsert({
+    where: { templateKey: "waitlist.promotion.confirmed-booking" },
+    update: {
+      name: "Waitlist Promotion Booking Confirmation",
+      category: "BOOKING",
+      subjectTemplate: "You're in! Your class booking is now confirmed",
+      bodyTemplateJson: {
+        blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }],
+      },
+      contentSchemaVersion: 1,
+      isActive: true,
+    },
+    create: {
+      templateKey: "waitlist.promotion.confirmed-booking",
+      name: "Waitlist Promotion Booking Confirmation",
+      category: "BOOKING",
+      subjectTemplate: "You're in! Your class booking is now confirmed",
+      bodyTemplateJson: {
+        blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }],
+      },
+      contentSchemaVersion: 1,
+      isActive: true,
+    },
+  });
+}
+
 describe("waitlist runtime integration", () => {
   beforeEach(async () => {
     await resetDb();
-    clearCapturedTestEmails();
     process.env.EMAIL_FROM = process.env.EMAIL_FROM || "Test <test@example.test>";
+    await seedWaitlistPromotionTemplate();
   });
 
   it("joins and cancels waitlist for a full collective class without consuming credit", async () => {
@@ -342,6 +368,31 @@ describe("waitlist runtime integration", () => {
   });
 
   it("promotes waitlist clients using FIFO after cancellation", async () => {
+    await prisma.emailTemplate.upsert({
+      where: { templateKey: "waitlist.promotion.confirmed-booking" },
+      update: {
+        name: "Custom Waitlist Name",
+        category: "BOOKING",
+        subjectTemplate: "Custom waitlist subject",
+        bodyTemplateJson: {
+          blocks: [{ type: "paragraph", text: "Custom waitlist body {{clientName}}" }],
+        },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+      create: {
+        templateKey: "waitlist.promotion.confirmed-booking",
+        name: "Custom Waitlist Name",
+        category: "BOOKING",
+        subjectTemplate: "Custom waitlist subject",
+        bodyTemplateJson: {
+          blocks: [{ type: "paragraph", text: "Custom waitlist body {{clientName}}" }],
+        },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+    });
+
     const { session } = await createSessionFixture({
       capacity: 4,
       categorySlug: "collective",
@@ -404,9 +455,41 @@ describe("waitlist runtime integration", () => {
     });
     expect(consumeLedger).not.toBeNull();
 
-    const capturedEmails = getCapturedTestEmails().filter((entry) => entry.context === "waitlist-promotion");
-    expect(capturedEmails).toHaveLength(1);
-    expect(capturedEmails[0]?.to).toContain(waitlistFirst.email);
+    const outboxEvent = await prisma.emailAutomationEvent.findFirst({
+      where: {
+        recipientEmail: waitlistFirst.email.toLowerCase(),
+        idempotencyKey: `waitlist-promotion:${first.waitlistEntryId}:${promotedBooking?.id}`,
+      },
+      select: {
+        payloadJson: true,
+        template: { select: { templateKey: true } },
+      },
+    });
+    expect(outboxEvent?.template.templateKey).toBe("waitlist.promotion.confirmed-booking");
+    expect(outboxEvent?.payloadJson).toMatchObject({
+      clientName: waitlistFirst.name,
+      sessionTitle: session.title,
+      locationLabel: "Studio A",
+      waitlistEntryId: first.waitlistEntryId,
+      bookingId: promotedBooking?.id,
+    });
+    expect((outboxEvent?.payloadJson as { dateTimeLabel?: unknown } | null)?.dateTimeLabel).toEqual(expect.any(String));
+
+    const templateAfter = await prisma.emailTemplate.findUnique({
+      where: { templateKey: "waitlist.promotion.confirmed-booking" },
+      select: {
+        name: true,
+        subjectTemplate: true,
+        bodyTemplateJson: true,
+      },
+    });
+    expect(templateAfter).toMatchObject({
+      name: "Custom Waitlist Name",
+      subjectTemplate: "Custom waitlist subject",
+      bodyTemplateJson: {
+        blocks: [{ type: "paragraph", text: "Custom waitlist body {{clientName}}" }],
+      },
+    });
   });
 
   it("preserves cancelled history and creates a new booking during waitlist promotion", async () => {
@@ -765,5 +848,66 @@ describe("waitlist runtime integration", () => {
       },
     });
     expect(consumeEntries).toHaveLength(1);
+
+    const waitlistEmailOutboxCount = await prisma.emailAutomationEvent.count({
+      where: {
+        recipientEmail: waitlistedClient.email.toLowerCase(),
+        idempotencyKey: `waitlist-promotion:${joined.waitlistEntryId}:${promotedBookings[0]?.id}`,
+      },
+    });
+    expect(waitlistEmailOutboxCount).toBe(1);
+  });
+
+  it("cancellation still succeeds when enqueue-failure audit logging also fails", async () => {
+    const { session } = await createSessionFixture({
+      capacity: 2,
+      categorySlug: "collective",
+      categoryName: "Collective",
+      classSlug: "collective-audit-failure",
+      className: "Collective Audit Failure",
+    });
+    const fillers = await fillSessionToCapacity(session.id, 2);
+
+    const waitlistedClient = await createClient("audit-failure");
+    await grantCollectiveCredits({ clientId: waitlistedClient.id, amount: 1 });
+    const joined = await joinSessionWaitlist({
+      clientId: waitlistedClient.id,
+      studioSessionId: session.id,
+    });
+
+    await prisma.emailTemplate.delete({
+      where: { templateKey: "waitlist.promotion.confirmed-booking" },
+    });
+
+    const originalAuditCreate = prisma.auditLog.create.bind(prisma.auditLog);
+    const auditSpy = vi.spyOn(prisma.auditLog, "create").mockImplementation(async (args) => {
+      const actionType = (args as { data?: { actionType?: string } })?.data?.actionType;
+      if (actionType === "WAITLIST_PROMOTION_EMAIL_ENQUEUE_FAILED") {
+        throw new Error("forced-audit-write-failure");
+      }
+      return originalAuditCreate(args as never);
+    });
+
+    const bookingToCancel = fillers[0]!.booking;
+    await expect(
+      cancelClientBooking({
+        bookingId: bookingToCancel.id,
+        clientId: bookingToCancel.clientId!,
+      }),
+    ).resolves.toBeUndefined();
+
+    const cancelledBooking = await prisma.booking.findUnique({
+      where: { id: bookingToCancel.id },
+      select: { status: true },
+    });
+    expect(cancelledBooking?.status).toBe(BookingStatus.CANCELLED);
+
+    const promotedEntry = await prisma.waitlistEntry.findUnique({
+      where: { id: joined.waitlistEntryId },
+      select: { status: true },
+    });
+    expect(promotedEntry?.status).toBe(WaitlistStatus.PROMOTED);
+
+    auditSpy.mockRestore();
   });
 });

@@ -14,7 +14,7 @@ import {
 import { prisma } from "@/lib/db";
 import { STORE_PICKUP_WORDING } from "@/lib/store/store-constants";
 import { requestEmailChange, UserIdentityError } from "@/lib/auth/user-identity-service";
-import { sendWaitlistPromotionNotification } from "@/lib/public-booking/waitlist-notification-service";
+import { enqueueWaitlistPromotionNotification } from "@/lib/public-booking/waitlist-notification-service";
 import {
   cancelSessionWaitlistEntry,
   promoteWaitlistAfterCancellationWithinTx,
@@ -782,9 +782,31 @@ export async function cancelClientBooking(input: {
   await Promise.all(
     promotionResult.notifications.map(async (promotion) => {
       try {
-        await sendWaitlistPromotionNotification(promotion);
+        await enqueueWaitlistPromotionNotification(promotion);
       } catch (error) {
+        try {
+          await prisma.auditLog.create({
+            data: {
+              actorId: input.clientId,
+              actionType: "WAITLIST_PROMOTION_EMAIL_ENQUEUE_FAILED",
+              entityType: "WaitlistEntry",
+              entityId: promotion.waitlistEntryId,
+              metadata: {
+                bookingId: promotion.bookingId,
+                clientEmail: promotion.clientEmail,
+                errorMessage: error instanceof Error ? error.message : String(error),
+              },
+            },
+          });
+        } catch (auditError) {
+          console.error("[dashboard-service] waitlist promotion enqueue failure audit logging failed", {
+            waitlistEntryId: promotion.waitlistEntryId,
+            bookingId: promotion.bookingId,
+            auditError,
+          });
+        }
         console.error("[dashboard-service] waitlist promotion notification failed", {
+          alertCode: "WAITLIST_PROMOTION_EMAIL_ENQUEUE_FAILED",
           waitlistEntryId: promotion.waitlistEntryId,
           bookingId: promotion.bookingId,
           error,

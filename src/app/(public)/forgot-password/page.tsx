@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { auth } from "@/auth";
-import { PasswordServiceError, requestPasswordReset } from "@/lib/auth/password-service";
+import { requestPasswordReset } from "@/lib/auth/password-service";
 import { assertValidCsrfToken, createCsrfToken, getCsrfFieldName } from "@/lib/security/csrf-token";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
@@ -23,7 +23,6 @@ export default async function ForgotPasswordPage({
 
   const params = await searchParams;
   const sent = params.sent === "1";
-  const deliveryFailed = params.error === "delivery_failed";
   const requestFailed = params.error === "request_failed";
   const csrfToken = await createCsrfToken();
   const csrfFieldName = getCsrfFieldName();
@@ -56,9 +55,6 @@ export default async function ForgotPasswordPage({
         } catch (error) {
           Sentry.captureException(error);
           console.error("[forgot-password] request failed", { error });
-          if (error instanceof PasswordServiceError && error.code === "PASSWORD_RESET_DELIVERY_FAILED") {
-            redirect("/forgot-password?error=delivery_failed");
-          }
           redirect("/forgot-password?error=request_failed");
         }
 
@@ -77,11 +73,6 @@ export default async function ForgotPasswordPage({
       {sent ? (
         <p className="mt-4 text-sm text-[#2f6b35]">
           If an account exists for that email, a reset link has been sent.
-        </p>
-      ) : null}
-      {deliveryFailed ? (
-        <p className="mt-4 text-sm text-[#7b2d2d]">
-          We could not send reset email right now. Please try again in a few minutes.
         </p>
       ) : null}
       {requestFailed ? (

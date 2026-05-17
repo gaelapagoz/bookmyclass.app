@@ -1,7 +1,9 @@
 ﻿import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
-import { sanitizeRichHtml, textToRichHtml, toPlainTextFromRichHtml } from "@/lib/marketing/marketing-rich-text";
+import { sanitizeRichHtml, toPlainTextFromRichHtml } from "@/lib/marketing/marketing-rich-text";
+
+const HEX_COLOR_REGEX = /^#([0-9a-f]{6})$/i;
 
 const headingBlockSchema = z.object({
   type: z.literal("heading"),
@@ -49,6 +51,9 @@ export const marketingBlockSchema = z.discriminatedUnion("type", [
 ]);
 
 export const marketingContentSchema = z.object({
+  previewText: z.string().max(500).optional(),
+  emailBackgroundColor: z.string().regex(HEX_COLOR_REGEX).optional(),
+  contentWidth: z.number().int().min(360).max(760).optional(),
   blocks: z.array(marketingBlockSchema).min(1).max(60),
 });
 
@@ -63,7 +68,6 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-const HEX_COLOR_REGEX = /^#([0-9a-f]{6})$/i;
 const DEFAULT_HEADING_TEXT_COLOR = "#1f2735";
 const DEFAULT_PARAGRAPH_TEXT_COLOR = "#334155";
 const DEFAULT_BUTTON_TEXT_COLOR = "#ffffff";
@@ -81,7 +85,7 @@ function normalizeHexColor(input: string | undefined, fallback: string): string 
 }
 
 function normalizeHeadingBlock(block: z.infer<typeof headingBlockSchema>) {
-  const htmlSource = block.contentHtml ?? textToRichHtml(block.text ?? "", "heading");
+  const htmlSource = block.contentHtml ?? (block.text ?? "");
   return {
     type: "heading" as const,
     contentHtml: sanitizeRichHtml(htmlSource, "heading"),
@@ -90,7 +94,7 @@ function normalizeHeadingBlock(block: z.infer<typeof headingBlockSchema>) {
 }
 
 function normalizeParagraphBlock(block: z.infer<typeof paragraphBlockSchema>) {
-  const htmlSource = block.contentHtml ?? textToRichHtml(block.text ?? "", "paragraph");
+  const htmlSource = block.contentHtml ?? (block.text ?? "");
   return {
     type: "paragraph" as const,
     contentHtml: sanitizeRichHtml(htmlSource, "paragraph"),
@@ -99,7 +103,7 @@ function normalizeParagraphBlock(block: z.infer<typeof paragraphBlockSchema>) {
 }
 
 function normalizeButtonBlock(block: z.infer<typeof buttonBlockSchema>) {
-  const htmlSource = block.labelHtml ?? textToRichHtml(block.text ?? "", "button");
+  const htmlSource = block.labelHtml ?? (block.text ?? "");
   return {
     type: "button" as const,
     labelHtml: sanitizeRichHtml(htmlSource, "button"),
@@ -112,6 +116,9 @@ function normalizeButtonBlock(block: z.infer<typeof buttonBlockSchema>) {
 export function normalizeMarketingContentJson(input: unknown): MarketingContentJson {
   const parsed = marketingContentSchema.parse(input);
   return {
+    previewText: parsed.previewText?.trim() || undefined,
+    emailBackgroundColor: normalizeHexColor(parsed.emailBackgroundColor, "#f3f6fb"),
+    contentWidth: parsed.contentWidth ?? 680,
     blocks: parsed.blocks.map((block) => {
       if (block.type === "heading") {
         return normalizeHeadingBlock(block);
@@ -201,6 +208,7 @@ export function renderMarketingEmailHtml(input: {
   const normalized = normalizeMarketingContentJson(input.contentJson);
 
   const trackedContent: MarketingContentJson = {
+    previewText: normalized.previewText,
     blocks: normalized.blocks.map((block) => {
       if (block.type !== "button") {
         return block;
@@ -222,8 +230,8 @@ export function renderMarketingEmailHtml(input: {
 
   return `<!doctype html>
 <html>
-  <body style="margin:0;padding:24px;background:#f3f6fb;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;margin:0 auto;background:#ffffff;border-radius:10px;padding:24px;">
+  <body style="margin:0;padding:24px;background:${escapeHtml(normalized.emailBackgroundColor || "#f3f6fb")};">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:${normalized.contentWidth ?? 680}px;margin:0 auto;background:#ffffff;border-radius:10px;padding:24px;">
       <tr><td>${body}
       <p style="margin:24px 0 0 0;font-size:12px;font-family:Arial,sans-serif;color:#64748b;">
         If you no longer want marketing updates, <a href="${unsubscribeUrl}">unsubscribe</a>.

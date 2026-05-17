@@ -9,7 +9,12 @@ import {
   removeSessionAttendeeByManager,
 } from "@/lib/admin/admin-service";
 import { assertTeacherSelfScope, assertTeacherSessionScope } from "@/lib/teacher/teacher-helpers";
-import { assertCanonicalMediaPublicPath, assertSafeMediaPublicPath, getCanonicalMediaRenderState } from "@/lib/media";
+import {
+  assertCanonicalMediaPublicPath,
+  assertSafeMediaPublicPath,
+  getCanonicalMediaRenderState,
+  getLocalMediaRenderState,
+} from "@/lib/media";
 
 export type TeacherProfileData = {
   id: string;
@@ -165,12 +170,18 @@ async function getTeacherImageRenderPath(imagePath: string | null): Promise<stri
     return "";
   }
 
-  if (imagePath.startsWith("/uploads/")) {
-    const renderState = await getCanonicalMediaRenderState(imagePath, { allowedFolders: ["teachers"] });
+  const trimmed = imagePath.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (trimmed.startsWith("/uploads/")) {
+    const renderState = await getCanonicalMediaRenderState(trimmed, { allowedFolders: ["teachers"] });
     return renderState.src ?? "";
   }
 
-  return imagePath.trim();
+  const renderState = await getLocalMediaRenderState(trimmed, { allowedFolders: ["/images/instructors"] });
+  return renderState.src ?? "";
 }
 
 export async function getTeacherAssignedSessions(input: {

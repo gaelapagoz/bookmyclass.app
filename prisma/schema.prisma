@@ -305,6 +305,25 @@ enum MarketingRecipientStatus {
   FAILED
 }
 
+enum EmailAutomationEventStatus {
+  PENDING
+  LEASED
+  SENT
+  DEAD_LETTER
+}
+
+enum EmailAutomationAttemptStatus {
+  SUCCEEDED
+  FAILED
+}
+
+enum EmailTemplateAuditAction {
+  CREATED
+  UPDATED
+  ACTIVATED
+  DEACTIVATED
+}
+
 enum AdminLoginAbuseKeyType {
   IP
   EMAIL
@@ -377,7 +396,10 @@ model User {
   marketingRecipients                 MarketingCampaignRecipient[] @relation("MarketingRecipientUser")
   marketingUnsubscribes               MarketingUnsubscribe[]       @relation("MarketingUnsubscribeUser")
   marketingSegments                   MarketingUserSegment[]
-  uploadedMediaAssets                 MediaAsset[]                @relation("MediaAssetUploadedBy")
+  emailTemplatesCreated               EmailTemplate[]              @relation("EmailTemplateCreatedBy")
+  emailTemplatesUpdated               EmailTemplate[]              @relation("EmailTemplateUpdatedBy")
+  emailTemplateAuditLogs              EmailTemplateAuditLog[]      @relation("EmailTemplateAuditActor")
+  uploadedMediaAssets                 MediaAsset[]                 @relation("MediaAssetUploadedBy")
   accounts                            Account[]
   sessions                            Session[]
   passwordResetTokens                 PasswordResetToken[]
@@ -1560,6 +1582,98 @@ model MarketingUnsubscribe {
   user           User?    @relation("MarketingUnsubscribeUser", fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+}
+
+model EmailTemplate {
+  id                   String                 @id @default(cuid())
+  templateKey          String                 @unique
+  name                 String
+  category             String
+  description          String?
+  contentSchemaVersion Int                    @default(1)
+  subjectTemplate      String
+  bodyTemplateJson     Json
+  isActive             Boolean                @default(true)
+  createdById          String?
+  updatedById          String?
+  createdBy            User?                  @relation("EmailTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy            User?                  @relation("EmailTemplateUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  events               EmailAutomationEvent[]
+  auditLogs            EmailTemplateAuditLog[]
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  @@index([category, isActive])
+}
+
+model EmailAutomationEvent {
+  id                String                    @id @default(cuid())
+  templateId        String
+  recipientEmail    String
+  payloadJson       Json
+  idempotencyKey    String                    @unique
+  status            EmailAutomationEventStatus @default(PENDING)
+  availableAt       DateTime                  @default(now())
+  leaseOwner        String?
+  leasedAt          DateTime?
+  leaseExpiresAt    DateTime?
+  attempts          Int                       @default(0)
+  maxAttempts       Int                       @default(5)
+  sentAt            DateTime?
+  deadLetteredAt    DateTime?
+  lastError         String?
+  template          EmailTemplate             @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  attemptLogs       EmailAutomationAttempt[]
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  @@index([status, availableAt])
+  @@index([templateId, createdAt])
+  @@index([recipientEmail, createdAt])
+  @@index([leaseExpiresAt])
+}
+
+model EmailAutomationAttempt {
+  id           String                       @id @default(cuid())
+  eventId      String
+  status       EmailAutomationAttemptStatus
+  leaseOwner   String?
+  startedAt    DateTime                     @default(now())
+  finishedAt   DateTime
+  errorMessage String?
+  event        EmailAutomationEvent         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt    DateTime                     @default(now())
+
+  @@index([eventId, createdAt])
+  @@index([status, createdAt])
+}
+
+model EmailDispatcherHeartbeat {
+  id               String   @id @default(cuid())
+  workerId         String   @unique
+  lastHeartbeatAt  DateTime
+  activeLeaseCount Int      @default(0)
+  metadataJson     Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([lastHeartbeatAt])
+}
+
+model EmailTemplateAuditLog {
+  id          String                 @id @default(cuid())
+  templateId  String
+  action      EmailTemplateAuditAction
+  actorId     String?
+  beforeJson  Json?
+  afterJson   Json?
+  template    EmailTemplate          @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  actor       User?                  @relation("EmailTemplateAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt   DateTime               @default(now())
+
+  @@index([templateId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
 }
 
 model Account {

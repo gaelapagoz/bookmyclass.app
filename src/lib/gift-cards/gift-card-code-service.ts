@@ -329,11 +329,26 @@ export async function issueGiftCardCodesForOrder(input: {
             plaintextCode: result.plaintextCode,
             amountMinor: item.amountMinor,
             currencyCode: input.currencyCode ?? GIFT_CARD_CURRENCY_CODE,
+            idempotencyKey: `gift-card:purchase-issuance:${input.orderId}:${item.orderItemId}`,
           });
         }
       } catch (emailError) {
         // Email failure must not block checkout completion
         console.error("[gift-card-code] issuance email failed", emailError instanceof Error ? emailError.message : String(emailError));
+        await createGiftCardManualReviewCase({
+          orderId: input.orderId,
+          clientId: input.clientId,
+          paymentId: input.paymentId ?? null,
+          reason: "GIFT_CARD_ISSUANCE_EMAIL_FAILED",
+          idempotencyKey: `gift-card:issuance-email-failed:order:${input.orderId}:item:${item.orderItemId}`,
+          metadata: {
+            orderItemId: item.orderItemId,
+            amountMinor: item.amountMinor,
+            source: "gift-card-code-service",
+          },
+        }).catch(() => {
+          // reconciliation note failure must never block fulfillment
+        });
         await emitGiftCardAlertEvent({
           eventName: "gift_card.issuance_email_failed",
           entityType: "GiftCardCode",
@@ -559,6 +574,7 @@ export async function generateAdminGiftCardCode(input: GenerateAdminGiftCardCode
       plaintextCode,
       amountMinor: parsed.amountMinor,
       currencyCode,
+      idempotencyKey: `gift-card:admin-issuance:${created.id}`,
     });
 
     const updated = await prisma.giftCardCode.update({
@@ -596,12 +612,42 @@ export async function generateAdminGiftCardCode(input: GenerateAdminGiftCardCode
     });
     return updated as GenerateAdminGiftCardCodeResult;
   } catch (_emailError) {
-    await prisma.giftCardCode.update({
-      where: { id: created.id },
-      data: {
-        emailStatus: GiftCardCodeEmailStatus.FAILED,
-      },
+    // Only mark FAILED when the outbox enqueue itself did not persist the event.
+    // If enqueue succeeded but fast-lane dispatch threw, the event is in the outbox
+    // and will be delivered — marking FAILED would produce a false-positive in the UI.
+    const emailIdempotencyKey = `gift-card:admin-issuance:${created.id}`;
+    const enqueued = await prisma.emailAutomationEvent.findUnique({
+      where: { idempotencyKey: emailIdempotencyKey },
+      select: { id: true },
     });
+    if (!enqueued) {
+      await prisma.giftCardCode.update({
+        where: { id: created.id },
+        data: { emailStatus: GiftCardCodeEmailStatus.FAILED },
+      });
+    }
+    await createGiftCardManualReviewCase({
+      orderId: orderContext.orderId,
+      clientId: parsed.actor.userId,
+      paymentId: null,
+      reason: "GIFT_CARD_ISSUANCE_EMAIL_FAILED",
+      idempotencyKey: `gift-card:admin-issuance-email-failed:${created.id}`,
+      metadata: {
+        source: "gift-card-code-service",
+        context: "admin-issuance",
+        recipientEmail: parsed.recipientEmail,
+      },
+    }).catch(() => {});
+    await emitGiftCardAlertEvent({
+      eventName: "gift_card.issuance_email_failed",
+      entityType: "GiftCardCode",
+      entityId: created.id,
+      metadata: {
+        source: "gift-card-code-service",
+        context: "admin-issuance",
+        recipientEmail: parsed.recipientEmail,
+      },
+    }).catch(() => {});
     throw giftCardError(giftCardErrorCodes.adminEmailDeliveryFailed);
   }
 }
@@ -863,6 +909,7 @@ export async function requestGiftCardCodeResend(input: {
     plaintextCode: newPlaintextCode,
     amountMinor: record.amountMinor,
     currencyCode: record.currencyCode ?? GIFT_CARD_CURRENCY_CODE,
+    idempotencyKey: `gift-card:resend:${record.id}:${newMaskedCode}`,
   });
 
   return { outcome: "sent", maskedCode: newMaskedCode };

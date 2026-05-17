@@ -10,6 +10,9 @@ import {
   StudioSessionStatus,
   SubscriptionStatus,
 } from "@prisma/client";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "./helpers/db";
@@ -262,6 +265,55 @@ describe("teacher service", () => {
         imagePath: "/images/instructors/teacher-cross.png",
       }),
     ).rejects.toThrow("TEACHER_SELF_SCOPE_FORBIDDEN");
+  });
+
+  it("accepts canonical teacher image updates and persists normalized path", async () => {
+    const { teacherA } = await seedTeacherSessionFixture();
+
+    const updated = await updateTeacherSelfImage({
+      teacherUserId: teacherA.id,
+      requestedTeacherUserId: teacherA.id,
+      imagePath: "/uploads/teachers/teacher-own-canonical.png",
+    });
+
+    expect(updated.image).toBe("/uploads/teachers/teacher-own-canonical.png");
+
+    const persisted = await prisma.user.findUnique({
+      where: { id: teacherA.id },
+      select: { image: true },
+    });
+
+    expect(persisted?.image).toBe("/uploads/teachers/teacher-own-canonical.png");
+  });
+
+  it("returns fallback image when legacy teacher image file is missing", async () => {
+    const { teacherA } = await seedTeacherSessionFixture();
+
+    await prisma.user.update({
+      where: { id: teacherA.id },
+      data: { image: "/images/instructors/missing-teacher-image.jpg" },
+    });
+
+    const profile = await getTeacherSelfProfile(teacherA.id);
+    expect(profile?.image).toBe("");
+  });
+
+  it("resolves canonical teacher image paths with surrounding whitespace", async () => {
+    const { teacherA } = await seedTeacherSessionFixture();
+
+    const uploadsDir = await mkdtemp(path.join(os.tmpdir(), "bookmyclass-teacher-profile-"));
+    process.env.UPLOADS_DIR = uploadsDir;
+    process.env.PUBLIC_UPLOADS_BASE_PATH = "/uploads";
+    await mkdir(path.join(uploadsDir, "teachers"), { recursive: true });
+    await writeFile(path.join(uploadsDir, "teachers", "whitespace-canonical.jpg"), Buffer.from([0xff, 0xd8, 0xff]));
+
+    await prisma.user.update({
+      where: { id: teacherA.id },
+      data: { image: "   /uploads/teachers/whitespace-canonical.jpg   " },
+    });
+
+    const profile = await getTeacherSelfProfile(teacherA.id);
+    expect(profile?.image).toBe("/uploads/teachers/whitespace-canonical.jpg");
   });
 
   it("restricts roster reads and mutations to assigned sessions and reuses eligibility rules", async () => {

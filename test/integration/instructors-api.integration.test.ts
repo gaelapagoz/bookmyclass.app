@@ -1,5 +1,8 @@
 import "./helpers/setup-env";
 import { Role } from "@prisma/client";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { GET as getInstructors } from "../../src/app/api/instructors/route";
 import { prisma } from "./helpers/db";
@@ -10,7 +13,13 @@ describe("instructors api", () => {
     await resetDb();
   });
 
-  it("returns teacher users with name, bio, and imageUrl", async () => {
+  it("returns teacher users with name, bio, and fallback-safe imageUrl", async () => {
+    const uploadsDir = await mkdtemp(path.join(os.tmpdir(), "bookmyclass-instructors-"));
+    process.env.UPLOADS_DIR = uploadsDir;
+    process.env.PUBLIC_UPLOADS_BASE_PATH = "/uploads";
+    await mkdir(path.join(uploadsDir, "teachers"), { recursive: true });
+    await writeFile(path.join(uploadsDir, "teachers", "ana-profile.jpg"), Buffer.from([0xff, 0xd8, 0xff]));
+
     await prisma.user.createMany({
       data: [
         {
@@ -19,7 +28,7 @@ describe("instructors api", () => {
           lastName: "Van den Berg",
           email: "sofia.vandenberg.test@yogapilatesfitness.local",
           role: Role.TEACHER,
-          image: "/images/instructors/sofia_instructor_bio.jpg",
+          image: "/images/instructors/missing-sofia-instructor-bio.jpg",
         },
         {
           name: "Ana Ionescu",
@@ -27,7 +36,7 @@ describe("instructors api", () => {
           lastName: "Ionescu",
           email: "ana.ionescu.test@yogapilatesfitness.local",
           role: Role.TEACHER,
-          image: "/images/instructors/ana_instructor_bio.jpg",
+          image: "/uploads/teachers/ana-profile.jpg",
         },
       ],
     });
@@ -60,12 +69,12 @@ describe("instructors api", () => {
     expect(body.instructors[0]).toMatchObject({
       name: "Ana Ionescu",
       bio: "Ana leads classes with a clear and progressive approach to movement.",
-      imageUrl: "/images/instructors/ana_instructor_bio.jpg",
+      imageUrl: "/uploads/teachers/ana-profile.jpg",
     });
     expect(body.instructors[1]).toMatchObject({
       name: "Sofia Van den Berg",
       bio: "Sofia teaches flowing classes with a warm and supportive approach.",
-      imageUrl: "/images/instructors/sofia_instructor_bio.jpg",
+      imageUrl: "",
     });
   });
 });

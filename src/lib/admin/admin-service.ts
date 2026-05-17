@@ -52,7 +52,7 @@ import {
   countActiveBookingsForSession,
   expireStaleBookingDraftsForSessionWithinTx,
 } from "@/lib/public-booking/booking-draft-service";
-import { sendWaitlistPromotionNotification } from "@/lib/public-booking/waitlist-notification-service";
+import { enqueueWaitlistPromotionNotification } from "@/lib/public-booking/waitlist-notification-service";
 import { promoteWaitlistAfterCancellationWithinTx } from "@/lib/public-booking/waitlist-service";
 import { resolveWaitlistPromotionCoverage } from "@/lib/public-booking/waitlist-service";
 import { isCatalogPriceCheckoutReady } from "@/lib/catalog/checkout-readiness";
@@ -3383,9 +3383,31 @@ export async function removeSessionAttendeeByManager(input: {
   await Promise.all(
     promotionResult.waitlistNotifications.map(async (promotion) => {
       try {
-        await sendWaitlistPromotionNotification(promotion);
+        await enqueueWaitlistPromotionNotification(promotion);
       } catch (error) {
+        try {
+          await prisma.auditLog.create({
+            data: {
+              actorId: actorUser.id,
+              actionType: "WAITLIST_PROMOTION_EMAIL_ENQUEUE_FAILED",
+              entityType: "WaitlistEntry",
+              entityId: promotion.waitlistEntryId,
+              metadata: {
+                bookingId: promotion.bookingId,
+                clientEmail: promotion.clientEmail,
+                errorMessage: error instanceof Error ? error.message : String(error),
+              },
+            },
+          });
+        } catch (auditError) {
+          console.error("[admin-service] waitlist promotion enqueue failure audit logging failed", {
+            waitlistEntryId: promotion.waitlistEntryId,
+            bookingId: promotion.bookingId,
+            auditError,
+          });
+        }
         console.error("[admin-service] waitlist promotion notification failed", {
+          alertCode: "WAITLIST_PROMOTION_EMAIL_ENQUEUE_FAILED",
           waitlistEntryId: promotion.waitlistEntryId,
           bookingId: promotion.bookingId,
           error,

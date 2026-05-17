@@ -502,6 +502,9 @@ Evidence label legend used in this file:
 - Centralized service boundaries:
   - Domain logic concentrated in `src/lib/*` modules consumed by routes/actions.
   - Evidence status: Confirmed from repo.
+- Canonical email architecture only:
+  - Outbox + dispatcher/cron + shared renderer/shared marketing builder are the only runtime email paths; no ENABLED/PAUSED/DISABLED architecture toggles are supported.
+  - Evidence status: Confirmed from repo.
 - Idempotent financial-like patterns:
   - Ledger idempotency keys and webhook-safe upsert/skipDuplicate patterns.
   - Evidence status: Confirmed from repo (`prisma/schema.prisma`, `src/lib/public-booking/stripe-webhook-service.ts`).

@@ -29,6 +29,7 @@ export default async function AdminStoreGiftCardNewPage({
 
       <form
         action={createStoreGiftCardAction}
+        encType="multipart/form-data"
         className="space-y-3 rounded-xl border border-[#d3dbe5] bg-white p-5"
       >
         <div className="grid gap-3 md:grid-cols-2">

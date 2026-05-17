@@ -47,6 +47,9 @@ export type {
 
 export {
   assertCanonicalMediaPublicPath,
-  getCanonicalMediaRenderState,
   toCanonicalMediaAbsolutePath,
+} from "./media-path-service";
+
+export {
+  getCanonicalMediaRenderState,
 } from "./media-render-service";

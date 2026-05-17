@@ -31,6 +31,10 @@ vi.mock("@/lib/public-documents/agenda-document-service", () => ({
 vi.mock("@/lib/marketing/marketing-service", () => ({
   listMarketingSegments: vi.fn(),
 }));
+vi.mock("@/lib/email/email-automation-admin-service", () => ({
+  getAutomationScaffoldRows: vi.fn(),
+  ensureAllExpectedAutomationTemplatesExist: vi.fn(async () => undefined),
+}));
 
 vi.mock("@/auth", () => ({
   auth: vi.fn(async () => null),
@@ -81,6 +85,7 @@ import {
   getAdminSiteTimeZone,
 } from "@/lib/admin/admin-service";
 import { listMarketingSegments } from "@/lib/marketing/marketing-service";
+import { getAutomationScaffoldRows } from "@/lib/email/email-automation-admin-service";
 import { listClientMessages } from "@/lib/client-messages/client-message-service";
 import { getActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
 
@@ -105,6 +110,7 @@ describe("Admin pages branching", () => {
     vi.mocked(getAdminClassCategoriesData).mockResolvedValue([]);
     vi.mocked(listAdminMarketingSegmentOptions).mockResolvedValue([]);
     vi.mocked(listMarketingSegments).mockResolvedValue([]);
+    vi.mocked(getAutomationScaffoldRows).mockResolvedValue([]);
   });
 
   it("renders dashboard data state", async () => {
@@ -907,13 +913,39 @@ describe("Admin pages branching", () => {
     expect(screen.getByRole("option", { name: /\(UTC-0[45]:00\) New York/ })).toHaveValue("America/New_York");
   });
 
-  it("renders automations placeholder page copy", async () => {
+  it("renders automations scaffold page", async () => {
+    vi.mocked(getAutomationScaffoldRows).mockResolvedValue([
+      { templateKey: "booking.welcome", triggerLabel: "Welcome", category: "Lifecycle", subject: "Not configured", previewText: "", whenDescription: "Immediately", status: "Draft", marketingStatus: "Never sent", sentLast30Days: 0, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: false },
+      { templateKey: "purchase.product.confirmation", triggerLabel: "Buy Product", category: "Payment", subject: "Not configured", previewText: "", whenDescription: "Immediately on purchase success", status: "Draft", marketingStatus: "Never sent", sentLast30Days: 0, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: false },
+      { templateKey: "subscription.cancelled", triggerLabel: "Cancel Subscription", category: "Subscription", subject: "Not configured", previewText: "", whenDescription: "Immediately on cancellation", status: "Draft", marketingStatus: "Never sent", sentLast30Days: 0, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: false },
+      { templateKey: "subscription.renewal", triggerLabel: "Renewal Subscription", category: "Subscription", subject: "Not configured", previewText: "", whenDescription: "Immediately on charge success", status: "Draft", marketingStatus: "Never sent", sentLast30Days: 0, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: false },
+      { templateKey: "booking.class-booked", triggerLabel: "Booked Class", category: "Booking", subject: "Not configured", previewText: "", whenDescription: "Immediately", status: "Draft", marketingStatus: "Never sent", sentLast30Days: 0, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: false },
+      { templateKey: "booking.class-cancelled", triggerLabel: "Class Cancelled", category: "Booking", subject: "Not configured", previewText: "", whenDescription: "Immediately on session cancel", status: "Draft", marketingStatus: "Never sent", sentLast30Days: 0, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: false },
+      { templateKey: "booking.class-reminder", triggerLabel: "Class Reminder", category: "Booking", subject: "Not configured", previewText: "", whenDescription: "2x cancellation policy before start", status: "Draft", marketingStatus: "Never sent", sentLast30Days: 0, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: false },
+      { templateKey: "waitlist.on-list", triggerLabel: "On Waiting List", category: "Waitlist", subject: "Not configured", previewText: "", whenDescription: "Immediately", status: "Draft", marketingStatus: "Never sent", sentLast30Days: 0, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: false },
+      { templateKey: "waitlist.promoted", triggerLabel: "Promoted Waiting List", category: "Waitlist", subject: "Not configured", previewText: "", whenDescription: "Immediately on promotion", status: "Draft", marketingStatus: "Never sent", sentLast30Days: 0, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: false },
+      { templateKey: "waitlist.not-promoted", triggerLabel: "Not Promoted Waiting List", category: "Waitlist", subject: "Not configured", previewText: "", whenDescription: "At class start", status: "Draft", marketingStatus: "Never sent", sentLast30Days: 0, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: false },
+      { templateKey: "auth.verify-email", triggerLabel: "Auth Verification Email", category: "Auth", subject: "Verify your email", previewText: "", whenDescription: "Immediately after signup", status: "Active", marketingStatus: "Never sent", sentLast30Days: 10, pendingCount: 1, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: true },
+      { templateKey: "auth.password-reset", triggerLabel: "Auth Password Reset Email", category: "Auth", subject: "Reset your password", previewText: "", whenDescription: "On password reset request", status: "Active", marketingStatus: "Never sent", sentLast30Days: 6, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: true },
+      { templateKey: "auth.verify-email-change", triggerLabel: "Auth Email Change Verification", category: "Auth", subject: "Confirm your new email", previewText: "", whenDescription: "On email change request", status: "Active", marketingStatus: "Never sent", sentLast30Days: 2, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: true },
+      { templateKey: "payment.purchase.confirmation", triggerLabel: "Payment Purchase Confirmation", category: "Payment", subject: "Payment purchase confirmation", previewText: "", whenDescription: "Immediately on payment success", status: "Active", marketingStatus: "Never sent", sentLast30Days: 2, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: true },
+      { templateKey: "store.purchase.confirmation", triggerLabel: "Store Purchase Confirmation", category: "Store", subject: "Store purchase confirmation", previewText: "", whenDescription: "Immediately on checkout success", status: "Active", marketingStatus: "Never sent", sentLast30Days: 2, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: true },
+      { templateKey: "gift-card.issuance", triggerLabel: "Gift Card Issuance", category: "Gift card", subject: "Your gift card is ready", previewText: "", whenDescription: "Immediately after gift card purchase", status: "Active", marketingStatus: "Never sent", sentLast30Days: 2, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: true },
+    ]);
     render(await AdminAutomationsPage());
 
     expect(screen.getByRole("heading", { name: "Automations" })).toBeInTheDocument();
-    expect(screen.getByText("Configure automation features from this area in a future release.")).toBeInTheDocument();
-    expect(screen.getByText("Operational automations are not yet configurable from the admin UI.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /save/i })).not.toBeInTheDocument();
+    expect(screen.getByText("Manage the email sent for each trigger event. One template per trigger.")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Trigger" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Subject" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "When" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Sent - 30D" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Marketing" })).toBeInTheDocument();
+    expect(screen.getByText("Welcome")).toBeInTheDocument();
+    expect(screen.getByText("Auth Verification Email")).toBeInTheDocument();
+    expect(screen.getByText("Gift Card Issuance")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /View|Configure/ }).length).toBe(16);
   });
 
   it("renders online learning data from shared service", async () => {

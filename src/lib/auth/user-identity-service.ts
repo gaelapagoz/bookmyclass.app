@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Role, UserActivationStatus, UserCreatedVia } from "@prisma/client";
 import { verifyPassword } from "@/lib/auth/password-service";
+import { enqueueVerificationEmailFastLane, resolveAppUrl } from "@/lib/auth/auth-email-fast-lane-service";
 import { prisma } from "@/lib/db";
-import { isDeterministicEmailDeliveryMode, sendEmailViaResend } from "@/lib/email/resend-delivery";
 
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const SIGNUP_RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -103,25 +103,18 @@ async function sendVerificationEmail(params: {
   to: string;
   verificationUrl: string;
   name: string;
-  subject?: string;
+  kind?: "VERIFY_EMAIL" | "EMAIL_CHANGE";
+  idempotencyKey: string;
+  now?: Date;
 }) {
-  const from = process.env.EMAIL_FROM?.trim() || (isDeterministicEmailDeliveryMode() ? "Book My Class Test <no-reply@test.local>" : "");
-  if (!from) {
-    throw new Error("Missing EMAIL_FROM.");
-  }
-
   try {
-    await sendEmailViaResend({
-      context: "user-identity-verification",
-      from,
+    await enqueueVerificationEmailFastLane({
       to: params.to,
-      subject: params.subject ?? "Verify your email",
-      html: `
-      <p>Hello ${params.name},</p>
-      <p>Please verify your email to continue.</p>
-      <p><a href="${params.verificationUrl}">Verify email</a></p>
-      <p>This link expires in 24 hours.</p>
-    `,
+      verificationUrl: params.verificationUrl,
+      name: params.name,
+      kind: params.kind,
+      idempotencyKey: params.idempotencyKey,
+      now: params.now,
     });
   } catch (error: unknown) {
     const details =
@@ -130,7 +123,7 @@ async function sendVerificationEmail(params: {
         : error instanceof Error
           ? error.message
           : String(error);
-    console.error("[user-identity] resend-send-failed", {
+    console.error("[user-identity] auth-fast-lane-failed", {
       details,
     });
     throw new Error("Could not send verification email.");
@@ -205,13 +198,15 @@ async function storePendingRegistrationAndSend(params: {
     },
   });
 
-  const appUrl = params.appUrl ?? process.env.APP_URL ?? "http://localhost:3000";
+  const appUrl = resolveAppUrl(params.appUrl);
   const verificationUrl = `${appUrl.replace(/\/$/, "")}/verify-email?registrationToken=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(params.email)}`;
 
   await sendVerificationEmail({
     to: params.email,
     verificationUrl,
     name: toFullName(params.firstName, params.lastName) || params.firstName,
+    idempotencyKey: `auth.verify-email:registration:${params.email}:${tokenHash}`,
+    now: params.now,
   });
 
   console.info("[user-identity] registration_verification_sent", { email: params.email });
@@ -439,13 +434,15 @@ export async function requestEmailVerification(input: {
     }),
   ]);
 
-  const appUrl = input.appUrl ?? process.env.APP_URL ?? "http://localhost:3000";
+  const appUrl = resolveAppUrl(input.appUrl);
   const verificationUrl = `${appUrl.replace(/\/$/, "")}/verify-email?email=${encodeURIComponent(user.email)}&token=${encodeURIComponent(rawToken)}`;
 
   await sendVerificationEmail({
     to: user.email,
     verificationUrl,
     name: user.name,
+    idempotencyKey: `auth.verify-email:user:${user.id}:${tokenHash}`,
+    now,
   });
 
   console.info("[user-identity] verification_sent", { email: user.email });
@@ -466,43 +463,41 @@ export async function verifyEmailByToken(input: {
   }
 
   const tokenHash = hashVerificationToken(token);
-  const verificationToken = await prisma.verificationToken.findUnique({
-    where: {
-      identifier_token: {
+  const result = await prisma.$transaction(async (tx) => {
+    const claim = await tx.verificationToken.deleteMany({
+      where: {
         identifier: email,
         token: tokenHash,
+        expires: { gt: now },
       },
-    },
-    select: {
-      identifier: true,
-      expires: true,
-    },
+    });
+    if (claim.count !== 1) {
+      return false;
+    }
+
+    const updated = await tx.user.updateMany({
+      where: {
+        email: {
+          equals: email,
+          mode: "insensitive",
+        },
+      },
+      data: {
+        emailVerified: now,
+        emailVerifiedAt: now,
+        activationStatus: UserActivationStatus.ACTIVE,
+        isActive: true,
+        isInactive: false,
+      },
+    });
+
+    return updated.count > 0;
   });
 
-  if (!verificationToken || verificationToken.expires <= now) {
-    return false;
+  if (result) {
+    console.info("[user-identity] verification_completed", { email });
   }
-
-  const updated = await prisma.user.updateMany({
-    where: {
-      email: {
-        equals: verificationToken.identifier,
-        mode: "insensitive",
-      },
-    },
-    data: {
-      emailVerified: now,
-      emailVerifiedAt: now,
-      activationStatus: UserActivationStatus.ACTIVE,
-      isActive: true,
-      isInactive: false,
-    },
-  });
-
-  await prisma.verificationToken.deleteMany({ where: { identifier: verificationToken.identifier } });
-  console.info("[user-identity] verification_completed", { email: verificationToken.identifier, updated: updated.count });
-
-  return updated.count > 0;
+  return result;
 }
 
 export async function verifyPendingRegistrationByToken(input: {
@@ -738,14 +733,16 @@ export async function requestEmailChange(input: {
     },
   });
 
-  const appUrl = input.appUrl ?? process.env.APP_URL ?? "http://localhost:3000";
+  const appUrl = resolveAppUrl(input.appUrl);
   const verificationUrl = `${appUrl.replace(/\/$/, "")}/verify-email?emailChangeToken=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(newEmail)}`;
 
   await sendVerificationEmail({
     to: newEmail,
     verificationUrl,
     name: user.name,
-    subject: "Confirm your new email",
+    kind: "EMAIL_CHANGE",
+    idempotencyKey: `auth.verify-email:email-change:${user.id}:${tokenHash}`,
+    now,
   });
 
   console.info("[user-identity] email_change_requested", { userId: user.id, pendingEmail: newEmail });
@@ -763,60 +760,73 @@ export async function confirmEmailChangeByToken(input: {
   }
 
   const tokenHash = hashVerificationToken(token);
-  const user = await prisma.user.findFirst({
-    where: { pendingEmailTokenHash: tokenHash },
-    select: {
-      id: true,
-      pendingEmail: true,
-      pendingEmailTokenExpiresAt: true,
-      email: true,
-    },
-  });
-
-  if (!user || !user.pendingEmail || !user.pendingEmailTokenExpiresAt || user.pendingEmailTokenExpiresAt <= now) {
-    return { verified: false, email: user?.pendingEmail ?? null };
-  }
-
-  const existingOwner = await prisma.user.findFirst({
-    where: {
-      email: {
-        equals: user.pendingEmail,
-        mode: "insensitive",
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.findFirst({
+      where: { pendingEmailTokenHash: tokenHash },
+      select: {
+        id: true,
+        pendingEmail: true,
+        pendingEmailTokenExpiresAt: true,
+        email: true,
       },
-      NOT: { id: user.id },
-    },
-    select: { id: true },
-  });
+    });
 
-  if (existingOwner) {
-    await prisma.user.update({
-      where: { id: user.id },
+    if (!user || !user.pendingEmail || !user.pendingEmailTokenExpiresAt || user.pendingEmailTokenExpiresAt <= now) {
+      return { verified: false, email: user?.pendingEmail ?? null };
+    }
+
+    const claim = await tx.user.updateMany({
+      where: {
+        id: user.id,
+        pendingEmailTokenHash: tokenHash,
+        pendingEmailTokenExpiresAt: { gt: now },
+      },
       data: {
-        pendingEmail: null,
         pendingEmailTokenHash: null,
         pendingEmailTokenExpiresAt: null,
       },
     });
-    return { verified: false, email: user.pendingEmail };
-  }
+    if (claim.count !== 1) {
+      return { verified: false, email: user.pendingEmail };
+    }
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      email: user.pendingEmail,
-      emailVerified: now,
-      emailVerifiedAt: now,
-      lastEmailChangeAt: now,
-      pendingEmail: null,
-      pendingEmailTokenHash: null,
-      pendingEmailTokenExpiresAt: null,
-    },
+    const existingOwner = await tx.user.findFirst({
+      where: {
+        email: {
+          equals: user.pendingEmail,
+          mode: "insensitive",
+        },
+        NOT: { id: user.id },
+      },
+      select: { id: true },
+    });
+
+    if (existingOwner) {
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          pendingEmail: null,
+        },
+      });
+      return { verified: false, email: user.pendingEmail };
+    }
+
+    await tx.user.update({
+      where: { id: user.id },
+      data: {
+        email: user.pendingEmail,
+        emailVerified: now,
+        emailVerifiedAt: now,
+        lastEmailChangeAt: now,
+        pendingEmail: null,
+      },
+    });
+
+    await tx.verificationToken.deleteMany({ where: { identifier: user.email } });
+    console.info("[user-identity] email_change_completed", { userId: user.id, email: user.pendingEmail });
+
+    return { verified: true, email: user.pendingEmail };
   });
-
-  await prisma.verificationToken.deleteMany({ where: { identifier: user.email } });
-  console.info("[user-identity] email_change_completed", { userId: user.id, email: user.pendingEmail });
-
-  return { verified: true, email: user.pendingEmail };
 }
 
 export async function applyTrustedAdminEmailChange(input: {

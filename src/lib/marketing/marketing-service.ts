@@ -267,7 +267,7 @@ function toFlowDraft(campaign: {
 }): MarketingCampaignFlowDraft {
   const meta = readFlowMeta(campaign.manualAudienceJson);
   const contentJson = normalizeMarketingContentJson(campaign.contentJson);
-  const htmlSnapshot = campaign.htmlSnapshot?.trim() || renderMarketingPreviewHtml(contentJson);
+  const htmlSnapshot = renderMarketingPreviewHtml(contentJson);
   return {
     id: campaign.id,
     name: campaign.name,
@@ -1030,7 +1030,7 @@ export async function getMarketingSentCampaignSummaryById(campaignId: string): P
     recipientSentCount: getCount(MarketingRecipientStatus.SENT),
     recipientFailedCount: getCount(MarketingRecipientStatus.FAILED),
     recipientPendingCount: getCount(MarketingRecipientStatus.PENDING),
-    htmlSnapshot: campaign.htmlSnapshot?.trim() || renderMarketingPreviewHtml(normalizeMarketingContentJson(campaign.contentJson)),
+    htmlSnapshot: renderMarketingPreviewHtml(normalizeMarketingContentJson(campaign.contentJson)),
   };
 }
 

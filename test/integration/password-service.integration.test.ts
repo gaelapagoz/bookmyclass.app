@@ -1,6 +1,7 @@
 import "./helpers/setup-env";
 import { Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { clearCapturedTestEmails, getCapturedTestEmails } from "@/lib/email/resend-delivery";
 import {
   changeAuthenticatedUserPassword,
   clearPasswordResetRateLimitForTests,
@@ -34,12 +35,27 @@ async function createClientUser(email: string, password: string, verified: boole
   });
 }
 
+function getTokenFromCapturedResetEmail(recipientEmail: string): string {
+  const message = [...getCapturedTestEmails()].reverse().find((item) => item.to.includes(recipientEmail.toLowerCase()));
+  if (!message) {
+    throw new Error("Expected password reset email in test outbox.");
+  }
+
+  const match = message.html.match(/token=([^"&]+)/);
+  if (!match?.[1]) {
+    throw new Error("token not found in captured payload.");
+  }
+
+  return decodeURIComponent(match[1]);
+}
+
 describe("password-service integration", () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     await resetDb();
     await clearPasswordResetRateLimitForTests();
+    clearCapturedTestEmails();
   });
 
   it("credentials authorize rejects unverified users", async () => {
@@ -149,16 +165,14 @@ describe("password-service integration", () => {
 
   it("forgot password with known email creates token and sends email", async () => {
     const user = await createClientUser(`forgot.known.${Date.now()}@example.test`, "Password123!");
-    const sendResetEmail = vi.fn(async () => undefined);
 
     const result = await requestPasswordReset({
       email: user.email,
       appUrl: "http://localhost:3000",
-      sendResetEmail,
     });
 
     expect(result).toEqual({ outcome: "SENT" });
-    expect(sendResetEmail).toHaveBeenCalledTimes(1);
+    expect(getCapturedTestEmails()).toHaveLength(1);
 
     const activeTokenCount = await prisma.passwordResetToken.count({
       where: {
@@ -170,16 +184,13 @@ describe("password-service integration", () => {
   });
 
   it("forgot password with unknown email returns same response", async () => {
-    const sendResetEmail = vi.fn(async () => undefined);
-
     const result = await requestPasswordReset({
       email: `forgot.unknown.${Date.now()}@example.test`,
       appUrl: "http://localhost:3000",
-      sendResetEmail,
     });
 
     expect(result).toEqual({ outcome: "SKIPPED" });
-    expect(sendResetEmail).not.toHaveBeenCalled();
+    expect(getCapturedTestEmails()).toHaveLength(0);
   });
 
   it("forgot password never creates user records", async () => {
@@ -196,7 +207,6 @@ describe("password-service integration", () => {
     const result = await requestPasswordReset({
       email,
       appUrl: "http://localhost:3000",
-      sendResetEmail: async () => undefined,
     });
 
     const after = await prisma.user.count({
@@ -215,103 +225,105 @@ describe("password-service integration", () => {
 
   it("forgot password repeated requests are blocked within the limiter window", async () => {
     const user = await createClientUser(`forgot.limit.${Date.now()}@example.test`, "Password123!");
-    const sendResetEmail = vi.fn(async () => undefined);
     const now = new Date();
 
     const first = await requestPasswordReset({
       email: user.email,
       appUrl: "http://localhost:3000",
       now,
-      sendResetEmail,
     });
 
     const second = await requestPasswordReset({
       email: user.email,
       appUrl: "http://localhost:3000",
       now: new Date(now.getTime() + 10 * 1000),
-      sendResetEmail,
     });
 
     expect(first).toEqual({ outcome: "SENT" });
     expect(second).toEqual({ outcome: "SKIPPED" });
-    expect(sendResetEmail).toHaveBeenCalledTimes(1);
+    expect(getCapturedTestEmails()).toHaveLength(1);
   });
 
   it("forgot password limiter persists across service invocations", async () => {
     const user = await createClientUser(`forgot.persist.${Date.now()}@example.test`, "Password123!");
-    const sendResetEmail = vi.fn(async () => undefined);
     const firstNow = new Date();
 
     await requestPasswordReset({
       email: user.email,
       appUrl: "http://localhost:3000",
       now: firstNow,
-      sendResetEmail,
     });
 
     const second = await requestPasswordReset({
       email: user.email,
       appUrl: "http://localhost:3000",
       now: new Date(firstNow.getTime() + 10 * 1000),
-      sendResetEmail,
     });
 
     const third = await requestPasswordReset({
       email: user.email,
       appUrl: "http://localhost:3000",
       now: new Date(firstNow.getTime() + 70 * 1000),
-      sendResetEmail,
     });
 
     expect(second).toEqual({ outcome: "SKIPPED" });
     expect(third).toEqual({ outcome: "SENT" });
-    expect(sendResetEmail).toHaveBeenCalledTimes(2);
+    expect(getCapturedTestEmails()).toHaveLength(2);
   });
 
-  it("forgot password with known email throws when provider delivery fails", async () => {
+  it("forgot password queues an auth outbox event for fast-lane delivery", async () => {
     const user = await createClientUser(`forgot.fail.${Date.now()}@example.test`, "Password123!");
-    const sendResetEmail = vi.fn(async () => {
-      throw new Error("provider unavailable");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-
-    await expect(
-      requestPasswordReset({
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalApiKey = process.env.RESEND_API_KEY;
+    const originalEmailFrom = process.env.EMAIL_FROM;
+    process.env.NODE_ENV = "development";
+    delete process.env.RESEND_API_KEY;
+    process.env.EMAIL_FROM = "Book My Class <no-reply@bookmyclass.app>";
+    try {
+      const result = await requestPasswordReset({
         email: user.email,
         appUrl: "http://localhost:3000",
-        sendResetEmail,
-      }),
-    ).rejects.toMatchObject<Partial<PasswordServiceError>>({
-      code: "PASSWORD_RESET_DELIVERY_FAILED",
-    });
-
-    expect(sendResetEmail).toHaveBeenCalledTimes(1);
-    expect(errorSpy).toHaveBeenCalledTimes(1);
-    expect(errorSpy).toHaveBeenCalledWith(
-      "[password-reset] resend-send-failed",
-      expect.objectContaining({
-        userId: user.id,
-      }),
-    );
+      });
+      expect(result).toEqual({ outcome: "SENT" });
+      const events = await prisma.emailAutomationEvent.findMany({
+        where: {
+          recipientEmail: user.email.toLowerCase(),
+        },
+      });
+      expect(events).toHaveLength(1);
+      expect(["PENDING", "SENT", "LEASED"]).toContain(events[0]?.status);
+    } finally {
+      if (originalNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
+      if (originalApiKey === undefined) {
+        delete process.env.RESEND_API_KEY;
+      } else {
+        process.env.RESEND_API_KEY = originalApiKey;
+      }
+      if (originalEmailFrom === undefined) {
+        delete process.env.EMAIL_FROM;
+      } else {
+        process.env.EMAIL_FROM = originalEmailFrom;
+      }
+    }
   });
 
   it("reset with valid token succeeds", async () => {
     const user = await createClientUser(`reset.valid.${Date.now()}@example.test`, "Password123!");
-    let resetToken: string | null = null;
 
     await requestPasswordReset({
       email: user.email,
       appUrl: "http://localhost:3000",
-      sendResetEmail: async (payload) => {
-        const tokenParam = new URL(payload.resetUrl).searchParams.get("token");
-        resetToken = tokenParam;
-      },
     });
 
+    const resetToken = getTokenFromCapturedResetEmail(user.email);
     expect(resetToken).toBeTruthy();
 
     await resetPasswordWithToken({
-      token: resetToken!,
+      token: resetToken,
       newPassword: "UpdatedPassword123!",
       confirmNewPassword: "UpdatedPassword123!",
     });
@@ -325,15 +337,13 @@ describe("password-service integration", () => {
 
   it("expired token is rejected", async () => {
     const user = await createClientUser(`reset.expired.${Date.now()}@example.test`, "Password123!");
-    let resetToken: string | null = null;
 
     await requestPasswordReset({
       email: user.email,
       appUrl: "http://localhost:3000",
-      sendResetEmail: async (payload) => {
-        resetToken = new URL(payload.resetUrl).searchParams.get("token");
-      },
     });
+
+    const resetToken = getTokenFromCapturedResetEmail(user.email);
 
     await prisma.passwordResetToken.updateMany({
       where: { userId: user.id, usedAt: null },
@@ -342,7 +352,7 @@ describe("password-service integration", () => {
 
     await expect(
       resetPasswordWithToken({
-        token: resetToken!,
+        token: resetToken,
         newPassword: "UpdatedPassword123!",
         confirmNewPassword: "UpdatedPassword123!",
       }),
@@ -353,25 +363,23 @@ describe("password-service integration", () => {
 
   it("used token is rejected", async () => {
     const user = await createClientUser(`reset.used.${Date.now()}@example.test`, "Password123!");
-    let resetToken: string | null = null;
 
     await requestPasswordReset({
       email: user.email,
       appUrl: "http://localhost:3000",
-      sendResetEmail: async (payload) => {
-        resetToken = new URL(payload.resetUrl).searchParams.get("token");
-      },
     });
 
+    const resetToken = getTokenFromCapturedResetEmail(user.email);
+
     await resetPasswordWithToken({
-      token: resetToken!,
+      token: resetToken,
       newPassword: "UpdatedPassword123!",
       confirmNewPassword: "UpdatedPassword123!",
     });
 
     await expect(
       resetPasswordWithToken({
-        token: resetToken!,
+        token: resetToken,
         newPassword: "AnotherPassword123!",
         confirmNewPassword: "AnotherPassword123!",
       }),
@@ -382,30 +390,24 @@ describe("password-service integration", () => {
 
   it("older token is invalid after newer token is issued", async () => {
     const user = await createClientUser(`reset.rotate.${Date.now()}@example.test`, "Password123!");
-    let firstToken: string | null = null;
-    let secondToken: string | null = null;
 
     await requestPasswordReset({
       email: user.email,
       appUrl: "http://localhost:3000",
-      sendResetEmail: async (payload) => {
-        firstToken = new URL(payload.resetUrl).searchParams.get("token");
-      },
     });
+    const firstToken = getTokenFromCapturedResetEmail(user.email);
 
     await clearPasswordResetRateLimitForTests();
 
     await requestPasswordReset({
       email: user.email,
       appUrl: "http://localhost:3000",
-      sendResetEmail: async (payload) => {
-        secondToken = new URL(payload.resetUrl).searchParams.get("token");
-      },
     });
+    const secondToken = getTokenFromCapturedResetEmail(user.email);
 
     await expect(
       resetPasswordWithToken({
-        token: firstToken!,
+        token: firstToken,
         newPassword: "UpdatedPassword123!",
         confirmNewPassword: "UpdatedPassword123!",
       }),
@@ -415,11 +417,10 @@ describe("password-service integration", () => {
 
     await expect(
       resetPasswordWithToken({
-        token: secondToken!,
+        token: secondToken,
         newPassword: "UpdatedPassword123!",
         confirmNewPassword: "UpdatedPassword123!",
       }),
     ).resolves.toBeUndefined();
   });
 });
-

@@ -88,6 +88,50 @@ describe("user identity hardening", () => {
     expect(second.outcome).toBe("RATE_LIMITED");
   });
 
+  it("queues verification outbox event even when immediate send attempt fails", async () => {
+    const email = `verify.queue.${Date.now()}@example.test`;
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalApiKey = process.env.RESEND_API_KEY;
+    process.env.NODE_ENV = "development";
+    delete process.env.RESEND_API_KEY;
+    process.env.EMAIL_FROM = "Book My Class <no-reply@bookmyclass.app>";
+
+    try {
+      const result = await createPendingPublicRegistration({
+        firstName: "Queue",
+        lastName: "Verification",
+        email,
+        passwordHash: await hash("Password123!", 12),
+        ipAddress: "203.0.113.88",
+        appUrl: "http://localhost:3000",
+      });
+
+      expect(result.outcome).toBe("PENDING_VERIFICATION");
+      const pending = await prisma.pendingUserRegistration.findUniqueOrThrow({
+        where: { email },
+        select: { tokenHash: true },
+      });
+      const event = await prisma.emailAutomationEvent.findUnique({
+        where: {
+          idempotencyKey: `auth.verify-email:registration:${email}:${pending.tokenHash}`,
+        },
+      });
+      expect(event).not.toBeNull();
+      expect(event?.status).toBe("PENDING");
+    } finally {
+      if (originalNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
+      if (originalApiKey === undefined) {
+        delete process.env.RESEND_API_KEY;
+      } else {
+        process.env.RESEND_API_KEY = originalApiKey;
+      }
+    }
+  });
+
   it("verifies pending registration exactly once", async () => {
     const email = `verify-once.${Date.now()}@example.test`;
     const created = await createPendingPublicRegistration({
