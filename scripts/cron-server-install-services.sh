@@ -18,7 +18,7 @@
 #
 # Usage:
 #   sudo bash scripts/cron-server-install-services.sh
-#   sudo APP_DIR=/var/www/bookmyclass BASE_URL=https://bookmyclass.app bash scripts/cron-server-install-services.sh
+#   sudo APP_DIR=/var/www/bookmyclass BASE_URL=https://demo.bookmyclass.app bash scripts/cron-server-install-services.sh
 #
 # This script is idempotent. It preserves unrelated root crontab entries,
 # replaces the BookMyClass managed block, and removes the obsolete daily
@@ -27,7 +27,7 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/var/www/bookmyclass}"
-BASE_URL="${BASE_URL:-https://bookmyclass.app}"
+BASE_URL="${BASE_URL:-https://demo.bookmyclass.app}"
 BASE_URL="${BASE_URL%/}"
 
 BEGIN_MARKER="# BEGIN BOOKMYCLASS MANAGED CRON"
@@ -43,6 +43,11 @@ HEALTHCHECK_LOG="/var/log/bookmyclass-healthcheck.log"
 MAINTENANCE_CRON="*/5 * * * * cd $APP_DIR && set -a && . ./.env && set +a && curl -fsS -H \"Authorization: Bearer \$CRON_SECRET\" $BASE_URL/api/cron/maintenance >> $MAINTENANCE_LOG 2>&1"
 BACKUP_CRON="30 2 * * * $BACKUP_SCRIPT >> $BACKUP_LOG 2>&1"
 HEALTHCHECK_CRON="*/5 * * * * $HEALTHCHECK_SCRIPT >> $HEALTHCHECK_LOG 2>&1"
+
+# Initialized for safe trap cleanup under `set -u`.
+current_crontab=""
+filtered_crontab=""
+desired_crontab=""
 
 fail() {
   echo "[FAIL] $*" >&2
@@ -132,14 +137,10 @@ reload_cron_if_available() {
 }
 
 install_crontab() {
-  local current_crontab
-  local filtered_crontab
-  local desired_crontab
-
   current_crontab="$(mktemp)"
   filtered_crontab="$(mktemp)"
   desired_crontab="$(mktemp)"
-  trap 'rm -f "$current_crontab" "$filtered_crontab" "$desired_crontab"' EXIT
+  trap 'rm -f "${current_crontab:-}" "${filtered_crontab:-}" "${desired_crontab:-}"' EXIT
 
   crontab -l > "$current_crontab" 2>/dev/null || true
   filter_existing_crontab "$current_crontab" "$filtered_crontab"

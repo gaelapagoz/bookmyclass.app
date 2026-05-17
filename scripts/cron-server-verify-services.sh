@@ -18,7 +18,7 @@
 #
 # Usage:
 #   sudo bash scripts/cron-server-verify-services.sh
-#   sudo APP_DIR=/var/www/bookmyclass BASE_URL=https://bookmyclass.app bash scripts/cron-server-verify-services.sh
+#   sudo APP_DIR=/var/www/bookmyclass BASE_URL=https://demo.bookmyclass.app bash scripts/cron-server-verify-services.sh
 #   sudo RUN_BACKUP_CHECK=1 bash scripts/cron-server-verify-services.sh
 #
 # The DB backup script is not run by default because it can be expensive.
@@ -26,7 +26,7 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/var/www/bookmyclass}"
-BASE_URL="${BASE_URL:-https://bookmyclass.app}"
+BASE_URL="${BASE_URL:-https://demo.bookmyclass.app}"
 BASE_URL="${BASE_URL%/}"
 RUN_BACKUP_CHECK="${RUN_BACKUP_CHECK:-0}"
 
