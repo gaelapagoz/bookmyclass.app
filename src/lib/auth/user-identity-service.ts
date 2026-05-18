@@ -308,10 +308,8 @@ export async function createPendingPublicRegistration(input: {
     return { outcome: "BLOCKED_DISPOSABLE", email };
   }
 
-  const [rateLimitedByEmail, rateLimitedByIp] = await Promise.all([
-    shouldRateLimit(`signup:email:${email}`, now, SIGNUP_RATE_LIMIT_WINDOW_MS),
-    shouldRateLimit(`signup:ip:${ipAddress}`, now, SIGNUP_RATE_LIMIT_WINDOW_MS),
-  ]);
+  const rateLimitedByEmail = await shouldRateLimit(`signup:email:${email}`, now, SIGNUP_RATE_LIMIT_WINDOW_MS);
+  const rateLimitedByIp = await shouldRateLimit(`signup:ip:${ipAddress}`, now, SIGNUP_RATE_LIMIT_WINDOW_MS);
 
   if (rateLimitedByEmail || rateLimitedByIp) {
     console.info("[user-identity] signup_rate_limited", { email, ipAddress });
@@ -710,10 +708,8 @@ export async function requestEmailChange(input: {
     throw new UserIdentityError("EMAIL_ALREADY_IN_USE", "That email is already in use.");
   }
 
-  const [rateLimitedByUser, rateLimitedByEmail] = await Promise.all([
-    shouldRateLimit(`email-change:user:${user.id}`, now, EMAIL_CHANGE_RATE_LIMIT_WINDOW_MS),
-    shouldRateLimit(`email-change:email:${newEmail}`, now, EMAIL_CHANGE_RATE_LIMIT_WINDOW_MS),
-  ]);
+  const rateLimitedByUser = await shouldRateLimit(`email-change:user:${user.id}`, now, EMAIL_CHANGE_RATE_LIMIT_WINDOW_MS);
+  const rateLimitedByEmail = await shouldRateLimit(`email-change:email:${newEmail}`, now, EMAIL_CHANGE_RATE_LIMIT_WINDOW_MS);
 
   if (rateLimitedByUser || rateLimitedByEmail) {
     console.info("[user-identity] email_change_rate_limited", { userId: user.id, newEmail });

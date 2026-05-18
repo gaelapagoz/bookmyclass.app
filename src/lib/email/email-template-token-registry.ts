@@ -37,6 +37,9 @@ const TOKEN_GROUPS: readonly TokenGroupDefinition[] = [
       "contact.name.last",
       "contact.email",
       "contact.fullName",
+      "firstName",
+      "lastName",
+      "name",
     ],
   },
   {
@@ -168,4 +171,3 @@ export function extractTemplateTokens(input: string): string[] {
   const matches = input.match(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g) ?? [];
   return matches.map((item) => item.replace(/\{\{|\}\}/g, "").trim());
 }
-

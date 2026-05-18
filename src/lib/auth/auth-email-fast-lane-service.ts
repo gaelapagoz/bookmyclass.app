@@ -8,7 +8,8 @@ const AUTH_PASSWORD_RESET_TEMPLATE_KEY = "auth.password-reset";
 
 function resolveAppUrl(inputAppUrl?: string): string {
   const resolved = inputAppUrl ?? process.env.APP_URL ?? "http://localhost:3000";
-  if (process.env.NODE_ENV === "production") {
+  const allowLoopbackForE2E = process.env.E2E_TEST_MODE === "1";
+  if (process.env.NODE_ENV === "production" && !allowLoopbackForE2E) {
     const parsed = new URL(resolved);
     const host = parsed.hostname.toLowerCase();
     const isLoopback =
@@ -98,6 +99,7 @@ export async function enqueueVerificationEmailFastLane(input: {
     templateKey: isEmailChange ? AUTH_EMAIL_CHANGE_TEMPLATE_KEY : AUTH_VERIFY_EMAIL_TEMPLATE_KEY,
     recipientEmail: input.to,
     payloadJson: {
+      deliveryContext: "user-identity-verification",
       name: input.name,
       verificationUrl: input.verificationUrl,
     },
@@ -135,6 +137,7 @@ export async function enqueuePasswordResetEmailFastLane(input: {
     templateKey: AUTH_PASSWORD_RESET_TEMPLATE_KEY,
     recipientEmail: input.to,
     payloadJson: {
+      deliveryContext: "password-reset",
       userName: input.userName,
       resetUrl: input.resetUrl,
       expiresInMinutes: input.expiresInMinutes,

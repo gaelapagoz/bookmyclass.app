@@ -286,10 +286,6 @@ function assertSafeBasename(filename: string): string {
   return basename;
 }
 
-function sameCandidate(left: BackfillCandidate, right: BackfillCandidate): boolean {
-  return left.entity === right.entity && left.id === right.id && left.field === right.field && left.fromPath === right.fromPath;
-}
-
 function candidateKey(candidate: BackfillCandidate): string {
   return `${candidate.entity}:${candidate.id}:${candidate.field}:${candidate.fromPath}`;
 }

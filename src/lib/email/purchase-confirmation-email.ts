@@ -21,8 +21,16 @@ export type SendPurchaseConfirmationEmailInput = {
   currencyCode: string;
   walletAmountMinor: number;
   stripeAmountMinor: number;
-  idempotencyKey: string;
+  idempotencyKey?: string;
 };
+
+function derivePurchaseConfirmationIdempotencyKey(input: SendPurchaseConfirmationEmailInput): string {
+  const explicit = input.idempotencyKey?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  return `payment:purchase-confirmation:${input.orderId}`;
+}
 
 export async function sendPurchaseConfirmationEmail(
   input: SendPurchaseConfirmationEmailInput,
@@ -89,7 +97,7 @@ export async function sendPurchaseConfirmationEmail(
             }).format(input.stripeAmountMinor / 100)}`
           : "",
     },
-    idempotencyKey: input.idempotencyKey,
+    idempotencyKey: derivePurchaseConfirmationIdempotencyKey(input),
     now,
   });
 

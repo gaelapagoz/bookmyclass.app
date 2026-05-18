@@ -50,7 +50,7 @@ export async function enqueueLifecycleEmail(input: {
     recipientEmail: input.recipientEmail,
     payloadJson: input.payloadJson,
     idempotencyKey: input.idempotencyKey,
-    availableAt: now,
+    availableAt: new Date(now.getTime() - 1),
   });
 }
 

@@ -56,7 +56,7 @@ export async function sendGiftCardIssuanceEmail(input: SendGiftCardIssuanceEmail
     minimumFractionDigits: 2,
   }).format(input.amountMinor / 100);
   const escapedAdminMessage = input.adminMessage?.trim()
-    ? escapeHtml(input.adminMessage.trim()).replaceAll("\n", "<br />")
+    ? escapeHtml(input.adminMessage.trim()).replaceAll("\n", "&lt;br /&gt;")
     : "";
 
   await enqueueLifecycleEmail({

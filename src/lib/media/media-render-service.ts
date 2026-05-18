@@ -1,7 +1,6 @@
 import { access } from "node:fs/promises";
 
 import {
-  CANONICAL_MEDIA_FOLDERS,
   type CanonicalMediaFolder,
 } from "@/lib/media/media-upload-service";
 import {
