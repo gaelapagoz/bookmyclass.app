@@ -2,9 +2,7 @@ import {
   moveMarketingCampaignFlowToConfirmAction,
   sendMarketingCampaignFlowTestEmailAction,
 } from "@/app/admin/(private)/actions";
-import CampaignFlowLayout from "@/components/admin/marketing/CampaignFlowLayout";
 import CampaignRecipientPreviewPanel from "@/components/admin/marketing/CampaignRecipientPreviewPanel";
-import CampaignFlowStepNavigation from "@/components/admin/marketing/CampaignFlowStepNavigation";
 import CampaignPreview from "@/components/admin/marketing/CampaignPreview";
 import { buildCampaignFlowScaffoldHref } from "@/components/admin/marketing/campaign-flow-scaffold-data";
 import { getMarketingCampaignFlowDraftById, resolveMarketingCampaignFlowRecipients } from "@/lib/marketing/marketing-service";
@@ -47,13 +45,15 @@ export default async function AdminMarketingCampaignReviewPage({
 
   if (!draft) {
     return (
-      <CampaignFlowLayout
-        title="Review Campaign"
-        description="Step 3 of 4: review full campaign summary before final confirmation."
-        topBackHref="/admin/marketing/campaigns"
-        controls={<section className="rounded-xl border border-[#d3dbe5] bg-white p-5 text-sm text-[#7b2d2d]">Campaign draft not found.</section>}
-        preview={<CampaignPreview />}
-      />
+      <section className="space-y-4">
+        <header className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold text-[#1f2735]">Review Campaign</h1>
+            <p className="mt-1 text-sm text-[#4b5a72]">Step 3 of 4: review full campaign summary before final confirmation.</p>
+          </div>
+        </header>
+        <section className="rounded-xl border border-[#d3dbe5] bg-white p-5 text-sm text-[#7b2d2d]">Campaign draft not found.</section>
+      </section>
     );
   }
 
@@ -68,14 +68,54 @@ export default async function AdminMarketingCampaignReviewPage({
     ? resolution.segmentOptions.filter((segment) => selectedSegmentIds.includes(segment.id)).map((segment) => segment.name).join(", ")
     : "All subscribed clients";
 
+  const backHref = buildCampaignFlowScaffoldHref(id, "target", selectedSegmentIds, resolution.page);
+  const draftSavedHref = `${buildCampaignFlowScaffoldHref(id, "review", selectedSegmentIds, resolution.page)}&success=${encodeURIComponent("Draft saved.")}`;
+
   return (
-    <CampaignFlowLayout
-      title="Review Campaign"
-      description="Step 3 of 4: review full campaign summary before final confirmation."
-      topBackHref="/admin/marketing/campaigns"
-      controls={
-        <>
-          <form className="space-y-4 rounded-xl border border-[#d3dbe5] bg-white p-5">
+    <section className="space-y-3">
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-[#1f2735]">Review Campaign</h1>
+          <p className="mt-1 text-sm text-[#4b5a72]">Step 3 of 4: review full campaign summary before final confirmation.</p>
+          <div className="mt-3 flex items-center gap-3 text-sm">
+            <span className="inline-flex items-center gap-2 rounded-full border border-[#d3dbe5] bg-[#f8fbff] px-3 py-1 text-[#1f2735]">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#ddf4e5] text-xs font-semibold text-[#137333]">✓</span>
+              <span className="font-semibold">Basics</span>
+            </span>
+            <span className="text-[#9aa8bc]">-</span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-[#d3dbe5] bg-[#f8fbff] px-3 py-1 text-[#1f2735]">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#ddf4e5] text-xs font-semibold text-[#137333]">✓</span>
+              <span className="font-semibold">Email</span>
+            </span>
+            <span className="text-[#9aa8bc]">-</span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-[#1d3652] bg-[#e9f1fb] px-3 py-1 font-semibold text-[#1d3652]">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#1d3652] text-xs font-semibold text-white">3</span>
+              <span>Review</span>
+            </span>
+            <span className="text-[#9aa8bc]">-</span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-[#d3dbe5] bg-[#f8fbff] px-3 py-1 text-[#5a6d86]">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#eef3f9] text-xs font-semibold text-[#5a6d86]">4</span>
+              <span>Confirm</span>
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <a href={backHref} className="rounded border border-[#d3dbe5] bg-white px-4 py-2 text-sm text-[#1f2735]">Back</a>
+          <button
+            type="submit"
+            form="marketing-step-3-form"
+            formAction={moveMarketingCampaignFlowToConfirmAction}
+            className="rounded-md bg-[#1d3652] px-4 py-2 text-sm font-semibold text-white"
+          >
+            Next
+          </button>
+          <a href={draftSavedHref} className="rounded-md border border-[#d3dbe5] bg-white px-4 py-2 text-sm text-[#1f2735]">Save draft</a>
+        </div>
+      </header>
+
+      <div className="grid items-start gap-4 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-1">
+          <form id="marketing-step-3-form" className="space-y-4 rounded-xl border border-[#d3dbe5] bg-white p-5">
             {resolvedSearchParams.error ? <p className="text-sm text-[#7b2d2d]">{resolvedSearchParams.error}</p> : null}
             {resolvedSearchParams.success ? <p className="text-sm text-[#166534]">{resolvedSearchParams.success}</p> : null}
 
@@ -128,6 +168,7 @@ export default async function AdminMarketingCampaignReviewPage({
             </section>
 
             <section className="rounded-md border border-[#e2e8f0] bg-[#f8fbff] p-4">
+              <h2 className="text-base font-semibold text-[#1f2735]">Send a test email</h2>
               <label className="block text-sm text-[#334155]">
                 Test email address
                 <input
@@ -147,11 +188,6 @@ export default async function AdminMarketingCampaignReviewPage({
                 Send test email
               </button>
             </section>
-
-            <CampaignFlowStepNavigation
-              backHref={buildCampaignFlowScaffoldHref(id, "target", selectedSegmentIds, resolution.page)}
-              nextFormAction={moveMarketingCampaignFlowToConfirmAction}
-            />
           </form>
           <CampaignRecipientPreviewPanel
             campaignId={id}
@@ -162,9 +198,11 @@ export default async function AdminMarketingCampaignReviewPage({
             totalRecipients={resolution.totalRecipients}
             recipients={resolution.recipients}
           />
-        </>
-      }
-      preview={<CampaignPreview fromName={draft.fromName} subject={draft.subject} previewText={draft.previewText} htmlSnapshot={draft.htmlSnapshot} />}
-    />
+        </div>
+        <div className="min-h-[620px] lg:col-span-2">
+          <CampaignPreview fromName={draft.fromName} subject={draft.subject} previewText={draft.previewText} htmlSnapshot={draft.htmlSnapshot} />
+        </div>
+      </div>
+    </section>
   );
 }

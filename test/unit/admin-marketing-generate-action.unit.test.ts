@@ -95,6 +95,15 @@ vi.mock("@/lib/marketing/marketing-service", () => ({
   createMarketingCampaignFlowDraft: vi.fn(),
   updateMarketingCampaignFlowDraft: vi.fn(),
   getMarketingCampaignFlowDraftById: vi.fn(),
+  resolveMarketingCampaignFlowRecipients: vi.fn(async () => ({
+    selectedSegmentIds: [],
+    segmentOptions: [],
+    totalRecipients: 0,
+    page: 1,
+    pageSize: 20,
+    totalPages: 1,
+    recipients: [],
+  })),
 }));
 
 import { resolveAdminActorUser } from "@/lib/admin/admin-service";
@@ -104,6 +113,7 @@ import {
 } from "@/lib/marketing/marketing-service";
 import {
   generateMarketingCampaignFlowDraftAction,
+  saveMarketingCampaignFlowContentAction,
   saveMarketingCampaignFlowDraftAction,
 } from "../../src/app/admin/(private)/actions";
 
@@ -133,6 +143,18 @@ function buildStep1FormData() {
   formData.set("campaignName", "Campaign");
   formData.set("subject", "Subject");
   formData.set("previewText", "Preview");
+  formData.set("fromName", "Studio Team");
+  formData.set("fromEmail", "no-reply@bookmyclass.app");
+  formData.set("replyTo", "no-reply@bookmyclass.app");
+  return formData;
+}
+
+function buildStep2FormData() {
+  const formData = new FormData();
+  formData.set("campaignId", "campaign-1");
+  formData.set("name", "Campaign");
+  formData.set("subjectTemplate", "Subject");
+  formData.set("previewText", "Preview");
   formData.set("contentJson", JSON.stringify({ blocks: [{ type: "paragraph", text: "Hello" }] }));
   return formData;
 }
@@ -154,9 +176,9 @@ describe("marketing flow step 1 actions", () => {
     );
   });
 
-  it("save action persists blocks and redirects back to step 1 with campaign id", async () => {
+  it("save action persists metadata and redirects to step 2", async () => {
     await expect(saveMarketingCampaignFlowDraftAction(buildStep1FormData())).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/marketing/campaigns/new?campaignId=campaign-1&success=Draft%20saved.",
+      "NEXT_REDIRECT:/admin/marketing/campaigns/campaign-1/target",
     );
 
     expect(updateMarketingCampaignFlowDraft).toHaveBeenCalledWith(
@@ -170,12 +192,12 @@ describe("marketing flow step 1 actions", () => {
     );
   });
 
-  it("save action maps invalid blocks payload to explicit message", async () => {
+  it("save action validates from email", async () => {
     const formData = buildStep1FormData();
-    formData.set("contentJson", "{not-json");
+    formData.set("fromEmail", "bad-email");
 
     await expect(saveMarketingCampaignFlowDraftAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/marketing/campaigns/new?error=Campaign%20content%20blocks%20are%20invalid.",
+      "NEXT_REDIRECT:/admin/marketing/campaigns/new?campaignName=Campaign&subject=Subject&previewText=Preview&error=From%20email%20is%20required.",
     );
   });
 
@@ -184,7 +206,47 @@ describe("marketing flow step 1 actions", () => {
     formData.set("campaignId", "campaign-1");
 
     await expect(generateMarketingCampaignFlowDraftAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/marketing/campaigns/new?campaignId=campaign-1&error=AI%20draft%20generation%20is%20disabled.%20Use%20Save%20draft%20with%20content%20blocks.",
+      "NEXT_REDIRECT:/admin/marketing/campaigns/new?campaignId=campaign-1&error=AI%20draft%20generation%20is%20disabled.",
+    );
+  });
+
+  it("step 2 save intent stays on step 2 with success message", async () => {
+    const formData = buildStep2FormData();
+    formData.set("intent", "save");
+    await expect(saveMarketingCampaignFlowContentAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/marketing/campaigns/campaign-1/target?success=Draft%20saved.",
+    );
+    expect(updateMarketingCampaignFlowDraft).toHaveBeenCalledWith(
+      "campaign-1",
+      expect.objectContaining({ currentStep: "STEP_2" }),
+    );
+  });
+
+  it("step 2 next intent redirects to review", async () => {
+    const formData = buildStep2FormData();
+    formData.set("intent", "next");
+    await expect(saveMarketingCampaignFlowContentAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/marketing/campaigns/campaign-1/review",
+    );
+    expect(updateMarketingCampaignFlowDraft).toHaveBeenCalledWith(
+      "campaign-1",
+      expect.objectContaining({ currentStep: "STEP_3" }),
+    );
+  });
+
+  it("step 2 invalid content redirects with explicit message", async () => {
+    const formData = buildStep2FormData();
+    formData.set("contentJson", "{bad-json");
+    await expect(saveMarketingCampaignFlowContentAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/marketing/campaigns/campaign-1/target?error=Campaign%20content%20blocks%20are%20invalid.",
+    );
+  });
+
+  it("step 2 null update handling redirects with campaign not found", async () => {
+    vi.mocked(updateMarketingCampaignFlowDraft).mockResolvedValueOnce(null as never);
+    const formData = buildStep2FormData();
+    await expect(saveMarketingCampaignFlowContentAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/marketing/campaigns/campaign-1/target?error=Campaign%20not%20found.",
     );
   });
 });

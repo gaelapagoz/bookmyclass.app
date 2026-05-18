@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sampleDraft = {
@@ -59,6 +59,7 @@ const sampleResolution = {
 
 vi.mock("@/app/admin/(private)/actions", () => ({
   saveMarketingCampaignFlowDraftAction: vi.fn(),
+  saveMarketingCampaignFlowContentAction: vi.fn(),
   saveMarketingCampaignFlowParametersAction: vi.fn(),
   sendMarketingCampaignFlowTestEmailAction: vi.fn(),
   moveMarketingCampaignFlowToConfirmAction: vi.fn(),
@@ -68,6 +69,7 @@ vi.mock("@/app/admin/(private)/actions", () => ({
 vi.mock("@/lib/marketing/marketing-service", () => ({
   getMarketingCampaignFlowDraftById: vi.fn(),
   listMarketingCategories: vi.fn(),
+  listMarketingSegments: vi.fn(),
   resolveMarketingCampaignFlowRecipients: vi.fn(),
   getMarketingCampaignFlowSentSummary: vi.fn(async () => ({
     campaignId: "draft",
@@ -84,6 +86,7 @@ vi.mock("@/lib/marketing/marketing-service", () => ({
 import {
   getMarketingCampaignFlowDraftById,
   listMarketingCategories,
+  listMarketingSegments,
   resolveMarketingCampaignFlowRecipients,
 } from "@/lib/marketing/marketing-service";
 
@@ -100,45 +103,48 @@ describe("admin marketing campaign flow scaffold", () => {
     vi.mocked(listMarketingCategories).mockResolvedValue([
       { id: "cat-retention", name: "Retention", slug: "retention", isActive: true, usageCount: 1, createdAt: new Date(), updatedAt: new Date() },
     ]);
+    vi.mocked(listMarketingSegments).mockResolvedValue([
+      { id: "seg-a", name: "Active subscribers", slug: "active-subscribers", isActive: true, usageCount: 2, createdAt: new Date(), updatedAt: new Date() },
+      { id: "seg-b", name: "Loyal members", slug: "loyal-members", isActive: true, usageCount: 2, createdAt: new Date(), updatedAt: new Date() },
+    ]);
     vi.mocked(resolveMarketingCampaignFlowRecipients).mockResolvedValue(sampleResolution);
   });
 
-  it("renders Step 1 with block editor and no AI controls", async () => {
+  it("renders Step 1 metadata form", async () => {
     render(
       await AdminMarketingCampaignCreatePage({
         searchParams: Promise.resolve({ campaignId: "draft" }),
       }),
     );
 
-    expect(screen.getByRole("link", { name: "Back to campaigns" })).toHaveAttribute("href", "/admin/marketing/campaigns");
+    expect(screen.queryByRole("link", { name: "Back to campaigns" })).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("Spring retention email")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Reset your routine this spring")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Fresh classes and offers for this month")).toBeInTheDocument();
-    expect(screen.getByTestId("content-block-editor")).toBeInTheDocument();
-    const footerActions = screen.getByTestId("step1-footer-actions");
-    expect(footerActions).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save draft" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/admin/marketing/campaigns/draft/target");
-    expect(screen.getByTestId("heading-color-controls")).toBeInTheDocument();
-    expect(screen.getByTestId("paragraph-color-controls")).toBeInTheDocument();
-    expect(screen.getByTestId("button-text-color-controls")).toBeInTheDocument();
-    expect(screen.getByTestId("button-background-color-controls")).toBeInTheDocument();    expect(screen.getByDisplayValue(/\"textColor\":\"#1f2735\"/)).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Studio Team")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Generate draft" })).not.toBeInTheDocument();
     expect(screen.queryByText("AI usage estimate")).not.toBeInTheDocument();
-    expect(screen.getByText("Persisted preview HTML")).toBeInTheDocument();
+    expect(screen.getByText("Recipient preview")).toBeInTheDocument();
+    expect(screen.getByText("Clients with Never subscribed or Unsubscribed are excluded.")).toBeInTheDocument();
   });
-  it("opens heading color popover and updates block color state", async () => {
+  it("renders Step 2 shared builder", async () => {
     render(
-      await AdminMarketingCampaignCreatePage({
-        searchParams: Promise.resolve({ campaignId: "draft" }),
+      await AdminMarketingCampaignTargetPage({
+        params: Promise.resolve({ id: "draft" }),
+        searchParams: Promise.resolve({}),
       }),
     );
-
-    fireEvent.click(screen.getByTestId("heading-color-controls-trigger"));
-    expect(screen.getByTestId("heading-color-controls-popover")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Heading text color #2563eb" }));
-    expect(screen.getByDisplayValue(/\"textColor\":\"#2563eb\"/)).toBeInTheDocument();
+    expect(screen.getByText("Edit Email")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save draft" })).toBeInTheDocument();
+    expect(screen.getByText("Add elements")).toBeInTheDocument();
+    expect(screen.getByText("✓")).toBeInTheDocument();
+    expect(screen.getByText("Basics")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("Email")).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue("Fresh classes and offers for this month").length).toBeGreaterThan(1);
   });
   it("keeps entered Step 1 values after failure when no draft id exists yet", async () => {
     vi.mocked(getMarketingCampaignFlowDraftById).mockResolvedValue(null);
@@ -160,28 +166,39 @@ describe("admin marketing campaign flow scaffold", () => {
     expect(screen.getByText("Could not create the campaign draft shell. Please retry.")).toBeInTheDocument();
   });
 
-  it("renders Step 2 with real segment options and real recipient count/preview", async () => {
+  it("shows active segments on Step 1 even before draft exists", async () => {
+    vi.mocked(getMarketingCampaignFlowDraftById).mockResolvedValue(null);
+
     render(
-      await AdminMarketingCampaignTargetPage({
-        params: Promise.resolve({ id: "draft" }),
-        searchParams: Promise.resolve({ segments: ["seg-a", "seg-b"], page: "1" }),
+      await AdminMarketingCampaignCreatePage({
+        searchParams: Promise.resolve({ segments: ["seg-a"] }),
       }),
     );
 
-    expect(screen.getByText("Step 2 of 4: choose campaign parameters.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Active subscribers/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Loyal members/i })).toBeInTheDocument();
+  });
+
+  it("renders Step 1 recipient targeting and recipient count/preview", async () => {
+    render(
+      await AdminMarketingCampaignCreatePage({
+        searchParams: Promise.resolve({ campaignId: "draft", segments: ["seg-a", "seg-b"], page: "1" }),
+      }),
+    );
+
+    expect(screen.getByText("Step 1 of 4: set campaign basics and save draft metadata.")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Studio Team")).toBeInTheDocument();
     expect(screen.getAllByDisplayValue("no-reply@bookmyclass.app").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /Active subscribers/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Loyal members/i })).toBeInTheDocument();
-    expect(screen.getByText("Selected recipients")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("Recipient preview")).toBeInTheDocument();
     expect(screen.getByText("Alex Novak")).toBeInTheDocument();
+    expect(screen.getByText("2 total recipients")).toBeInTheDocument();
     expect(screen.getByText("Page 1 of 1")).toBeInTheDocument();
   });
 
 
-  it("renders Step 2 with empty category and segment options on unseeded state", async () => {
+  it("renders Step 1 with empty category and segment options on unseeded state", async () => {
     vi.mocked(listMarketingCategories).mockResolvedValue([]);
     vi.mocked(resolveMarketingCampaignFlowRecipients).mockResolvedValue({
       selectedSegmentIds: [],
@@ -194,17 +211,17 @@ describe("admin marketing campaign flow scaffold", () => {
     });
 
     render(
-      await AdminMarketingCampaignTargetPage({
-        params: Promise.resolve({ id: "draft" }),
-        searchParams: Promise.resolve({ page: "1" }),
+      await AdminMarketingCampaignCreatePage({
+        searchParams: Promise.resolve({ campaignId: "draft", page: "1" }),
       }),
     );
 
-    expect(screen.getByText("Step 2 of 4: choose campaign parameters.")).toBeInTheDocument();
+    expect(screen.getByText("Step 1 of 4: set campaign basics and save draft metadata.")).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "No category" })).toBeInTheDocument();
-    expect(screen.getByText("No segments available. Campaign targeting will use all subscribed clients.")).toBeInTheDocument();
-    expect(screen.getByText("Selected recipients")).toBeInTheDocument();
-    expect(screen.getByText("0")).toBeInTheDocument();
+    expect(screen.queryByText("No segments available. Campaign targeting will use all subscribed clients.")).not.toBeInTheDocument();
+    expect(screen.getByText("Recipient preview")).toBeInTheDocument();
+    expect(screen.getByText("No subscribed recipients match the current targeting.")).toBeInTheDocument();
+    expect(screen.getByText("Only subscribed clients are eligible for marketing sends.")).toBeInTheDocument();
     expect(screen.queryByText("Unable to load")).not.toBeInTheDocument();
   });
   it("rehydrates Step 3 summary and real recipient review", async () => {
@@ -216,6 +233,11 @@ describe("admin marketing campaign flow scaffold", () => {
     );
 
     expect(screen.getByText("Step 3 of 4: review full campaign summary before final confirmation.")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByText("Review")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Save draft" })).toBeInTheDocument();
     expect(screen.getByText("Spring retention email")).toBeInTheDocument();
     expect(screen.getAllByText("Reset your routine this spring").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Fresh classes and offers for this month").length).toBeGreaterThan(0);
@@ -237,6 +259,10 @@ describe("admin marketing campaign flow scaffold", () => {
     );
 
     expect(screen.getByText("Step 4 of 4: final confirmation before send.")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument();
+    expect(screen.getByText("Confirm")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Save draft" })).toBeInTheDocument();
     expect(screen.getByText("Ready to send")).toBeInTheDocument();
     expect(screen.getByText("2 subscribed recipients are selected based on your segment targeting.")).toBeInTheDocument();
     expect(screen.getByText("Recipient preview")).toBeInTheDocument();

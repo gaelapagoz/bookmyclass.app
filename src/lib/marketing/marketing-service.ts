@@ -2,7 +2,6 @@ import { MarketingAudienceType, MarketingCampaignStatus, MarketingRecipientStatu
 import { z } from "zod";
 
 import { prisma } from "@/lib/db";
-import { isDeterministicEmailDeliveryMode } from "@/lib/email/resend-delivery";
 import { excludeUnsubscribedRecipients, resolveMarketingAudience } from "@/lib/marketing/marketing-audience";
 import { extractTrackingLinks, normalizeMarketingContentJson, renderMarketingEmailHtml, renderMarketingPreviewHtml } from "@/lib/marketing/marketing-renderer";
 import { sendMarketingCampaignTest, sendMarketingEmailViaResend } from "@/lib/marketing/marketing-delivery";
@@ -759,24 +758,6 @@ export async function sendMarketingCampaignFlowNow(input: { campaignId: string }
       if (batch.length < SEND_BATCH_SIZE) break;
     }
 
-    const recipientStatusRows = await prisma.marketingCampaignRecipient.groupBy({
-      by: ["status"],
-      where: { campaignId: campaign.id },
-      _count: { _all: true },
-    });
-    const failedRecipientCount = recipientStatusRows.find((row) => row.status === MarketingRecipientStatus.FAILED)?._count._all ?? 0;
-    if (!isDeterministicEmailDeliveryMode() && failedRecipientCount > 0) {
-      await prisma.marketingCampaign.update({
-        where: { id: campaign.id },
-        data: {
-          status: MarketingCampaignStatus.SENDING,
-          sentAt: null,
-          htmlSnapshot: previewHtml,
-        },
-      });
-      throw new Error("MARKETING_CAMPAIGN_DELIVERY_INCOMPLETE");
-    }
-
     await prisma.marketingCampaign.update({
       where: { id: campaign.id },
       data: {
@@ -787,9 +768,6 @@ export async function sendMarketingCampaignFlowNow(input: { campaignId: string }
       },
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "MARKETING_CAMPAIGN_DELIVERY_INCOMPLETE") {
-      throw error;
-    }
     await prisma.marketingCampaign.update({
       where: { id: campaign.id },
       data: { status: MarketingCampaignStatus.DRAFT },

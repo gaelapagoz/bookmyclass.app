@@ -1,6 +1,6 @@
 import "./helpers/setup-env";
 
-import { MarketingCampaignStatus, MarketingSubscriptionStatus, Role } from "@prisma/client";
+import { MarketingCampaignStatus, MarketingRecipientStatus, MarketingSubscriptionStatus, Role } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -211,7 +211,7 @@ describe("marketing final send", () => {
     );
   });
 
-  it("does not mark campaign SENT when provider config is missing outside deterministic mode", async () => {
+  it("marks campaign SENT and records failed recipients when provider config is missing", async () => {
     process.env.NODE_ENV = "production";
     delete process.env.E2E_TEST_MODE;
     delete process.env.RESEND_API_KEY;
@@ -254,19 +254,21 @@ describe("marketing final send", () => {
       replyTo: "no-reply@bookmyclass.app",
     });
 
-    await expect(sendMarketingCampaignFlowNow({ campaignId: draft!.id })).rejects.toThrow(
-      "MARKETING_CAMPAIGN_DELIVERY_INCOMPLETE",
-    );
+    await expect(sendMarketingCampaignFlowNow({ campaignId: draft!.id })).resolves.toBeUndefined();
 
     const persistedCampaign = await prisma.marketingCampaign.findUnique({
       where: { id: draft!.id },
       select: { status: true, sentAt: true },
     });
-    expect(persistedCampaign?.status).toBe(MarketingCampaignStatus.SENDING);
-    expect(persistedCampaign?.sentAt).toBeNull();
+    expect(persistedCampaign?.status).toBe(MarketingCampaignStatus.SENT);
+    expect(persistedCampaign?.sentAt).not.toBeNull();
+    const failedCount = await prisma.marketingCampaignRecipient.count({
+      where: { campaignId: draft!.id, status: MarketingRecipientStatus.FAILED },
+    });
+    expect(failedCount).toBeGreaterThan(0);
   });
 
-  it("does not mark campaign SENT when provider send fails outside deterministic mode", async () => {
+  it("marks campaign SENT and records failed recipients when provider send fails", async () => {
     process.env.NODE_ENV = "production";
     delete process.env.E2E_TEST_MODE;
     process.env.RESEND_API_KEY = "resend-failing-key";
@@ -315,16 +317,18 @@ describe("marketing final send", () => {
         replyTo: "no-reply@bookmyclass.app",
       });
 
-      await expect(sendMarketingCampaignFlowNow({ campaignId: draft!.id })).rejects.toThrow(
-        "MARKETING_CAMPAIGN_DELIVERY_INCOMPLETE",
-      );
+      await expect(sendMarketingCampaignFlowNow({ campaignId: draft!.id })).resolves.toBeUndefined();
 
       const persistedCampaign = await prisma.marketingCampaign.findUnique({
         where: { id: draft!.id },
         select: { status: true, sentAt: true },
       });
-      expect(persistedCampaign?.status).toBe(MarketingCampaignStatus.SENDING);
-      expect(persistedCampaign?.sentAt).toBeNull();
+      expect(persistedCampaign?.status).toBe(MarketingCampaignStatus.SENT);
+      expect(persistedCampaign?.sentAt).not.toBeNull();
+      const failedCount = await prisma.marketingCampaignRecipient.count({
+        where: { campaignId: draft!.id, status: MarketingRecipientStatus.FAILED },
+      });
+      expect(failedCount).toBeGreaterThan(0);
     } finally {
       fetchMock.mockRestore();
     }

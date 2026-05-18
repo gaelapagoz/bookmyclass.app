@@ -87,6 +87,7 @@ describe("admin marketing campaigns page", () => {
     );
     expect(screen.getByText("Total campaigns")).toBeInTheDocument();
     expect(screen.getByText("Avg recipients per sent campaign")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "+ Create campaign" })).toHaveAttribute("href", "/admin/marketing/campaigns/new");
     expect(screen.queryByRole("columnheader", { name: "Open rate" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Click rate" })).not.toBeInTheDocument();
   });

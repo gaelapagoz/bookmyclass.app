@@ -70,7 +70,6 @@ export const adminNavConfig: AdminNavItem[] = [
     label: "Marketing",
     children: [
       { type: "link", href: "/admin/marketing/campaigns", label: "Campaigns" },
-      { type: "link", href: "/admin/marketing/campaigns/new", label: "Create Campaign" },
       { type: "link", href: "/admin/marketing/segments", label: "Segments" },
       { type: "link", href: "/admin/marketing/categories", label: "Categories" },
     ],

@@ -31,9 +31,10 @@ export default function CampaignRecipientPreviewPanel({
         <p className="text-xs text-[#5a6d86]">Resolved on server</p>
       </div>
       {!recipients.length ? (
-        <p className="rounded-md border border-dashed border-[#d3dbe5] bg-[#f8fbff] px-3 py-4 text-sm text-[#5a6d86]">
-          No subscribed recipients match the current targeting.
-        </p>
+        <div className="space-y-2 rounded-md border border-dashed border-[#d3dbe5] bg-[#f8fbff] px-3 py-4 text-sm text-[#5a6d86]">
+          <p>No subscribed recipients match the current targeting.</p>
+          <p className="text-xs">Only subscribed clients are eligible for marketing sends.</p>
+        </div>
       ) : (
         <>
           <ul className="divide-y divide-[#e2e8f0] rounded-md border border-[#e2e8f0]">

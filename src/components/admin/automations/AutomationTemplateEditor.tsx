@@ -27,6 +27,8 @@ type Props = {
   submitAction: (formData: FormData) => void | Promise<void>;
   error?: string;
   success?: string;
+  formId?: string;
+  hideTopToolbar?: boolean;
 };
 
 type LeftPanel = "add" | "themes" | "background";
@@ -59,6 +61,8 @@ export default function AutomationTemplateEditor({
   submitAction,
   error,
   success,
+  formId,
+  hideTopToolbar = false,
 }: Props) {
   const [name, setName] = useState(defaultName);
   const [subjectTemplate, setSubjectTemplate] = useState(defaultSubjectTemplate);
@@ -161,21 +165,24 @@ export default function AutomationTemplateEditor({
   const selectedBlock = blocks[selectedBlockIndex];
 
   return (
-    <form action={submitAction} className="space-y-3">
+    <form id={formId} action={submitAction} className="space-y-3">
       <input type="hidden" name="templateKey" value={templateKey} />
       <input type="hidden" name="name" value={name} />
       <input type="hidden" name="subjectTemplate" value={subjectTemplate} />
+      <input type="hidden" name="previewText" value={previewText} />
       <input type="hidden" name="contentJson" value={contentJson} />
 
-      <header className="flex items-center justify-between rounded border border-[#d3dbe5] bg-white px-4 py-2">
-        <Link href="/admin/automations" className="text-sm">Back to Automations</Link>
-        <div className="flex items-center gap-2">
-          <button type="button" disabled className="rounded border border-[#d3dbe5] px-3 py-1 text-sm">Undo</button>
-          <button type="button" disabled className="rounded border border-[#d3dbe5] px-3 py-1 text-sm">Redo</button>
-          <Link href={`/admin/automations/${templateKey}`} className="rounded border border-[#d3dbe5] px-3 py-1 text-sm">Preview & Test</Link>
-          <button type="submit" className="rounded bg-[#2958d9] px-4 py-1.5 text-sm font-semibold text-white">Save & Continue</button>
-        </div>
-      </header>
+      {!hideTopToolbar ? (
+        <header className="flex items-center justify-between rounded border border-[#d3dbe5] bg-white px-4 py-2">
+          <Link href="/admin/automations" className="text-sm">Back to Automations</Link>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled className="rounded border border-[#d3dbe5] px-3 py-1 text-sm">Undo</button>
+            <button type="button" disabled className="rounded border border-[#d3dbe5] px-3 py-1 text-sm">Redo</button>
+            <Link href={`/admin/automations/${templateKey}`} className="rounded border border-[#d3dbe5] px-3 py-1 text-sm">Preview & Test</Link>
+            <button type="submit" className="rounded bg-[#2958d9] px-4 py-1.5 text-sm font-semibold text-white">Save & Continue</button>
+          </div>
+        </header>
+      ) : null}
 
       {error ? <p className="rounded border border-[#fca5a5] bg-[#fef2f2] px-3 py-2 text-sm text-[#7b2d2d]">{error === "invalid_tokens" ? "Template contains variables that are not allowed for this trigger." : error}</p> : null}
       {success === "1" ? <p className="rounded border border-[#bbf7d0] bg-[#f0fdf4] px-3 py-2 text-sm text-[#166534]">Template saved successfully.</p> : null}

@@ -426,6 +426,17 @@ const marketingCampaignFlowStep1Schema = z.object({
   campaignName: z.string().min(1),
   subject: z.string().min(1),
   previewText: z.string().min(1),
+  fromName: z.string().min(1),
+  fromEmail: z.email(),
+  replyTo: z.union([z.email(), z.literal("")]).optional(),
+  categoryId: z.string().optional(),
+});
+
+const marketingCampaignFlowContentSchema = z.object({
+  campaignId: z.string().min(1),
+  campaignName: z.string().min(1),
+  subject: z.string().min(1),
+  previewText: z.string().min(1),
   contentJson: z.string().min(1),
 });
 
@@ -893,27 +904,13 @@ async function persistLearningProgramImageUploads(input: {
 }
 
 async function storeCampaignImageAsset(file: File, campaignId: string): Promise<string> {
-  if (file.size > MAX_CAMPAIGN_IMAGE_FILE_SIZE_BYTES) {
-    throw new Error("CAMPAIGN_IMAGE_TOO_LARGE");
-  }
-  if (!ALLOWED_CAMPAIGN_IMAGE_MIME_TYPES.has(file.type)) {
-    throw new Error("CAMPAIGN_IMAGE_TYPE_INVALID");
-  }
-
-  const extension = mapTeacherImageMimeTypeToExtension(file.type);
-  if (!extension) {
-    throw new Error("CAMPAIGN_IMAGE_TYPE_INVALID");
-  }
-
-  const bytes = await file.arrayBuffer();
-  const imagesDir = join(process.cwd(), "public", "images", "marketing");
-  const targetFileName = `campaign-${sanitizeFilenamePart(campaignId)}-${Date.now()}.${extension}`;
-  const targetAbsolutePath = join(imagesDir, targetFileName);
-  const relativePath = `/images/marketing/${targetFileName}`;
-
-  await mkdir(imagesDir, { recursive: true });
-  await writeFile(targetAbsolutePath, Buffer.from(bytes));
-  return relativePath;
+  const stored = await storeCanonicalImageWithPathPersistence({
+    file,
+    folder: "products",
+    filenamePrefix: `campaign-${sanitizeFilenamePart(campaignId)}`,
+    maxBytes: MAX_CAMPAIGN_IMAGE_FILE_SIZE_BYTES,
+  });
+  return stored.publicPath;
 }
 
 function getMarketingActionErrorMessage(error: unknown): string {
@@ -986,8 +983,14 @@ function getStep1ValidationErrorMessage(error: z.ZodError<z.infer<typeof marketi
     if (path === "previewText") {
       return "Preview text is required.";
     }
-    if (path === "contentJson") {
-      return "Campaign content blocks are required.";
+    if (path === "fromName") {
+      return "From name is required.";
+    }
+    if (path === "fromEmail") {
+      return "From email is required.";
+    }
+    if (path === "replyTo") {
+      return "Reply-to must be a valid email address.";
     }
   }
   return "Please complete all required campaign fields.";
@@ -2208,13 +2211,22 @@ export async function saveMarketingCampaignFlowDraftAction(formData: FormData) {
   const rawCampaignName = String(formData.get("campaignName") ?? "").trim();
   const rawSubject = String(formData.get("subject") ?? "").trim();
   const rawPreviewText = String(formData.get("previewText") ?? "").trim();
-  const rawContentJson = String(formData.get("contentJson") ?? "").trim();
+  const rawFromName = String(formData.get("fromName") ?? "").trim();
+  const rawFromEmail = String(formData.get("fromEmail") ?? "").trim().toLowerCase();
+  const rawReplyTo = String(formData.get("replyTo") ?? "").trim().toLowerCase();
+  const rawCategoryId = String(formData.get("categoryId") ?? "").trim();
+  const segmentIds = toStringArrayFromEntries(formData.getAll("segments"));
+  const pageRaw = Number.parseInt(String(formData.get("page") ?? "1"), 10);
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
   const parsed = marketingCampaignFlowStep1Schema.safeParse({
     campaignId: String(formData.get("campaignId") ?? "").trim() || undefined,
     campaignName: rawCampaignName,
     subject: rawSubject,
     previewText: rawPreviewText,
-    contentJson: rawContentJson,
+    fromName: rawFromName,
+    fromEmail: rawFromEmail,
+    replyTo: rawReplyTo,
+    categoryId: rawCategoryId || undefined,
   });
 
   if (!parsed.success) {
@@ -2231,17 +2243,11 @@ export async function saveMarketingCampaignFlowDraftAction(formData: FormData) {
     redirectWithError(`/admin/marketing/campaigns/new${query.toString() ? `?${query.toString()}` : ""}`, getStep1ValidationErrorMessage(parsed.error));
   }
 
-  let normalizedContentJson: ReturnType<typeof normalizeMarketingContentJson>;
-  try {
-    normalizedContentJson = normalizeMarketingContentJson(JSON.parse(parsed.data.contentJson));
-  } catch {
-    redirectWithError("/admin/marketing/campaigns/new", "Campaign content blocks are invalid.");
-  }
-
   const {
     createMarketingCampaignFlowDraft,
     updateMarketingCampaignFlowDraft,
     getMarketingCampaignFlowDraftById,
+    resolveMarketingCampaignFlowRecipients,
   } = await import("@/lib/marketing/marketing-service");
 
   try {
@@ -2252,20 +2258,45 @@ export async function saveMarketingCampaignFlowDraftAction(formData: FormData) {
         name: parsed.data.campaignName,
         subject: parsed.data.subject,
         previewText: parsed.data.previewText,
-        contentJson: normalizedContentJson,
+        fromName: parsed.data.fromName,
+        fromEmail: parsed.data.fromEmail,
+        replyTo: parsed.data.replyTo || null,
+        categoryId: parsed.data.categoryId ?? null,
         currentStep: "STEP_1",
       })
       : await createMarketingCampaignFlowDraft({
         createdById: actor.id,
         name: parsed.data.campaignName,
         goalPrompt: "",
-        generatedDraft: {
-          subject: parsed.data.subject,
-          previewText: parsed.data.previewText,
-          contentJson: normalizedContentJson,
-        },
       });
 
+    if (!draft) {
+      throw new Error("MARKETING_CAMPAIGN_NOT_FOUND");
+    }
+
+    draft = await updateMarketingCampaignFlowDraft(draft.id, {
+      name: parsed.data.campaignName,
+      subject: parsed.data.subject,
+      previewText: parsed.data.previewText,
+      fromName: parsed.data.fromName,
+      fromEmail: parsed.data.fromEmail,
+      replyTo: parsed.data.replyTo || null,
+      categoryId: parsed.data.categoryId ?? null,
+      currentStep: "STEP_1",
+    });
+    if (!draft) {
+      throw new Error("MARKETING_CAMPAIGN_NOT_FOUND");
+    }
+
+    const resolution = await resolveMarketingCampaignFlowRecipients({
+      campaignId: draft.id,
+      selectedSegmentIds: segmentIds,
+      page,
+    });
+    draft = await updateMarketingCampaignFlowDraft(draft.id, {
+      selectedSegmentIds: resolution.selectedSegmentIds,
+      currentStep: "STEP_2",
+    });
     if (!draft) {
       throw new Error("MARKETING_CAMPAIGN_NOT_FOUND");
     }
@@ -2275,8 +2306,11 @@ export async function saveMarketingCampaignFlowDraftAction(formData: FormData) {
       const imageAssetUrl = await storeCampaignImageAsset(file, draft.id);
       draft = await updateMarketingCampaignFlowDraft(draft.id, {
         imageAssetUrl,
-        currentStep: "STEP_1",
+        currentStep: "STEP_2",
       });
+      if (!draft) {
+        throw new Error("MARKETING_CAMPAIGN_NOT_FOUND");
+      }
     }
 
     const persistedDraft = draft ?? (await getMarketingCampaignFlowDraftById(parsed.data.campaignId ?? ""));
@@ -2284,9 +2318,7 @@ export async function saveMarketingCampaignFlowDraftAction(formData: FormData) {
       throw new Error("MARKETING_CAMPAIGN_NOT_FOUND");
     }
 
-    redirect(
-      `/admin/marketing/campaigns/new?campaignId=${persistedDraft.id}&success=${encodeURIComponent("Draft saved.")}`,
-    );
+    redirect(`/admin/marketing/campaigns/${persistedDraft.id}/target`);
   } catch (error) {
     if (isRedirectException(error)) {
       throw error;
@@ -2305,8 +2337,58 @@ export async function generateMarketingCampaignFlowDraftAction(formData: FormDat
   const campaignId = String(formData.get("campaignId") ?? "").trim();
   redirectWithError(
     campaignId ? `/admin/marketing/campaigns/new?campaignId=${encodeURIComponent(campaignId)}` : "/admin/marketing/campaigns/new",
-    "AI draft generation is disabled. Use Save draft with content blocks.",
+    "AI draft generation is disabled.",
   );
+}
+
+export async function saveMarketingCampaignFlowContentAction(formData: FormData) {
+  await assertAdminAccess();
+  const campaignId = String(formData.get("campaignId") ?? "").trim();
+  const intent = String(formData.get("intent") ?? "next").trim().toLowerCase();
+  const parsed = marketingCampaignFlowContentSchema.safeParse({
+    campaignId,
+    campaignName: String(formData.get("name") ?? "").trim(),
+    subject: String(formData.get("subjectTemplate") ?? "").trim(),
+    previewText: String(formData.get("previewText") ?? "").trim(),
+    contentJson: String(formData.get("contentJson") ?? "").trim(),
+  });
+
+  if (!parsed.success) {
+    redirectWithError(`/admin/marketing/campaigns/${encodeURIComponent(campaignId)}/target`, "Please complete campaign email content.");
+  }
+
+  let normalizedContentJson: ReturnType<typeof normalizeMarketingContentJson>;
+  try {
+    normalizedContentJson = normalizeMarketingContentJson(JSON.parse(parsed.data.contentJson));
+  } catch {
+    redirectWithError(`/admin/marketing/campaigns/${encodeURIComponent(campaignId)}/target`, "Campaign content blocks are invalid.");
+  }
+
+  const { updateMarketingCampaignFlowDraft } = await import("@/lib/marketing/marketing-service");
+  try {
+    const updatedDraft = await updateMarketingCampaignFlowDraft(parsed.data.campaignId, {
+      name: parsed.data.campaignName,
+      subject: parsed.data.subject,
+      previewText: parsed.data.previewText,
+      contentJson: normalizedContentJson,
+      currentStep: intent === "save" ? "STEP_2" : "STEP_3",
+    });
+    if (!updatedDraft) {
+      redirectWithError(`/admin/marketing/campaigns/${parsed.data.campaignId}/target`, "Campaign not found.");
+    }
+  } catch (error) {
+    if (isRedirectException(error)) {
+      throw error;
+    }
+    Sentry.captureException(error);
+    redirectWithError(`/admin/marketing/campaigns/${parsed.data.campaignId}/target`, getMarketingActionErrorMessage(error));
+  }
+
+  if (intent === "save") {
+    redirect(`/admin/marketing/campaigns/${parsed.data.campaignId}/target?success=${encodeURIComponent("Draft saved.")}`);
+  }
+
+  redirect(`/admin/marketing/campaigns/${parsed.data.campaignId}/review`);
 }
 
 export async function sendMarketingCampaignFlowTestEmailAction(formData: FormData) {

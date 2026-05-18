@@ -123,6 +123,15 @@ vi.mock("@/lib/marketing/marketing-service", () => ({
   createMarketingCampaignFlowDraft: vi.fn(),
   updateMarketingCampaignFlowDraft: vi.fn(),
   getMarketingCampaignFlowDraftById: vi.fn(),
+  resolveMarketingCampaignFlowRecipients: vi.fn(async () => ({
+    selectedSegmentIds: [],
+    segmentOptions: [],
+    totalRecipients: 0,
+    page: 1,
+    pageSize: 20,
+    totalPages: 1,
+    recipients: [],
+  })),
 }));
 
 vi.mock("@/lib/public-documents/agenda-document-service", () => ({
@@ -1209,8 +1218,10 @@ describe("admin actions", () => {
     formData.set("campaignName", "Test Campaign");
     formData.set("subject", "Subject");
     formData.set("previewText", "Preview");
-    formData.set("contentJson", JSON.stringify({ blocks: [] }));
-    formData.set("campaignImage", new File(["png"], "img.png", { type: "image/png" }));
+    formData.set("fromName", "Studio Team");
+    formData.set("fromEmail", "no-reply@bookmyclass.app");
+    formData.set("replyTo", "no-reply@bookmyclass.app");
+    formData.set("campaignImage", createPngFile("img.png"));
 
     await expect(saveMarketingCampaignFlowDraftAction(formData)).rejects.toThrow("NEXT_REDIRECT");
 
