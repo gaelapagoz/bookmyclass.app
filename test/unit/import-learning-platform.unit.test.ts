@@ -42,10 +42,8 @@ describe("learning importer payload parsing", () => {
     expect(result.payload).not.toBeNull();
     expect(result.payload?.programs[0]).toEqual({
       legacyId: "1",
-      mainTitle: "Yoga Program",
       mainDescription: "Program description",
-      courseType: "Yoga",
-      title: "Yoga",
+      courseType: "Yoga Program",
       description1: "d1",
       description2: "d2",
       description3: "d3",
@@ -59,7 +57,7 @@ describe("learning importer payload parsing", () => {
       title: "Sun Salutation",
       description: "Full class",
       shortDescription: "Short class description",
-      category: "Yoga",
+      category: "Online Yoga Classes",
       categoryType: "Flow",
       categoryLevel: "Beginner",
       thumbnail: "/images/learning/course-1.jpg",
@@ -95,10 +93,8 @@ describe("learning importer payload parsing", () => {
       programs: [
         {
           legacyId: "2",
-          mainTitle: "Pilates Program",
           mainDescription: undefined,
-          courseType: "Pilates",
-          title: "Pilates",
+          courseType: "Pilates Program",
           description1: undefined,
           description2: undefined,
           description3: undefined,
@@ -114,7 +110,7 @@ describe("learning importer payload parsing", () => {
           title: "Core Burn",
           description: undefined,
           shortDescription: undefined,
-          category: "Pilates",
+          category: "Online Pilates Classes",
           categoryType: undefined,
           categoryLevel: undefined,
           thumbnail: undefined,
@@ -164,7 +160,7 @@ describe("learning importer payload parsing", () => {
         },
         {
           ID: "p-1",
-          MainTitle: "Program B",
+          MainTitle: "Program A",
           CourseType: "Yoga",
           Title: "B",
         },
@@ -188,6 +184,7 @@ describe("learning importer payload parsing", () => {
     expect(result.payload).toBeNull();
     expect(result.errors).toContain("Duplicate program ID in JSON: 'p-1'.");
     expect(result.errors).toContain("Duplicate course ID in JSON: 'c-1'.");
-    expect(result.errors).toContain("Duplicate program CourseType in JSON: 'Yoga'.");
+    expect(result.errors).toContain("Duplicate program CourseType in JSON: 'Program A'.");
   });
 });
+

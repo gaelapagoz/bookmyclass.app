@@ -9,7 +9,7 @@ vi.mock("@/lib/learning/catalogue", () => ({
 }));
 
 vi.mock("@/components/learning/LearningProgramsSection", () => ({
-  default: ({ programs }: { programs: Array<{ mainTitle: string }> }) => (
+  default: ({ programs }: { programs: Array<{ courseType: string }> }) => (
     <div data-testid="learning-programs">Programs: {programs.length}</div>
   ),
 }));
@@ -22,10 +22,8 @@ describe("/learning page", () => {
     vi.mocked(getLearningPrograms).mockResolvedValue([
       {
         legacyId: "1",
-        mainTitle: "Program A",
+        courseType: "Program A",
         mainDescription: "desc",
-        courseType: "Yoga",
-        title: "Program A",
         description1: null,
         description2: null,
         description3: null,

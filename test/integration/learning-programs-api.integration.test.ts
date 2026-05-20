@@ -16,10 +16,8 @@ describe("GET /api/programs", () => {
     await prisma.learningProgram.create({
       data: {
         legacyId: "2",
-        mainTitle: "Program B",
         mainDescription: "desc b",
         courseType: "Pilates",
-        title: "Program B",
         description1: "d1b",
         description2: "d2b",
         description3: "d3b",
@@ -33,10 +31,8 @@ describe("GET /api/programs", () => {
     await prisma.learningProgram.create({
       data: {
         legacyId: "1",
-        mainTitle: "Program A",
         mainDescription: "desc a",
         courseType: "Yoga",
-        title: "Program A",
         description1: "d1a",
         description2: "d2a",
         description3: "d3a",
@@ -57,10 +53,10 @@ describe("GET /api/programs", () => {
 
     expect(body[0]).toMatchObject({
       ID: "1",
-      MainTitle: "Program A",
+      MainTitle: "Yoga",
       MainDescription: "desc a",
       CourseType: "Yoga",
-      Title: "Program A",
+      Title: "Yoga",
       Description1: "d1a",
       Description2: "d2a",
       Description3: "d3a",
@@ -75,10 +71,8 @@ describe("GET /api/programs", () => {
     await prisma.learningProgram.create({
       data: {
         legacyId: "3",
-        mainTitle: "Program C",
         mainDescription: "desc c",
         courseType: "Mobility",
-        title: "Program C",
         description1: "d1c",
         description2: "d2c",
         description3: "d3c",
@@ -108,3 +102,4 @@ describe("GET /api/programs", () => {
     expect(body).toEqual([]);
   });
 });
+

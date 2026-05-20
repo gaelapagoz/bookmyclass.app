@@ -1,4 +1,4 @@
-﻿/**
+/**
  * E2e server seed
  *
  * Purpose:
@@ -509,10 +509,8 @@ async function main() {
   await prisma.learningProgram.create({
     data: {
       legacyId: "e2e-program-v1",
-      mainTitle: "E2E Online Learning Program",
       mainDescription: "Program used for e2e navigation coverage.",
       courseType: "e2e_course_type",
-      title: "E2E Program",
       description1: "Step-by-step mobility class",
       description2: "Focus on deterministic fixtures",
       description3: "Stable for e2e",

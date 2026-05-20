@@ -603,10 +603,8 @@ model ClassType {
 model LearningProgram {
   id              String   @id @default(cuid())
   legacyId        String   @unique
-  mainTitle       String
   mainDescription String?
   courseType      String   @unique
-  title           String
   description1    String?
   description2    String?
   description3    String?

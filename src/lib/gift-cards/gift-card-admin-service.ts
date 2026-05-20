@@ -457,7 +457,16 @@ export async function listAdminGiftCardWalletBalances(input: {
     prisma.giftCardWallet.count({ where }),
   ]);
 
-  const items = await Promise.all(wallets.map(async (wallet) => {
+  const items: Array<{
+    walletId: string;
+    client: { id: string; name: string | null; email: string };
+    currencyCode: string;
+    balanceMinor: number;
+    activeGiftCards: number;
+    lastActivityAt: Date;
+  }> = [];
+
+  for (const wallet of wallets) {
     const activeGiftCards = await prisma.giftCardCode.count({
       where: {
         redeemedById: wallet.clientId,
@@ -465,15 +474,15 @@ export async function listAdminGiftCardWalletBalances(input: {
       },
     });
     const lastActivityAt = wallet.ledgerEntries[0]?.happenedAt ?? wallet.updatedAt;
-    return {
+    items.push({
       walletId: wallet.id,
       client: wallet.client,
       currencyCode: wallet.currencyCode,
       balanceMinor: wallet.balanceMinor,
       activeGiftCards,
       lastActivityAt,
-    };
-  }));
+    });
+  }
 
   return {
     items,

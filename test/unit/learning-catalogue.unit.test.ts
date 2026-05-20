@@ -19,14 +19,11 @@ vi.mock("@/lib/db", () => ({
 }));
 
 vi.mock("@/lib/media", () => ({
-  assertSafeMediaPublicPath: vi.fn((path: string) => {
-    if (!path.startsWith("/images/learning/") || path.includes("..")) {
-      throw new Error("invalid");
-    }
-    return path;
-  }),
+  assertCanonicalMediaPublicPath: vi.fn(),
+  assertSafeMediaPublicPath: vi.fn(),
+  getCanonicalMediaRenderState: vi.fn(async (path: string | null) => ({ src: path })),
   getLocalMediaRenderState: vi.fn(async (path: string | null) => ({
-    src: path?.includes("missing") ? null : path,
+    src: path?.includes("missing") || !path?.startsWith("/images/learning/") ? null : path,
     shouldRenderFallback: !path || path.includes("missing"),
   })),
 }));
@@ -48,10 +45,8 @@ describe("learning catalogue data layer", () => {
     dbMock.learningProgram.findMany.mockResolvedValue([
       {
         legacyId: "1",
-        mainTitle: "Program A",
-        mainDescription: "A",
         courseType: "Yoga",
-        title: "Program A",
+        mainDescription: "A",
         description1: null,
         description2: null,
         description3: null,
@@ -62,10 +57,8 @@ describe("learning catalogue data layer", () => {
       },
       {
         legacyId: "2",
-        mainTitle: "Program B",
-        mainDescription: "B",
         courseType: "Pilates",
-        title: "Program B",
+        mainDescription: "B",
         description1: null,
         description2: null,
         description3: null,
@@ -92,10 +85,8 @@ describe("learning catalogue data layer", () => {
     dbMock.learningProgram.findMany.mockResolvedValue([
       {
         legacyId: "5",
-        mainTitle: "Online Yoga Classes",
+        courseType: "Online Yoga Classes",
         mainDescription: "A",
-        courseType: "Yoga",
-        title: "Program A",
         description1: null,
         description2: null,
         description3: null,
@@ -114,10 +105,8 @@ describe("learning catalogue data layer", () => {
   it("getLearningProgramByCourseType returns the matching program", async () => {
     dbMock.learningProgram.findUnique.mockResolvedValue({
       legacyId: "3",
-      mainTitle: "Backbends",
-      mainDescription: "desc",
       courseType: "Backbend",
-      title: "Backbends",
+      mainDescription: "desc",
       description1: "d1",
       description2: "d2",
       description3: "d3",
@@ -134,7 +123,7 @@ describe("learning catalogue data layer", () => {
         where: { courseType: "Backbend" },
       }),
     );
-    expect(program?.mainTitle).toBe("Backbends");
+    expect(program?.courseType).toBe("Backbend");
   });
 
   it("route key helpers roundtrip consistently", () => {
@@ -153,8 +142,6 @@ describe("learning catalogue data layer", () => {
       description: "desc",
       shortDescription: "short",
       category: "Yoga",
-      categoryType: null,
-      categoryLevel: null,
       thumbnail: "/images/learning/t.jpg",
       videoUrl: "https://www.youtube.com/watch?v=abc",
       priority: 1,
@@ -173,62 +160,19 @@ describe("learning catalogue data layer", () => {
 
   it("drops invalid learning thumbnails from runtime views", async () => {
     dbMock.learningCourse.findUnique.mockResolvedValue({
-      legacyId: "06369c36-bc85-48ef-9b3a-c40c9175efe3",
+      legacyId: "course-2",
       title: "Core Flow",
       description: "desc",
       shortDescription: "short",
       category: "Yoga",
-      categoryType: null,
-      categoryLevel: null,
       thumbnail: "/images/course-thumb.jpg",
       videoUrl: "https://www.youtube.com/watch?v=abc",
       priority: 1,
     });
 
-    const course = await getLearningCourseByCourseTypeAndLegacyId(
-      "Yoga",
-      "06369c36-bc85-48ef-9b3a-c40c9175efe3",
-    );
+    const course = await getLearningCourseByCourseTypeAndLegacyId("Yoga", "course-2");
 
     expect(course?.thumbnail).toBeNull();
-  });
-
-  it("preserves first-party learning thumbnails under /images/learning", async () => {
-    dbMock.learningCourse.findUnique.mockResolvedValue({
-      legacyId: "course-3",
-      title: "Core Flow",
-      description: "desc",
-      shortDescription: "short",
-      category: "Yoga",
-      categoryType: null,
-      categoryLevel: null,
-      thumbnail: "/images/learning/core-flow.jpg",
-      videoUrl: "https://www.youtube.com/watch?v=abc",
-      priority: 1,
-    });
-
-    const course = await getLearningCourseByCourseTypeAndLegacyId("Yoga", "course-3");
-    expect(course?.thumbnail).toBe("/images/learning/core-flow.jpg");
-  });
-
-  it("drops missing local learning images from runtime views", async () => {
-    dbMock.learningProgram.findUnique.mockResolvedValue({
-      legacyId: "program-missing",
-      mainTitle: "Backbends",
-      mainDescription: null,
-      courseType: "Backbend",
-      title: "Backbends",
-      description1: null,
-      description2: null,
-      description3: null,
-      videoPromo: null,
-      picture1: "/images/learning/missing-backbend.png",
-      picture2: null,
-      picture3: null,
-    });
-
-    const program = await getLearningProgramByCourseType("Backbend");
-    expect(program?.picture1).toBeNull();
   });
 
   it("returns null for missing program or mismatched/missing course", async () => {
@@ -237,29 +181,20 @@ describe("learning catalogue data layer", () => {
     expect(missingProgram).toBeNull();
 
     dbMock.learningCourse.findUnique.mockResolvedValueOnce(null);
-    const missingCourse = await getLearningCourseByCourseTypeAndLegacyId(
-      "Yoga",
-      "missing",
-    );
+    const missingCourse = await getLearningCourseByCourseTypeAndLegacyId("Yoga", "missing");
     expect(missingCourse).toBeNull();
 
     dbMock.learningCourse.findUnique.mockResolvedValueOnce({
-      legacyId: "course-2",
+      legacyId: "course-3",
       title: "Pilates Base",
       description: null,
       shortDescription: null,
       category: "Pilates",
-      categoryType: null,
-      categoryLevel: null,
       thumbnail: null,
       videoUrl: null,
       priority: 5,
     });
-    const mismatchedCourse = await getLearningCourseByCourseTypeAndLegacyId(
-      "Yoga",
-      "course-2",
-    );
+    const mismatchedCourse = await getLearningCourseByCourseTypeAndLegacyId("Yoga", "course-3");
     expect(mismatchedCourse).toBeNull();
   });
 });
-

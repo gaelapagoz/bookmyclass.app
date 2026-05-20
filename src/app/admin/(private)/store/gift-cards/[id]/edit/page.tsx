@@ -52,7 +52,6 @@ export default async function AdminStoreGiftCardEditPage({
 
       <form
         action={updateStoreGiftCardAction.bind(null, id)}
-        encType="multipart/form-data"
         className="space-y-3 rounded-xl border border-[#d3dbe5] bg-white p-5"
       >
         <div className="grid gap-3 md:grid-cols-2">
@@ -159,7 +158,7 @@ export default async function AdminStoreGiftCardEditPage({
 
         <div className="rounded-md border border-[#d3dbe5] bg-[#f8fafc] px-3 py-2 text-xs text-[#64748b]">
           Stripe ID:{" "}
-          {record.activePrice?.stripePriceId ?? "Not synced"} — Checkout: {priceLabel}
+          {record.activePrice?.stripePriceId ?? "Not synced"} â€” Checkout: {priceLabel}
           {record.activePrice?.stripeSyncError ? (
             <span className="ml-2 text-[#7b2d2d]">({record.activePrice.stripeSyncError})</span>
           ) : null}
@@ -204,3 +203,4 @@ export default async function AdminStoreGiftCardEditPage({
     </section>
   );
 }
+

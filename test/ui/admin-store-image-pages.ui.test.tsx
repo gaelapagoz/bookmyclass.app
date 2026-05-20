@@ -100,7 +100,8 @@ describe("admin Store image edit pages", () => {
       }),
     );
 
-    expect(container.querySelector("form")?.getAttribute("enctype")).toBe("multipart/form-data");
+    expect(container.querySelector("form")?.getAttribute("enctype")).toBeNull();
+    expect(container.querySelector("form")?.getAttribute("method")).toBeNull();
     expect(screen.getByAltText("Studio Tote Bag product image")).toBeInTheDocument();
     expect(screen.getByLabelText(/remove current image/i)).toHaveAttribute("name", "removeImage");
     expect(screen.getByLabelText(/replace image/i)).toHaveAttribute("name", "image");
@@ -128,7 +129,8 @@ describe("admin Store image edit pages", () => {
       }),
     );
 
-    expect(container.querySelector("form")?.getAttribute("enctype")).toBe("multipart/form-data");
+    expect(container.querySelector("form")?.getAttribute("enctype")).toBeNull();
+    expect(container.querySelector("form")?.getAttribute("method")).toBeNull();
     expect(screen.getByAltText("Gift Card 25 EUR product image")).toBeInTheDocument();
     expect(screen.getByLabelText(/remove current image/i)).toHaveAttribute("name", "removeImage");
     expect(screen.getByLabelText(/replace image/i)).toHaveAttribute("name", "image");
@@ -141,7 +143,8 @@ describe("admin Store image edit pages", () => {
       }),
     );
 
-    expect(container.querySelector("form")?.getAttribute("enctype")).toBe("multipart/form-data");
+    expect(container.querySelector("form")?.getAttribute("enctype")).toBeNull();
+    expect(container.querySelector("form")?.getAttribute("method")).toBeNull();
     const imageInput = screen.getByLabelText(/product image/i);
     expect(imageInput).toHaveAttribute("name", "image");
     expect(imageInput).toHaveAttribute("type", "file");
@@ -154,7 +157,8 @@ describe("admin Store image edit pages", () => {
       }),
     );
 
-    expect(container.querySelector("form")?.getAttribute("enctype")).toBe("multipart/form-data");
+    expect(container.querySelector("form")?.getAttribute("enctype")).toBeNull();
+    expect(container.querySelector("form")?.getAttribute("method")).toBeNull();
     const imageInput = screen.getByLabelText(/product image/i);
     expect(imageInput).toHaveAttribute("name", "image");
     expect(imageInput).toHaveAttribute("type", "file");

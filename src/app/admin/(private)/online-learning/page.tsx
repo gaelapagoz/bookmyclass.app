@@ -37,8 +37,6 @@ export default async function AdminOnlineLearningPage() {
                 <thead className="bg-[#f3f6fb] text-left text-xs uppercase tracking-wide text-[#5a6d86]">
                   <tr>
                     <th className="px-3 py-2">Course Type</th>
-                    <th className="px-3 py-2">Main Title</th>
-                    <th className="px-3 py-2">Title</th>
                     <th className="px-3 py-2">Updated</th>
                     <th className="px-3 py-2">Actions</th>
                   </tr>
@@ -47,8 +45,6 @@ export default async function AdminOnlineLearningPage() {
                   {programs.map((item) => (
                     <tr key={item.id} className="border-t border-[#e2e8f0] text-[#334155]">
                       <td className="px-3 py-2">{item.courseType}</td>
-                      <td className="px-3 py-2">{item.mainTitle}</td>
-                      <td className="px-3 py-2">{item.title}</td>
                       <td className="px-3 py-2">{formatDate(item.updatedAt)}</td>
                       <td className="px-3 py-2">
                         <Link
@@ -82,8 +78,7 @@ export default async function AdminOnlineLearningPage() {
                 <thead className="bg-[#f3f6fb] text-left text-xs uppercase tracking-wide text-[#5a6d86]">
                   <tr>
                     <th className="px-3 py-2">Title</th>
-                    <th className="px-3 py-2">Category</th>
-                    <th className="px-3 py-2">Type/Level</th>
+                    <th className="px-3 py-2">Course Type</th>
                     <th className="px-3 py-2">Priority</th>
                     <th className="px-3 py-2">Updated</th>
                     <th className="px-3 py-2">Actions</th>
@@ -94,9 +89,6 @@ export default async function AdminOnlineLearningPage() {
                     <tr key={item.id} className="border-t border-[#e2e8f0] text-[#334155]">
                       <td className="px-3 py-2">{item.title}</td>
                       <td className="px-3 py-2">{item.category}</td>
-                      <td className="px-3 py-2">
-                        {item.categoryType ?? "-"} / {item.categoryLevel ?? "-"}
-                      </td>
                       <td className="px-3 py-2">{item.priority}</td>
                       <td className="px-3 py-2">{formatDate(item.updatedAt)}</td>
                       <td className="px-3 py-2">

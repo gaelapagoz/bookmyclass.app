@@ -323,6 +323,17 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("No booking services found.")).toBeInTheDocument();
   });
   it("renders booking services table with required headers and teacher name", async () => {
+    vi.mocked(getAdminClassCategoriesData).mockResolvedValue([
+      {
+        id: "cat-1",
+        name: "Fitness & Functional",
+        slug: "fitness-functional",
+        description: null,
+        isActive: true,
+        sortOrder: 1,
+        serviceCount: 1,
+      },
+    ]);
     vi.mocked(getAdminClassesData).mockResolvedValue([
       {
         id: "class-1",
@@ -339,16 +350,49 @@ describe("Admin pages branching", () => {
     render(await AdminClassesPage());
 
     expect(screen.getByRole("heading", { name: "Categories" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "Booking Services" }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("button", { name: "Create category" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Name" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Number of Services" })).toBeInTheDocument();
+    expect(screen.getAllByRole("columnheader", { name: "Name" }).length).toBeGreaterThan(0);
     expect(screen.getByRole("columnheader", { name: "Category" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Teacher Name" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Capacity" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Actions" })).toBeInTheDocument();
+    expect(screen.getAllByRole("columnheader", { name: "Status" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("columnheader", { name: "Actions" }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("columnheader", { name: "Slug" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Duration" })).not.toBeInTheDocument();
     expect(screen.getByText("Sofia Van den Berg")).toBeInTheDocument();
+  });
+
+  it("renders independent categories and courses pagination containers", async () => {
+    vi.mocked(getAdminClassCategoriesData).mockResolvedValue(
+      Array.from({ length: 12 }).map((_, index) => ({
+        id: `cat-${index + 1}`,
+        name: `Category ${index + 1}`,
+        slug: `category-${index + 1}`,
+        description: null,
+        isActive: true,
+        sortOrder: index + 1,
+        serviceCount: index + 1,
+      })),
+    );
+    vi.mocked(getAdminClassesData).mockResolvedValue(
+      Array.from({ length: 12 }).map((_, index) => ({
+        id: `class-${index + 1}`,
+        name: `Class ${index + 1}`,
+        categoryName: "Category",
+        defaultTeacherName: "Teacher",
+        defaultCapacity: 10,
+        isActive: true,
+        isVisible: true,
+        sortOrder: index + 1,
+      })),
+    );
+
+    render(await AdminClassesPage());
+
+    expect(screen.getByTestId("booking-categories-pagination")).toBeInTheDocument();
+    expect(screen.getByTestId("booking-courses-pagination")).toBeInTheDocument();
   });
 
   it("renders teacher fallback when no default teacher exists", async () => {
@@ -953,9 +997,7 @@ describe("Admin pages branching", () => {
       programs: [
         {
           id: "lp1",
-          courseType: "Yoga",
-          mainTitle: "Yoga Program",
-          title: "Yoga Basics",
+          courseType: "Yoga Program",
           updatedAt: new Date().toISOString(),
         },
       ],
@@ -963,9 +1005,7 @@ describe("Admin pages branching", () => {
         {
           id: "lv1",
           title: "Core Burn",
-          category: "Yoga",
-          categoryType: "Flow",
-          categoryLevel: "Beginner",
+          category: "Yoga Program",
           priority: 1,
           updatedAt: new Date().toISOString(),
         },
@@ -976,7 +1016,7 @@ describe("Admin pages branching", () => {
 
     expect(screen.getByRole("heading", { name: "Online Learning" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Legacy ID" })).not.toBeInTheDocument();
-    expect(screen.getByText("Yoga Program")).toBeInTheDocument();
+    expect(screen.getAllByText("Yoga Program").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("Core Burn")).toBeInTheDocument();
   });
 
@@ -998,6 +1038,7 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Unable to load online learning right now.")).toBeInTheDocument();
   });
 });
+
 
 
 

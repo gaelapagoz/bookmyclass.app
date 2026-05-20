@@ -54,10 +54,8 @@ describe("/learning/[courseType]/[courseId] page", () => {
     vi.mocked(auth).mockResolvedValue({ user: { id: "u1" } } as never);
     vi.mocked(getLearningProgramByCourseType).mockResolvedValue({
       legacyId: "1",
-      mainTitle: "Yoga Program",
+      courseType: "Yoga Program",
       mainDescription: null,
-      courseType: "Yoga",
-      title: "Yoga Program",
       description1: null,
       description2: null,
       description3: null,
@@ -71,9 +69,7 @@ describe("/learning/[courseType]/[courseId] page", () => {
       title: "Morning Flow",
       description: "desc",
       shortDescription: null,
-      category: "Yoga",
-      categoryType: null,
-      categoryLevel: null,
+      category: "Yoga Program",
       thumbnail: null,
       videoUrl: "https://www.youtube.com/embed/abc123",
       priority: 1,
@@ -82,7 +78,7 @@ describe("/learning/[courseType]/[courseId] page", () => {
     render(
       await LearningCoursePage({
         params: Promise.resolve({
-          courseType: "Yoga",
+          courseType: "Yoga%20Program",
           courseId: "course-1",
         }),
       }),
@@ -96,10 +92,8 @@ describe("/learning/[courseType]/[courseId] page", () => {
     vi.mocked(auth).mockResolvedValue(null);
     vi.mocked(getLearningProgramByCourseType).mockResolvedValue({
       legacyId: "1",
-      mainTitle: "Yoga Program",
+      courseType: "Yoga Program",
       mainDescription: null,
-      courseType: "Yoga",
-      title: "Yoga Program",
       description1: null,
       description2: null,
       description3: null,
@@ -113,9 +107,7 @@ describe("/learning/[courseType]/[courseId] page", () => {
       title: "Morning Flow",
       description: "desc",
       shortDescription: null,
-      category: "Yoga",
-      categoryType: null,
-      categoryLevel: null,
+      category: "Yoga Program",
       thumbnail: null,
       videoUrl: "https://www.youtube.com/embed/abc123",
       priority: 1,
@@ -124,7 +116,7 @@ describe("/learning/[courseType]/[courseId] page", () => {
     render(
       await LearningCoursePage({
         params: Promise.resolve({
-          courseType: "Yoga",
+          courseType: "Yoga%20Program",
           courseId: "course-1",
         }),
       }),

@@ -30,7 +30,6 @@ export default async function AdminStoreMerchandiseNewPage({
 
       <form
         action={createStoreMerchandiseAction}
-        encType="multipart/form-data"
         className="space-y-3 rounded-xl border border-[#d3dbe5] bg-white p-5"
       >
         <div className="grid gap-3 md:grid-cols-2">
@@ -105,7 +104,7 @@ export default async function AdminStoreMerchandiseNewPage({
         </div>
 
         <div className="rounded-md border border-[#d3dbe5] bg-[#f8fafc] px-3 py-2 text-xs text-[#64748b]">
-          Currency: EUR — Billing: One-time — Fulfillment: Pickup at studio. Price requires Stripe
+          Currency: EUR â€” Billing: One-time â€” Fulfillment: Pickup at studio. Price requires Stripe
           sync before checkout exposure.
         </div>
 
@@ -121,3 +120,4 @@ export default async function AdminStoreMerchandiseNewPage({
     </section>
   );
 }
+

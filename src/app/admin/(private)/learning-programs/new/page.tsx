@@ -28,17 +28,6 @@ export default async function AdminLearningProgramCreatePage({ searchParams }: {
           </label>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="block text-sm text-[#334155]">
-            Main Title
-            <input name="mainTitle" required className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
-          </label>
-          <label className="block text-sm text-[#334155]">
-            Title
-            <input name="title" required className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
-          </label>
-        </div>
-
         <label className="block text-sm text-[#334155]">
           Main Description
           <textarea name="mainDescription" rows={3} className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />

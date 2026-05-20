@@ -1,5 +1,5 @@
-﻿/**
- * Development seed mode â€” used for both DEV and UAT environments.
+/**
+ * Development seed mode — used for both DEV and UAT environments.
  * Output is identical regardless of environment when run with BOOKMYCLASS_SEED_MODE=development.
  *
  * Includes: users, catalog, scheduling (120-day past + 14-day future),
@@ -51,7 +51,7 @@ import {
   verifySeededMediaReferences,
 } from "../utils/seed-media";
 
-// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Constants ──────────────────────────────────────────────────────────────
 
 const SEED_CLIENT_COUNT = 150;
 const SEED_PAST_DAYS = 120;
@@ -89,7 +89,7 @@ const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9_]+$/;
 
 type CatalogStripePriceEnvSpec = { productName: string; lookupKey: string; envVarName: string };
 
-// Purchasable catalog prices (subscriptions/classes/store) â€” always required for dev seed to succeed.
+// Purchasable catalog prices (subscriptions/classes/store) — always required for dev seed to succeed.
 const REQUIRED_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[] = [
   { productName: "Collective Class Drop-In", lookupKey: "collective-drop-in-eur-once-v1", envVarName: "STRIPE_PRICE_ID_COLLECTIVE_DROP_IN" },
   { productName: "5-Ticket Collective Classes", lookupKey: "qa-collective-5-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_COLLECTIVE_5_PACK" },
@@ -122,11 +122,11 @@ const SEEDED_CLASS_IMAGES = {
   privateReformerCoaching: toCanonicalSeedImagePath("/images/classes/private-reformer-coaching.jpg"),
 } as const;
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type LearningProgramSeedInput = {
-  legacyId: string; mainTitle: string; mainDescription?: string; courseType: string;
-  title: string; description1?: string; description2?: string; description3?: string;
+  legacyId: string; mainDescription?: string; courseType: string;
+  description1?: string; description2?: string; description3?: string;
   videoPromo?: string; picture1?: string; picture2?: string; picture3?: string;
 };
 
@@ -136,7 +136,7 @@ type LearningCourseSeedInput = {
   thumbnail?: string; videoUrl?: string; priority: number;
 };
 
-// â”€â”€â”€ Utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Utilities ───────────────────────────────────────────────────────────────
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -150,6 +150,14 @@ function asOptionalString(value: unknown): string | undefined {
 
 function asRequiredString(value: unknown): string | undefined {
   return asOptionalString(value);
+}
+
+function normalizeCanonicalLearningCourseType(value: string | undefined): string | undefined {
+  if (!value) return value;
+  if (value === "Backbend") return "Backbends Series";
+  if (value === "Pilates") return "Online Pilates Classes";
+  if (value === "Yoga") return "Online Yoga Classes";
+  return value;
 }
 
 function asRequiredId(value: unknown): string | undefined {
@@ -210,7 +218,7 @@ function endOfUtcDay(value: Date): Date {
 }
 
 
-// â”€â”€â”€ Stripe price resolution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Stripe price resolution ──────────────────────────────────────────────────
 
 function resolveRequiredCatalogStripePriceIds(): Record<string, string> {
   const stripePriceIdByLookupKey: Record<string, string> = {};
@@ -236,7 +244,7 @@ function resolveRequiredCatalogStripePriceIds(): Record<string, string> {
   return stripePriceIdByLookupKey;
 }
 
-// â”€â”€â”€ Purge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Purge ────────────────────────────────────────────────────────────────────
 
 async function purgeForCleanSeed() {
   await prisma.marketingCampaignLinkClick.deleteMany();
@@ -296,7 +304,7 @@ async function purgeForCleanSeed() {
   await prisma.user.deleteMany();
 }
 
-// â”€â”€â”€ Users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Users ────────────────────────────────────────────────────────────────────
 
 async function seedUsers() {
   const rng = createSeededRng(SEED_RANDOM_SEED + 11);
@@ -430,7 +438,7 @@ async function seedUsers() {
   return { masterAdmin, admin, teachers: { ana, elena, sofia }, client };
 }
 
-// â”€â”€â”€ Booking policy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Booking policy ───────────────────────────────────────────────────────────
 
 async function seedBookingPolicy() {
   await prisma.bookingPolicy.upsert({
@@ -440,7 +448,7 @@ async function seedBookingPolicy() {
   });
 }
 
-// â”€â”€â”€ Catalog helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Catalog helpers ──────────────────────────────────────────────────────────
 
 async function upsertProduct(input: { slug: string; name: string; description: string; productType: ProductType; sortOrder: number }) {
   return prisma.product.upsert({
@@ -600,7 +608,7 @@ async function seedStoreCatalog(stripePriceIdByLookupKey: Record<string, string>
   );
 }
 
-// â”€â”€â”€ Class schedule helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Class schedule helpers ───────────────────────────────────────────────────
 
 async function upsertClassCategory(input: { slug: string; name: string; description: string; sortOrder: number }) {
   return prisma.classCategory.upsert({
@@ -634,7 +642,7 @@ async function upsertStudioSession(input: { classTemplateId: string; recurringRu
   });
 }
 
-// â”€â”€â”€ Marketing demo data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Marketing demo data ──────────────────────────────────────────────────────
 
 async function seedMarketingDemoData(input: { createdById: string }) {
   const announcementCategory = await prisma.marketingCategory.upsert({
@@ -723,7 +731,7 @@ async function seedMarketingDemoData(input: { createdById: string }) {
   console.info(`[seed:dev] Marketing demo data ready (draft=${draftCampaign.id}, sent=${sentCampaign.id}).`);
 }
 
-// â”€â”€â”€ Agenda schedule â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Agenda schedule ──────────────────────────────────────────────────────────
 
 async function seedAgendaSchedule() {
   for (let index = 0; index < AGENDA_SCHEDULE.length; index += 1) {
@@ -754,7 +762,7 @@ async function seedAgendaSchedule() {
   console.info(`[seed:dev] Agenda schedule seeded: ${AGENDA_SCHEDULE.length} entries.`);
 }
 
-// â”€â”€â”€ Scheduling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Scheduling ───────────────────────────────────────────────────────────────
 
 async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaId: string }) {
   const rng = createSeededRng(SEED_RANDOM_SEED + 97);
@@ -1083,7 +1091,7 @@ async function seedScheduling(teachers: { anaId: string; elenaId: string; sofiaI
   };
 }
 
-// â”€â”€â”€ Learning (from JSON) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Learning (from JSON) ─────────────────────────────────────────────────────
 
 async function seedLearningFromJson() {
   const learningJsonPath = resolve(process.env.LEARNING_SEED_JSON_PATH?.trim() || DEFAULT_LEARNING_SEED_JSON_PATH);
@@ -1100,7 +1108,9 @@ async function seedLearningFromJson() {
     if (!isRecord(item)) throw new Error(`courses[${index}] must be an object in ${learningJsonPath}`);
     const legacyId = asRequiredId(pickFirstDefined(item, ["legacyId", "ID"]));
     const title = asRequiredString(pickFirstDefined(item, ["title", "Title"]));
-    const category = asRequiredString(pickFirstDefined(item, ["category", "Category"]));
+    const category = normalizeCanonicalLearningCourseType(
+      asRequiredString(pickFirstDefined(item, ["category", "Category"])),
+    );
     if (!legacyId || !title || !category) throw new Error(`courses[${index}] is missing required fields (ID/Title/Category) in ${learningJsonPath}`);
     const priority = asOptionalNumber(pickFirstDefined(item, ["priority", "Priority"])) ?? index + 1;
     const thumbnailInput = asOptionalString(pickFirstDefined(item, ["thumbnail", "Thumbnail"]));
@@ -1114,20 +1124,21 @@ async function seedLearningFromJson() {
       if (!isRecord(item)) throw new Error(`programs[${index}] must be an object in ${learningJsonPath}`);
       const legacyId = asRequiredId(pickFirstDefined(item, ["legacyId", "ID"]));
       const mainTitle = asRequiredString(pickFirstDefined(item, ["mainTitle", "MainTitle"]));
-      const courseType = asRequiredString(pickFirstDefined(item, ["courseType", "CourseType"]));
       const title = asRequiredString(pickFirstDefined(item, ["title", "Title"]));
-      if (!legacyId || !mainTitle || !courseType || !title) throw new Error(`programs[${index}] is missing required fields in ${learningJsonPath}`);
+      const legacyCourseType = asRequiredString(pickFirstDefined(item, ["courseType", "CourseType"]));
+      const courseType = normalizeCanonicalLearningCourseType(legacyCourseType ?? mainTitle ?? title);
+      if (!legacyId || !courseType) throw new Error(`programs[${index}] is missing required fields in ${learningJsonPath}`);
       const picture1Input = asOptionalString(pickFirstDefined(item, ["picture1", "Picture1"]));
       const picture2Input = asOptionalString(pickFirstDefined(item, ["picture2", "Picture2"]));
       const picture3Input = asOptionalString(pickFirstDefined(item, ["picture3", "Picture3"]));
-      programInputs.push({ legacyId, mainTitle, mainDescription: asOptionalString(pickFirstDefined(item, ["mainDescription", "MainDescription"])), courseType, title, description1: asOptionalString(pickFirstDefined(item, ["description1", "Description1"])), description2: asOptionalString(pickFirstDefined(item, ["description2", "Description2"])), description3: asOptionalString(pickFirstDefined(item, ["description3", "Description3"])), videoPromo: asOptionalString(pickFirstDefined(item, ["videoPromo", "VideoPromo"])), picture1: assertLearningImagePath(picture1Input ? toCanonicalSeedImagePath(picture1Input) : undefined, `programs[${index}].picture1`) ?? undefined, picture2: assertLearningImagePath(picture2Input ? toCanonicalSeedImagePath(picture2Input) : undefined, `programs[${index}].picture2`) ?? undefined, picture3: assertLearningImagePath(picture3Input ? toCanonicalSeedImagePath(picture3Input) : undefined, `programs[${index}].picture3`) ?? undefined });
+      programInputs.push({ legacyId, mainDescription: asOptionalString(pickFirstDefined(item, ["mainDescription", "MainDescription"])), courseType, description1: asOptionalString(pickFirstDefined(item, ["description1", "Description1"])), description2: asOptionalString(pickFirstDefined(item, ["description2", "Description2"])), description3: asOptionalString(pickFirstDefined(item, ["description3", "Description3"])), videoPromo: asOptionalString(pickFirstDefined(item, ["videoPromo", "VideoPromo"])), picture1: assertLearningImagePath(picture1Input ? toCanonicalSeedImagePath(picture1Input) : undefined, `programs[${index}].picture1`) ?? undefined, picture2: assertLearningImagePath(picture2Input ? toCanonicalSeedImagePath(picture2Input) : undefined, `programs[${index}].picture2`) ?? undefined, picture3: assertLearningImagePath(picture3Input ? toCanonicalSeedImagePath(picture3Input) : undefined, `programs[${index}].picture3`) ?? undefined });
     }
   } else {
     const seedByCategory = new Map<string, { summary?: string; thumbnail?: string; videoUrl?: string }>();
     for (const course of courseInputs) { if (seedByCategory.has(course.category)) continue; seedByCategory.set(course.category, { summary: course.shortDescription ?? course.description, thumbnail: course.thumbnail, videoUrl: course.videoUrl }); }
     for (const [category, seed] of seedByCategory.entries()) {
       const suffix = slugifyForLegacyId(category);
-      programInputs.push({ legacyId: `program-${suffix}`, mainTitle: category, mainDescription: seed.summary, courseType: category, title: category, description1: seed.summary, description2: undefined, description3: undefined, videoPromo: seed.videoUrl, picture1: seed.thumbnail, picture2: seed.thumbnail, picture3: seed.thumbnail });
+      programInputs.push({ legacyId: `program-${suffix}`, mainDescription: seed.summary, courseType: category, description1: seed.summary, description2: undefined, description3: undefined, videoPromo: seed.videoUrl, picture1: seed.thumbnail, picture2: seed.thumbnail, picture3: seed.thumbnail });
     }
   }
 
@@ -1136,7 +1147,7 @@ async function seedLearningFromJson() {
   if (coursesWithoutProgram.length > 0) throw new Error(`Learning seed JSON has courses mapped to unknown categories: ${[...new Set(coursesWithoutProgram)].join(", ")}`);
 
   for (const program of programInputs) {
-    await prisma.learningProgram.upsert({ where: { legacyId: program.legacyId }, update: { mainTitle: program.mainTitle, mainDescription: program.mainDescription, courseType: program.courseType, title: program.title, description1: program.description1, description2: program.description2, description3: program.description3, videoPromo: program.videoPromo, picture1: program.picture1, picture2: program.picture2, picture3: program.picture3 }, create: { legacyId: program.legacyId, mainTitle: program.mainTitle, mainDescription: program.mainDescription, courseType: program.courseType, title: program.title, description1: program.description1, description2: program.description2, description3: program.description3, videoPromo: program.videoPromo, picture1: program.picture1, picture2: program.picture2, picture3: program.picture3 } });
+    await prisma.learningProgram.upsert({ where: { legacyId: program.legacyId }, update: { mainDescription: program.mainDescription, courseType: program.courseType, description1: program.description1, description2: program.description2, description3: program.description3, videoPromo: program.videoPromo, picture1: program.picture1, picture2: program.picture2, picture3: program.picture3 }, create: { legacyId: program.legacyId, mainDescription: program.mainDescription, courseType: program.courseType, description1: program.description1, description2: program.description2, description3: program.description3, videoPromo: program.videoPromo, picture1: program.picture1, picture2: program.picture2, picture3: program.picture3 } });
   }
   for (const course of courseInputs) {
     await prisma.learningCourse.upsert({ where: { legacyId: course.legacyId }, update: { title: course.title, description: course.description, shortDescription: course.shortDescription, category: course.category, categoryType: course.categoryType, categoryLevel: course.categoryLevel, thumbnail: course.thumbnail, videoUrl: course.videoUrl, priority: course.priority }, create: { legacyId: course.legacyId, title: course.title, description: course.description, shortDescription: course.shortDescription, category: course.category, categoryType: course.categoryType, categoryLevel: course.categoryLevel, thumbnail: course.thumbnail, videoUrl: course.videoUrl, priority: course.priority } });
@@ -1191,7 +1202,7 @@ async function syncSeedMediaFilesFromDatabase(): Promise<SeedMediaSyncSummary> {
   };
 }
 
-// â”€â”€â”€ Verification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Verification ─────────────────────────────────────────────────────────────
 
 async function verifyCleanSeed(clientEmail: string, schedulingSummary: Awaited<ReturnType<typeof seedScheduling>>) {
   const [totalClients, verifiedActiveClientsWithProfile, totalAdminsAndMasterAdmins, totalTeachers] = await prisma.$transaction([
@@ -1236,10 +1247,10 @@ async function verifyCleanSeed(clientEmail: string, schedulingSummary: Awaited<R
   console.info(`[seed:dev] Verification passed. clients=${totalClients}, products=${productCount}, pastSessions=${collectivePastSessionsCount}, futureSessions=${collectiveFutureSessionsCount}, scheduleEntries=${scheduleCount}.`);
 }
 
-// â”€â”€â”€ Entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Entry point ──────────────────────────────────────────────────────────────
 
 export async function runDevelopmentSeed(): Promise<void> {
-  console.info("[seed:dev] Starting development seed (mode: development â€” identical for DEV and UAT).");
+  console.info("[seed:dev] Starting development seed (mode: development — identical for DEV and UAT).");
   const stripePriceIdByLookupKey = resolveRequiredCatalogStripePriceIds();
   await purgeForCleanSeed();
   const users = await seedUsers();
@@ -1263,4 +1274,5 @@ export async function runDevelopmentSeed(): Promise<void> {
     `[seed:dev] Completed: clients=${schedulingSummary.clientsSeeded}, pastSessions=${schedulingSummary.pastSessionsCount}, futureSessions=${schedulingSummary.futureSessionsCount}, pastBookings=${schedulingSummary.pastBookingsCount}, futureBookings=${schedulingSummary.futureBookingsCount}, orders=${schedulingSummary.ordersCreatedCount}.`,
   );
 }
+
 

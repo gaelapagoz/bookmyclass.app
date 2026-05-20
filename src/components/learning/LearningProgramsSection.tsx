@@ -37,7 +37,7 @@ export default function LearningProgramsSection({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={program.picture1}
-                    alt={program.mainTitle}
+                    alt={program.courseType}
                     className="h-full w-full object-cover"
                   />
                 ) : (
@@ -50,7 +50,7 @@ export default function LearningProgramsSection({
               <div className="flex items-center p-8 md:p-10">
                 <div>
                   <h2 className="text-2xl font-semibold text-[#6f2b2b] md:text-3xl">
-                    {program.mainTitle}
+                    {program.courseType}
                   </h2>
                   <p className="mt-4 text-sm leading-relaxed text-[#6f605b] md:text-base">
                     {program.mainDescription ?? "Program details coming soon."}

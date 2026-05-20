@@ -1,11 +1,13 @@
 import Link from "next/link";
 
 import { createLearningVideoAction } from "@/app/admin/(private)/actions";
+import { getAdminLearningProgramCourseTypeOptions } from "@/lib/admin/admin-service";
 
 type SearchParams = Promise<{ error?: string }>;
 
 export default async function AdminLearningVideoCreatePage({ searchParams }: { searchParams: SearchParams }) {
   const { error } = await searchParams;
+  const courseTypeOptions = await getAdminLearningProgramCourseTypeOptions();
 
   return (
     <section className="space-y-4">
@@ -36,18 +38,16 @@ export default async function AdminLearningVideoCreatePage({ searchParams }: { s
           <input name="shortDescription" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
         </label>
 
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-1">
           <label className="block text-sm text-[#334155]">
-            Category
-            <input name="category" required className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
-          </label>
-          <label className="block text-sm text-[#334155]">
-            Category Type
-            <input name="categoryType" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
-          </label>
-          <label className="block text-sm text-[#334155]">
-            Category Level
-            <input name="categoryLevel" className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
+            Course Type
+            <select name="category" required className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2">
+              {courseTypeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
 

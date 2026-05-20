@@ -7,11 +7,19 @@ test("online learning navigation flow", async ({ page }) => {
   await page.goto("/learning");
   await expect(page.getByRole("heading", { name: "Online Learning Programs" })).toBeVisible();
 
-  await page.goto("/learning/e2e_course_type");
-  await expect(page.getByRole("heading", { name: "E2E Program" })).toBeVisible();
+  const firstProgramHeading = page.locator("h2").first();
+  const firstProgramName = (await firstProgramHeading.textContent())?.trim() ?? "";
+  expect(firstProgramName.length).toBeGreaterThan(0);
 
-  await page.goto("/learning/e2e_course_type/e2e-course-1");
-  await expect(page.getByRole("heading", { name: "E2E Course Video" })).toBeVisible();
+  await page.getByRole("link", { name: "Explore Program" }).first().click();
+  await expect(page.getByRole("heading", { level: 1, name: firstProgramName })).toBeVisible();
+
+  const firstCourseHeading = page.locator("h3").first();
+  const firstCourseName = (await firstCourseHeading.textContent())?.trim() ?? "";
+  expect(firstCourseName.length).toBeGreaterThan(0);
+
+  await page.getByRole("link", { name: "Open Course" }).first().click();
+  await expect(page.getByRole("heading", { level: 1, name: firstCourseName })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign In To Watch" })).toBeVisible();
 });
 

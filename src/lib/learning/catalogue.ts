@@ -4,10 +4,8 @@ import { getCanonicalMediaRenderState, getLocalMediaRenderState } from "@/lib/me
 
 export type LearningProgramView = {
   legacyId: string;
-  mainTitle: string;
-  mainDescription: string | null;
   courseType: string;
-  title: string;
+  mainDescription: string | null;
   description1: string | null;
   description2: string | null;
   description3: string | null;
@@ -23,8 +21,6 @@ export type LearningCourseView = {
   description: string | null;
   shortDescription: string | null;
   category: string;
-  categoryType: string | null;
-  categoryLevel: string | null;
   thumbnail: string | null;
   videoUrl: string | null;
   priority: number;
@@ -42,10 +38,8 @@ async function resolveLearningImagePath(path: string | null): Promise<string | n
 
 async function mapProgram(program: {
   legacyId: string;
-  mainTitle: string;
-  mainDescription: string | null;
   courseType: string;
-  title: string;
+  mainDescription: string | null;
   description1: string | null;
   description2: string | null;
   description3: string | null;
@@ -68,8 +62,6 @@ async function mapCourse(course: {
   description: string | null;
   shortDescription: string | null;
   category: string;
-  categoryType: string | null;
-  categoryLevel: string | null;
   thumbnail: string | null;
   videoUrl: string | null;
   priority: number;
@@ -82,10 +74,8 @@ async function mapCourse(course: {
 
 const learningProgramSelect = {
   legacyId: true,
-  mainTitle: true,
-  mainDescription: true,
   courseType: true,
-  title: true,
+  mainDescription: true,
   description1: true,
   description2: true,
   description3: true,
@@ -101,8 +91,6 @@ const learningCourseSelect = {
   description: true,
   shortDescription: true,
   category: true,
-  categoryType: true,
-  categoryLevel: true,
   thumbnail: true,
   videoUrl: true,
   priority: true,

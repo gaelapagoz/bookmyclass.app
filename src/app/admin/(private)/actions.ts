@@ -31,6 +31,7 @@ import {
   cleanupAdminLearningProgramCreateFailure,
   updateAdminClassImage,
   createAdminLearningProgram,
+  getAdminLearningVideoById,
   createAdminLearningVideo,
   createAdminPlan,
   createAdminSession,
@@ -41,6 +42,7 @@ import {
   deleteAdminSiteWeeklyScheduleEntry,
   upsertAdminClassScheduleConfig,
   updateAdminClass,
+  updateAdminClassCategory,
   updateAdminCancellationPeriodHours,
   updateAdminSiteTimeZone,
   updateAdminLearningProgram,
@@ -360,10 +362,8 @@ const updateSubscriptionSchema = z
   });
 
 const learningProgramSchema = z.object({
-  mainTitle: z.string().min(1),
-  mainDescription: z.string().optional(),
   courseType: z.string().min(1),
-  title: z.string().min(1),
+  mainDescription: z.string().optional(),
   description1: z.string().optional(),
   description2: z.string().optional(),
   description3: z.string().optional(),
@@ -378,12 +378,13 @@ const learningVideoSchema = z.object({
   description: z.string().optional(),
   shortDescription: z.string().optional(),
   category: z.string().min(1),
-  categoryType: z.string().optional(),
-  categoryLevel: z.string().optional(),
   thumbnail: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /uploads/learning/ (legacy /images/learning/ allowed), JPG, PNG, or WEBP files."),
   videoUrl: z.string().optional(),
   priority: z.coerce.number().int(),
 });
+
+const MAX_LEARNING_THUMBNAIL_BYTES = 2 * 1024 * 1024;
+const ALLOWED_LEARNING_THUMBNAIL_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
 
 const updateClientMessageStatusSchema = z.object({
   id: z.string().min(1),
@@ -414,7 +415,6 @@ const cancelClientMembershipSchema = z.object({
 });
 
 const MAX_CAMPAIGN_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_CAMPAIGN_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const marketingCampaignTestSchema = z.object({
   campaignId: z.string().min(1),
@@ -793,20 +793,6 @@ function sanitizeFilenamePart(value: string): string {
   return value.replace(/[^a-zA-Z0-9\-_]/g, "");
 }
 
-function mapTeacherImageMimeTypeToExtension(mimeType: string): string | null {
-  if (mimeType === "image/jpeg") {
-    return "jpg";
-  }
-  if (mimeType === "image/png") {
-    return "png";
-  }
-  if (mimeType === "image/webp") {
-    return "webp";
-  }
-
-  return null;
-}
-
 function getOptionalImageFile(formData: FormData, fieldName: string): CanonicalMediaFile | null {
   const file = formData.get(fieldName);
   if (!(file instanceof File) || file.size < 1) {
@@ -820,12 +806,14 @@ async function storeAdminImageWithPersistence(input: {
   file: CanonicalMediaFile;
   folder: CanonicalMediaFolder;
   filenamePrefix: string;
+  maxBytes?: number;
   persistPath: (publicPath: string) => Promise<void>;
 }) {
   return storeCanonicalImageWithPathPersistence({
     file: input.file,
     folder: input.folder,
     filenamePrefix: input.filenamePrefix,
+    maxBytes: input.maxBytes,
     persistPath: input.persistPath,
   });
 }
@@ -1146,6 +1134,9 @@ export async function createClassCategoryAction(formData: FormData) {
     redirectWithError("/admin/classes", "Please complete all required category fields.");
   }
 
+  const returnCategoryPage = String(formData.get("returnCategoryPage") ?? "").trim();
+  const returnCoursePage = String(formData.get("returnCoursePage") ?? "").trim();
+
   try {
     await createAdminClassCategory(parsed.data);
     clearPublicCatalogueCaches();
@@ -1155,7 +1146,50 @@ export async function createClassCategoryAction(formData: FormData) {
   }
 
   revalidatePath("/admin/classes");
-  redirect(`/admin/classes?success=${encodeURIComponent("Category created.")}`);
+  const query = new URLSearchParams({ success: "Category created." });
+  if (returnCategoryPage) {
+    query.set("categoryPage", returnCategoryPage);
+  }
+  if (returnCoursePage) {
+    query.set("coursePage", returnCoursePage);
+  }
+  redirect(`/admin/classes?${query.toString()}`);
+}
+
+export async function updateClassCategoryAction(id: string, formData: FormData) {
+  await assertAdminAccess();
+
+  const parsed = classCategorySchema.safeParse({
+    name: formData.get("name"),
+    description: formData.get("description") ?? undefined,
+    isActive: isChecked(formData, "isActive"),
+    sortOrder: formData.get("sortOrder"),
+  });
+
+  const returnCategoryPage = String(formData.get("returnCategoryPage") ?? "").trim();
+  const returnCoursePage = String(formData.get("returnCoursePage") ?? "").trim();
+
+  if (!parsed.success) {
+    redirectWithError(`/admin/classes/categories/${id}/edit`, "Please complete all required category fields.");
+  }
+
+  try {
+    await updateAdminClassCategory(id, parsed.data);
+    clearPublicCatalogueCaches();
+  } catch (error) {
+    Sentry.captureException(error);
+    redirectWithError(`/admin/classes/categories/${id}/edit`, getAdminActionErrorMessage(error));
+  }
+
+  revalidatePath("/admin/classes");
+  const query = new URLSearchParams({ success: "Category updated." });
+  if (returnCategoryPage) {
+    query.set("categoryPage", returnCategoryPage);
+  }
+  if (returnCoursePage) {
+    query.set("coursePage", returnCoursePage);
+  }
+  redirect(`/admin/classes?${query.toString()}`);
 }
 
 export async function updateClassAction(id: string, formData: FormData) {
@@ -1799,10 +1833,8 @@ export async function createLearningProgramAction(formData: FormData) {
   await assertAdminAccess();
 
   const parsed = learningProgramSchema.safeParse({
-    mainTitle: formData.get("mainTitle"),
-    mainDescription: formData.get("mainDescription") ?? undefined,
     courseType: formData.get("courseType"),
-    title: formData.get("title"),
+    mainDescription: formData.get("mainDescription") ?? undefined,
     description1: formData.get("description1") ?? undefined,
     description2: formData.get("description2") ?? undefined,
     description3: formData.get("description3") ?? undefined,
@@ -1847,10 +1879,8 @@ export async function updateLearningProgramAction(id: string, formData: FormData
   await assertAdminAccess();
 
   const parsed = learningProgramSchema.safeParse({
-    mainTitle: formData.get("mainTitle"),
-    mainDescription: formData.get("mainDescription") ?? undefined,
     courseType: formData.get("courseType"),
-    title: formData.get("title"),
+    mainDescription: formData.get("mainDescription") ?? undefined,
     description1: formData.get("description1") ?? undefined,
     description2: formData.get("description2") ?? undefined,
     description3: formData.get("description3") ?? undefined,
@@ -1887,8 +1917,6 @@ export async function createLearningVideoAction(formData: FormData) {
     description: formData.get("description") ?? undefined,
     shortDescription: formData.get("shortDescription") ?? undefined,
     category: formData.get("category"),
-    categoryType: formData.get("categoryType") ?? undefined,
-    categoryLevel: formData.get("categoryLevel") ?? undefined,
     thumbnail: formData.get("thumbnail") ?? undefined,
     videoUrl: formData.get("videoUrl") ?? undefined,
     priority: formData.get("priority"),
@@ -1916,8 +1944,6 @@ export async function updateLearningVideoAction(id: string, formData: FormData) 
     description: formData.get("description") ?? undefined,
     shortDescription: formData.get("shortDescription") ?? undefined,
     category: formData.get("category"),
-    categoryType: formData.get("categoryType") ?? undefined,
-    categoryLevel: formData.get("categoryLevel") ?? undefined,
     thumbnail: formData.get("thumbnail") ?? undefined,
     videoUrl: formData.get("videoUrl") ?? undefined,
     priority: formData.get("priority"),
@@ -1927,11 +1953,32 @@ export async function updateLearningVideoAction(id: string, formData: FormData) 
     redirectWithError(`/admin/learning-videos/${id}/edit`, "Please complete required learning video fields.");
   }
 
+  const thumbnailUpload = getOptionalImageFile(formData, "thumbnailUpload");
+  const existing = await getAdminLearningVideoById(id);
+  const payload = { ...parsed.data };
+  if (thumbnailUpload && !ALLOWED_LEARNING_THUMBNAIL_MIME_TYPES.has(thumbnailUpload.type)) {
+    redirectWithError(`/admin/learning-videos/${id}/edit`, "Only valid JPG or PNG images are accepted.");
+  }
+
   try {
-    await updateAdminLearningVideo(id, parsed.data);
+    if (thumbnailUpload) {
+      await storeAdminImageWithPersistence({
+        file: thumbnailUpload,
+        folder: "learning",
+        filenamePrefix: `video-${id}-thumbnail`,
+        maxBytes: MAX_LEARNING_THUMBNAIL_BYTES,
+        persistPath: async (publicPath) => {
+          payload.thumbnail = publicPath;
+          await updateAdminLearningVideo(id, payload);
+        },
+      });
+    } else {
+      payload.thumbnail = existing?.thumbnail ?? undefined;
+      await updateAdminLearningVideo(id, payload);
+    }
   } catch (error) {
     Sentry.captureException(error);
-    redirectWithError(`/admin/learning-videos/${id}/edit`, getPrismaErrorMessage(error));
+    redirectWithError(`/admin/learning-videos/${id}/edit`, getAdminActionErrorMessage(error));
   }
 
   redirect("/admin/learning-videos");

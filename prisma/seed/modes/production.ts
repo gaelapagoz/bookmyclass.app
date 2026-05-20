@@ -1,5 +1,5 @@
-﻿/**
- * Production seed mode â€” safe launch seed for the production environment.
+/**
+ * Production seed mode — safe launch seed for the production environment.
  * Upsert-only (no purge): safe to re-run at any time without data loss.
  * All deterministic seeded users use @bookmyclass.app emails.
  * Password for all seeded accounts is centralized in seed-credentials.
@@ -11,7 +11,7 @@
  *   - 6 class templates with 6 months of sessions (3 slots/week/template)
  *   - 3 learning programmes with 20 courses each
  *   - Pre-populated bookings for the next 120 days
- *   - Marketing campaign history (records only â€” no emails sent)
+ *   - Marketing campaign history (records only — no emails sent)
  */
 
 import {
@@ -68,10 +68,10 @@ import {
   verifySeededMediaReferences,
 } from "../utils/seed-media";
 
-// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Constants ───────────────────────────────────────────────────────────────
 
 const PROD_CLIENT_COUNT = 100;
-const PROD_FUTURE_WEEKS = 26; // â‰ˆ 6 months of sessions
+const PROD_FUTURE_WEEKS = 26; // ≈ 6 months of sessions
 const PROD_BOOKING_DAYS = 120; // pre-populate bookings this far ahead
 const PROD_RANDOM_SEED = 20260420;
 const PROD_SESSION_CAPACITY = 15;
@@ -121,7 +121,7 @@ const SEEDED_CLASS_IMAGES = {
   privateReformerCoaching: toCanonicalSeedImagePath("/images/classes/private-reformer-coaching.jpg"),
 } as const;
 
-// â”€â”€â”€ Utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Utilities ───────────────────────────────────────────────────────────────
 
 function addDaysUtc(value: Date, days: number): Date {
   const next = new Date(value);
@@ -175,7 +175,7 @@ function nextOccurrencesInWindow(params: { weekday: Weekday; time: string; windo
   return result;
 }
 
-// â”€â”€â”€ Stripe price resolution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Stripe price resolution ──────────────────────────────────────────────────
 
 function resolveRequiredCatalogStripePriceIds(): Record<string, string> {
   const stripePriceIdByLookupKey: Record<string, string> = {};
@@ -201,7 +201,7 @@ function resolveRequiredCatalogStripePriceIds(): Record<string, string> {
   return stripePriceIdByLookupKey;
 }
 
-// â”€â”€â”€ Users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Users ────────────────────────────────────────────────────────────────────
 
 async function seedProductionUsers() {
   const sharedPasswordHash = await hash(SEEDED_USER_PASSWORD, 12);
@@ -234,7 +234,7 @@ async function seedProductionUsers() {
   const elena = await upsertStaffUser({ email: "elena@bookmyclass.app", firstName: "Elena", lastName: "Moreau", role: Role.TEACHER, image: SEEDED_TEACHER_IMAGES.elena, phone: "+32000000003", bio: "Elena brings a calm, precise teaching style focused on alignment, strength, and confidence in movement.", specialties: ["Pilates", "Mobility"], certifications: ["Comprehensive Pilates"], hireDate: new Date("2024-02-15T00:00:00.000Z"), lastLoginAt: new Date("2026-04-01T10:00:00.000Z") });
   const sofia = await upsertStaffUser({ email: "sofia@bookmyclass.app", firstName: "Sofia", lastName: "Van den Berg", role: Role.TEACHER, image: SEEDED_TEACHER_IMAGES.sofia, phone: "+32000000004", bio: "Sofia teaches flowing classes with a warm and supportive approach.", specialties: ["Yoga", "Stretch"], certifications: ["RYT-500"], hireDate: new Date("2024-05-01T00:00:00.000Z"), lastLoginAt: new Date("2026-04-01T08:45:00.000Z") });
 
-  // 100 deterministic clients â€” upsert by email
+  // 100 deterministic clients — upsert by email
   const testClients: Array<{ id: string; email: string; name: string }> = [];
   for (let index = 0; index < PROD_CLIENT_COUNT; index += 1) {
     const clientNumber = String(index + 1).padStart(3, "0");
@@ -265,7 +265,7 @@ async function seedProductionUsers() {
   return { masterAdmin, admin, teachers: { ana, elena, sofia }, clients: testClients };
 }
 
-// â”€â”€â”€ Booking policy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Booking policy ───────────────────────────────────────────────────────────
 
 async function seedBookingPolicy() {
   await prisma.bookingPolicy.upsert({
@@ -275,7 +275,7 @@ async function seedBookingPolicy() {
   });
 }
 
-// â”€â”€â”€ Catalog helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Catalog helpers ──────────────────────────────────────────────────────────
 
 async function upsertProduct(input: { slug: string; name: string; description: string; productType: ProductType; sortOrder: number }) {
   return prisma.product.upsert({
@@ -403,7 +403,7 @@ async function seedProductionStoreCatalog(stripePriceIdByLookupKey: Record<strin
   );
 }
 
-// â”€â”€â”€ Class schedule helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Class schedule helpers ───────────────────────────────────────────────────
 
 async function upsertClassCategory(input: { slug: string; name: string; description: string; sortOrder: number }) {
   return prisma.classCategory.upsert({
@@ -437,7 +437,7 @@ async function upsertStudioSession(input: { classTemplateId: string; classTypeId
   });
 }
 
-// â”€â”€â”€ Schedule + sessions + entitlements + bookings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Schedule + sessions + entitlements + bookings ───────────────────────────
 
 async function seedProductionScheduleAndBookings(input: {
   teachers: { anaId: string; elenaId: string; sofiaId: string };
@@ -614,7 +614,7 @@ async function seedProductionScheduleAndBookings(input: {
   return { totalSessionsGenerated, bookableSessionCount: bookableSessions.length, bookingsCreated };
 }
 
-// â”€â”€â”€ Learning â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Learning ─────────────────────────────────────────────────────────────────
 
 async function seedProductionLearning() {
   // Validate image paths at seed time (assertLearningImagePath validates format, not disk)
@@ -628,8 +628,8 @@ async function seedProductionLearning() {
   for (const program of programs) {
     await prisma.learningProgram.upsert({
       where: { legacyId: program.legacyId },
-      update: { mainTitle: program.mainTitle, mainDescription: program.mainDescription, courseType: program.courseType, title: program.title, description1: program.description1, description2: program.description2, description3: program.description3, videoPromo: program.videoPromo, picture1: program.picture1, picture2: program.picture2, picture3: program.picture3 },
-      create: { legacyId: program.legacyId, mainTitle: program.mainTitle, mainDescription: program.mainDescription, courseType: program.courseType, title: program.title, description1: program.description1, description2: program.description2, description3: program.description3, videoPromo: program.videoPromo, picture1: program.picture1, picture2: program.picture2, picture3: program.picture3 },
+      update: { mainDescription: program.mainDescription, courseType: program.courseType, description1: program.description1, description2: program.description2, description3: program.description3, videoPromo: program.videoPromo, picture1: program.picture1, picture2: program.picture2, picture3: program.picture3 },
+      create: { legacyId: program.legacyId, mainDescription: program.mainDescription, courseType: program.courseType, description1: program.description1, description2: program.description2, description3: program.description3, videoPromo: program.videoPromo, picture1: program.picture1, picture2: program.picture2, picture3: program.picture3 },
     });
   }
 
@@ -645,7 +645,7 @@ async function seedProductionLearning() {
   return { programCount: programs.length, courseCount: allCourses.length };
 }
 
-// â”€â”€â”€ Agenda schedule â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Agenda schedule ──────────────────────────────────────────────────────────
 
 async function seedAgendaSchedule() {
   for (let index = 0; index < AGENDA_SCHEDULE.length; index += 1) {
@@ -659,7 +659,7 @@ async function seedAgendaSchedule() {
   console.info(`[seed:prod] Agenda schedule seeded: ${AGENDA_SCHEDULE.length} entries.`);
 }
 
-// â”€â”€â”€ Marketing history â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Marketing history ────────────────────────────────────────────────────────
 
 async function seedProductionMarketingHistory(input: { createdById: string }) {
   const launchCategory = await prisma.marketingCategory.upsert({
@@ -674,8 +674,8 @@ async function seedProductionMarketingHistory(input: { createdById: string }) {
   const launchSentAt = new Date("2026-04-01T10:00:00.000Z");
   await prisma.marketingCampaign.upsert({
     where: { id: "prod-seed-marketing-launch" },
-    update: { name: "BookMyClass is live!", status: MarketingCampaignStatus.SENT, categoryId: launchCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "BookMyClass is now live â€” book your first class", previewText: "Reserve your spot in our opening schedule.", fromName: "BookMyClass Studio", fromEmail: "hello@bookmyclass.app", replyTo: "support@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "We're live!" }, { type: "paragraph", text: "Your membership is ready. Book your first class today." }, { type: "button", text: "View schedule", url: "https://bookmyclass.app/book-a-class" }] }, htmlSnapshot: "<html><body><h2>We're live!</h2><p>Your membership is ready. Book your first class today.</p></body></html>", sentAt: launchSentAt, createdById: input.createdById },
-    create: { id: "prod-seed-marketing-launch", name: "BookMyClass is live!", status: MarketingCampaignStatus.SENT, categoryId: launchCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "BookMyClass is now live â€” book your first class", previewText: "Reserve your spot in our opening schedule.", fromName: "BookMyClass Studio", fromEmail: "hello@bookmyclass.app", replyTo: "support@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "We're live!" }, { type: "paragraph", text: "Your membership is ready. Book your first class today." }, { type: "button", text: "View schedule", url: "https://bookmyclass.app/book-a-class" }] }, htmlSnapshot: "<html><body><h2>We're live!</h2><p>Your membership is ready. Book your first class today.</p></body></html>", sentAt: launchSentAt, createdById: input.createdById },
+    update: { name: "BookMyClass is live!", status: MarketingCampaignStatus.SENT, categoryId: launchCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "BookMyClass is now live — book your first class", previewText: "Reserve your spot in our opening schedule.", fromName: "BookMyClass Studio", fromEmail: "hello@bookmyclass.app", replyTo: "support@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "We're live!" }, { type: "paragraph", text: "Your membership is ready. Book your first class today." }, { type: "button", text: "View schedule", url: "https://bookmyclass.app/book-a-class" }] }, htmlSnapshot: "<html><body><h2>We're live!</h2><p>Your membership is ready. Book your first class today.</p></body></html>", sentAt: launchSentAt, createdById: input.createdById },
+    create: { id: "prod-seed-marketing-launch", name: "BookMyClass is live!", status: MarketingCampaignStatus.SENT, categoryId: launchCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "BookMyClass is now live — book your first class", previewText: "Reserve your spot in our opening schedule.", fromName: "BookMyClass Studio", fromEmail: "hello@bookmyclass.app", replyTo: "support@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "We're live!" }, { type: "paragraph", text: "Your membership is ready. Book your first class today." }, { type: "button", text: "View schedule", url: "https://bookmyclass.app/book-a-class" }] }, htmlSnapshot: "<html><body><h2>We're live!</h2><p>Your membership is ready. Book your first class today.</p></body></html>", sentAt: launchSentAt, createdById: input.createdById },
   });
 
   const sampleRecipients = [
@@ -704,7 +704,7 @@ async function seedProductionMarketingHistory(input: { createdById: string }) {
   console.info("[seed:prod] Marketing history seeded (1 sent campaign, 5 recipients, 1 draft).");
 }
 
-// â”€â”€â”€ Verification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Verification ─────────────────────────────────────────────────────────────
 
 async function verifyProductionSeed(expected: { programCount: number; courseCount: number; totalSessionsGenerated: number; bookableSessionCount: number; bookingsCreated: number }) {
   const [totalClients, totalAdmins, totalTeachers, totalProducts, programCount, courseCount, scheduleCount] = await prisma.$transaction([
@@ -773,10 +773,10 @@ async function syncSeedMediaFilesFromDatabase(): Promise<{ copiedCount: number; 
   return { copiedCount, existingCount };
 }
 
-// â”€â”€â”€ Entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Entry point ──────────────────────────────────────────────────────────────
 
 export async function runProductionSeed(): Promise<void> {
-  console.info("[seed:prod] Starting production seed (mode: production â€” upsert-only, no purge).");
+  console.info("[seed:prod] Starting production seed (mode: production — upsert-only, no purge).");
   const stripePriceIdByLookupKey = resolveRequiredCatalogStripePriceIds();
   const { masterAdmin: _master, admin, teachers, clients } = await seedProductionUsers();
   await seedBookingPolicy();
@@ -785,9 +785,9 @@ export async function runProductionSeed(): Promise<void> {
 
   // Resolve price and entitlement rule IDs needed for booking seeding
   const tenPackPrice = await prisma.price.findUnique({ where: { lookupKey: "collective-10-pack-eur-once-v1" } });
-  if (!tenPackPrice) throw new Error("[seed:prod] 10-pack price not persisted â€” catalog seed must run first.");
+  if (!tenPackPrice) throw new Error("[seed:prod] 10-pack price not persisted — catalog seed must run first.");
   const monthlyPrice = await prisma.price.findUnique({ where: { lookupKey: "monthly-unlimited-collective-eur-monthly-v1" } });
-  if (!monthlyPrice) throw new Error("[seed:prod] Monthly price not persisted â€” catalog seed must run first.");
+  if (!monthlyPrice) throw new Error("[seed:prod] Monthly price not persisted — catalog seed must run first.");
 
   const schedulingSummary = await seedProductionScheduleAndBookings({
     teachers: { anaId: teachers.ana.id, elenaId: teachers.elena.id, sofiaId: teachers.sofia.id },
@@ -816,4 +816,5 @@ export async function runProductionSeed(): Promise<void> {
 
   console.info(`[seed:prod] Completed: clients=${PROD_CLIENT_COUNT}, sessions=${schedulingSummary.totalSessionsGenerated}, bookings=${schedulingSummary.bookingsCreated}, programmes=${learningSummary.programCount}, courses=${learningSummary.courseCount}.`);
 }
+
 

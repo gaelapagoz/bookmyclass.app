@@ -82,9 +82,7 @@ async function seedBackfillFixtures(legacyPublicDir: string): Promise<FixtureSta
   const program = await prisma.learningProgram.create({
     data: {
       legacyId: `program-${Date.now()}`,
-      mainTitle: "Program",
       courseType: `course-type-${Date.now()}`,
-      title: "Program title",
       picture1: "/images/learning/program-legacy.webp",
     },
     select: { id: true },
@@ -249,3 +247,4 @@ describe("media backfill integration", () => {
     expect(user?.image).toBe("/images/instructors/teacher-legacy.jpg");
   });
 });
+

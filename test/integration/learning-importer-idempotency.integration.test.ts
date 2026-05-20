@@ -119,8 +119,7 @@ describe("learning importer idempotency", () => {
     const updatedCourse = await prisma.learningCourse.findUnique({ where: { legacyId: "101" } });
     const retainedCourse = await prisma.learningCourse.findUnique({ where: { legacyId: "201" } });
 
-    expect(updatedProgram?.mainTitle).toBe("Yoga Program Updated");
-    expect(updatedProgram?.title).toBe("Yoga Updated");
+    expect(updatedProgram?.courseType).toBe("Yoga Program Updated");
     expect(updatedProgram?.mainDescription).toBe("Updated yoga description");
 
     expect(updatedCourse?.title).toBe("Sun Flow Updated");
@@ -128,8 +127,9 @@ describe("learning importer idempotency", () => {
     expect(updatedCourse?.priority).toBe(7);
 
     expect(retainedProgram).not.toBeNull();
-    expect(retainedProgram?.mainTitle).toBe("Pilates Program");
+    expect(retainedProgram?.courseType).toBe("Pilates Program");
     expect(retainedCourse).not.toBeNull();
     expect(retainedCourse?.title).toBe("Core Burn");
   });
 });
+

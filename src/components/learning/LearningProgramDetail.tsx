@@ -39,7 +39,7 @@ export default function LearningProgramDetail({
 
       <header className="mt-4 rounded-2xl border border-[#eadfd7] bg-[#fffdfa] p-8 shadow-[0_18px_35px_-30px_rgba(47,25,25,0.45)] md:p-10">
         <h1 className="text-3xl font-semibold text-[#6f2b2b] md:text-4xl">
-          {program.title}
+          {program.courseType}
         </h1>
         {program.mainDescription ? (
           <p className="mt-4 text-sm leading-relaxed text-[#6f605b] md:text-base">
@@ -76,7 +76,7 @@ export default function LearningProgramDetail({
           {promoVideoUrl ? (
             <iframe
               src={promoVideoUrl}
-              title={`${program.title} promo`}
+              title={`${program.courseType} promo`}
               className="h-full min-h-[320px] w-full"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen

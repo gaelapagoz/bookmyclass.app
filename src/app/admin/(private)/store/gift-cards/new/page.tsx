@@ -29,7 +29,6 @@ export default async function AdminStoreGiftCardNewPage({
 
       <form
         action={createStoreGiftCardAction}
-        encType="multipart/form-data"
         className="space-y-3 rounded-xl border border-[#d3dbe5] bg-white p-5"
       >
         <div className="grid gap-3 md:grid-cols-2">
@@ -103,7 +102,7 @@ export default async function AdminStoreGiftCardNewPage({
         </div>
 
         <div className="rounded-md border border-[#d3dbe5] bg-[#f8fafc] px-3 py-2 text-xs text-[#64748b]">
-          Currency: EUR — Billing: One-time — No entitlement rules created. Price starts as Stripe
+          Currency: EUR â€” Billing: One-time â€” No entitlement rules created. Price starts as Stripe
           PENDING. Checkout exposure requires Stripe sync to SYNCED.
         </div>
 
@@ -119,3 +118,4 @@ export default async function AdminStoreGiftCardNewPage({
     </section>
   );
 }
+

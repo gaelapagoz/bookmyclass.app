@@ -92,7 +92,10 @@ vi.mock("@/lib/admin/admin-service", () => ({
   cleanupAdminLearningProgramCreateFailure: vi.fn(),
   createAdminClass: vi.fn(),
   createAdminClassCategory: vi.fn(),
+  updateAdminClassCategory: vi.fn(),
   createAdminLearningProgram: vi.fn(),
+  createAdminLearningVideo: vi.fn(),
+  getAdminLearningVideoById: vi.fn(),
   upsertAdminClassScheduleConfig: vi.fn(),
   createAdminRecurringSessions: vi.fn(),
   createAdminSession: vi.fn(),
@@ -152,7 +155,10 @@ import {
   cleanupAdminLearningProgramCreateFailure,
   createAdminClass,
   createAdminClassCategory,
+  updateAdminClassCategory,
   createAdminLearningProgram,
+  createAdminLearningVideo,
+  getAdminLearningVideoById,
   createAdminPlan,
   createAdminSubscription,
   createAdminUser,
@@ -180,6 +186,7 @@ import {
   createClassAction,
   createClassCategoryAction,
   createLearningProgramAction,
+  createLearningVideoAction,
   createPlanAction,
   createSiteWeeklyScheduleEntryAction,
   createSubscriptionAction,
@@ -198,6 +205,7 @@ import {
   uploadClassImageAction,
   uploadTeacherImageAction,
   updateUserAction,
+  updateClassCategoryAction,
 } from "../../src/app/admin/(private)/actions";
 
 function createPngFile(name = "image.png") {
@@ -313,12 +321,44 @@ describe("admin actions", () => {
     formData.set("isActive", "on");
 
     await expect(createClassCategoryAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/classes?success=Category%20created.",
+      "NEXT_REDIRECT:/admin/classes?success=Category+created.",
     );
     expect(createAdminClassCategory).toHaveBeenCalledWith({
       name: "Pilates",
       description: "Mat and reformer",
       sortOrder: 1,
+      isActive: true,
+    });
+  });
+
+  it("updates class category and redirects back to classes with success", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(updateAdminClassCategory).mockResolvedValue({
+      id: "cat-1",
+      name: "Pilates Updated",
+      slug: "pilates",
+      description: "Updated description",
+      isActive: true,
+      sortOrder: 2,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const formData = new FormData();
+    formData.set("name", "Pilates Updated");
+    formData.set("description", "Updated description");
+    formData.set("sortOrder", "2");
+    formData.set("isActive", "on");
+    formData.set("returnCategoryPage", "2");
+    formData.set("returnCoursePage", "3");
+
+    await expect(updateClassCategoryAction("cat-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/classes?success=Category+updated.&categoryPage=2&coursePage=3",
+    );
+    expect(updateAdminClassCategory).toHaveBeenCalledWith("cat-1", {
+      name: "Pilates Updated",
+      description: "Updated description",
+      sortOrder: 2,
       isActive: true,
     });
   });
@@ -538,6 +578,19 @@ describe("admin actions", () => {
   it("updates learning video and redirects", async () => {
     vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
     vi.mocked(updateAdminLearningVideo).mockResolvedValue({ id: "video-1" });
+    vi.mocked(getAdminLearningVideoById).mockResolvedValue({
+      id: "video-1",
+      legacyId: "legacy-video-1",
+      title: "Existing title",
+      description: null,
+      shortDescription: null,
+      category: "Yoga",
+      categoryType: null,
+      categoryLevel: null,
+      thumbnail: "/uploads/learning/existing-thumbnail.jpg",
+      videoUrl: null,
+      priority: 1,
+    });
 
     const formData = new FormData();    formData.set("title", "Intro");
     formData.set("category", "Yoga");
@@ -548,8 +601,64 @@ describe("admin actions", () => {
     );
     expect(updateAdminLearningVideo).toHaveBeenCalledWith(
       "video-1",
+      expect.objectContaining({
+        title: "Intro",
+        category: "Yoga",
+        priority: 1,
+        thumbnail: "/uploads/learning/existing-thumbnail.jpg",
+      }),
+    );
+  });
+
+  it("creates learning video and redirects", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(createAdminLearningVideo).mockResolvedValue({ id: "video-1" });
+
+    const formData = new FormData();
+    formData.set("title", "Intro");
+    formData.set("category", "Yoga");
+    formData.set("priority", "1");
+
+    await expect(createLearningVideoAction(formData)).rejects.toThrow("NEXT_REDIRECT:/admin/learning-videos");
+    expect(createAdminLearningVideo).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Intro", category: "Yoga", priority: 1 }),
     );
+  });
+
+  it("updates learning video with uploaded thumbnail and persists new upload path", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(updateAdminLearningVideo).mockResolvedValue({ id: "video-1" });
+
+    const formData = new FormData();
+    formData.set("title", "Intro");
+    formData.set("category", "Yoga");
+    formData.set("priority", "1");
+    formData.set("thumbnailUpload", createPngFile("thumb.png"));
+
+    await expect(updateLearningVideoAction("video-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/learning-videos",
+    );
+    expect(writeFileMock).toHaveBeenCalledTimes(1);
+    expect(updateAdminLearningVideo).toHaveBeenCalledWith(
+      "video-1",
+      expect.objectContaining({ thumbnail: expect.stringMatching(/^\/uploads\/learning\/video-video-1-thumbnail-/) }),
+    );
+  });
+
+  it("rejects invalid thumbnail upload on learning video update", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+
+    const formData = new FormData();
+    formData.set("title", "Intro");
+    formData.set("category", "Yoga");
+    formData.set("priority", "1");
+    formData.set("thumbnailUpload", new File(["not-a-jpg"], "thumb.jpg", { type: "image/webp" }));
+
+    await expect(updateLearningVideoAction("video-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/learning-videos/video-1/edit?error=Only%20valid%20JPG%20or%20PNG%20images%20are%20accepted.",
+    );
+    expect(updateAdminLearningVideo).not.toHaveBeenCalled();
+    expect(writeFileMock).not.toHaveBeenCalled();
   });
 
   it("updates learning program and redirects", async () => {
@@ -557,17 +666,37 @@ describe("admin actions", () => {
     vi.mocked(updateAdminLearningProgram).mockResolvedValue({ id: "program-1" });
 
     const formData = new FormData();
-    formData.set("mainTitle", "Main Program");
     formData.set("courseType", "Yoga");
-    formData.set("title", "Program Title");
 
     await expect(updateLearningProgramAction("program-1", formData)).rejects.toThrow(
       "NEXT_REDIRECT:/admin/learning-programs",
     );
     expect(updateAdminLearningProgram).toHaveBeenCalledWith(
       "program-1",
-      expect.objectContaining({ mainTitle: "Main Program", courseType: "Yoga", title: "Program Title" }),
+      expect.objectContaining({ courseType: "Yoga" }),
     );
+  });
+
+  it("rejects update with missing courseType with a clear validation error", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+
+    const formData = new FormData();
+
+    await expect(updateLearningProgramAction("program-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/learning-programs/program-1/edit?error=Please%20complete%20required%20learning%20program%20fields.",
+    );
+    expect(updateAdminLearningProgram).not.toHaveBeenCalled();
+  });
+
+  it("rejects create with missing courseType with a clear validation error", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+
+    const formData = new FormData();
+
+    await expect(createLearningProgramAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/learning-programs/new?error=Please%20complete%20all%20required%20learning%20program%20fields.",
+    );
+    expect(createAdminLearningProgram).not.toHaveBeenCalled();
   });
 
   it("creates learning program with selected media library image", async () => {
@@ -575,9 +704,7 @@ describe("admin actions", () => {
     vi.mocked(createAdminLearningProgram).mockResolvedValue({ id: "program-1" });
 
     const formData = new FormData();
-    formData.set("mainTitle", "Main Program");
     formData.set("courseType", "Yoga");
-    formData.set("title", "Program Title");
     formData.set("picture1", "/images/learning/library.png");
 
     await expect(createLearningProgramAction(formData)).rejects.toThrow(
@@ -593,9 +720,7 @@ describe("admin actions", () => {
     vi.mocked(createAdminLearningProgram).mockResolvedValue({ id: "program-1" });
 
     const formData = new FormData();
-    formData.set("mainTitle", "Main Program");
     formData.set("courseType", "Yoga");
-    formData.set("title", "Program Title");
     formData.set("picture1Upload", createPngFile("lesson.png"));
 
     await expect(createLearningProgramAction(formData)).rejects.toThrow(
@@ -611,9 +736,7 @@ describe("admin actions", () => {
     vi.mocked(createAdminLearningProgram).mockRejectedValueOnce(new Error("PERSIST_FAILED"));
 
     const formData = new FormData();
-    formData.set("mainTitle", "Main Program");
     formData.set("courseType", "Yoga");
-    formData.set("title", "Program Title");
     formData.set("picture1Upload", createPngFile("lesson.png"));
 
     await expect(createLearningProgramAction(formData)).rejects.toThrow(
@@ -628,9 +751,7 @@ describe("admin actions", () => {
     vi.mocked(updateAdminLearningProgram).mockResolvedValue({ id: "program-1" });
 
     const formData = new FormData();
-    formData.set("mainTitle", "Main Program");
     formData.set("courseType", "Yoga");
-    formData.set("title", "Program Title");
     formData.set("picture1Upload", createPngFile("lesson.png"));
 
     await expect(updateLearningProgramAction("program-1", formData)).rejects.toThrow(
@@ -648,9 +769,7 @@ describe("admin actions", () => {
     vi.mocked(updateAdminLearningProgram).mockResolvedValue({ id: "program-1" });
 
     const formData = new FormData();
-    formData.set("mainTitle", "Main Program");
     formData.set("courseType", "Yoga");
-    formData.set("title", "Program Title");
     formData.set("picture1Upload", new File(["not-a-png"], "lesson.png", { type: "image/png" }));
 
     await expect(updateLearningProgramAction("program-1", formData)).rejects.toThrow(
@@ -1230,3 +1349,5 @@ describe("admin actions", () => {
     expect(writtenPath).not.toContain("/etc/");
   });
 });
+
+

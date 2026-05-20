@@ -22,10 +22,8 @@ import { isLearningImagePath, normalizeLearningImagePath } from "../src/lib/lear
 
 export type LearningProgramInput = {
   legacyId: string;
-  mainTitle: string;
-  mainDescription?: string | null;
   courseType: string;
-  title: string;
+  mainDescription?: string | null;
   description1?: string | null;
   description2?: string | null;
   description3?: string | null;
@@ -82,6 +80,14 @@ function asRequiredId(value: unknown): string | undefined {
 function asRequiredString(value: unknown): string | undefined {
   const normalized = asOptionalString(value);
   return normalized && normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeCanonicalLearningCourseType(value: string | undefined): string | undefined {
+  if (!value) return value;
+  if (value === "Backbend") return "Backbends Series";
+  if (value === "Pilates") return "Online Pilates Classes";
+  if (value === "Yoga") return "Online Yoga Classes";
+  return value;
 }
 
 function asOptionalNumber(value: unknown): number | undefined {
@@ -165,15 +171,14 @@ export function parsePayload(raw: unknown): { payload: LearningImportPayload | n
 
     const legacyId = asRequiredId(pickFirstDefined(item, ["legacyId", "ID"]));
     const mainTitle = asRequiredString(pickFirstDefined(item, ["mainTitle", "MainTitle"]));
-    const courseType = asRequiredString(pickFirstDefined(item, ["courseType", "CourseType"]));
     const title = asRequiredString(pickFirstDefined(item, ["title", "Title"]));
+    const legacyCourseType = asRequiredString(pickFirstDefined(item, ["courseType", "CourseType"]));
+    const courseType = normalizeCanonicalLearningCourseType(mainTitle ?? title ?? legacyCourseType);
 
     if (!legacyId) errors.push(`programs[${index}].ID (or legacyId) is required.`);
-    if (!mainTitle) errors.push(`programs[${index}].MainTitle (or mainTitle) is required.`);
-    if (!courseType) errors.push(`programs[${index}].CourseType (or courseType) is required.`);
-    if (!title) errors.push(`programs[${index}].Title (or title) is required.`);
+    if (!courseType) errors.push(`programs[${index}] must provide one of MainTitle/mainTitle, Title/title, or CourseType/courseType.`);
 
-    if (!legacyId || !mainTitle || !courseType || !title) {
+    if (!legacyId || !courseType) {
       return;
     }
 
@@ -193,10 +198,8 @@ export function parsePayload(raw: unknown): { payload: LearningImportPayload | n
 
     programs.push({
       legacyId,
-      mainTitle,
       mainDescription: asOptionalString(pickFirstDefined(item, ["mainDescription", "MainDescription"])),
       courseType,
-      title,
       description1: asOptionalString(pickFirstDefined(item, ["description1", "Description1"])),
       description2: asOptionalString(pickFirstDefined(item, ["description2", "Description2"])),
       description3: asOptionalString(pickFirstDefined(item, ["description3", "Description3"])),
@@ -215,7 +218,9 @@ export function parsePayload(raw: unknown): { payload: LearningImportPayload | n
 
     const legacyId = asRequiredId(pickFirstDefined(item, ["legacyId", "ID"]));
     const title = asRequiredString(pickFirstDefined(item, ["title", "Title"]));
-    const category = asRequiredString(pickFirstDefined(item, ["category", "Category"]));
+    const category = normalizeCanonicalLearningCourseType(
+      asRequiredString(pickFirstDefined(item, ["category", "Category"])),
+    );
     const rawPriority = pickFirstDefined(item, ["priority", "Priority"]);
     const priority = asOptionalNumber(rawPriority);
 

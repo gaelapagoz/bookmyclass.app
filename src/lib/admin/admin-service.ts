@@ -474,8 +474,6 @@ export type AdminSubscriptionsPageData = {
 export type AdminLearningProgramItem = {
   id: string;
   courseType: string;
-  mainTitle: string;
-  title: string;
   updatedAt: string;
 };
 
@@ -483,8 +481,6 @@ export type AdminLearningVideoItem = {
   id: string;
   title: string;
   category: string;
-  categoryType: string | null;
-  categoryLevel: string | null;
   priority: number;
   updatedAt: string;
 };
@@ -1921,6 +1917,19 @@ function normalizeClassImagePath(value: string | null | undefined): string | nul
   }
 
   return assertSafeMediaPublicPath(trimmed, ["/images/classes"]);
+}
+
+export async function getAdminClassCategoryById(id: string) {
+  return prisma.classCategory.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      isActive: true,
+      sortOrder: true,
+    },
+  });
 }
 
 async function getClassImageRenderState(imageUrl: string | null) {
@@ -5893,12 +5902,10 @@ export async function updateAdminSubscription(
 
 export async function getAdminLearningProgramsData(): Promise<AdminLearningProgramItem[]> {
   const programs = await prisma.learningProgram.findMany({
-    orderBy: [{ title: "asc" }, { createdAt: "asc" }],
+    orderBy: [{ courseType: "asc" }, { createdAt: "asc" }],
     select: {
       id: true,
       courseType: true,
-      mainTitle: true,
-      title: true,
       updatedAt: true,
     },
   });
@@ -5915,10 +5922,8 @@ export async function getAdminLearningProgramById(id: string) {
     select: {
       id: true,
       legacyId: true,
-      mainTitle: true,
       mainDescription: true,
       courseType: true,
-      title: true,
       description1: true,
       description2: true,
       description3: true,
@@ -5951,6 +5956,15 @@ export async function getLearningMediaLibraryOptions() {
   return listLearningMediaLibraryImages();
 }
 
+export async function getAdminLearningProgramCourseTypeOptions(): Promise<string[]> {
+  const programs = await prisma.learningProgram.findMany({
+    select: { courseType: true },
+    orderBy: [{ courseType: "asc" }],
+  });
+
+  return programs.map((program) => program.courseType);
+}
+
 async function getLearningImageRenderPath(path: string | null): Promise<string | null> {
   if (path?.startsWith("/uploads/")) {
     const renderState = await getCanonicalMediaRenderState(path, { allowedFolders: ["learning"] });
@@ -5960,12 +5974,30 @@ async function getLearningImageRenderPath(path: string | null): Promise<string |
   return renderState.src;
 }
 
+export async function updateAdminClassCategory(
+  id: string,
+  input: {
+    name: string;
+    description?: string;
+    isActive: boolean;
+    sortOrder: number;
+  },
+) {
+  return prisma.classCategory.update({
+    where: { id },
+    data: {
+      name: input.name.trim(),
+      description: toNullable(input.description),
+      isActive: input.isActive,
+      sortOrder: input.sortOrder,
+    },
+  });
+}
+
 export async function createAdminLearningProgram(input: {
   legacyId?: string;
-  mainTitle: string;
-  mainDescription?: string;
   courseType: string;
-  title: string;
+  mainDescription?: string;
   description1?: string;
   description2?: string;
   description3?: string;
@@ -5978,10 +6010,8 @@ export async function createAdminLearningProgram(input: {
   return prisma.learningProgram.create({
     data: {
       legacyId: normalizedLegacyId,
-      mainTitle: input.mainTitle.trim(),
       mainDescription: toNullable(input.mainDescription),
       courseType: input.courseType.trim(),
-      title: input.title.trim(),
       description1: toNullable(input.description1),
       description2: toNullable(input.description2),
       description3: toNullable(input.description3),
@@ -5997,10 +6027,8 @@ export async function updateAdminLearningProgram(
   id: string,
   input: {
     legacyId?: string;
-    mainTitle: string;
-    mainDescription?: string;
     courseType: string;
-    title: string;
+    mainDescription?: string;
     description1?: string;
     description2?: string;
     description3?: string;
@@ -6011,22 +6039,38 @@ export async function updateAdminLearningProgram(
   },
 ) {
   const normalizedLegacyId = input.legacyId?.trim();
-  return prisma.learningProgram.update({
-    where: { id },
-    data: {
-      ...(normalizedLegacyId ? { legacyId: normalizedLegacyId } : {}),
-      mainTitle: input.mainTitle.trim(),
-      mainDescription: toNullable(input.mainDescription),
-      courseType: input.courseType.trim(),
-      title: input.title.trim(),
-      description1: toNullable(input.description1),
-      description2: toNullable(input.description2),
-      description3: toNullable(input.description3),
-      videoPromo: toNullable(input.videoPromo),
-      picture1: assertLearningImagePath(input.picture1, "picture1"),
-      picture2: assertLearningImagePath(input.picture2, "picture2"),
-      picture3: assertLearningImagePath(input.picture3, "picture3"),
-    },
+  const normalizedCourseType = input.courseType.trim();
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.learningProgram.findUnique({
+      where: { id },
+      select: { courseType: true },
+    });
+
+    const updatedProgram = await tx.learningProgram.update({
+      where: { id },
+      data: {
+        ...(normalizedLegacyId ? { legacyId: normalizedLegacyId } : {}),
+        mainDescription: toNullable(input.mainDescription),
+        courseType: normalizedCourseType,
+        description1: toNullable(input.description1),
+        description2: toNullable(input.description2),
+        description3: toNullable(input.description3),
+        videoPromo: toNullable(input.videoPromo),
+        picture1: assertLearningImagePath(input.picture1, "picture1"),
+        picture2: assertLearningImagePath(input.picture2, "picture2"),
+        picture3: assertLearningImagePath(input.picture3, "picture3"),
+      },
+      select: { id: true },
+    });
+
+    if (existing && existing.courseType !== normalizedCourseType) {
+      await tx.learningCourse.updateMany({
+        where: { category: existing.courseType },
+        data: { category: normalizedCourseType },
+      });
+    }
+
+    return updatedProgram;
   });
 }
 
@@ -6036,13 +6080,11 @@ export async function cleanupAdminLearningProgramCreateFailure(id: string): Prom
 
 export async function getAdminLearningVideosData(): Promise<AdminLearningVideoItem[]> {
   const videos = await prisma.learningCourse.findMany({
-    orderBy: [{ priority: "asc" }, { title: "asc" }],
+    orderBy: [{ category: "asc" }, { priority: "asc" }, { title: "asc" }, { id: "asc" }],
     select: {
       id: true,
       title: true,
       category: true,
-      categoryType: true,
-      categoryLevel: true,
       priority: true,
       updatedAt: true,
     },
@@ -6075,8 +6117,6 @@ export async function getAdminLearningVideoById(id: string) {
       description: true,
       shortDescription: true,
       category: true,
-      categoryType: true,
-      categoryLevel: true,
       thumbnail: true,
       videoUrl: true,
       priority: true,
@@ -6090,8 +6130,6 @@ export async function createAdminLearningVideo(input: {
   description?: string;
   shortDescription?: string;
   category: string;
-  categoryType?: string;
-  categoryLevel?: string;
   thumbnail?: string;
   videoUrl?: string;
   priority: number;
@@ -6104,8 +6142,6 @@ export async function createAdminLearningVideo(input: {
       description: toNullable(input.description),
       shortDescription: toNullable(input.shortDescription),
       category: input.category.trim(),
-      categoryType: toNullable(input.categoryType),
-      categoryLevel: toNullable(input.categoryLevel),
       thumbnail: assertLearningImagePath(input.thumbnail, "thumbnail"),
       videoUrl: toNullable(input.videoUrl),
       priority: input.priority,
@@ -6121,8 +6157,6 @@ export async function updateAdminLearningVideo(
     description?: string;
     shortDescription?: string;
     category: string;
-    categoryType?: string;
-    categoryLevel?: string;
     thumbnail?: string;
     videoUrl?: string;
     priority: number;
@@ -6137,8 +6171,6 @@ export async function updateAdminLearningVideo(
       description: toNullable(input.description),
       shortDescription: toNullable(input.shortDescription),
       category: input.category.trim(),
-      categoryType: toNullable(input.categoryType),
-      categoryLevel: toNullable(input.categoryLevel),
       thumbnail: assertLearningImagePath(input.thumbnail, "thumbnail"),
       videoUrl: toNullable(input.videoUrl),
       priority: input.priority,

@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { PriceType, ProductType, Role, StripeSyncStatus } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -41,6 +41,36 @@ const price = {
   isArchived: false,
 };
 
+function buildMerchandise(index: number, withPrice = true) {
+  return {
+    id: `merch-${index}`,
+    name: `Merch ${index}`,
+    slug: `merch-${index}`,
+    description: "Pickup at studio",
+    productType: ProductType.MERCHANDISE,
+    isActive: true,
+    isArchived: false,
+    sortOrder: index,
+    primaryPrice: withPrice ? { ...price, id: `price-merch-${index}`, unitAmountMinor: 1000 + index } : null,
+    isCheckoutReady: withPrice,
+  };
+}
+
+function buildGiftCard(index: number, withPrice = true) {
+  return {
+    id: `gift-${index}`,
+    name: `Gift ${index}`,
+    slug: `gift-${index}`,
+    description: "Studio gift card.",
+    productType: ProductType.GIFT_CARD,
+    isActive: true,
+    isArchived: false,
+    sortOrder: index,
+    activePrice: withPrice ? { ...price, id: `price-gift-${index}`, unitAmountMinor: 5000 + index } : null,
+    isCheckoutReady: withPrice,
+  };
+}
+
 describe("admin store page", () => {
   beforeEach(() => {
     mocks.requireAdminSession.mockResolvedValue({
@@ -50,83 +80,70 @@ describe("admin store page", () => {
     mocks.listAdminStoreGiftCardProducts.mockReset();
   });
 
-  it("shows Needs Stripe sync label and Visible to Client: No for unsynced merchandise", async () => {
-    mocks.listAdminStoreMerchandise.mockResolvedValue([
-      {
-        id: "merch-unsynced",
-        name: "Unsynced Product",
-        slug: "unsynced-product",
-        description: null,
-        productType: ProductType.MERCHANDISE,
-        isActive: true,
-        isArchived: false,
-        sortOrder: 10,
-        primaryPrice: {
-          ...price,
-          stripePriceId: null,
-          stripeSyncStatus: StripeSyncStatus.PENDING,
-        },
-        isCheckoutReady: false,
-      },
-    ]);
-    mocks.listAdminStoreGiftCardProducts.mockResolvedValue([]);
+  it("renders only Name, Price, Status, Actions headers and omits removed operational headers", async () => {
+    mocks.listAdminStoreMerchandise.mockResolvedValue([buildMerchandise(1)]);
+    mocks.listAdminStoreGiftCardProducts.mockResolvedValue([buildGiftCard(1)]);
 
-    render(await AdminStorePage());
+    render(await AdminStorePage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByText("Unsynced Product")).toBeInTheDocument();
-    expect(screen.getByText(/needs stripe sync/i)).toBeInTheDocument();
-    const visibleCells = screen.getAllByText("No");
-    expect(visibleCells.length).toBeGreaterThan(0);
+    const merchandiseTable = screen.getByTestId("admin-store-merchandise-table");
+    const giftCardsTable = screen.getByTestId("admin-store-gift-cards-table");
+
+    expect(within(merchandiseTable).getByRole("columnheader", { name: "Name" })).toBeInTheDocument();
+    expect(within(merchandiseTable).getByRole("columnheader", { name: "Price" })).toBeInTheDocument();
+    expect(within(merchandiseTable).getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+    expect(within(merchandiseTable).getByRole("columnheader", { name: "Actions" })).toBeInTheDocument();
+
+    expect(within(giftCardsTable).getByRole("columnheader", { name: "Name" })).toBeInTheDocument();
+    expect(within(giftCardsTable).getByRole("columnheader", { name: "Price" })).toBeInTheDocument();
+    expect(within(giftCardsTable).getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+    expect(within(giftCardsTable).getByRole("columnheader", { name: "Actions" })).toBeInTheDocument();
+
+    expect(screen.queryByRole("columnheader", { name: "Fulfillment" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Stripe ID" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Checkout Ready" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Visible to Client" })).not.toBeInTheDocument();
   });
 
-  it("renders separate Merchandising and Gift Cards sections with create/edit actions", async () => {
-    mocks.listAdminStoreMerchandise.mockResolvedValue([
-      {
-        id: "merch-1",
-        name: "Studio Tote Bag",
-        slug: "studio-tote-bag",
-        description: "Pickup at studio",
-        productType: ProductType.MERCHANDISE,
-        isActive: true,
-        isArchived: false,
-        sortOrder: 10,
-        primaryPrice: price,
-        isCheckoutReady: true,
-      },
-    ]);
-    mocks.listAdminStoreGiftCardProducts.mockResolvedValue([
-      {
-        id: "gift-1",
-        name: "Gift Card 25 EUR",
-        slug: "gift-card-25-eur",
-        description: "Studio gift card.",
-        productType: ProductType.GIFT_CARD,
-        isActive: true,
-        isArchived: false,
-        sortOrder: 20,
-        activePrice: price,
-        isCheckoutReady: true,
-      },
-    ]);
+  it("shows placeholder price for gift cards with no active sellable price", async () => {
+    mocks.listAdminStoreMerchandise.mockResolvedValue([buildMerchandise(1)]);
+    mocks.listAdminStoreGiftCardProducts.mockResolvedValue([buildGiftCard(1, false)]);
 
-    render(await AdminStorePage());
+    render(await AdminStorePage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByRole("heading", { name: "Store" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Merchandising" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Gift Cards" })).toBeInTheDocument();
-    expect(screen.getByText("Studio Tote Bag")).toBeInTheDocument();
-    expect(screen.getByText("Gift Card 25 EUR")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Add merchandise" })).toHaveAttribute(
-      "href",
-      "/admin/store/merchandise/new",
+    const giftCardsTable = screen.getByTestId("admin-store-gift-cards-table");
+    expect(within(giftCardsTable).getByText("-")).toBeInTheDocument();
+  });
+
+  it("paginates merchandise and gift cards independently with separate query params", async () => {
+    mocks.listAdminStoreMerchandise.mockResolvedValue(Array.from({ length: 12 }, (_, i) => buildMerchandise(i + 1)));
+    mocks.listAdminStoreGiftCardProducts.mockResolvedValue(Array.from({ length: 12 }, (_, i) => buildGiftCard(i + 1)));
+
+    render(
+      await AdminStorePage({
+        searchParams: Promise.resolve({ merchandisePage: "2", giftCardPage: "1" }),
+      }),
     );
-    expect(screen.getByRole("link", { name: "Add gift card" })).toHaveAttribute(
-      "href",
-      "/admin/store/gift-cards/new",
-    );
-    expect(screen.getAllByRole("link", { name: "Edit" }).map((link) => link.getAttribute("href"))).toEqual([
-      "/admin/store/merchandise/merch-1/edit",
-      "/admin/store/gift-cards/gift-1/edit",
-    ]);
+
+    const merchandiseTable = screen.getByTestId("admin-store-merchandise-table");
+    const giftCardsTable = screen.getByTestId("admin-store-gift-cards-table");
+
+    expect(within(merchandiseTable).getByText("Merch 11")).toBeInTheDocument();
+    expect(within(merchandiseTable).queryByText("Merch 1")).not.toBeInTheDocument();
+
+    expect(within(giftCardsTable).getByText("Gift 1")).toBeInTheDocument();
+    expect(within(giftCardsTable).queryByText("Gift 11")).not.toBeInTheDocument();
+
+    const merchandisePagination = screen.getByTestId("admin-store-merchandise-pagination");
+    const giftCardsPagination = screen.getByTestId("admin-store-gift-cards-pagination");
+
+    expect(within(merchandisePagination).getByText("Page 2 of 2")).toBeInTheDocument();
+    expect(within(giftCardsPagination).getByText("Page 1 of 2")).toBeInTheDocument();
+
+    const giftNextLink = within(giftCardsPagination).getByRole("link", { name: "Next" });
+    expect(giftNextLink).toHaveAttribute("href", "?merchandisePage=2&giftCardPage=2#gift-cards");
+
+    const merchPrevLink = within(merchandisePagination).getByRole("link", { name: "Previous" });
+    expect(merchPrevLink).toHaveAttribute("href", "?giftCardPage=1#merchandising");
   });
 });

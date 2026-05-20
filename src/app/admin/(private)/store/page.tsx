@@ -2,11 +2,14 @@ import Link from "next/link";
 
 import { requireAdminSession } from "@/lib/auth/require-auth";
 import {
-  getStorePriceCheckoutReadinessLabel,
   listAdminStoreGiftCardProducts,
   listAdminStoreMerchandise,
 } from "@/lib/store/store-admin-catalog-service";
-import { STORE_CURRENCY_CODE, STORE_PICKUP_WORDING } from "@/lib/store/store-constants";
+import { STORE_CURRENCY_CODE } from "@/lib/store/store-constants";
+
+const PAGE_SIZE = 10;
+
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 function formatMoney(amountMinor: number) {
   return new Intl.NumberFormat("en-BE", {
@@ -15,8 +18,44 @@ function formatMoney(amountMinor: number) {
   }).format(amountMinor / 100);
 }
 
-export default async function AdminStorePage() {
+function parsePositiveIntParam(value: string | string[] | undefined): number {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const parsed = Number.parseInt(raw ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function buildPageHref(
+  currentSearchParams: Record<string, string | string[] | undefined>,
+  paramName: "merchandisePage" | "giftCardPage",
+  page: number,
+  hash: "merchandising" | "gift-cards",
+): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(currentSearchParams)) {
+    if (key === paramName || value === undefined) continue;
+    if (Array.isArray(value)) {
+      for (const entry of value) query.append(key, entry);
+      continue;
+    }
+    query.set(key, value);
+  }
+
+  if (page > 1) {
+    query.set(paramName, String(page));
+  }
+
+  const queryString = query.toString();
+  return queryString.length > 0 ? `?${queryString}#${hash}` : `#${hash}`;
+}
+
+export default async function AdminStorePage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   await requireAdminSession();
+
+  const resolvedSearchParams = await searchParams;
 
   let merchandise;
   let giftCards;
@@ -33,6 +72,21 @@ export default async function AdminStorePage() {
       </section>
     );
   }
+
+  const merchandisePage = parsePositiveIntParam(resolvedSearchParams.merchandisePage);
+  const giftCardPage = parsePositiveIntParam(resolvedSearchParams.giftCardPage);
+
+  const merchandiseTotalPages = Math.max(1, Math.ceil(merchandise.length / PAGE_SIZE));
+  const giftCardTotalPages = Math.max(1, Math.ceil(giftCards.length / PAGE_SIZE));
+
+  const normalizedMerchandisePage = Math.min(merchandisePage, merchandiseTotalPages);
+  const normalizedGiftCardPage = Math.min(giftCardPage, giftCardTotalPages);
+
+  const merchandiseStart = (normalizedMerchandisePage - 1) * PAGE_SIZE;
+  const giftCardStart = (normalizedGiftCardPage - 1) * PAGE_SIZE;
+
+  const merchandiseRows = merchandise.slice(merchandiseStart, merchandiseStart + PAGE_SIZE);
+  const giftCardRows = giftCards.slice(giftCardStart, giftCardStart + PAGE_SIZE);
 
   return (
     <section className="space-y-8">
@@ -71,54 +125,62 @@ export default async function AdminStorePage() {
             No merchandise products found.
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-[#d3dbe5] bg-white">
-            <table className="min-w-full text-sm">
-              <thead className="bg-[#f3f6fb] text-left text-xs uppercase tracking-wide text-[#5a6d86]">
-                <tr>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">Price</th>
-                  <th className="px-3 py-2">Fulfillment</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Checkout Ready</th>
-                  <th className="px-3 py-2">Visible to Client</th>
-                  <th className="px-3 py-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {merchandise.map((item) => {
-                  const readinessLabel = getStorePriceCheckoutReadinessLabel(item.primaryPrice, item);
-                  const isReady = item.isCheckoutReady;
-                  return (
+          <div className="space-y-3">
+            <div className="overflow-x-auto rounded-xl border border-[#d3dbe5] bg-white">
+              <table className="min-w-full table-fixed text-sm" data-testid="admin-store-merchandise-table">
+                <thead className="bg-[#f3f6fb] text-left text-xs uppercase tracking-wide text-[#5a6d86]">
+                  <tr>
+                    <th className="w-[40%] px-3 py-2">Name</th>
+                    <th className="w-[20%] px-3 py-2">Price</th>
+                    <th className="w-[20%] px-3 py-2">Status</th>
+                    <th className="w-[20%] px-3 py-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {merchandiseRows.map((item) => (
                     <tr key={item.id} className="border-t border-[#e2e8f0] text-[#334155]">
                       <td className="px-3 py-2 font-medium">{item.name}</td>
                       <td className="px-3 py-2">
                         {item.primaryPrice ? formatMoney(item.primaryPrice.unitAmountMinor) : "-"}
                       </td>
-                      <td className="px-3 py-2 text-[#5a6d86]">{STORE_PICKUP_WORDING}</td>
                       <td className="px-3 py-2">{item.isArchived ? "Archived" : item.isActive ? "Active" : "Inactive"}</td>
-                      <td className="px-3 py-2">
-                        <span className={isReady ? "text-[#166534]" : "text-[#7b2d2d]"}>
-                          {isReady ? "Yes" : "No"}
-                        </span>
-                        {!isReady && (
-                          <span className="ml-1 text-xs text-[#7b2d2d]">— {readinessLabel}</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <span className={isReady ? "text-[#166534] font-medium" : "text-[#7b2d2d]"}>
-                          {isReady ? "Yes" : "No"}
-                        </span>
-                      </td>
                       <td className="px-3 py-2">
                         <Link href={`/admin/store/merchandise/${item.id}/edit`} className="text-[#2a4f78] underline underline-offset-4">
                           Edit
                         </Link>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {merchandiseTotalPages > 1 ? (
+              <nav
+                className="flex items-center justify-end gap-2 text-sm"
+                data-testid="admin-store-merchandise-pagination"
+                aria-label="Merchandise pagination"
+              >
+                {normalizedMerchandisePage > 1 ? (
+                  <Link
+                    href={buildPageHref(resolvedSearchParams, "merchandisePage", normalizedMerchandisePage - 1, "merchandising")}
+                    className="rounded-md border border-[#d3dbe5] px-3 py-1 text-[#2a4f78]"
+                  >
+                    Previous
+                  </Link>
+                ) : null}
+                <span className="text-[#4b5a72]">
+                  Page {normalizedMerchandisePage} of {merchandiseTotalPages}
+                </span>
+                {normalizedMerchandisePage < merchandiseTotalPages ? (
+                  <Link
+                    href={buildPageHref(resolvedSearchParams, "merchandisePage", normalizedMerchandisePage + 1, "merchandising")}
+                    className="rounded-md border border-[#d3dbe5] px-3 py-1 text-[#2a4f78]"
+                  >
+                    Next
+                  </Link>
+                ) : null}
+              </nav>
+            ) : null}
           </div>
         )}
       </section>
@@ -141,58 +203,62 @@ export default async function AdminStorePage() {
             No gift-card products found.
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-[#d3dbe5] bg-white">
-            <table className="min-w-full text-sm">
-              <thead className="bg-[#f3f6fb] text-left text-xs uppercase tracking-wide text-[#5a6d86]">
-                <tr>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">Amount</th>
-                  <th className="px-3 py-2">Stripe ID</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Checkout Ready</th>
-                  <th className="px-3 py-2">Visible to Client</th>
-                  <th className="px-3 py-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {giftCards.map((item) => {
-                  const readinessLabel = getStorePriceCheckoutReadinessLabel(item.activePrice, item);
-                  const isReady = item.isCheckoutReady;
-                  return (
+          <div className="space-y-3">
+            <div className="overflow-x-auto rounded-xl border border-[#d3dbe5] bg-white">
+              <table className="min-w-full table-fixed text-sm" data-testid="admin-store-gift-cards-table">
+                <thead className="bg-[#f3f6fb] text-left text-xs uppercase tracking-wide text-[#5a6d86]">
+                  <tr>
+                    <th className="w-[40%] px-3 py-2">Name</th>
+                    <th className="w-[20%] px-3 py-2">Price</th>
+                    <th className="w-[20%] px-3 py-2">Status</th>
+                    <th className="w-[20%] px-3 py-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {giftCardRows.map((item) => (
                     <tr key={item.id} className="border-t border-[#e2e8f0] text-[#334155]">
                       <td className="px-3 py-2 font-medium">{item.name}</td>
                       <td className="px-3 py-2">
                         {item.activePrice ? formatMoney(item.activePrice.unitAmountMinor) : "-"}
                       </td>
-                      <td className="px-3 py-2 font-mono text-xs text-[#5a6d86]">
-                        {item.activePrice?.stripePriceId ?? (
-                          <span className="text-[#7b2d2d]">Not synced — attach a Stripe price ID to enable checkout</span>
-                        )}
-                      </td>
                       <td className="px-3 py-2">{item.isArchived ? "Archived" : item.isActive ? "Active" : "Inactive"}</td>
-                      <td className="px-3 py-2">
-                        <span className={isReady ? "text-[#166534]" : "text-[#7b2d2d]"}>
-                          {isReady ? "Yes" : "No"}
-                        </span>
-                        {!isReady && (
-                          <span className="ml-1 text-xs text-[#7b2d2d]">— {readinessLabel}</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <span className={isReady ? "text-[#166534] font-medium" : "text-[#7b2d2d]"}>
-                          {isReady ? "Yes" : "No"}
-                        </span>
-                      </td>
                       <td className="px-3 py-2">
                         <Link href={`/admin/store/gift-cards/${item.id}/edit`} className="text-[#2a4f78] underline underline-offset-4">
                           Edit
                         </Link>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {giftCardTotalPages > 1 ? (
+              <nav
+                className="flex items-center justify-end gap-2 text-sm"
+                data-testid="admin-store-gift-cards-pagination"
+                aria-label="Gift card pagination"
+              >
+                {normalizedGiftCardPage > 1 ? (
+                  <Link
+                    href={buildPageHref(resolvedSearchParams, "giftCardPage", normalizedGiftCardPage - 1, "gift-cards")}
+                    className="rounded-md border border-[#d3dbe5] px-3 py-1 text-[#2a4f78]"
+                  >
+                    Previous
+                  </Link>
+                ) : null}
+                <span className="text-[#4b5a72]">
+                  Page {normalizedGiftCardPage} of {giftCardTotalPages}
+                </span>
+                {normalizedGiftCardPage < giftCardTotalPages ? (
+                  <Link
+                    href={buildPageHref(resolvedSearchParams, "giftCardPage", normalizedGiftCardPage + 1, "gift-cards")}
+                    className="rounded-md border border-[#d3dbe5] px-3 py-1 text-[#2a4f78]"
+                  >
+                    Next
+                  </Link>
+                ) : null}
+              </nav>
+            ) : null}
           </div>
         )}
       </section>

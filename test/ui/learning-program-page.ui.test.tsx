@@ -25,11 +25,11 @@ vi.mock("@/components/learning/LearningProgramDetail", () => ({
     program,
     courses,
   }: {
-    program: { mainTitle: string };
+    program: { courseType: string };
     courses: Array<{ legacyId: string }>;
   }) => (
     <div data-testid="learning-program-detail">
-      {program.mainTitle} ({courses.length})
+      {program.courseType} ({courses.length})
     </div>
   ),
 }));
@@ -48,10 +48,8 @@ describe("/learning/[courseType] page", () => {
   it("renders program and related courses for valid courseType", async () => {
     vi.mocked(getLearningProgramByCourseType).mockResolvedValue({
       legacyId: "1",
-      mainTitle: "Yoga Program",
+      courseType: "Yoga Program",
       mainDescription: "desc",
-      courseType: "Yoga",
-      title: "Yoga Program",
       description1: null,
       description2: null,
       description3: null,
@@ -67,8 +65,6 @@ describe("/learning/[courseType] page", () => {
         description: null,
         shortDescription: null,
         category: "Yoga",
-        categoryType: null,
-        categoryLevel: null,
         thumbnail: null,
         videoUrl: null,
         priority: 1,
@@ -82,7 +78,7 @@ describe("/learning/[courseType] page", () => {
     );
 
     expect(getLearningProgramByCourseType).toHaveBeenCalledWith("Yoga Program");
-    expect(getLearningCoursesByCourseType).toHaveBeenCalledWith("Yoga");
+    expect(getLearningCoursesByCourseType).toHaveBeenCalledWith("Yoga Program");
     expect(screen.getByTestId("learning-program-detail")).toHaveTextContent("Yoga Program (1)");
   });
 

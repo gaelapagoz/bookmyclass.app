@@ -48,9 +48,7 @@ function makeCourses(count: number) {
     title: `Course ${index + 1}`,
     description: null,
     shortDescription: null,
-    category: "Yoga",
-    categoryType: null,
-    categoryLevel: null,
+    category: "Yoga Program",
     thumbnail: null,
     videoUrl: null,
     priority: index + 1,
@@ -63,10 +61,8 @@ describe("/learning/[courseType] pagination", () => {
 
     vi.mocked(getLearningProgramByCourseType).mockResolvedValue({
       legacyId: "p1",
-      mainTitle: "Yoga Program",
+      courseType: "Yoga Program",
       mainDescription: "desc",
-      courseType: "Yoga",
-      title: "Yoga Program",
       description1: null,
       description2: null,
       description3: null,
@@ -82,7 +78,7 @@ describe("/learning/[courseType] pagination", () => {
 
     render(
       await LearningProgramPage({
-        params: Promise.resolve({ courseType: "Yoga" }),
+        params: Promise.resolve({ courseType: "Yoga%20Program" }),
       }),
     );
 
@@ -96,7 +92,7 @@ describe("/learning/[courseType] pagination", () => {
 
     render(
       await LearningProgramPage({
-        params: Promise.resolve({ courseType: "Yoga" }),
+        params: Promise.resolve({ courseType: "Yoga%20Program" }),
         searchParams: Promise.resolve({ page: "2" }),
       }),
     );
@@ -110,7 +106,7 @@ describe("/learning/[courseType] pagination", () => {
     vi.mocked(getLearningCoursesByCourseType).mockResolvedValue(makeCourses(14));
 
     const invalid = await LearningProgramPage({
-      params: Promise.resolve({ courseType: "Yoga" }),
+      params: Promise.resolve({ courseType: "Yoga%20Program" }),
       searchParams: Promise.resolve({ page: "abc" }),
     });
     render(invalid);
@@ -119,7 +115,7 @@ describe("/learning/[courseType] pagination", () => {
     );
 
     const outOfRange = await LearningProgramPage({
-      params: Promise.resolve({ courseType: "Yoga" }),
+      params: Promise.resolve({ courseType: "Yoga%20Program" }),
       searchParams: Promise.resolve({ page: "999" }),
     });
     render(outOfRange);
@@ -128,3 +124,4 @@ describe("/learning/[courseType] pagination", () => {
     );
   });
 });
+

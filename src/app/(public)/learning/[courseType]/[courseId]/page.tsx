@@ -44,7 +44,7 @@ export default async function LearningCoursePage({
         href={`/learning/${toCourseTypeRouteKey(program.courseType)}`}
         className="text-sm font-medium text-[#7b2d2d] underline underline-offset-4 hover:opacity-80"
       >
-        Back to {program.mainTitle}
+        Back to {program.courseType}
       </Link>
 
       <div className="mt-5">

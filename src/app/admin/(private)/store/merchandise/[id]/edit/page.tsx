@@ -54,7 +54,6 @@ export default async function AdminStoreMerchandiseEditPage({
 
       <form
         action={updateStoreMerchandiseAction.bind(null, id)}
-        encType="multipart/form-data"
         className="space-y-3 rounded-xl border border-[#d3dbe5] bg-white p-5"
       >
         <div className="grid gap-3 md:grid-cols-2">
@@ -163,7 +162,7 @@ export default async function AdminStoreMerchandiseEditPage({
 
         <div className="rounded-md border border-[#d3dbe5] bg-[#f8fafc] px-3 py-2 text-xs text-[#64748b]">
           Stripe ID:{" "}
-          {record.primaryPrice?.stripePriceId ?? "Not synced"} — Checkout: {priceLabel}
+          {record.primaryPrice?.stripePriceId ?? "Not synced"} â€” Checkout: {priceLabel}
           {record.primaryPrice?.stripeSyncError ? (
             <span className="ml-2 text-[#7b2d2d]">({record.primaryPrice.stripeSyncError})</span>
           ) : null}
@@ -208,3 +207,4 @@ export default async function AdminStoreMerchandiseEditPage({
     </section>
   );
 }
+

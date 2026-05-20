@@ -32,10 +32,10 @@ export type LegacyLearningCourse = {
 export function toLegacyLearningProgram(program: LearningProgram): LegacyLearningProgram {
   return {
     ID: program.legacyId,
-    MainTitle: program.mainTitle,
+    MainTitle: program.courseType,
     MainDescription: program.mainDescription,
     CourseType: program.courseType,
-    Title: program.title,
+    Title: program.courseType,
     Description1: program.description1,
     Description2: program.description2,
     Description3: program.description3,
