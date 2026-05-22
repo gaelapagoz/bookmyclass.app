@@ -1091,6 +1091,86 @@ describe("POST /api/stripe/webhook", () => {
     expect(booking?.status).toBe(BookingStatus.PENDING);
   });
 
+  it("marks booking-flow payment failed by stripeCheckoutSessionId when providerReference differs", async () => {
+    const fixture = await createWebhookFixture({
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+    });
+    const checkoutSessionId = `cs_booking_expire_${Date.now()}`;
+
+    await prisma.payment.update({
+      where: { id: fixture.payment.id },
+      data: {
+        providerReference: `pi_booking_expire_${Date.now()}`,
+        stripeCheckoutSessionId: checkoutSessionId,
+      },
+    });
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.expired",
+      data: {
+        object: {
+          id: checkoutSessionId,
+          metadata: { source: "booking-flow" },
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const payment = await prisma.payment.findUnique({ where: { id: fixture.payment.id } });
+    const order = await prisma.order.findUnique({ where: { id: fixture.order.id } });
+    expect(payment?.status).toBe(PaymentStatus.FAILED);
+    expect(order?.status).toBe(OrderStatus.CANCELLED);
+  });
+
+  it("marks booking-flow payment failed on async_payment_failed by stripeCheckoutSessionId when providerReference differs", async () => {
+    const fixture = await createWebhookFixture({
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+    });
+    const checkoutSessionId = `cs_booking_async_fail_${Date.now()}`;
+
+    await prisma.payment.update({
+      where: { id: fixture.payment.id },
+      data: {
+        providerReference: `pi_booking_async_fail_${Date.now()}`,
+        stripeCheckoutSessionId: checkoutSessionId,
+      },
+    });
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.async_payment_failed",
+      data: {
+        object: {
+          id: checkoutSessionId,
+          metadata: { source: "booking-flow" },
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const payment = await prisma.payment.findUnique({ where: { id: fixture.payment.id } });
+    const order = await prisma.order.findUnique({ where: { id: fixture.order.id } });
+    expect(payment?.status).toBe(PaymentStatus.FAILED);
+    expect(order?.status).toBe(OrderStatus.CANCELLED);
+  });
+
   it("marks payment failed and order cancelled on async payment failure", async () => {
     const fixture = await createWebhookFixture({
       paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
@@ -2403,6 +2483,339 @@ describe("POST /api/stripe/webhook", () => {
     expect(failedState.reconciliationState).toBe("FAILED");
     expect(failedState.paymentStatus).toBe(PaymentStatus.FAILED);
     expect(failedState.orderStatus).toBe(OrderStatus.CANCELLED);
+  });
+
+  it("keeps NEW_PLAN_PURCHASE cart-source state stable across replayed completed then delayed expired", async () => {
+    const fixture = await createWebhookFixture({
+      paymentSelection: BookingPaymentSelection.NEW_PLAN_PURCHASE,
+    });
+    const checkoutSessionId = `cs_cart_new_plan_${Date.now()}`;
+
+    await prisma.payment.update({
+      where: { id: fixture.payment.id },
+      data: {
+        checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+        providerReference: checkoutSessionId,
+        stripeCheckoutSessionId: checkoutSessionId,
+      },
+    });
+
+    const completedEvent = {
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: checkoutSessionId,
+          payment_status: "paid",
+          mode: "payment",
+          metadata: {
+            source: "CART_CHECKOUT_V1",
+            paymentId: fixture.payment.id,
+            orderId: fixture.order.id,
+            bookingId: fixture.booking.id,
+            userId: fixture.client.id,
+          },
+        },
+      },
+    };
+
+    verifyStripeWebhookEventMock.mockReturnValueOnce(completedEvent);
+    verifyStripeWebhookEventMock.mockReturnValueOnce(completedEvent);
+
+    const completedFirst = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    const completedReplay = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(completedFirst.status).toBe(200);
+    expect(completedReplay.status).toBe(200);
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.expired",
+      data: {
+        object: {
+          id: checkoutSessionId,
+          metadata: { source: "CART_CHECKOUT_V1" },
+        },
+      },
+    });
+
+    const delayedExpired = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(delayedExpired.status).toBe(200);
+
+    const payment = await prisma.payment.findUnique({
+      where: { id: fixture.payment.id },
+      select: { status: true, checkoutSource: true },
+    });
+    const order = await prisma.order.findUnique({
+      where: { id: fixture.order.id },
+      select: { status: true },
+    });
+    const booking = await prisma.booking.findUnique({
+      where: { id: fixture.booking.id },
+      select: { status: true },
+    });
+    const grantEntries = await prisma.creditLedgerEntry.findMany({
+      where: {
+        clientId: fixture.client.id,
+        orderId: fixture.order.id,
+        entryType: CreditLedgerEntryType.GRANT,
+      },
+    });
+
+    expect(payment?.checkoutSource).toBe(CheckoutSource.CART_CHECKOUT_V1);
+    expect(payment?.status).toBe(PaymentStatus.SUCCEEDED);
+    expect(order?.status).toBe(OrderStatus.PAID);
+    expect(booking?.status).toBe(BookingStatus.CONFIRMED);
+    expect(grantEntries).toHaveLength(1);
+  });
+
+  it("keeps NEW_PLAN_PURCHASE cart-source state stable across replayed completed then delayed async_payment_failed", async () => {
+    const fixture = await createWebhookFixture({
+      paymentSelection: BookingPaymentSelection.NEW_PLAN_PURCHASE,
+    });
+    const checkoutSessionId = `cs_cart_new_plan_async_${Date.now()}`;
+
+    await prisma.payment.update({
+      where: { id: fixture.payment.id },
+      data: {
+        checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+        providerReference: checkoutSessionId,
+        stripeCheckoutSessionId: checkoutSessionId,
+      },
+    });
+
+    const completedEvent = {
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: checkoutSessionId,
+          payment_status: "paid",
+          mode: "payment",
+          metadata: {
+            source: "CART_CHECKOUT_V1",
+            paymentId: fixture.payment.id,
+            orderId: fixture.order.id,
+            bookingId: fixture.booking.id,
+            userId: fixture.client.id,
+          },
+        },
+      },
+    };
+
+    verifyStripeWebhookEventMock.mockReturnValueOnce(completedEvent);
+    verifyStripeWebhookEventMock.mockReturnValueOnce(completedEvent);
+
+    const completedFirst = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    const completedReplay = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(completedFirst.status).toBe(200);
+    expect(completedReplay.status).toBe(200);
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.async_payment_failed",
+      data: {
+        object: {
+          id: checkoutSessionId,
+          metadata: { source: "CART_CHECKOUT_V1" },
+        },
+      },
+    });
+
+    const delayedAsyncFailed = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(delayedAsyncFailed.status).toBe(200);
+
+    const payment = await prisma.payment.findUnique({
+      where: { id: fixture.payment.id },
+      select: { status: true, checkoutSource: true },
+    });
+    const order = await prisma.order.findUnique({
+      where: { id: fixture.order.id },
+      select: { status: true },
+    });
+    const booking = await prisma.booking.findUnique({
+      where: { id: fixture.booking.id },
+      select: { status: true },
+    });
+    const grantEntries = await prisma.creditLedgerEntry.findMany({
+      where: {
+        clientId: fixture.client.id,
+        orderId: fixture.order.id,
+        entryType: CreditLedgerEntryType.GRANT,
+      },
+    });
+
+    expect(payment?.checkoutSource).toBe(CheckoutSource.CART_CHECKOUT_V1);
+    expect(payment?.status).toBe(PaymentStatus.SUCCEEDED);
+    expect(order?.status).toBe(OrderStatus.PAID);
+    expect(booking?.status).toBe(BookingStatus.CONFIRMED);
+    expect(grantEntries).toHaveLength(1);
+  });
+
+  it("marks NEW_PLAN_PURCHASE cart-source payment failed when expired arrives before any completed event", async () => {
+    const fixture = await createWebhookFixture({
+      paymentSelection: BookingPaymentSelection.NEW_PLAN_PURCHASE,
+    });
+    const checkoutSessionId = `cs_cart_new_plan_expired_first_${Date.now()}`;
+
+    await prisma.payment.update({
+      where: { id: fixture.payment.id },
+      data: {
+        checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+        providerReference: `pi_cart_new_plan_expired_first_${Date.now()}`,
+        stripeCheckoutSessionId: checkoutSessionId,
+      },
+    });
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.expired",
+      data: {
+        object: {
+          id: checkoutSessionId,
+          metadata: { source: "CART_CHECKOUT_V1" },
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(response.status).toBe(200);
+
+    const payment = await prisma.payment.findUnique({
+      where: { id: fixture.payment.id },
+      select: { status: true, checkoutSource: true },
+    });
+    const order = await prisma.order.findUnique({
+      where: { id: fixture.order.id },
+      select: { status: true },
+    });
+    const booking = await prisma.booking.findUnique({
+      where: { id: fixture.booking.id },
+      select: { status: true },
+    });
+    const grantEntries = await prisma.creditLedgerEntry.findMany({
+      where: {
+        clientId: fixture.client.id,
+        orderId: fixture.order.id,
+        entryType: CreditLedgerEntryType.GRANT,
+      },
+    });
+
+    expect(payment?.checkoutSource).toBe(CheckoutSource.CART_CHECKOUT_V1);
+    expect(payment?.status).toBe(PaymentStatus.FAILED);
+    expect(order?.status).toBe(OrderStatus.CANCELLED);
+    expect(booking?.status).toBe(BookingStatus.PENDING);
+    expect(grantEntries).toHaveLength(0);
+  });
+
+  it("marks cart-source payment failed by stripeCheckoutSessionId when providerReference differs", async () => {
+    const fixture = await createCartCheckoutMultiLineFixture();
+    const checkoutSessionId = `cs_cart_expire_${Date.now()}`;
+
+    await prisma.payment.update({
+      where: { id: fixture.payment.id },
+      data: {
+        providerReference: `pi_cart_expire_${Date.now()}`,
+        stripeCheckoutSessionId: checkoutSessionId,
+      },
+    });
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.expired",
+      data: {
+        object: {
+          id: checkoutSessionId,
+          metadata: { source: "CART_CHECKOUT_V1" },
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(response.status).toBe(200);
+
+    const payment = await prisma.payment.findUnique({ where: { id: fixture.payment.id } });
+    const order = await prisma.order.findUnique({ where: { id: fixture.order.id } });
+    expect(payment?.status).toBe(PaymentStatus.FAILED);
+    expect(order?.status).toBe(OrderStatus.CANCELLED);
+  });
+
+  it("marks cart-source payment failed on async_payment_failed by stripeCheckoutSessionId when providerReference differs", async () => {
+    const fixture = await createCartCheckoutMultiLineFixture();
+    const checkoutSessionId = `cs_cart_async_fail_${Date.now()}`;
+
+    await prisma.payment.update({
+      where: { id: fixture.payment.id },
+      data: {
+        providerReference: `pi_cart_async_fail_${Date.now()}`,
+        stripeCheckoutSessionId: checkoutSessionId,
+      },
+    });
+
+    verifyStripeWebhookEventMock.mockReturnValue({
+      type: "checkout.session.async_payment_failed",
+      data: {
+        object: {
+          id: checkoutSessionId,
+          metadata: { source: "CART_CHECKOUT_V1" },
+        },
+      },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "sig_test" },
+        body: "{}",
+      }),
+    );
+    expect(response.status).toBe(200);
+
+    const payment = await prisma.payment.findUnique({ where: { id: fixture.payment.id } });
+    const order = await prisma.order.findUnique({ where: { id: fixture.order.id } });
+    expect(payment?.status).toBe(PaymentStatus.FAILED);
+    expect(order?.status).toBe(OrderStatus.CANCELLED);
   });
 
   describe("webhook dedupe", () => {

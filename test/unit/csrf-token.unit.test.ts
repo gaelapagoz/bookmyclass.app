@@ -82,4 +82,12 @@ describe("csrf token validation", () => {
     expect(result.ok).toBe(false);
     expect(result.reason).toContain("expired");
   });
+
+  it("throws when AUTH_SECRET is missing", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_SECRET", "");
+    vi.stubEnv("APP_URL", "https://uat.bookmyclass.app");
+
+    expect(() => createCsrfTokenFromHeaders(createHeaders())).toThrow("Missing required env var: AUTH_SECRET");
+  });
 });

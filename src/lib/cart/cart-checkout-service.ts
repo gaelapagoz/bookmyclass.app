@@ -95,7 +95,22 @@ type CartCheckoutStartInput = {
   lines: CartLineInput[];
   clientCartVersion: string;
   walletAmountMinor?: number;
+  allowUnverifiedClient?: boolean;
+  redirectUrls?: {
+    successUrl: string;
+    cancelUrl: string;
+  };
+  metadataOverrides?: Record<string, string>;
 };
+
+const BOOKING_CHECKOUT_METADATA_OVERRIDE_KEYS = new Set([
+  "bookingId",
+  "serviceSlug",
+  "paymentSelection",
+  "selectedPriceId",
+  "productId",
+  "priceId",
+]);
 
 type CartCheckoutPaymentRefs = {
   orderId: string;
@@ -319,9 +334,12 @@ function createCompletedResponse(input: {
   };
 }
 
-async function isEligibleCheckoutClient(userId: string): Promise<boolean> {
+async function isEligibleCheckoutClient(input: {
+  userId: string;
+  allowUnverifiedClient?: boolean;
+}): Promise<boolean> {
   const user = await prisma.user.findUnique({
-    where: { id: userId },
+    where: { id: input.userId },
     select: {
       role: true,
       activationStatus: true,
@@ -333,7 +351,7 @@ async function isEligibleCheckoutClient(userId: string): Promise<boolean> {
     user &&
       user.role === Role.CLIENT &&
       user.activationStatus === UserActivationStatus.ACTIVE &&
-      user.emailVerified,
+      (input.allowUnverifiedClient || user.emailVerified),
   );
 }
 
@@ -622,8 +640,14 @@ async function assertCartCheckoutStillEligibleBeforeSession(input: {
   userId: string;
   orderId: string;
   paymentId: string;
+  allowUnverifiedClient?: boolean;
 }) {
-  if (!(await isEligibleCheckoutClient(input.userId))) {
+  if (
+    !(await isEligibleCheckoutClient({
+      userId: input.userId,
+      allowUnverifiedClient: input.allowUnverifiedClient,
+    }))
+  ) {
     throw new Error("Checkout actor is no longer eligible.");
   }
 
@@ -898,7 +922,7 @@ async function resolveOrCreateOrderPayment(input: {
       stripeAmountMinor,
     };
   } catch (error) {
-    await prisma.cartCheckoutIdempotency.update({
+    await prisma.cartCheckoutIdempotency.updateMany({
       where: { id: input.idempotencyRecordId },
       data: {
         state: CART_CHECKOUT_IDEMPOTENCY_STATES.FAILED_BEFORE_WRITE,
@@ -1065,8 +1089,41 @@ function buildWalletAugmentedCartHash(cartHash: string, walletAmountMinor: numbe
   return `${cartHash}|walletAmountMinor=${walletAmountMinor}`;
 }
 
+function resolveSyntheticCheckoutSuccessUrl(input: {
+  template: string;
+  checkoutSessionId: string;
+}): string {
+  if (input.template.includes("{CHECKOUT_SESSION_ID}")) {
+    return input.template.replace(
+      "{CHECKOUT_SESSION_ID}",
+      encodeURIComponent(input.checkoutSessionId),
+    );
+  }
+  return `${input.template}${input.template.includes("?") ? "&" : "?"}session_id=${encodeURIComponent(input.checkoutSessionId)}`;
+}
+
+function sanitizeCartCheckoutMetadataOverrides(
+  overrides: Record<string, string> | undefined,
+): Record<string, string> {
+  if (!overrides) {
+    return {};
+  }
+
+  const sanitized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(overrides)) {
+    if (!BOOKING_CHECKOUT_METADATA_OVERRIDE_KEYS.has(key)) {
+      continue;
+    }
+    sanitized[key] = value;
+  }
+  return sanitized;
+}
+
 export async function startCartCheckout(input: CartCheckoutStartInput): Promise<CartCheckoutResponse> {
-  const eligibleActor = await isEligibleCheckoutClient(input.userId);
+  const eligibleActor = await isEligibleCheckoutClient({
+    userId: input.userId,
+    allowUnverifiedClient: input.allowUnverifiedClient,
+  });
   if (!eligibleActor) {
     const baseCartHash = computeCartHash(input.lines);
     const authFailureHash = `AUTH_FAILURE_V1|cartHash=${buildWalletAugmentedCartHash(baseCartHash, input.walletAmountMinor)}|clientCartVersion=${input.clientCartVersion}`;
@@ -1442,7 +1499,9 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       userId: input.userId,
       orderId: orderPayment.orderId,
       paymentId: orderPayment.stripePaymentId ?? orderPayment.paymentId,
+      allowUnverifiedClient: input.allowUnverifiedClient,
     });
+    const metadataOverrides = sanitizeCartCheckoutMetadataOverrides(input.metadataOverrides);
     const metadata = {
       source: CART_CHECKOUT_SOURCE,
       orderId: orderPayment.orderId,
@@ -1451,6 +1510,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       userId: input.userId,
       redemptionId: orderPayment.redemptionId ?? "",
       giftCardPaymentId: orderPayment.giftCardPaymentId ?? "",
+      ...metadataOverrides,
     };
 
     let stripeParams: Prisma.JsonObject | null = resumedFailedRecord?.stripeRequestPayload as Prisma.JsonObject | null;
@@ -1497,17 +1557,26 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
               };
             });
 
+      const defaultSuccessUrl = cartHasStoreItems
+        ? `${env.appUrl}/store/success?session_id={CHECKOUT_SESSION_ID}`
+        : `${env.appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`;
+      const defaultCancelUrl = cartHasStoreItems
+        ? `${env.appUrl}/cart`
+        : `${env.appUrl}/subscription/cancel`;
+      const successUrl = input.redirectUrls?.successUrl ?? defaultSuccessUrl;
+      const cancelUrl = input.redirectUrls?.cancelUrl ?? defaultCancelUrl;
+
+      if (!successUrl.startsWith(env.appUrl) || !cancelUrl.startsWith(env.appUrl)) {
+        throw new Error("Invalid checkout redirect configuration.");
+      }
+
       stripeParams = {
         mode: validation.composition === "RECURRING_ONLY" ? "subscription" : "payment",
         line_items: stripeLineItems as unknown as Prisma.JsonArray,
         metadata: metadata as unknown as Prisma.JsonObject,
         client_reference_id: input.userId,
-        success_url: cartHasStoreItems
-          ? `${env.appUrl}/store/success?session_id={CHECKOUT_SESSION_ID}`
-          : `${env.appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: cartHasStoreItems
-          ? `${env.appUrl}/cart`
-          : `${env.appUrl}/subscription/cancel`,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
       };
       if (validation.composition === "RECURRING_ONLY") {
         stripeParams.subscription_data = { metadata } as unknown as Prisma.JsonObject;
@@ -1523,9 +1592,14 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
 
     if (process.env.E2E_TEST_MODE === "1") {
       const syntheticCheckoutSessionId = `cs_e2e_${Date.now()}_${orderPayment.paymentId.slice(-8)}`;
-      const syntheticCheckoutUrl = cartHasStoreItems
-        ? `${env.appUrl}/store/success?session_id=${encodeURIComponent(syntheticCheckoutSessionId)}`
-        : `${env.appUrl}/subscription/success?session_id=${encodeURIComponent(syntheticCheckoutSessionId)}`;
+      const syntheticCheckoutUrl = resolveSyntheticCheckoutSuccessUrl({
+        template:
+          input.redirectUrls?.successUrl ??
+          (cartHasStoreItems
+            ? `${env.appUrl}/store/success?session_id={CHECKOUT_SESSION_ID}`
+            : `${env.appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`),
+        checkoutSessionId: syntheticCheckoutSessionId,
+      });
 
       await prisma.payment.update({
         where: { id: orderPayment.stripePaymentId ?? orderPayment.paymentId },
@@ -1630,7 +1704,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       ? CART_CHECKOUT_IDEMPOTENCY_STATES.FAILED_AFTER_WRITE_PRE_STRIPE
       : CART_CHECKOUT_IDEMPOTENCY_STATES.FAILED_STRIPE_UNCERTAIN;
 
-    await prisma.cartCheckoutIdempotency.update({
+    await prisma.cartCheckoutIdempotency.updateMany({
       where: { id: idempotencyRecordId },
       data: {
         state,

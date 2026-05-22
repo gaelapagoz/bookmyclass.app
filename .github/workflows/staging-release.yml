@@ -29,7 +29,6 @@ jobs:
       TARGET_TAG: ${{ github.ref_name }}
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/studio_tag_sanity
       AUTH_SECRET: ci-tag-sanity-auth-secret
-      NEXTAUTH_SECRET: ci-tag-sanity-nextauth-secret
       APP_URL: http://localhost:3000
       AUTH_URL: http://localhost:3000
       NEXTAUTH_URL: http://localhost:3000

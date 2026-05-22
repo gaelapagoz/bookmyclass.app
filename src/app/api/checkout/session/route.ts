@@ -18,7 +18,12 @@ function toStatus(code: CheckoutError["code"]): number {
     case "BOOKING_NOT_PENDING":
       return 409;
     case "ALREADY_SUBSCRIBED":
+    case "IDEMPOTENCY_CONFLICT":
       return 409;
+    case "CHECKOUT_PATH_CONFLICT":
+      return 409;
+    case "CHECKOUT_PATH_PERSISTENCE_FAILED":
+      return 500;
     case "AUTH_REQUIRED":
       return 401;
     case "INVALID_SELECTION":

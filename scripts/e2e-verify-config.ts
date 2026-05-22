@@ -24,6 +24,7 @@ export type E2EConfigVerificationResult = {
 };
 
 export const REQUIRED_E2E_ENV: readonly RequiredE2EEnv[] = [
+  { name: "AUTH_SECRET", description: "Canonical auth secret (AUTH_SECRET)" },
   { name: "E2E_TEST_SECRET", description: "E2E test secret (non-empty)" },
   { name: "STRIPE_PRICE_ID_STORE_GIFT_CARD_25_EUR", description: "Store gift card EUR 25 Stripe price ID" },
   { name: "STRIPE_PRICE_ID_STORE_GIFT_CARD_50_EUR", description: "Store gift card EUR 50 Stripe price ID" },

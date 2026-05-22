@@ -72,7 +72,7 @@ export type BookingPaymentRecommended = {
 
 export type BookingPaymentOptions = {
   bookingId: string;
-  bookingIntent: "SINGLE_BOOKING" | "USE_PLAN";
+  bookingIntent: "SINGLE_BOOKING" | "USE_ENTITLEMENT";
   existingPlans: ExistingPlanOption[];
   newPlanOptions: NewPlanOption[];
   selected: {
@@ -90,7 +90,7 @@ export type BookingPaymentOptions = {
 };
 
 export type BookingPaymentOptionsPreview = {
-  bookingIntent: "SINGLE_BOOKING" | "USE_PLAN";
+  bookingIntent: "SINGLE_BOOKING" | "USE_ENTITLEMENT";
   existingPlans: ExistingPlanOption[];
   newPlanOptions: NewPlanOption[];
   singleSession: SingleSessionOption;
@@ -114,7 +114,7 @@ type PlanSummary = {
 };
 
 type BookingForOptions = {
-  bookingIntent: "SINGLE_BOOKING" | "USE_PLAN";
+  bookingIntent: "SINGLE_BOOKING" | "USE_ENTITLEMENT";
   clientId: string | null;
   classType: {
     categorySlug: string;
@@ -196,7 +196,6 @@ export class BookingPaymentOptionsError extends Error {
     super(message);
   }
 }
-
 
 function formatPurchaseOptionDisplayName(input: { productName: string }): string {
   return input.productName;
@@ -1128,11 +1127,11 @@ export async function getBookingPaymentOptions(params: {
 }
 
 export async function getBookingPaymentOptionsPreview(params: {
-  bookingIntent?: "SINGLE_BOOKING" | "USE_PLAN";
+  bookingIntent?: "SINGLE_BOOKING" | "USE_ENTITLEMENT";
   serviceSlug: string;
   userId: string | null;
 }): Promise<BookingPaymentOptionsPreview> {
-  const bookingIntent = params.bookingIntent ?? "USE_PLAN";
+  const bookingIntent = params.bookingIntent ?? "USE_ENTITLEMENT";
   const scopeInfo = await getServiceScopeInfo(params.serviceSlug);
   if (!scopeInfo) {
     throw new BookingPaymentOptionsError("BOOKING_NOT_FOUND", "Service was not found.");

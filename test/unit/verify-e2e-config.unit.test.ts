@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { verifyE2EConfig } from "../../scripts/e2e-verify-config";
 
 const completeEnv = {
+  AUTH_SECRET: "auth-secret",
   E2E_TEST_SECRET: "e2e-secret",
   STRIPE_PRICE_ID_STORE_GIFT_CARD_25_EUR: "price_test_gift_25",
   STRIPE_PRICE_ID_STORE_GIFT_CARD_50_EUR: "price_test_gift_50",
@@ -21,6 +22,17 @@ describe("verifyE2EConfig", () => {
 
     expect(result.ok).toBe(false);
     expect(result.missing.join("\n")).toContain("STRIPE_PRICE_ID_STORE_MERCH_STUDIO_TOTE");
+  });
+
+  it("fails when AUTH_SECRET is missing even if legacy NEXTAUTH_SECRET is present", () => {
+    const result = verifyE2EConfig({
+      ...completeEnv,
+      AUTH_SECRET: "",
+      NEXTAUTH_SECRET: "legacy-secret",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.missing.join("\n")).toContain("AUTH_SECRET");
   });
 
   it("does not require historical Store feature flags", () => {

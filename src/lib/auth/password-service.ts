@@ -1,6 +1,7 @@
 import { UserActivationStatus } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import { compare, hash } from "bcryptjs";
+import { getRequiredAuthSecret } from "@/lib/auth/auth-secret";
 import { enqueuePasswordResetEmailFastLane, resolveAppUrl } from "@/lib/auth/auth-email-fast-lane-service";
 import { createInMemoryTtlCache } from "@/lib/cache/in-memory-ttl-cache";
 import { prisma } from "@/lib/db";
@@ -9,7 +10,7 @@ const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 const PASSWORD_RESET_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const PASSWORD_VERIFY_CACHE_TTL_MS = 30_000;
-const PASSWORD_VERIFY_CACHE_SECRET = process.env.AUTH_SECRET ?? "password-verify-cache-fallback";
+const PASSWORD_VERIFY_CACHE_SECRET = getRequiredAuthSecret();
 const passwordVerifyCache = createInMemoryTtlCache<boolean>({
   defaultTtlMs: PASSWORD_VERIFY_CACHE_TTL_MS,
 });

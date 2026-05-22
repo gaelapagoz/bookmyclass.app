@@ -27,7 +27,7 @@ export async function GET(request: Request) {
   if (
     bookingIntent &&
     bookingIntent !== BookingIntent.SINGLE_BOOKING &&
-    bookingIntent !== BookingIntent.USE_PLAN
+    bookingIntent !== BookingIntent.USE_ENTITLEMENT
   ) {
     return Response.json({ error: "Invalid bookingIntent." }, { status: 400 });
   }

@@ -596,7 +596,7 @@ async function seedProductionScheduleAndBookings(input: {
       const cancellationEligibleUntilAt = new Date(session.startsAt.getTime() - 24 * 60 * 60 * 1000);
 
       const booking = await prisma.booking.create({
-        data: { clientId: client.id, studioSessionId: session.id, orderId: entitlement.orderId, status: BookingStatus.CONFIRMED, bookingIntent: BookingIntent.USE_PLAN, paymentSelection: BookingPaymentSelection.EXISTING_PLAN, selectedEntitlementId: entitlement.id, selectedPriceId: entitlement.priceId, bookedAt, customerName: client.name, customerEmail: client.email, consentTermsAccepted: true, consentPrivacyAccepted: true, consentAcceptedAt: bookedAt, cancellationEligibleUntilAt, cancelledAt: null, creditRefundedAt: null },
+        data: { clientId: client.id, studioSessionId: session.id, orderId: entitlement.orderId, status: BookingStatus.CONFIRMED, bookingIntent: BookingIntent.USE_ENTITLEMENT, paymentSelection: BookingPaymentSelection.EXISTING_PLAN, selectedEntitlementId: entitlement.id, selectedPriceId: entitlement.priceId, bookedAt, customerName: client.name, customerEmail: client.email, consentTermsAccepted: true, consentPrivacyAccepted: true, consentAcceptedAt: bookedAt, cancellationEligibleUntilAt, cancelledAt: null, creditRefundedAt: null },
       });
       bookedPairs.add(pairKey);
 

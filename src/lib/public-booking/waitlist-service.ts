@@ -475,7 +475,7 @@ async function processWaitlistPromotionsForSession(tx: DbClient, input: {
         clientId: candidate.clientId,
         studioSessionId: session.id,
         status: BookingStatus.CONFIRMED,
-        bookingIntent: BookingIntent.USE_PLAN,
+        bookingIntent: BookingIntent.USE_ENTITLEMENT,
         paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
         selectedEntitlementId: coverage.selectedEntitlementId,
         selectedPriceId: null,

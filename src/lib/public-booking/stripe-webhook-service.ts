@@ -795,11 +795,34 @@ async function upsertSyntheticSubscriptionContractForE2ETests(input: {
 async function ensureCartOrderOwnershipFromPersistedItems(input: {
   orderId: string;
   clientId: string;
+  booking: {
+    id: string;
+    paymentSelection: BookingPaymentSelection | null;
+    selectedPriceId: string | null;
+  } | null;
 }) {
+  const bookingSelection = input.booking?.paymentSelection ?? null;
+  const shouldConsumeForBooking =
+    bookingSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE ||
+    bookingSelection === BookingPaymentSelection.SINGLE_SESSION;
+
+  if (input.booking && shouldConsumeForBooking && input.booking.selectedPriceId) {
+    await ensureOwnershipForSuccessfulPricePurchase({
+      clientId: input.clientId,
+      bookingId: input.booking.id,
+      enforceBookingSelectionMatch: true,
+      orderId: input.orderId,
+      selectedPriceId: input.booking.selectedPriceId,
+      consumeCreditForBooking: true,
+    });
+  }
+
   await fulfillPaidCartOrder({
     orderId: input.orderId,
     clientId: input.clientId,
     idempotencyKeyPrefix: "stripe-fulfillment",
+    grantEntitlements: !(input.booking && shouldConsumeForBooking),
+    issueGiftCardCodes: !(input.booking && shouldConsumeForBooking),
   });
 }
 
@@ -894,6 +917,7 @@ async function ensureCatalogPaymentForCompletedSession(input: {
             id: true,
             status: true,
             paymentSelection: true,
+            selectedPriceId: true,
             clientId: true,
             orderId: true,
           },
@@ -911,7 +935,13 @@ async function markPaymentFailedByCheckoutSession(input: {
 }) {
   logInfo("mark payment failed", input);
   const payment = await prisma.payment.findFirst({
-    where: { providerReference: input.checkoutSessionId, provider: PaymentProvider.STRIPE },
+    where: {
+      provider: PaymentProvider.STRIPE,
+      OR: [
+        { providerReference: input.checkoutSessionId },
+        { stripeCheckoutSessionId: input.checkoutSessionId },
+      ],
+    },
     select: { id: true, status: true, orderId: true },
   });
 
@@ -1031,6 +1061,7 @@ async function handleCheckoutCompleted(
               id: true,
               status: true,
               paymentSelection: true,
+              selectedPriceId: true,
               clientId: true,
               orderId: true,
             },
@@ -1050,6 +1081,7 @@ async function handleCheckoutCompleted(
               id: true,
               status: true,
               paymentSelection: true,
+              selectedPriceId: true,
               clientId: true,
               orderId: true,
             },
@@ -1074,6 +1106,7 @@ async function handleCheckoutCompleted(
             id: true,
             status: true,
             paymentSelection: true,
+            selectedPriceId: true,
             clientId: true,
             orderId: true,
           },
@@ -1344,6 +1377,13 @@ async function handleCheckoutCompleted(
         await ensureCartOrderOwnershipFromPersistedItems({
           orderId,
           clientId: resolvedClientId,
+          booking: booking
+            ? {
+                id: booking.id,
+                paymentSelection: booking.paymentSelection,
+                selectedPriceId: booking.selectedPriceId ?? selectedPriceIdFromMetadata,
+              }
+            : null,
         });
       }
     }

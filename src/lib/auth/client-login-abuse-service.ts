@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { AdminLoginAbuseKeyType } from "@prisma/client";
+import { getRequiredAuthSecret } from "@/lib/auth/auth-secret";
 import { prisma } from "@/lib/db";
 
 const DEFAULT_WINDOW_MS = 15 * 60 * 1000;
@@ -27,7 +28,7 @@ const CLIENT_LOGIN_LOCKOUT_THRESHOLD = parsePositiveIntEnv(
 );
 const CLIENT_LOGIN_LOCKOUT_MS = parsePositiveIntEnv("CLIENT_LOGIN_LOCKOUT_MS", DEFAULT_LOCKOUT_MS);
 
-const CLIENT_LOGIN_ABUSE_HASH_SECRET = process.env.AUTH_SECRET ?? "client-login-abuse-fallback";
+const CLIENT_LOGIN_ABUSE_HASH_SECRET = getRequiredAuthSecret();
 
 type ClientLoginAbuseBucket = {
   keyType: AdminLoginAbuseKeyType;

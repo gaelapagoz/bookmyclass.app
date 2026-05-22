@@ -21,6 +21,7 @@ import { resetDb } from "./helpers/reset-db";
 
 const createStripeCheckoutSessionMock = vi.fn();
 const retrieveStripeCheckoutSessionMock = vi.fn();
+const lockBookingCheckoutPathMock = vi.fn();
 
 vi.mock("../../src/auth", () => ({
   auth: vi.fn(async () => null),
@@ -52,6 +53,42 @@ vi.mock("../../src/lib/payments/stripe", () => ({
   }),
 }));
 
+vi.mock("@/lib/payments/stripe", () => ({
+  getStripeServerEnv: () => ({
+    appUrl: "http://localhost:3000",
+    secretKey: "sk_test_123",
+    webhookSecret: "whsec_123",
+  }),
+  getStripePublicEnv: () => ({
+    publishableKey: "pk_test_123",
+  }),
+  getStripeEnv: () => ({
+    appUrl: "http://localhost:3000",
+    publishableKey: "pk_test_123",
+    secretKey: "sk_test_123",
+    webhookSecret: "whsec_123",
+  }),
+  createStripeCheckoutSessionWithIdempotency: (...args: unknown[]) =>
+    createStripeCheckoutSessionMock(...args),
+  getStripeClient: () => ({
+    checkout: {
+      sessions: {
+        retrieve: (...args: unknown[]) => retrieveStripeCheckoutSessionMock(...args),
+      },
+    },
+  }),
+}));
+
+vi.mock("../../src/lib/public-booking/checkout-path-lock", async () => {
+  const actual = await vi.importActual<typeof import("../../src/lib/public-booking/checkout-path-lock")>(
+    "../../src/lib/public-booking/checkout-path-lock",
+  );
+  return {
+    ...actual,
+    lockBookingCheckoutPath: (...args: unknown[]) => lockBookingCheckoutPathMock(...args),
+  };
+});
+
 import { auth } from "../../src/auth";
 import { POST as createCheckoutSession } from "../../src/app/api/checkout/session/route";
 
@@ -68,132 +105,135 @@ async function createBookingWithSelection(input: {
   withClient?: boolean;
   stripePriceId?: string | null;
 }) {
-  const category = await createClassCategory(prisma, {
-    name: "Yoga Collective",
-    slug: "yoga-collective",
-    sortOrder: 1,
-    isActive: true,
-  });
-  const classType = await createClassType(prisma, {
-    categoryId: category.id,
-    name: "Vinyasa Yoga",
-    slug: `vinyasa-${Date.now()}`,
-    sortOrder: 1,
-    isActive: true,
-    isVisible: true,
-  });
-  const teacher = await prisma.user.create({
-    data: {
-      name: "Teacher",
-      email: `teacher.checkout.${Date.now()}@example.test`,
-      role: Role.TEACHER,
-    },
-  });
-  const template = await prisma.classTemplate.create({
-    data: {
-      classTypeId: classType.id,
-      defaultTeacherId: teacher.id,
-      title: "Vinyasa Template",
-      slug: `vinyasa-template-checkout-${Date.now()}`,
-      defaultCapacity: 12,
-      defaultDurationMinutes: 60,
-      isActive: true,
-      isPublished: true,
-    },
-  });
-
-  const startsAt = new Date();
-  startsAt.setUTCDate(startsAt.getUTCDate() + 3);
-  startsAt.setUTCHours(18, 0, 0, 0);
-
-  const session = await prisma.studioSession.create({
-    data: {
-      classTemplateId: template.id,
-      classTypeId: classType.id,
-      teacherId: teacher.id,
-      title: "Vinyasa Session",
-      startsAt,
-      endsAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
-      capacity: 12,
-      status: StudioSessionStatus.SCHEDULED,
-      isPublished: true,
-    },
-  });
-
-  const productType =
-    input.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE
-      ? ProductType.CLASS_PACK
-      : ProductType.DROP_IN_CLASS;
-  const product = await prisma.product.create({
-    data: {
-      name: productType === ProductType.CLASS_PACK ? "10-Class Pack" : "Drop-In Class",
-      slug: `${productType.toLowerCase()}-${Date.now()}`,
-      productType,
-      isActive: true,
-      isArchived: false,
+  const unique = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+  return prisma.$transaction(async (tx) => {
+    const category = await createClassCategory(tx, {
+      name: "Yoga Collective",
+      slug: `yoga-collective-${unique}`,
       sortOrder: 1,
-    },
-  });
-  const price = await prisma.price.create({
-    data: {
-      productId: product.id,
-      lookupKey: `${product.slug}-price`,
-      name: "Standard Price",
-      priceType: PriceType.ONE_TIME,
-      currencyCode: "EUR",
-      unitAmountMinor: input.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE ? 15000 : 2200,
-      stripePriceId:
-        input.stripePriceId === undefined ? `price_checkout_${Date.now()}` : input.stripePriceId,
-      stripeSyncStatus: StripeSyncStatus.SYNCED,
       isActive: true,
-      isArchived: false,
-    },
-  });
-  await prisma.entitlementRule.create({
-    data: {
-      productId: product.id,
-      entitlementType:
-        input.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE
-          ? EntitlementType.CREDIT_PACK
-          : EntitlementType.SINGLE_USE,
-      entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
-      quantity: input.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE ? 10 : 1,
+    });
+    const classType = await createClassType(tx, {
+      categoryId: category.id,
+      name: "Vinyasa Yoga",
+      slug: `vinyasa-${unique}`,
+      sortOrder: 1,
       isActive: true,
-    },
+      isVisible: true,
+    });
+    const teacher = await tx.user.create({
+      data: {
+        name: "Teacher",
+        email: `teacher.checkout.${unique}@example.test`,
+        role: Role.TEACHER,
+      },
+    });
+    const template = await tx.classTemplate.create({
+      data: {
+        classTypeId: classType.id,
+        defaultTeacherId: teacher.id,
+        title: "Vinyasa Template",
+        slug: `vinyasa-template-checkout-${unique}`,
+        defaultCapacity: 12,
+        defaultDurationMinutes: 60,
+        isActive: true,
+        isPublished: true,
+      },
+    });
+
+    const startsAt = new Date();
+    startsAt.setUTCDate(startsAt.getUTCDate() + 3);
+    startsAt.setUTCHours(18, 0, 0, 0);
+
+    const session = await tx.studioSession.create({
+      data: {
+        classTemplateId: template.id,
+        classTypeId: classType.id,
+        teacherId: teacher.id,
+        title: "Vinyasa Session",
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
+        capacity: 12,
+        status: StudioSessionStatus.SCHEDULED,
+        isPublished: true,
+      },
+    });
+
+    const productType =
+      input.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE
+        ? ProductType.CLASS_PACK
+        : ProductType.DROP_IN_CLASS;
+    const product = await tx.product.create({
+      data: {
+        name: productType === ProductType.CLASS_PACK ? "10-Class Pack" : "Drop-In Class",
+        slug: `${productType.toLowerCase()}-${unique}`,
+        productType,
+        isActive: true,
+        isArchived: false,
+        sortOrder: 1,
+      },
+    });
+    const price = await tx.price.create({
+      data: {
+        productId: product.id,
+        lookupKey: `${product.slug}-price-${unique}`,
+        name: "Standard Price",
+        priceType: PriceType.ONE_TIME,
+        currencyCode: "EUR",
+        unitAmountMinor: input.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE ? 15000 : 2200,
+        stripePriceId:
+          input.stripePriceId === undefined ? `price_checkout_${unique}` : input.stripePriceId,
+        stripeSyncStatus: StripeSyncStatus.SYNCED,
+        isActive: true,
+        isArchived: false,
+      },
+    });
+    await tx.entitlementRule.create({
+      data: {
+        productId: product.id,
+        entitlementType:
+          input.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE
+            ? EntitlementType.CREDIT_PACK
+            : EntitlementType.SINGLE_USE,
+        entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+        quantity: input.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE ? 10 : 1,
+        isActive: true,
+      },
+    });
+
+    const client = input.withClient
+      ? await tx.user.create({
+          data: {
+            name: "Client",
+            email: `client.checkout.${unique}@example.test`,
+            role: Role.CLIENT,
+          },
+        })
+      : null;
+
+    const booking = await tx.booking.create({
+      data: {
+        studioSessionId: session.id,
+        clientId: client?.id ?? null,
+        status: BookingStatus.PENDING,
+        paymentSelection: input.paymentSelection,
+        selectedPriceId: price.id,
+        draftAmountMinor: price.unitAmountMinor,
+        draftCurrencyCode: "EUR",
+        customerName: "Guest User",
+        customerEmail: "guest@example.test",
+        customerPhone: "+32000000000",
+        consentTermsAccepted: true,
+        consentPrivacyAccepted: true,
+        consentAcceptedAt: new Date(),
+      },
+    });
+
+    return { booking, client, price, serviceSlug: classType.slug };
   });
-
-  const client = input.withClient
-    ? await prisma.user.create({
-        data: {
-          name: "Client",
-          email: `client.checkout.${Date.now()}@example.test`,
-          role: Role.CLIENT,
-        },
-      })
-    : null;
-
-  const booking = await prisma.booking.create({
-    data: {
-      studioSessionId: session.id,
-      clientId: client?.id ?? null,
-      status: BookingStatus.PENDING,
-      paymentSelection: input.paymentSelection,
-      selectedPriceId: price.id,
-      draftAmountMinor: price.unitAmountMinor,
-      draftCurrencyCode: "EUR",
-      customerName: "Guest User",
-      customerEmail: "guest@example.test",
-      customerPhone: "+32000000000",
-      consentTermsAccepted: true,
-      consentPrivacyAccepted: true,
-      consentAcceptedAt: new Date(),
-    },
-  });
-
-  return { booking, client, price, serviceSlug: classType.slug };
 }
 
-describe("POST /api/checkout/session", () => {
+describe.sequential("POST /api/checkout/session", { timeout: 20000 }, () => {
   beforeEach(async () => {
     createStripeCheckoutSessionMock.mockReset();
     retrieveStripeCheckoutSessionMock.mockReset();
@@ -205,6 +245,13 @@ describe("POST /api/checkout/session", () => {
       id,
       url: "https://checkout.stripe.com/pay/cs_test_123",
     }));
+    const actual = await vi.importActual<typeof import("../../src/lib/public-booking/checkout-path-lock")>(
+      "../../src/lib/public-booking/checkout-path-lock",
+    );
+    lockBookingCheckoutPathMock.mockReset();
+    lockBookingCheckoutPathMock.mockImplementation(actual.lockBookingCheckoutPath);
+    delete process.env.CHECKOUT_CANONICAL_BOOKING_SINGLE_SESSION_ENABLED;
+    delete process.env.CHECKOUT_CANONICAL_BOOKING_NEW_PLAN_ENABLED;
     vi.mocked(auth).mockResolvedValue(null);
     await resetDb();
   });
@@ -264,7 +311,7 @@ describe("POST /api/checkout/session", () => {
     await expect(response.json()).resolves.toMatchObject({ code: "CSRF_ORIGIN_MISMATCH" });
   });
 
-  it("creates checkout session for SINGLE_SESSION and creates payment record", async () => {
+  it("creates checkout session for SINGLE_SESSION on canonical path by default", async () => {
     const fixture = await createBookingWithSelection({
       paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
       withClient: true,
@@ -301,9 +348,10 @@ describe("POST /api/checkout/session", () => {
 
     const booking = await prisma.booking.findUnique({
       where: { id: fixture.booking.id },
-      select: { orderId: true },
+      select: { orderId: true, checkoutPath: true },
     });
     expect(booking?.orderId).toBeTruthy();
+    expect(booking?.checkoutPath).toBe("CANONICAL_CART");
 
     const order = await prisma.order.findUnique({
       where: { id: booking?.orderId ?? "" },
@@ -316,6 +364,7 @@ describe("POST /api/checkout/session", () => {
     expect(stripeArgs?.params?.line_items?.[0]?.price).toBe(fixture.price.stripePriceId);
     expect(stripeArgs?.params?.line_items?.[0]?.quantity).toBe(1);
   });
+
 
   it("creates checkout session for NEW_PLAN_PURCHASE when authenticated", async () => {
     const fixture = await createBookingWithSelection({
@@ -341,6 +390,151 @@ describe("POST /api/checkout/session", () => {
     );
 
     expect(response.status).toBe(200);
+    const booking = await prisma.booking.findUnique({
+      where: { id: fixture.booking.id },
+      select: { checkoutPath: true },
+    });
+    expect(booking?.checkoutPath).toBe("CANONICAL_CART");
+  });
+
+  it("keeps NEW_PLAN_PURCHASE on canonical cart path when legacy rollout flag is enabled", async () => {
+    process.env.CHECKOUT_CANONICAL_BOOKING_NEW_PLAN_ENABLED = "1";
+
+    const fixture = await createBookingWithSelection({
+      paymentSelection: BookingPaymentSelection.NEW_PLAN_PURCHASE,
+      withClient: true,
+    });
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: fixture.client!.id,
+        name: fixture.client!.name,
+        email: fixture.client!.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+    const dbClient = await prisma.user.findUnique({
+      where: { id: fixture.client!.id },
+      select: { emailVerified: true },
+    });
+    expect(dbClient?.emailVerified).toBeNull();
+
+    const response = await createCheckoutSession(
+      new Request("http://localhost/api/checkout/session", {
+        method: "POST",
+        headers: sameOriginJsonHeaders,
+        body: JSON.stringify({ bookingId: fixture.booking.id }),
+      }),
+    );
+    const body = (await response.json()) as {
+      checkout?: { checkoutUrl?: string; paymentId?: string };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.checkout?.checkoutUrl).toContain("checkout.stripe.com");
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: fixture.booking.id },
+      select: { orderId: true, checkoutPath: true, status: true },
+    });
+    expect(booking?.checkoutPath).toBe("CANONICAL_CART");
+    expect(booking?.orderId).toBeTruthy();
+    expect(booking?.status).toBe(BookingStatus.PENDING);
+
+    const payment = await prisma.payment.findFirst({
+      where: { id: body.checkout?.paymentId ?? "" },
+      select: { bookingId: true, checkoutSource: true, orderId: true, status: true },
+    });
+    expect(payment?.bookingId).toBe(fixture.booking.id);
+    expect(payment?.checkoutSource).toBe("CART_CHECKOUT_V1");
+    expect(payment?.orderId).toBe(booking?.orderId ?? null);
+    expect(payment?.status).toBe(PaymentStatus.PENDING);
+
+    const stripeArgs = createStripeCheckoutSessionMock.mock.calls[0]?.[0] as
+      | {
+          params?: {
+            success_url?: string;
+            cancel_url?: string;
+            metadata?: Record<string, string>;
+          };
+        }
+      | undefined;
+    expect(stripeArgs?.params?.success_url).toContain(
+      `/book-a-class/${fixture.serviceSlug}/payment/success?bookingId=${fixture.booking.id}&session_id={CHECKOUT_SESSION_ID}`,
+    );
+    expect(stripeArgs?.params?.cancel_url).toContain(
+      `/book-a-class/${fixture.serviceSlug}/payment/cancel?bookingId=${fixture.booking.id}`,
+    );
+    expect(stripeArgs?.params?.metadata?.paymentSelection).toBe("NEW_PLAN_PURCHASE");
+    expect(stripeArgs?.params?.metadata?.source).toBe("CART_CHECKOUT_V1");
+  }, 15000);
+
+  it("fails closed when booking checkoutPath is locked to LEGACY_BOOKING", async () => {
+    const fixture = await createBookingWithSelection({
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+      withClient: true,
+    });
+    await prisma.booking.update({
+      where: { id: fixture.booking.id },
+      data: { checkoutPath: "LEGACY_BOOKING" as never },
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: fixture.client!.id,
+        name: fixture.client!.name,
+        email: fixture.client!.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await createCheckoutSession(
+      new Request("http://localhost/api/checkout/session", {
+        method: "POST",
+        headers: sameOriginJsonHeaders,
+        body: JSON.stringify({ bookingId: fixture.booking.id }),
+      }),
+    );
+    const body = (await response.json()) as { code?: string };
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("CHECKOUT_PATH_CONFLICT");
+    expect(createStripeCheckoutSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns deterministic persistence failure contract when checkoutPath lock persistence fails", async () => {
+    const fixture = await createBookingWithSelection({
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+      withClient: true,
+    });
+    const { BookingCheckoutPathLockError } = await import("../../src/lib/public-booking/checkout-path-lock");
+    lockBookingCheckoutPathMock.mockRejectedValueOnce(
+      new BookingCheckoutPathLockError(
+        "CHECKOUT_PATH_PERSISTENCE_FAILED",
+        "Booking checkout path lock failed to persist.",
+      ),
+    );
+
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: fixture.client!.id,
+        name: fixture.client!.name,
+        email: fixture.client!.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await createCheckoutSession(
+      new Request("http://localhost/api/checkout/session", {
+        method: "POST",
+        headers: sameOriginJsonHeaders,
+        body: JSON.stringify({ bookingId: fixture.booking.id }),
+      }),
+    );
+    const body = (await response.json()) as { code?: string };
+
+    expect(response.status).toBe(500);
+    expect(body.code).toBe("CHECKOUT_PATH_PERSISTENCE_FAILED");
+    expect(createStripeCheckoutSessionMock).not.toHaveBeenCalled();
   });
 
   it("persists booking order/payment totals from selected DB price when draft totals drift", async () => {
@@ -461,6 +655,46 @@ describe("POST /api/checkout/session", () => {
     expect(body.code).toBe("AUTH_REQUIRED");
   });
 
+  it("rejects checkout when authenticated user is TEACHER", async () => {
+    const fixture = await createBookingWithSelection({
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+      withClient: true,
+    });
+    const teacherUser = await prisma.user.create({
+      data: {
+        name: "Teacher Checkout",
+        email: `teacher.checkout.role.${Date.now()}@example.test`,
+        role: Role.TEACHER,
+      },
+    });
+
+    await prisma.booking.update({
+      where: { id: fixture.booking.id },
+      data: { clientId: teacherUser.id },
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: teacherUser.id,
+        name: teacherUser.name,
+        email: teacherUser.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await createCheckoutSession(
+      new Request("http://localhost/api/checkout/session", {
+        method: "POST",
+        headers: sameOriginJsonHeaders,
+        body: JSON.stringify({ bookingId: fixture.booking.id }),
+      }),
+    );
+    const body = (await response.json()) as { code?: string };
+
+    expect(response.status).toBe(401);
+    expect(body.code).toBe("AUTH_REQUIRED");
+  });
+
   it("rejects checkout when authenticated client is inactive", async () => {
     const fixture = await createBookingWithSelection({
       paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
@@ -561,8 +795,108 @@ describe("POST /api/checkout/session", () => {
     });
     expect(orderCount).toBe(1);
     expect(createStripeCheckoutSessionMock).toHaveBeenCalledTimes(1);
-    expect(retrieveStripeCheckoutSessionMock).toHaveBeenCalledTimes(1);
+    expect(retrieveStripeCheckoutSessionMock).toHaveBeenCalledTimes(0);
   });
+
+  it("keeps SINGLE_SESSION canonical retry parity under rollout flag", async () => {
+    process.env.CHECKOUT_CANONICAL_BOOKING_SINGLE_SESSION_ENABLED = "1";
+    const fixture = await createBookingWithSelection({
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+      withClient: true,
+    });
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: fixture.client!.id,
+        name: fixture.client!.name,
+        email: fixture.client!.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const first = await createCheckoutSession(
+      new Request("http://localhost/api/checkout/session", {
+        method: "POST",
+        headers: sameOriginJsonHeaders,
+        body: JSON.stringify({ bookingId: fixture.booking.id }),
+      }),
+    );
+    const second = await createCheckoutSession(
+      new Request("http://localhost/api/checkout/session", {
+        method: "POST",
+        headers: sameOriginJsonHeaders,
+        body: JSON.stringify({ bookingId: fixture.booking.id }),
+      }),
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+
+    const paymentCount = await prisma.payment.count({
+      where: { bookingId: fixture.booking.id, provider: PaymentProvider.STRIPE },
+    });
+    const orderCount = await prisma.order.count({
+      where: { bookings: { some: { id: fixture.booking.id } } },
+    });
+    expect(paymentCount).toBe(1);
+    expect(orderCount).toBe(1);
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: fixture.booking.id },
+      select: { checkoutPath: true },
+    });
+    expect(booking?.checkoutPath).toBe("CANONICAL_CART");
+    expect(createStripeCheckoutSessionMock).toHaveBeenCalledTimes(1);
+  }, 15000);
+
+  it("keeps NEW_PLAN_PURCHASE canonical retry parity under rollout flag", async () => {
+    process.env.CHECKOUT_CANONICAL_BOOKING_NEW_PLAN_ENABLED = "1";
+    const fixture = await createBookingWithSelection({
+      paymentSelection: BookingPaymentSelection.NEW_PLAN_PURCHASE,
+      withClient: true,
+    });
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: fixture.client!.id,
+        name: fixture.client!.name,
+        email: fixture.client!.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const first = await createCheckoutSession(
+      new Request("http://localhost/api/checkout/session", {
+        method: "POST",
+        headers: sameOriginJsonHeaders,
+        body: JSON.stringify({ bookingId: fixture.booking.id }),
+      }),
+    );
+    const second = await createCheckoutSession(
+      new Request("http://localhost/api/checkout/session", {
+        method: "POST",
+        headers: sameOriginJsonHeaders,
+        body: JSON.stringify({ bookingId: fixture.booking.id }),
+      }),
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+
+    const paymentCount = await prisma.payment.count({
+      where: { bookingId: fixture.booking.id, provider: PaymentProvider.STRIPE },
+    });
+    const orderCount = await prisma.order.count({
+      where: { bookings: { some: { id: fixture.booking.id } } },
+    });
+    expect(paymentCount).toBe(1);
+    expect(orderCount).toBe(1);
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: fixture.booking.id },
+      select: { checkoutPath: true },
+    });
+    expect(booking?.checkoutPath).toBe("CANONICAL_CART");
+    expect(createStripeCheckoutSessionMock).toHaveBeenCalledTimes(1);
+  }, 15000);
 
   it("reuses existing Stripe session when idempotency header changes", async () => {
     const fixture = await createBookingWithSelection({
@@ -596,12 +930,12 @@ describe("POST /api/checkout/session", () => {
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
     expect(createStripeCheckoutSessionMock).toHaveBeenCalledTimes(1);
-    expect(retrieveStripeCheckoutSessionMock).toHaveBeenCalledTimes(1);
+    expect(retrieveStripeCheckoutSessionMock).toHaveBeenCalledTimes(0);
 
     const firstCall = createStripeCheckoutSessionMock.mock.calls[0]?.[0] as
       | { idempotencyKey?: string }
       | undefined;
-    expect(firstCall?.idempotencyKey).toContain("booking-checkout:");
+    expect(firstCall?.idempotencyKey).toContain("bookcart_");
     expect(firstCall?.idempotencyKey).not.toContain("booking_idem_AAA");
     expect(firstCall?.idempotencyKey).not.toContain("booking_idem_BBB");
   });
@@ -638,7 +972,7 @@ describe("POST /api/checkout/session", () => {
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
     expect(createStripeCheckoutSessionMock).toHaveBeenCalledTimes(1);
-    expect(retrieveStripeCheckoutSessionMock).toHaveBeenCalledTimes(1);
+    expect(retrieveStripeCheckoutSessionMock).toHaveBeenCalledTimes(0);
   });
 
   it("reuses synthetic E2E checkout session without Stripe retrieval on retry", async () => {
@@ -726,7 +1060,11 @@ describe("POST /api/checkout/session", () => {
       ),
     ]);
 
-    expect([first.status, second.status].sort()).toEqual([200, 200]);
+    const firstBody = (await first.json()) as { code?: string };
+    const secondBody = (await second.json()) as { code?: string };
+    expect([first.status, second.status].sort()).toEqual([200, 409]);
+    const conflictBody = first.status === 409 ? firstBody : secondBody;
+    expect(conflictBody.code).toBe("IDEMPOTENCY_CONFLICT");
 
     const paymentCount = await prisma.payment.count({
       where: { bookingId: fixture.booking.id, provider: PaymentProvider.STRIPE },

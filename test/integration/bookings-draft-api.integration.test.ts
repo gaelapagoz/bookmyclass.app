@@ -323,6 +323,45 @@ describe("POST /api/bookings/draft", () => {
     expect(booking?.status).toBe(BookingStatus.PENDING);
   });
 
+  it("accepts USE_ENTITLEMENT booking intent and persists it", async () => {
+    const fixture = await createSessionFixture();
+    await createAuthenticatedUser("auth.client.entitlement@example.test");
+
+    const response = await createDraft(
+      buildRequest({
+        ...validDraftPayload(fixture),
+        bookingIntent: "USE_ENTITLEMENT",
+      }),
+    );
+    const body = (await response.json()) as {
+      draft: { bookingId: string };
+    };
+    const booking = await prisma.booking.findUnique({
+      where: { id: body.draft.bookingId },
+      select: { bookingIntent: true },
+    });
+
+    expect(response.status).toBe(201);
+    expect(booking?.bookingIntent).toBe("USE_ENTITLEMENT");
+  });
+
+  it("rejects legacy USE_PLAN booking intent after contract", async () => {
+    const fixture = await createSessionFixture();
+    await createAuthenticatedUser("auth.client.legacy-intent@example.test");
+
+    const response = await createDraft(
+      buildRequest({
+        ...validDraftPayload(fixture),
+        bookingIntent: "USE_PLAN",
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Invalid draft booking payload.",
+    });
+  });
+
   it("attaches authenticated user id when available", async () => {
     const fixture = await createSessionFixture();
     const user = await createAuthenticatedUser("auth.client.2@example.test");

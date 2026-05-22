@@ -459,7 +459,7 @@ Evidence label legend used in this file:
 ## 16. Configuration and secrets
 - Auth/session:
   - `AUTH_SECRET` (NextAuth secret).
-  - `NEXTAUTH_SECRET` (legacy/compat auth secret variable in some environments; canonical auth secret is `AUTH_SECRET`).
+  - `NEXTAUTH_SECRET` may still exist in legacy environments but is non-canonical.
   - Evidence status: Confirmed from repo (`src/auth.ts`, `src/lib/marketing/marketing-tracking.ts`).
 - App/runtime:
   - `DATABASE_URL`, `APP_URL`, `NODE_ENV`, `NEXT_RUNTIME`, `UPLOADS_DIR`, `PUBLIC_UPLOADS_BASE_PATH`.
@@ -519,12 +519,12 @@ Evidence label legend used in this file:
   - Evidence status: Confirmed from repo (schema present, route/service usage absent).
 - In-memory rate limiters are process-local.
   - Evidence status: Confirmed from repo (`src/lib/security/rate-limit.ts`).
-- Marketing send path can report send success when `RESEND_API_KEY` is missing.
+- Marketing send failures are captured as explicit failed outcomes (`sent: false` / recipient `FAILED`).
   - Evidence status: Confirmed from repo (`src/lib/marketing/marketing-delivery.ts`).
 - Production documentation conflicts:
   - Conflicting server IPs (`46.62.208.152` vs `37.27.192.11`).
   - Mixed DB naming examples (`bookmyclass-app-db` vs `bookmyclass`).
-  - Mixed auth secret naming in docs (`NEXTAUTH_SECRET`) vs runtime code (`AUTH_SECRET`).
+  - Some older env examples still include non-canonical `NEXTAUTH_SECRET`.
   - Evidence status: Confirmed from deployment/config artifacts (`docs/50_01_setup_server_hetzner.md`, `docs/50_02_bookmyclass_server_setup_updated.md`, `docs/50_10_remote_access_guide.md`, `docs/50_11_db_setup_guide.md`).
 - CI lacks lint gate and deployment automation.
   - Evidence status: Confirmed from repo (`.github/workflows/ci.yml`).

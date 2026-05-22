@@ -2,7 +2,7 @@ import { ServicePricingMode, StudioSessionStatus, Weekday, type Prisma } from "@
 import { prisma } from "../db";
 import { createPerfTrace } from "../monitoring/perf-trace";
 import { createInMemoryTtlCache } from "../cache/in-memory-ttl-cache";
-import { getCanonicalMediaRenderState, getLocalMediaRenderState } from "../media";
+import { getCanonicalMediaRenderState } from "../media";
 
 export type PublicCategory = {
   name: string;
@@ -140,16 +140,10 @@ function toWeekdaySummary(classType: ClassTypeWithSchedule): string {
 }
 
 async function getPublicServiceImageUrl(imageUrl: string | null): Promise<string | null> {
-  if (imageUrl?.startsWith("/uploads/")) {
-    const renderState = await getCanonicalMediaRenderState(imageUrl, { allowedFolders: ["classes"] });
-    return renderState.src;
+  if (!imageUrl?.startsWith("/uploads/")) {
+    return null;
   }
-
-  if (!imageUrl?.startsWith("/images/")) {
-    return imageUrl;
-  }
-
-  const renderState = await getLocalMediaRenderState(imageUrl, { allowedFolders: ["/images/classes"] });
+  const renderState = await getCanonicalMediaRenderState(imageUrl, { allowedFolders: ["classes"] });
   return renderState.src;
 }
 

@@ -33,14 +33,30 @@ export function getStripePublicEnv(): StripePublicEnv {
 }
 
 let stripeClient: Stripe | null = null;
+const stripeClientsByKey = new Map<string, Stripe>();
+
+function createStripeClient(secretKey: string): Stripe {
+  return new Stripe(secretKey, {
+    apiVersion: "2025-08-27.basil",
+  });
+}
+
+export function getStripeClientForSecretKey(secretKey: string): Stripe {
+  const existing = stripeClientsByKey.get(secretKey);
+  if (existing) {
+    return existing;
+  }
+
+  const client = createStripeClient(secretKey);
+  stripeClientsByKey.set(secretKey, client);
+  return client;
+}
 
 export function getStripeClient(): Stripe {
   const env = getStripeServerEnv();
 
   if (!stripeClient) {
-    stripeClient = new Stripe(env.secretKey, {
-      apiVersion: "2025-08-27.basil",
-    });
+    stripeClient = getStripeClientForSecretKey(env.secretKey);
   }
 
   return stripeClient;

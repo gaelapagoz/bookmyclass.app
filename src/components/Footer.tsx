@@ -128,6 +128,7 @@ export default function Footer() {
             width={128}
             height={128}
             className="h-24 w-24 rounded-full border-4 border-black object-cover md:h-32 md:w-32"
+            priority
           />
         </div>
 

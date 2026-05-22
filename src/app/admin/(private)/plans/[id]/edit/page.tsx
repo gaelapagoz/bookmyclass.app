@@ -29,9 +29,9 @@ export default async function AdminPlanEditPage({
   return (
     <section className="space-y-4">
       <header className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-[#1f2735]">Edit Plan</h1>
+        <h1 className="text-2xl font-semibold text-[#1f2735]">Edit Product</h1>
         <Link href="/admin/plans" className="text-sm text-[#2a4f78] underline underline-offset-4">
-          Back to plans
+          Back to products
         </Link>
       </header>
 
@@ -174,7 +174,7 @@ export default async function AdminPlanEditPage({
           </label>
 
           <button type="submit" className="rounded-md bg-[#1d3652] px-4 py-2 text-sm text-white">
-            Update plan
+            Update product
           </button>
         </div>
       </form>

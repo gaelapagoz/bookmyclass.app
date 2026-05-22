@@ -20,5 +20,15 @@ describe("getStripeClient", () => {
     expect(() => getStripeClient()).not.toThrow();
     expect(getStripeClient()).toBe(getStripeClient());
   });
-});
 
+  it("returns stable keyed clients and isolates different keys", async () => {
+    const { getStripeClientForSecretKey } = await import("../../src/lib/payments/stripe");
+
+    const testA1 = getStripeClientForSecretKey("sk_test_key_a");
+    const testA2 = getStripeClientForSecretKey("sk_test_key_a");
+    const testB = getStripeClientForSecretKey("sk_test_key_b");
+
+    expect(testA1).toBe(testA2);
+    expect(testA1).not.toBe(testB);
+  });
+});

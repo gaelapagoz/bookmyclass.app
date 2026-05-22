@@ -325,7 +325,7 @@ export function BookingDraftForm({ session, initialValues, isAuthenticated }: Bo
             customerMessage,
             bookingIntent:
               selectedPaymentOption.mode === "EXISTING_PLAN"
-                ? "USE_PLAN"
+                ? "USE_ENTITLEMENT"
                 : "SINGLE_BOOKING",
             consentTermsAccepted,
             consentPrivacyAccepted,

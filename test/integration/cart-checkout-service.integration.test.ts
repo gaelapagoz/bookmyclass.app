@@ -121,6 +121,25 @@ describe("cart checkout service actor eligibility", () => {
     expect(response.status).toBe(403);
     expect(response.body.code).toBe("EMAIL_VERIFICATION_REQUIRED");
   });
+
+  it("rejects redirect URL overrides outside APP_URL", async () => {
+    const client = await seedVerifiedClient();
+    const { product, price } = await seedGiftCardProduct(2500);
+
+    const response = await startCartCheckout({
+      userId: client.id,
+      idempotencyKey: `cart_service_redirect_reject_${Date.now()}`,
+      clientCartVersion: "v1",
+      lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+      redirectUrls: {
+        successUrl: "https://evil.example/success",
+        cancelUrl: "https://evil.example/cancel",
+      },
+    });
+
+    expect(response.status).toBe(500);
+    expect(response.body.code).toBe("CHECKOUT_CREATE_FAILED");
+  });
 });
 
 describe("cart checkout service — full-wallet gift card purchase (code-issuance model)", () => {

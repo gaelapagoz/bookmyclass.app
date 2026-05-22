@@ -1,64 +1,66 @@
 import { describe, expect, it } from "vitest";
 
-import { assertCatalogCutoverCanProceed, resolveCatalogCutoverFlags } from "../../src/lib/catalog/cutover-guards";
+import { assertCatalogCutoverCanProceed, resolveCatalogCutoverGuards } from "../../src/lib/catalog/cutover-guards";
 
 describe("catalog cutover controls flags and assertions", () => {
-  it("parses cutover flags with safe defaults", () => {
-    const flags = resolveCatalogCutoverFlags({});
+  it("returns hardcoded guards with legacy flags removed", () => {
+    const guards = resolveCatalogCutoverGuards();
 
-    expect(flags.dbOnlyCheckoutEnabled).toBe(false);
-    expect(flags.rollbackArmed).toBe(false);
-    expect(flags.preCutoverValidatorEnforced).toBe(true);
-    expect(flags.backfillWritesEnabled).toBe(true);
+    expect(guards.validatorEnforced).toBe(true);
+    expect(guards.backfillWritesEnabled).toBe(true);
+    expect(guards.legacyFlagsRemoved).toBe(true);
   });
 
-  it("disables backfill writes when rollback is armed", () => {
-    const flags = resolveCatalogCutoverFlags({
-      CATALOG_DB_ONLY_CHECKOUT_ENABLED: "1",
-      CATALOG_CUTOVER_ROLLBACK_MODE: "1",
-      CATALOG_BACKFILL_WRITES_ENABLED: "1",
-      CATALOG_PRE_CUTOVER_VALIDATOR_ENFORCED: "1",
-    });
+  it("ignores all removed legacy env flags when resolving guards", () => {
+    const snapshot = {
+      CATALOG_DB_ONLY_CHECKOUT_ENABLED: process.env.CATALOG_DB_ONLY_CHECKOUT_ENABLED,
+      CATALOG_CUTOVER_ROLLBACK_MODE: process.env.CATALOG_CUTOVER_ROLLBACK_MODE,
+      CATALOG_PRE_CUTOVER_VALIDATOR_ENFORCED: process.env.CATALOG_PRE_CUTOVER_VALIDATOR_ENFORCED,
+      CATALOG_BACKFILL_WRITES_ENABLED: process.env.CATALOG_BACKFILL_WRITES_ENABLED,
+    };
 
-    expect(flags.rollbackArmed).toBe(true);
-    expect(flags.backfillWritesEnabled).toBe(false);
-  });
+    try {
+      process.env.CATALOG_DB_ONLY_CHECKOUT_ENABLED = "0";
+      process.env.CATALOG_CUTOVER_ROLLBACK_MODE = "1";
+      process.env.CATALOG_PRE_CUTOVER_VALIDATOR_ENFORCED = "0";
+      process.env.CATALOG_BACKFILL_WRITES_ENABLED = "0";
 
-  it("blocks cutover when rollback is armed", () => {
-    expect(() =>
-      assertCatalogCutoverCanProceed({
-        flags: {
-          dbOnlyCheckoutEnabled: true,
-          rollbackArmed: true,
-          preCutoverValidatorEnforced: true,
-          backfillWritesEnabled: false,
-        },
-        validator: {
-          checkedAt: new Date().toISOString(),
-          isGreen: true,
-          metrics: {
-            activePriceCount: 0,
-            missingStripePriceIdCount: 0,
-            unsyncedActivePriceCount: 0,
-            invalidStripePriceIdCount: 0,
-            checkoutReadinessFailureCount: 0,
-            nonArchivedDuplicateStripePriceIdCount: 0,
-          },
-          blockers: [],
-        },
-      }),
-    ).toThrow("CATALOG_CUTOVER_ROLLBACK_ARMED");
+      expect(resolveCatalogCutoverGuards()).toEqual({
+        validatorEnforced: true,
+        backfillWritesEnabled: true,
+        legacyFlagsRemoved: true,
+      });
+    } finally {
+      if (snapshot.CATALOG_DB_ONLY_CHECKOUT_ENABLED === undefined) {
+        delete process.env.CATALOG_DB_ONLY_CHECKOUT_ENABLED;
+      } else {
+        process.env.CATALOG_DB_ONLY_CHECKOUT_ENABLED = snapshot.CATALOG_DB_ONLY_CHECKOUT_ENABLED;
+      }
+
+      if (snapshot.CATALOG_CUTOVER_ROLLBACK_MODE === undefined) {
+        delete process.env.CATALOG_CUTOVER_ROLLBACK_MODE;
+      } else {
+        process.env.CATALOG_CUTOVER_ROLLBACK_MODE = snapshot.CATALOG_CUTOVER_ROLLBACK_MODE;
+      }
+
+      if (snapshot.CATALOG_PRE_CUTOVER_VALIDATOR_ENFORCED === undefined) {
+        delete process.env.CATALOG_PRE_CUTOVER_VALIDATOR_ENFORCED;
+      } else {
+        process.env.CATALOG_PRE_CUTOVER_VALIDATOR_ENFORCED = snapshot.CATALOG_PRE_CUTOVER_VALIDATOR_ENFORCED;
+      }
+
+      if (snapshot.CATALOG_BACKFILL_WRITES_ENABLED === undefined) {
+        delete process.env.CATALOG_BACKFILL_WRITES_ENABLED;
+      } else {
+        process.env.CATALOG_BACKFILL_WRITES_ENABLED = snapshot.CATALOG_BACKFILL_WRITES_ENABLED;
+      }
+    }
   });
 
   it("blocks cutover when validator fails and enforcement is enabled", () => {
     expect(() =>
       assertCatalogCutoverCanProceed({
-        flags: {
-          dbOnlyCheckoutEnabled: true,
-          rollbackArmed: false,
-          preCutoverValidatorEnforced: true,
-          backfillWritesEnabled: true,
-        },
+        guards: resolveCatalogCutoverGuards(),
         validator: {
           checkedAt: new Date().toISOString(),
           isGreen: false,
@@ -76,33 +78,12 @@ describe("catalog cutover controls flags and assertions", () => {
     ).toThrow("CATALOG_CUTOVER_VALIDATOR_FAILED");
   });
 
-  it("blocks cutover when DB-only checkout flag is disabled", () => {
+  it("allows cutover when validator is green", () => {
     expect(() =>
       assertCatalogCutoverCanProceed({
-        flags: {
-          dbOnlyCheckoutEnabled: false,
-          rollbackArmed: false,
-          preCutoverValidatorEnforced: true,
-          backfillWritesEnabled: true,
-        },
+        guards: resolveCatalogCutoverGuards(),
         validator: {
           isGreen: true,
-        },
-      }),
-    ).toThrow("CATALOG_CUTOVER_FLAG_DISABLED");
-  });
-
-  it("allows cutover when validator fails but enforcement is disabled", () => {
-    expect(() =>
-      assertCatalogCutoverCanProceed({
-        flags: {
-          dbOnlyCheckoutEnabled: true,
-          rollbackArmed: false,
-          preCutoverValidatorEnforced: false,
-          backfillWritesEnabled: true,
-        },
-        validator: {
-          isGreen: false,
         },
       }),
     ).not.toThrow();

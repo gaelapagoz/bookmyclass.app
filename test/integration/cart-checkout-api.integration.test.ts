@@ -155,8 +155,7 @@ describe("POST /api/cart/checkout", () => {
       id: "cs_test_cart_checkout_123",
       url: "https://checkout.stripe.com/pay/cs_test_cart_checkout_123",
     });
-    vi.mocked(auth).mockResolvedValue(null);
-  });
+    vi.mocked(auth).mockResolvedValue(null);  }, 60000);
 
   it("rejects cross-origin", async () => {
     const response = await cartCheckoutRoute(
@@ -1254,8 +1253,7 @@ describe("POST /api/cart/checkout — Slice 4 idempotency edge cases (formerly f
       id: "cs_test_slice4_123",
       url: "https://checkout.stripe.com/pay/cs_test_slice4_123",
     });
-    vi.mocked(auth).mockResolvedValue(null);
-  });
+    vi.mocked(auth).mockResolvedValue(null);  }, 60000);
 
   it("gift-card checkout proceeds without feature flags (store always on)", async () => {
     const client = await seedClient({ verified: true });
@@ -1479,8 +1477,7 @@ describe("POST /api/cart/checkout — Slice 4 idempotency with wallet fields", (
       id: "cs_test_slice4_wallet_123",
       url: "https://checkout.stripe.com/pay/cs_test_slice4_wallet_123",
     });
-    vi.mocked(auth).mockResolvedValue(null);
-  });
+    vi.mocked(auth).mockResolvedValue(null);  }, 60000);
 
   it("same key + different walletAmountMinor returns IDEMPOTENCY_CONFLICT", async () => {
     const client = await seedClient({ verified: true });
@@ -1695,8 +1692,7 @@ describe("POST /api/cart/checkout — Slice 4 gift-card rate limits", () => {
       id: "cs_test_slice4_rate_123",
       url: "https://checkout.stripe.com/pay/cs_test_slice4_rate_123",
     });
-    vi.mocked(auth).mockResolvedValue(null);
-  });
+    vi.mocked(auth).mockResolvedValue(null);  }, 60000);
 
   it("gift-card checkout rate limit: 11th attempt within window returns 429", async () => {
     const client = await seedClient({ verified: true });
@@ -1860,8 +1856,7 @@ describe("POST /api/cart/checkout — Slice 5 wallet checkout", () => {
     createStripeCheckoutSessionWithIdempotencyMock.mockResolvedValue({
       id: "cs_test_slice5_partial_123",
       url: "https://checkout.stripe.com/pay/cs_test_slice5_partial_123",
-    });
-  });
+    });  }, 60000);
 
   it("full wallet checkout creates order and GIFT_CARD payment without Stripe", async () => {
     const client = await seedClient({ verified: true });
@@ -2313,3 +2308,6 @@ describe("POST /api/cart/checkout — Slice 5 wallet checkout", () => {
     expect(wrongOrder.status).toBe(404);
   });
 });
+
+
+

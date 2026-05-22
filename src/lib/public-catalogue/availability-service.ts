@@ -10,7 +10,7 @@ import {
   getSiteDateKey,
   getSiteTimeLabel,
 } from "./timezone";
-import { getCanonicalMediaRenderState, getLocalMediaRenderState } from "../media";
+import { getCanonicalMediaRenderState } from "../media";
 import { getSiteTimeZone } from "@/lib/site-settings/site-settings-service";
 
 export type PublicServiceDetail = {
@@ -254,9 +254,7 @@ export async function getPublicServiceDetailBySlug(slug: string): Promise<Public
 
     const imageRenderState = classType.imageUrl?.startsWith("/uploads/")
       ? await getCanonicalMediaRenderState(classType.imageUrl, { allowedFolders: ["classes"] })
-      : classType.imageUrl?.startsWith("/images/")
-        ? await getLocalMediaRenderState(classType.imageUrl, { allowedFolders: ["/images/classes"] })
-        : { src: classType.imageUrl, shouldRenderFallback: !classType.imageUrl };
+      : { src: null, shouldRenderFallback: true };
 
     return {
       id: classType.id,

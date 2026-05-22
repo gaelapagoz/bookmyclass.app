@@ -18,6 +18,14 @@ function hashAdminLoginBucketKey(value: string): string {
   return createHash("sha256").update(`${secret}:${value}`).digest("hex");
 }
 
+function hashClientLoginBucketKey(value: string): string {
+  const secret = process.env.AUTH_SECRET;
+  if (!secret) {
+    throw new Error("Missing AUTH_SECRET for client abuse key hashing in tests.");
+  }
+  return createHash("sha256").update(`${secret}:client-login:${value}`).digest("hex");
+}
+
 function buildAdminLoginBucketFilters(ip: string, normalizedEmail: string) {
   return [
     {
@@ -470,15 +478,13 @@ describe("credentials authorize integration", () => {
 
     expect(blockedResult).toBeNull();
 
-    const secret = process.env.AUTH_SECRET ?? "client-login-abuse-fallback";
     const normalizedEmail = email.toLowerCase();
-    const hashKey = (value: string) => createHash("sha256").update(`${secret}:client-login:${value}`).digest("hex");
     const counters = await prisma.adminLoginAbuseCounter.findMany({
       where: {
         OR: [
-          { keyType: AdminLoginAbuseKeyType.IP, keyHash: hashKey(ip) },
-          { keyType: AdminLoginAbuseKeyType.EMAIL, keyHash: hashKey(normalizedEmail) },
-          { keyType: AdminLoginAbuseKeyType.IP_EMAIL, keyHash: hashKey(`${ip}:${normalizedEmail}`) },
+          { keyType: AdminLoginAbuseKeyType.IP, keyHash: hashClientLoginBucketKey(ip) },
+          { keyType: AdminLoginAbuseKeyType.EMAIL, keyHash: hashClientLoginBucketKey(normalizedEmail) },
+          { keyType: AdminLoginAbuseKeyType.IP_EMAIL, keyHash: hashClientLoginBucketKey(`${ip}:${normalizedEmail}`) },
         ],
       },
     });
@@ -537,15 +543,13 @@ describe("credentials authorize integration", () => {
 
     expect(success).not.toBeNull();
 
-    const secret = process.env.AUTH_SECRET ?? "client-login-abuse-fallback";
     const normalizedEmail = email.toLowerCase();
-    const hashKey = (value: string) => createHash("sha256").update(`${secret}:client-login:${value}`).digest("hex");
     const counters = await prisma.adminLoginAbuseCounter.findMany({
       where: {
         OR: [
-          { keyType: AdminLoginAbuseKeyType.IP, keyHash: hashKey(ip) },
-          { keyType: AdminLoginAbuseKeyType.EMAIL, keyHash: hashKey(normalizedEmail) },
-          { keyType: AdminLoginAbuseKeyType.IP_EMAIL, keyHash: hashKey(`${ip}:${normalizedEmail}`) },
+          { keyType: AdminLoginAbuseKeyType.IP, keyHash: hashClientLoginBucketKey(ip) },
+          { keyType: AdminLoginAbuseKeyType.EMAIL, keyHash: hashClientLoginBucketKey(normalizedEmail) },
+          { keyType: AdminLoginAbuseKeyType.IP_EMAIL, keyHash: hashClientLoginBucketKey(`${ip}:${normalizedEmail}`) },
         ],
       },
     });
@@ -563,13 +567,11 @@ describe("credentials authorize integration", () => {
     const passwordHash = await hash(password, 12);
     const ip = "198.51.100.77";
     const fixedLastSuccessAt = new Date("2026-01-01T00:00:00.000Z");
-    const secret = process.env.AUTH_SECRET ?? "client-login-abuse-fallback";
     const normalizedEmail = email.toLowerCase();
-    const hashKey = (value: string) => createHash("sha256").update(`${secret}:client-login:${value}`).digest("hex");
     const bucketEntries = [
-      { keyType: AdminLoginAbuseKeyType.IP, keyHash: hashKey(ip) },
-      { keyType: AdminLoginAbuseKeyType.EMAIL, keyHash: hashKey(normalizedEmail) },
-      { keyType: AdminLoginAbuseKeyType.IP_EMAIL, keyHash: hashKey(`${ip}:${normalizedEmail}`) },
+      { keyType: AdminLoginAbuseKeyType.IP, keyHash: hashClientLoginBucketKey(ip) },
+      { keyType: AdminLoginAbuseKeyType.EMAIL, keyHash: hashClientLoginBucketKey(normalizedEmail) },
+      { keyType: AdminLoginAbuseKeyType.IP_EMAIL, keyHash: hashClientLoginBucketKey(`${ip}:${normalizedEmail}`) },
     ];
 
     await prisma.user.create({

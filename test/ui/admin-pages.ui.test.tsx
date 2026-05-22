@@ -495,7 +495,7 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Billing")).toBeInTheDocument();
     expect(screen.getByText(/89\.00/)).toBeInTheDocument();
     expect(screen.getByText("Ready")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Create plan" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Create product" })).toBeInTheDocument();
   });
 
   it("renders plans empty state", async () => {
@@ -503,7 +503,7 @@ describe("Admin pages branching", () => {
 
     render(await AdminPlansPage());
 
-    expect(screen.getByText("No plans found.")).toBeInTheDocument();
+    expect(screen.getByText("No products found.")).toBeInTheDocument();
   });
 
   it("renders plans error state", async () => {
@@ -511,7 +511,7 @@ describe("Admin pages branching", () => {
 
     render(await AdminPlansPage());
 
-    expect(screen.getByText("Unable to load plans right now.")).toBeInTheDocument();
+    expect(screen.getByText("Unable to load products right now.")).toBeInTheDocument();
   });
 
   it("renders bookings data state", async () => {

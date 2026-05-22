@@ -344,9 +344,9 @@ describe("booking payment options api", () => {
     await expect(response.json()).resolves.toMatchObject({ code: "SESSION_NOT_BOOKABLE" });
   });
 
-  it("use-plan intent with one eligible plan auto-selects that plan", async () => {
+  it("use-entitlement intent with one eligible plan auto-selects that plan", async () => {
     const fixture = await createFixture({
-      bookingIntent: BookingIntent.USE_PLAN,
+      bookingIntent: BookingIntent.USE_ENTITLEMENT,
       createActivePlanCount: 1,
     });
     vi.mocked(auth).mockResolvedValue({
@@ -369,9 +369,9 @@ describe("booking payment options api", () => {
     expect(body.paymentOptions.ux.requiresChoice).toBe(false);
   });
 
-  it("use-plan intent with no eligible plans guides to buy-plan fallback", async () => {
+  it("use-entitlement intent with no eligible plans guides to buy-plan fallback", async () => {
     const fixture = await createFixture({
-      bookingIntent: BookingIntent.USE_PLAN,
+      bookingIntent: BookingIntent.USE_ENTITLEMENT,
       createActivePlanCount: 0,
     });
     vi.mocked(auth).mockResolvedValue({
@@ -398,7 +398,7 @@ describe("booking payment options api", () => {
 
   it("includes admin-created class-pack plans in new plan options when scope matches", async () => {
     const fixture = await createFixture({
-      bookingIntent: BookingIntent.USE_PLAN,
+      bookingIntent: BookingIntent.USE_ENTITLEMENT,
       createActivePlanCount: 0,
     });
 
@@ -432,7 +432,7 @@ describe("booking payment options api", () => {
 
   it("keeps admin-created private-pack plans out of collective booking options", async () => {
     const fixture = await createFixture({
-      bookingIntent: BookingIntent.USE_PLAN,
+      bookingIntent: BookingIntent.USE_ENTITLEMENT,
       createActivePlanCount: 0,
     });
 
@@ -466,7 +466,7 @@ describe("booking payment options api", () => {
 
   it("backfills a legacy admin class-pack with missing entitlement rule so it appears in collective options", async () => {
     const fixture = await createFixture({
-      bookingIntent: BookingIntent.USE_PLAN,
+      bookingIntent: BookingIntent.USE_ENTITLEMENT,
       createActivePlanCount: 0,
     });
 
@@ -535,7 +535,7 @@ describe("booking payment options api", () => {
 
   it("rejects apply-plan when Origin is cross-site", async () => {
     const fixture = await createFixture({
-      bookingIntent: BookingIntent.USE_PLAN,
+      bookingIntent: BookingIntent.USE_ENTITLEMENT,
       createActivePlanCount: 1,
     });
 
@@ -559,7 +559,7 @@ describe("booking payment options api", () => {
 
   it("rejects apply-plan when both Origin and Referer are missing", async () => {
     const fixture = await createFixture({
-      bookingIntent: BookingIntent.USE_PLAN,
+      bookingIntent: BookingIntent.USE_ENTITLEMENT,
       createActivePlanCount: 1,
     });
 
@@ -583,7 +583,7 @@ describe("booking payment options api", () => {
 
   it("applying active existing plan confirms booking and consumes one credit", async () => {
     const fixture = await createFixture({
-      bookingIntent: BookingIntent.USE_PLAN,
+      bookingIntent: BookingIntent.USE_ENTITLEMENT,
       createActivePlanCount: 1,
     });
     vi.mocked(auth).mockResolvedValue({
@@ -622,7 +622,7 @@ describe("booking payment options api", () => {
 
   it("returns 404 when selected existing plan is not found", async () => {
     const fixture = await createFixture({
-      bookingIntent: BookingIntent.USE_PLAN,
+      bookingIntent: BookingIntent.USE_ENTITLEMENT,
       createActivePlanCount: 1,
     });
     vi.mocked(auth).mockResolvedValue({
@@ -648,7 +648,7 @@ describe("booking payment options api", () => {
 
   it("returns 400 when selected new-plan price is not eligible", async () => {
     const fixture = await createFixture({
-      bookingIntent: BookingIntent.USE_PLAN,
+      bookingIntent: BookingIntent.USE_ENTITLEMENT,
       createActivePlanCount: 0,
     });
     const privateProduct = await prisma.product.create({
@@ -705,7 +705,7 @@ describe("booking payment options api", () => {
   });
   it("keeps credit consume idempotent when existing-plan apply is submitted concurrently", async () => {
     const fixture = await createFixture({
-      bookingIntent: BookingIntent.USE_PLAN,
+      bookingIntent: BookingIntent.USE_ENTITLEMENT,
       createActivePlanCount: 1,
     });
 

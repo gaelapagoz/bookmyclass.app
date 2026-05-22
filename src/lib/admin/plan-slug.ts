@@ -1,4 +1,4 @@
-export function generatePlanSlug(name: string): string {
+export function generateProductSlug(name: string): string {
   return name
     .trim()
     .toLowerCase()
@@ -6,3 +6,5 @@ export function generatePlanSlug(name: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
 }
+
+export const generatePlanSlug = generateProductSlug;

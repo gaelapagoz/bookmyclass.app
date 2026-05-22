@@ -10,7 +10,6 @@ Required values:
 
 - `DATABASE_URL` (must point to a dedicated e2e database)
 - `AUTH_SECRET`
-- `NEXTAUTH_SECRET`
 - `APP_URL`
 - `PORT` (recommended: `3100` to avoid conflicts with local dev server)
 - `STRIPE_SECRET_KEY`

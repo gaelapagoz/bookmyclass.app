@@ -1915,7 +1915,6 @@ function normalizeClassImagePath(value: string | null | undefined): string | nul
   if (trimmed.startsWith("/uploads/")) {
     return assertCanonicalMediaPublicPath(trimmed, ["classes"]);
   }
-
   return assertSafeMediaPublicPath(trimmed, ["/images/classes"]);
 }
 
@@ -3142,7 +3141,7 @@ export async function addSessionAttendeeByManager(input: {
         clientId: clientUser.id,
         studioSessionId: session.id,
         status: BookingStatus.CONFIRMED,
-        bookingIntent: shouldApplyOverride ? BookingIntent.SINGLE_BOOKING : BookingIntent.USE_PLAN,
+        bookingIntent: shouldApplyOverride ? BookingIntent.SINGLE_BOOKING : BookingIntent.USE_ENTITLEMENT,
         paymentSelection: shouldApplyOverride ? null : BookingPaymentSelection.EXISTING_PLAN,
         selectedEntitlementId: shouldApplyOverride ? null : coverage.selectedEntitlementId,
         draftAmountMinor: 0,

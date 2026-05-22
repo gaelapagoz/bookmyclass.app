@@ -1,9 +1,8 @@
-import Stripe from "stripe";
 import { PriceType, ProductType, StripeSyncStatus } from "@prisma/client";
+import type Stripe from "stripe";
 
 import { prisma } from "@/lib/db";
-
-const STRIPE_API_VERSION = "2025-08-27.basil" as const;
+import { getStripeClientForSecretKey } from "@/lib/payments/stripe";
 const GIFT_CARD_MAX_AMOUNT_MINOR = 50_000;
 
 function resolveStripeMode(secretKey: string): "test" | "live" | null {
@@ -99,12 +98,10 @@ async function findOrCreateStripePrice(
       const existing = await stripe.prices.retrieve(price.stripePriceId);
       return { stripePriceId: existing.id, created: false };
     } catch (err: unknown) {
-      if (
-        !(
-          err instanceof Stripe.errors.StripeInvalidRequestError &&
-          err.statusCode === 404
-        )
-      ) {
+      const statusCode = typeof err === "object" && err !== null && "statusCode" in err
+        ? (err as { statusCode?: unknown }).statusCode
+        : undefined;
+      if (statusCode !== 404) {
         throw err;
       }
       // 404: stored price no longer exists in Stripe; fall through to lookup by key.
@@ -245,7 +242,7 @@ export async function attemptStorePriceSyncFromEnv(
   if (mode === null) {
     return { synced: false, reason: "Unrecognized Stripe key format." };
   }
-  if (mode === "live" && !process.env.ALLOW_LIVE_STORE_SYNC) {
+  if (mode === "live" && process.env.ALLOW_LIVE_STORE_SYNC !== "1") {
     return {
       synced: false,
       reason: "Live Stripe key requires ALLOW_LIVE_STORE_SYNC=1 to proceed.",
@@ -253,7 +250,7 @@ export async function attemptStorePriceSyncFromEnv(
   }
 
   try {
-    const stripe = new Stripe(secretKey, { apiVersion: STRIPE_API_VERSION });
+    const stripe = getStripeClientForSecretKey(secretKey);
     return await syncStorePriceToStripe(priceId, stripe);
   } catch {
     return { synced: false, reason: "Unexpected sync initialization error." };

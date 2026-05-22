@@ -99,13 +99,18 @@ enum BookingStatus {
 
 enum BookingIntent {
   SINGLE_BOOKING
-  USE_PLAN
+  USE_ENTITLEMENT
 }
 
 enum BookingPaymentSelection {
   SINGLE_SESSION
   EXISTING_PLAN
   NEW_PLAN_PURCHASE
+}
+
+enum BookingCheckoutPath {
+  LEGACY_BOOKING
+  CANONICAL_CART
 }
 
 enum ServicePricingMode {
@@ -719,6 +724,7 @@ model Booking {
   status                      BookingStatus            @default(CONFIRMED)
   bookingIntent               BookingIntent            @default(SINGLE_BOOKING)
   paymentSelection            BookingPaymentSelection?
+  checkoutPath                BookingCheckoutPath?
   selectedEntitlementId       String?
   selectedPriceId             String?
   draftAmountMinor            Int?

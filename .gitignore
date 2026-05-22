@@ -89,3 +89,5 @@ security-output/
 .tmp_ci_logs
 
 tools
+
+debug.log

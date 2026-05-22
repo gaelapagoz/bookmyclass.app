@@ -3,7 +3,7 @@ import { Prisma, PriceType, Role, StripeSyncStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getStripeClient } from "@/lib/payments/stripe";
 
-import { assertCatalogCutoverCanProceed, resolveCatalogCutoverFlags } from "./cutover-guards";
+import { assertCatalogCutoverCanProceed, resolveCatalogCutoverGuards } from "./cutover-guards";
 import { isCatalogPriceCheckoutReady } from "./checkout-readiness";
 
 const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9_]+$/;
@@ -82,7 +82,7 @@ export type CatalogPreCutoverValidatorReport = {
 };
 
 export type AssertCatalogCutoverCanProceedInput = {
-  flags: ReturnType<typeof resolveCatalogCutoverFlags>;
+  guards: ReturnType<typeof resolveCatalogCutoverGuards>;
   validator: CatalogPreCutoverValidatorReport;
 };
 
@@ -136,15 +136,6 @@ async function resolveStripePriceIdFromLookupKeyViaStripe(lookupKey: string): Pr
 }
 
 export async function runCatalogStripePriceBackfill(input: RunCatalogStripeBackfillInput): Promise<CatalogBackfillReport> {
-  const flags = resolveCatalogCutoverFlags();
-  if (!input.dryRun && flags.rollbackArmed) {
-    throw new Error("CATALOG_BACKFILL_ROLLBACK_ARMED");
-  }
-
-  if (!input.dryRun && !flags.backfillWritesEnabled) {
-    throw new Error("CATALOG_BACKFILL_WRITES_DISABLED");
-  }
-
   const persistEvidence = input.persistEvidence ?? true;
   const actorId = !input.dryRun || persistEvidence ? await assertCatalogOperationalActor(input.actorId) : null;
   const resolveStripePriceIdByLookupKey = input.resolveStripePriceIdByLookupKey ?? resolveStripePriceIdFromLookupKeyViaStripe;
@@ -534,18 +525,14 @@ export async function runCatalogPreCutoverValidator(input?: {
   return report;
 }
 
-export { resolveCatalogCutoverFlags, assertCatalogCutoverCanProceed };
+export { resolveCatalogCutoverGuards, assertCatalogCutoverCanProceed };
 
 export async function captureCatalogCutoverRollbackRehearsal(input: {
   actorId: string | null;
   environment: "UAT" | "LOCAL";
   notes?: string;
-  beforeDbOnlyCheckoutEnabled?: boolean;
 }) {
   const actorId = await assertCatalogOperationalActor(input.actorId);
-  const flags = resolveCatalogCutoverFlags();
-  const beforeDbOnlyCheckoutEnabled = input.beforeDbOnlyCheckoutEnabled ?? flags.dbOnlyCheckoutEnabled;
-  const afterDbOnlyCheckoutEnabled = false;
 
   const recordedAt = new Date().toISOString();
   await prisma.auditLog.create({
@@ -556,14 +543,11 @@ export async function captureCatalogCutoverRollbackRehearsal(input: {
       entityId: null,
       metadata: {
         environment: input.environment,
-        beforeDbOnlyCheckoutEnabled,
-        afterDbOnlyCheckoutEnabled,
-        rollbackArmed: true,
+        legacyFlagsRemoved: true,
         notes: input.notes?.trim() || null,
         recordedAt,
         controlInstructions: {
-          disableCutoverFlag: "CATALOG_DB_ONLY_CHECKOUT_ENABLED=0",
-          armRollback: "CATALOG_CUTOVER_ROLLBACK_MODE=1",
+          rollbackMode: "legacy cutover rollback flags removed",
         },
       },
     },
@@ -572,8 +556,6 @@ export async function captureCatalogCutoverRollbackRehearsal(input: {
   return {
     recordedAt,
     environment: input.environment,
-    beforeDbOnlyCheckoutEnabled,
-    afterDbOnlyCheckoutEnabled,
-    rollbackArmed: true,
+    legacyFlagsRemoved: true,
   };
 }

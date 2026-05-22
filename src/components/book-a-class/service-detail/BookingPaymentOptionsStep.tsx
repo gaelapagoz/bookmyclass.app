@@ -9,7 +9,7 @@ type PaymentSelectionMode = "SINGLE_SESSION" | "EXISTING_PLAN" | "NEW_PLAN_PURCH
 type PaymentOptionsResponse = {
   paymentOptions: {
     bookingId: string;
-    bookingIntent: "SINGLE_BOOKING" | "USE_PLAN";
+    bookingIntent: "SINGLE_BOOKING" | "USE_ENTITLEMENT";
     singleSession: {
       amountMinor: number;
       bookingLabel: string;
@@ -312,7 +312,7 @@ export function BookingPaymentOptionsStep({ bookingId, serviceSlug }: BookingPay
 
   const showChoiceUi = options.ux.requiresChoice || showChoices;
   const showNoPlanHint =
-    options.bookingIntent === "USE_PLAN" && options.existingPlans.length === 0;
+    options.bookingIntent === "USE_ENTITLEMENT" && options.existingPlans.length === 0;
 
   return (
     <section className="mx-auto w-full max-w-5xl px-6 py-12">
@@ -335,7 +335,7 @@ export function BookingPaymentOptionsStep({ bookingId, serviceSlug }: BookingPay
           ) : (
             <p className="mt-2">No option selected yet.</p>
           )}
-          {options.bookingIntent === "USE_PLAN" &&
+          {options.bookingIntent === "USE_ENTITLEMENT" &&
           (options.existingPlans.length > 1 ||
             options.newPlanOptions.length > 1 ||
             (options.existingPlans.length === 0 && options.singleSession !== null)) ? (

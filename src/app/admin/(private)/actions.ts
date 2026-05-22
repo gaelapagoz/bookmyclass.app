@@ -1472,7 +1472,7 @@ export async function createPlanAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    redirectWithError("/admin/plans/new", "Please complete all required plan fields.");
+    redirectWithError("/admin/plans/new", "Please complete all required product fields.");
   }
 
   try {
@@ -1524,7 +1524,7 @@ export async function updatePlanAction(id: string, formData: FormData) {
   });
 
   if (!parsed.success) {
-    redirectWithError(`/admin/plans/${id}/edit`, "Please complete all required plan fields.");
+    redirectWithError(`/admin/plans/${id}/edit`, "Please complete all required product fields.");
   }
 
   try {

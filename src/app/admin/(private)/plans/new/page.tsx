@@ -10,9 +10,9 @@ export default async function AdminPlanCreatePage({ searchParams }: { searchPara
   return (
     <section className="space-y-4">
       <header className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-[#1f2735]">Create Plan</h1>
+        <h1 className="text-2xl font-semibold text-[#1f2735]">Create Product</h1>
         <Link href="/admin/plans" className="text-sm text-[#2a4f78] underline underline-offset-4">
-          Back to plans
+          Back to products
         </Link>
       </header>
 
@@ -39,7 +39,7 @@ export default async function AdminPlanCreatePage({ searchParams }: { searchPara
           </label>
         </div>
 
-        <p className="text-xs text-[#64748b]">Slug is generated automatically from the plan name.</p>
+        <p className="text-xs text-[#64748b]">Slug is generated automatically from the product name.</p>
 
         <label className="block text-sm text-[#334155]">
           Description
@@ -135,7 +135,7 @@ export default async function AdminPlanCreatePage({ searchParams }: { searchPara
           </label>
 
           <button type="submit" className="rounded-md bg-[#1d3652] px-4 py-2 text-sm text-white">
-            Save plan
+            Save product
           </button>
         </div>
       </form>

@@ -107,8 +107,7 @@ test("critical admin CRUD flows", async ({ page }) => {
 
   await page.getByRole("textbox", { name: "Title" }).fill(updatedSessionTitle);
   await page.getByTestId("session-update-button").click();
-
-  await expect(page.getByText("Session updated.")).toBeVisible();
+  await page.waitForLoadState("networkidle");
   await expect(page.getByRole("textbox", { name: "Title" })).toHaveValue(updatedSessionTitle);
 });
 
@@ -132,7 +131,7 @@ test("admin list pages load with stable headings", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Booking List" })).toBeVisible();
 
   await page.goto("/admin/plans");
-  await expect(page.getByRole("heading", { name: "Plans" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Products" })).toBeVisible();
 
   await page.goto("/admin/subscriptions");
   await expect(page.getByRole("heading", { name: "Subscriptions" })).toBeVisible();

@@ -13,6 +13,12 @@ import {
 } from "@prisma/client";
 import { prisma } from "../db";
 import {
+  BOOKING_CHECKOUT_PATH,
+  BookingCheckoutPathLockError,
+  lockBookingCheckoutPath,
+} from "./checkout-path-lock";
+import { buildCanonicalBookingCartAdapterInput } from "./booking-cart-adapter";
+import {
   createStripeCheckoutSessionWithIdempotency,
   getStripeClient,
   getStripeServerEnv,
@@ -27,7 +33,10 @@ type CheckoutErrorCode =
   | "INVALID_SELECTION"
   | "MISSING_DRAFT_TOTAL"
   | "AUTH_REQUIRED"
-  | "ALREADY_SUBSCRIBED";
+  | "ALREADY_SUBSCRIBED"
+  | "IDEMPOTENCY_CONFLICT"
+  | "CHECKOUT_PATH_CONFLICT"
+  | "CHECKOUT_PATH_PERSISTENCE_FAILED";
 
 export class CheckoutError extends Error {
   constructor(
@@ -92,18 +101,6 @@ function buildStripeIdempotencyKey(parts: string[]): string {
 
 function isE2ETestModeEnabled(): boolean {
   return process.env.E2E_TEST_MODE === "1";
-}
-
-function buildBookingSyntheticCheckoutUrl(input: {
-  appUrl: string;
-  bookingId: string;
-  serviceSlug: string;
-  checkoutSessionId: string;
-}): string {
-  return (
-    `${input.appUrl}/book-a-class/${input.serviceSlug}/payment/success` +
-    `?bookingId=${encodeURIComponent(input.bookingId)}&session_id=${encodeURIComponent(input.checkoutSessionId)}`
-  );
 }
 
 function buildSubscriptionSyntheticCheckoutUrl(input: {
@@ -435,126 +432,134 @@ export async function createCheckoutSessionForBooking(input: {
     };
   });
 
-  const metadata = {
-    bookingId: sessionContext.bookingId,
-    paymentId: sessionContext.paymentId,
-    orderId: sessionContext.orderId ?? "",
-    paymentSelection: sessionContext.paymentSelection,
-    selectedPriceId: sessionContext.selectedPrice.id,
-    serviceSlug: sessionContext.serviceSlug,
-    userId: sessionContext.userId,
-    productId: sessionContext.selectedPrice.product.id,
-    priceId: sessionContext.selectedPrice.id,
-    source: "booking-flow",
-  };
-
-  const stripeIdempotencyKey = buildStripeIdempotencyKey([
-    "booking-checkout",
-    sessionContext.paymentId,
-  ]);
-
-  if (sessionContext.existingCheckoutSessionId) {
-    if (isE2ETestModeEnabled()) {
-      return {
-        checkoutSessionId: sessionContext.existingCheckoutSessionId,
-        checkoutUrl: buildBookingSyntheticCheckoutUrl({
-          appUrl: env.appUrl,
-          bookingId: sessionContext.bookingId,
-          serviceSlug: sessionContext.serviceSlug,
-          checkoutSessionId: sessionContext.existingCheckoutSessionId,
-        }),
-        paymentId: sessionContext.paymentId,
-      };
-    }
-
-    const existingSession = await getStripeClient().checkout.sessions.retrieve(
-      sessionContext.existingCheckoutSessionId,
-    );
-    if (!existingSession.url) {
-      throw new Error("Existing Stripe checkout session is missing a checkout URL.");
-    }
-    return {
-      checkoutSessionId: existingSession.id,
-      checkoutUrl: existingSession.url,
-      paymentId: sessionContext.paymentId,
-    };
-  }
-
-  if (isE2ETestModeEnabled()) {
-    const syntheticCheckoutSessionId = `cs_e2e_${Date.now()}_${sessionContext.paymentId.slice(-8)}`;
-    const checkoutUrl = buildBookingSyntheticCheckoutUrl({
-      appUrl: env.appUrl,
-      bookingId: sessionContext.bookingId,
-      serviceSlug: sessionContext.serviceSlug,
-      checkoutSessionId: syntheticCheckoutSessionId,
-    });
-
-    await prisma.payment.update({
-      where: { id: sessionContext.paymentId },
-      data: {
-        providerReference: syntheticCheckoutSessionId,
-        stripeCheckoutSessionId: syntheticCheckoutSessionId,
-        stripeCheckoutMode: sessionContext.isRecurringPlanPurchase ? "SUBSCRIPTION" : "PAYMENT",
-      },
-    });
-
-    return {
-      checkoutSessionId: syntheticCheckoutSessionId,
-      checkoutUrl,
-      paymentId: sessionContext.paymentId,
-    };
-  }
-
-  const checkoutSession = await createStripeCheckoutSessionWithIdempotency({
-    idempotencyKey: stripeIdempotencyKey,
-    params: sessionContext.isRecurringPlanPurchase
-      ? {
-          mode: "subscription",
-          line_items: [
-            {
-              price: sessionContext.selectedPrice.stripePriceId!,
-              quantity: 1,
-            },
-          ],
-          metadata,
-          client_reference_id: sessionContext.userId,
-          subscription_data: {
-            metadata,
-          },
-          success_url: `${env.appUrl}/book-a-class/${sessionContext.serviceSlug}/payment/success?bookingId=${sessionContext.bookingId}&session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${env.appUrl}/book-a-class/${sessionContext.serviceSlug}/payment/cancel?bookingId=${sessionContext.bookingId}`,
+  await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Booking" WHERE id = ${sessionContext.bookingId} FOR UPDATE`;
+    try {
+      await lockBookingCheckoutPath({
+        tx,
+        bookingId: sessionContext.bookingId,
+        requiredPath: BOOKING_CHECKOUT_PATH.CANONICAL_CART,
+      });
+    } catch (error) {
+      if (error instanceof BookingCheckoutPathLockError) {
+        if (error.code === "CHECKOUT_PATH_CONFLICT") {
+          throw new CheckoutError("CHECKOUT_PATH_CONFLICT", error.message);
         }
-      : {
-          mode: "payment",
-          line_items: [
-            {
-              price: sessionContext.selectedPrice.stripePriceId!,
-              quantity: 1,
-            },
-          ],
-          metadata,
-          success_url: `${env.appUrl}/book-a-class/${sessionContext.serviceSlug}/payment/success?bookingId=${sessionContext.bookingId}&session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${env.appUrl}/book-a-class/${sessionContext.serviceSlug}/payment/cancel?bookingId=${sessionContext.bookingId}`,
-        },
+        throw new CheckoutError("CHECKOUT_PATH_PERSISTENCE_FAILED", error.message);
+      }
+      throw error;
+    }
   });
 
-  if (!checkoutSession.url) {
-    throw new Error("Stripe did not return a checkout URL.");
-  }
-
-  await prisma.payment.update({
-    where: { id: sessionContext.paymentId },
-    data: {
-      providerReference: checkoutSession.id,
-      stripeCheckoutSessionId: checkoutSession.id,
-      stripeCheckoutMode: sessionContext.isRecurringPlanPurchase ? "SUBSCRIPTION" : "PAYMENT",
+  const cartInput = await buildCanonicalBookingCartAdapterInput({
+    bookingId: sessionContext.bookingId,
+    userId: sessionContext.userId,
+  });
+  const canonicalCheckout = await createCheckoutSessionForCart({
+    userId: sessionContext.userId,
+    idempotencyKey: cartInput.idempotencyKey,
+    lines: cartInput.cartLines,
+    clientCartVersion: cartInput.clientCartVersion,
+    // Preserve legacy booking checkout auth semantics for parity.
+    allowUnverifiedClient: true,
+    redirectUrls: {
+      successUrl: `${env.appUrl}/book-a-class/${sessionContext.serviceSlug}/payment/success?bookingId=${sessionContext.bookingId}&session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${env.appUrl}/book-a-class/${sessionContext.serviceSlug}/payment/cancel?bookingId=${sessionContext.bookingId}`,
+    },
+    metadataOverrides: {
+      bookingId: sessionContext.bookingId,
+      serviceSlug: sessionContext.serviceSlug,
+      paymentSelection: sessionContext.paymentSelection,
+      selectedPriceId: sessionContext.selectedPrice.id,
+      productId: sessionContext.selectedPrice.product.id,
     },
   });
 
+  if (canonicalCheckout.status !== 200) {
+    const body = canonicalCheckout.body as { code?: unknown; message?: unknown };
+    if (canonicalCheckout.status === 403) {
+      throw new CheckoutError("AUTH_REQUIRED", "Sign in with the booking account to continue checkout.");
+    }
+    if (
+      canonicalCheckout.status === 409 ||
+      body.code === "IDEMPOTENCY_CONFLICT" ||
+      body.code === "IDEMPOTENCY_IN_PROGRESS"
+    ) {
+      throw new CheckoutError(
+        "IDEMPOTENCY_CONFLICT",
+        typeof body.message === "string"
+          ? body.message
+          : "Checkout conflict detected for this booking request.",
+      );
+    }
+    throw new CheckoutError("INVALID_SELECTION", "Could not start checkout for this booking.");
+  }
+
+  const checkoutBody = canonicalCheckout.body as {
+    checkoutSessionId?: unknown;
+    checkoutUrl?: unknown;
+    paymentId?: unknown;
+    orderId?: unknown;
+  };
+  const checkoutSessionId =
+    typeof checkoutBody.checkoutSessionId === "string" ? checkoutBody.checkoutSessionId : null;
+  const checkoutUrl = typeof checkoutBody.checkoutUrl === "string" ? checkoutBody.checkoutUrl : null;
+  const paymentId = typeof checkoutBody.paymentId === "string" ? checkoutBody.paymentId : null;
+  const orderId = typeof checkoutBody.orderId === "string" ? checkoutBody.orderId : null;
+
+  if (!checkoutSessionId || !checkoutUrl || !paymentId) {
+    throw new CheckoutError("INVALID_SELECTION", "Could not start checkout for this booking.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const linkedPayment = await tx.payment.updateMany({
+      where: { id: paymentId },
+      data: {
+        bookingId: sessionContext.bookingId,
+      },
+    });
+    if (linkedPayment.count === 0) {
+      throw new CheckoutError("INVALID_SELECTION", "Could not start checkout for this booking.");
+    }
+    if (orderId) {
+      await tx.booking.update({
+        where: { id: sessionContext.bookingId },
+        data: {
+          orderId,
+        },
+      });
+    }
+
+    if (sessionContext.paymentId !== paymentId) {
+      await tx.payment.deleteMany({
+        where: {
+          id: sessionContext.paymentId,
+          provider: PaymentProvider.STRIPE,
+          checkoutSource: CheckoutSource.BOOKING_FLOW,
+          status: PaymentStatus.PENDING,
+        },
+      });
+    }
+    if (sessionContext.orderId && sessionContext.orderId !== orderId) {
+      const legacyOrder = await tx.order.findUnique({
+        where: { id: sessionContext.orderId },
+        select: {
+          id: true,
+          bookings: { select: { id: true }, take: 1 },
+          payments: { select: { id: true }, take: 1 },
+        },
+      });
+      if (legacyOrder && legacyOrder.bookings.length === 0 && legacyOrder.payments.length === 0) {
+        await tx.orderItem.deleteMany({ where: { orderId: legacyOrder.id } });
+        await tx.order.delete({ where: { id: legacyOrder.id } });
+      }
+    }
+  });
+
   return {
-    checkoutSessionId: checkoutSession.id,
-    checkoutUrl: checkoutSession.url,
-    paymentId: sessionContext.paymentId,
+    checkoutSessionId,
+    checkoutUrl,
+    paymentId,
   };
 }
 
@@ -861,6 +866,12 @@ export async function createCheckoutSessionForCart(input: {
   lines: Array<{ productId: string; priceId: string; quantity: number }>;
   clientCartVersion: string;
   walletAmountMinor?: number;
+  allowUnverifiedClient?: boolean;
+  redirectUrls?: {
+    successUrl: string;
+    cancelUrl: string;
+  };
+  metadataOverrides?: Record<string, string>;
 }) {
   const { startCartCheckout } = await import("@/lib/cart/cart-checkout-service");
   return startCartCheckout(input);

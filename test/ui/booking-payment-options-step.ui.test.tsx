@@ -108,7 +108,7 @@ describe("BookingPaymentOptionsStep", () => {
         json: async () => ({
           paymentOptions: {
             bookingId: "booking-2",
-            bookingIntent: "USE_PLAN",
+            bookingIntent: "USE_ENTITLEMENT",
             singleSession: null,
             existingPlans: [
               {
@@ -177,7 +177,7 @@ describe("BookingPaymentOptionsStep", () => {
       json: async () => ({
         paymentOptions: {
           bookingId: "booking-3",
-          bookingIntent: "USE_PLAN",
+          bookingIntent: "USE_ENTITLEMENT",
           singleSession: {
             bookingLabel: "Single Session - Collective Drop-In (€22.00)",
             priceId: "price-single",

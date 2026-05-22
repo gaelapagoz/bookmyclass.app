@@ -144,11 +144,23 @@ describe("GET /api/bookings/payment-options-preview", () => {
 
     const response = await previewPaymentOptions(
       new Request(
-        `http://localhost:3000/api/bookings/payment-options-preview?serviceSlug=${serviceSlug}&bookingIntent=USE_PLAN`,
+        `http://localhost:3000/api/bookings/payment-options-preview?serviceSlug=${serviceSlug}&bookingIntent=USE_ENTITLEMENT`,
       ),
     );
 
     expect(response.status).toBe(200);
+  });
+
+  it("rejects legacy USE_PLAN preview intent after contract", async () => {
+    const { serviceSlug } = await seedCatalogue(`service-${Date.now()}`);
+
+    const response = await previewPaymentOptions(
+      new Request(
+        `http://localhost:3000/api/bookings/payment-options-preview?serviceSlug=${serviceSlug}&bookingIntent=USE_PLAN`,
+      ),
+    );
+
+    expect(response.status).toBe(400);
   });
 
   it("returns existing eligible plans for authenticated user", async () => {
@@ -192,7 +204,7 @@ describe("GET /api/bookings/payment-options-preview", () => {
 
     const response = await previewPaymentOptions(
       new Request(
-        `http://localhost:3000/api/bookings/payment-options-preview?serviceSlug=${serviceSlug}&bookingIntent=USE_PLAN`,
+        `http://localhost:3000/api/bookings/payment-options-preview?serviceSlug=${serviceSlug}&bookingIntent=USE_ENTITLEMENT`,
       ),
     );
     const body = (await response.json()) as {
@@ -276,7 +288,7 @@ describe("GET /api/bookings/payment-options-preview", () => {
 
     const response = await previewPaymentOptions(
       new Request(
-        `http://localhost:3000/api/bookings/payment-options-preview?serviceSlug=${serviceSlug}&bookingIntent=USE_PLAN`,
+        `http://localhost:3000/api/bookings/payment-options-preview?serviceSlug=${serviceSlug}&bookingIntent=USE_ENTITLEMENT`,
       ),
     );
     const body = (await response.json()) as {

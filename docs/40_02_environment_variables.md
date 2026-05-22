@@ -43,13 +43,6 @@ Purpose: define environment-variable expectations by runtime context using repos
 ## Observability (Optional/Environment-Specific)
 - Sentry variables are optional and used when configured (`SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`, environment/release metadata vars).
 
-## Catalog Cutover Feature Flags
-These flags gate the staged migration from the legacy booking flow to the new catalog-driven checkout. All default to disabled (unset = false). Misconfiguration during cutover can block checkout or silently skip validation.
-- `CATALOG_DB_ONLY_CHECKOUT_ENABLED` — when set to `"1"`, routes catalog checkout through the DB-only path instead of the legacy Stripe direct flow. Default: unset (disabled). Risk if misconfigured on: customers cannot complete catalog checkout; if misconfigured off during rollout: catalog orders bypass the new flow.
-- `CATALOG_CUTOVER_ROLLBACK_MODE` — when set to `"1"`, forces the catalog checkout path back to the legacy flow regardless of other flags. Default: unset (disabled). Risk if left enabled post-cutover: new catalog checkout path is permanently bypassed.
-- `CATALOG_PRE_CUTOVER_VALIDATOR_ENFORCED` — when set to `"1"`, runs pre-cutover invariant assertions and throws on violations rather than logging. Default: unset (log-only). Risk if enabled prematurely: valid catalog checkouts may be rejected by overly strict invariant checks.
-- `CATALOG_BACKFILL_WRITES_ENABLED` — when set to `"1"`, allows the catalog backfill script to write `serviceScope` to existing `ClassType` records. Default: unset (disabled). Risk if left enabled in production after backfill: ongoing writes may unexpectedly mutate service-scope data.
-
 ## Cron Maintenance
 - `GET /api/cron/gift-cards/maintenance` requires `Authorization: Bearer $CRON_SECRET`.
 - The route releases expired `RESERVED` gift-card redemptions only; reconciliation retry is not active in this slice.

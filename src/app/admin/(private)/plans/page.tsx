@@ -44,17 +44,17 @@ export default async function AdminPlansPage() {
       <section className="space-y-4">
         <header className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-[#1f2735]">Plans</h1>
-            <p className="mt-1 text-sm text-[#4b5a72]">Manage studio offerings and their current pricing.</p>
+            <h1 className="text-2xl font-semibold text-[#1f2735]">Products</h1>
+            <p className="mt-1 text-sm text-[#4b5a72]">Manage studio products and their current pricing.</p>
           </div>
           <Link href="/admin/plans/new" className="rounded-md bg-[#1d3652] px-3 py-2 text-sm text-white">
-            Create plan
+            Create product
           </Link>
         </header>
 
         {plans.length === 0 ? (
           <div className="rounded-xl border border-[#d3dbe5] bg-white p-5 text-sm text-[#4b5a72]">
-            No plans found.
+            No products found.
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-[#d3dbe5] bg-white">
@@ -101,8 +101,8 @@ export default async function AdminPlansPage() {
   } catch {
     return (
       <section className="rounded-xl border border-[#d3dbe5] bg-white p-6">
-        <h1 className="text-2xl font-semibold text-[#1f2735]">Plans</h1>
-        <p className="mt-2 text-sm text-[#7b2d2d]">Unable to load plans right now.</p>
+        <h1 className="text-2xl font-semibold text-[#1f2735]">Products</h1>
+        <p className="mt-2 text-sm text-[#7b2d2d]">Unable to load products right now.</p>
       </section>
     );
   }

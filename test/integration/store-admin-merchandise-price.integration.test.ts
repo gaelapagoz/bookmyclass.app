@@ -9,7 +9,7 @@ import {
   StripeSyncStatus,
   UserActivationStatus,
 } from "@prisma/client";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createAdminStoreMerchandise,
@@ -20,6 +20,8 @@ import {
 } from "../../src/lib/store/store-admin-catalog-service";
 import { listStoreCatalogReadModels } from "../../src/lib/store/store-catalog";
 import { issueGiftCardCode } from "../../src/lib/gift-cards/gift-card-code-service";
+import { attemptStorePriceSyncFromEnv } from "../../src/lib/store/store-stripe-sync-service";
+import * as stripePayments from "../../src/lib/payments/stripe";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
 
@@ -423,5 +425,98 @@ describe("GiftCardCode amountMinor is preserved after gift-card price change", (
     const code = await prisma.giftCardCode.findUnique({ where: { orderItemId } });
     expect(code!.status).toBe(GiftCardCodeStatus.ISSUED);
     expect(code!.amountMinor).toBe(2500);
+  });
+});
+
+describe("attemptStorePriceSyncFromEnv central boundary integration", () => {
+  const originalStripeKey = process.env.STRIPE_SECRET_KEY;
+  const originalAllowLive = process.env.ALLOW_LIVE_STORE_SYNC;
+
+  beforeEach(async () => {
+    await resetDb();
+    process.env.STRIPE_SECRET_KEY = originalStripeKey;
+    process.env.ALLOW_LIVE_STORE_SYNC = originalAllowLive;
+    vi.restoreAllMocks();
+  });
+
+  it("uses centralized keyed client and keeps store sync behavior unchanged", async () => {
+    const ts = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const product = await prisma.product.create({
+      data: {
+        name: `Integration Sync Mat ${ts}`,
+        slug: `integration-sync-mat-${ts}`,
+        productType: ProductType.MERCHANDISE,
+        isActive: true,
+        isArchived: false,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    const price = await prisma.price.create({
+      data: {
+        productId: product.id,
+        lookupKey: `store-integration-sync-${ts}`,
+        stripePriceId: null,
+        stripeSyncStatus: StripeSyncStatus.PENDING,
+        name: "Integration Sync Price",
+        priceType: PriceType.ONE_TIME,
+        currencyCode: "EUR",
+        unitAmountMinor: 1800,
+        isActive: true,
+        isArchived: false,
+      },
+      select: { id: true },
+    });
+
+    const stripeMock = {
+      products: {
+        search: vi.fn().mockResolvedValue({ data: [] }),
+        create: vi.fn().mockResolvedValue({ id: "prod_integration_sync_1" }),
+      },
+      prices: {
+        retrieve: vi.fn(),
+        list: vi.fn().mockResolvedValue({ data: [] }),
+        create: vi.fn().mockResolvedValue({ id: "price_integration_synced_1" }),
+      },
+    } as unknown as import("stripe").default;
+    const keyedClientSpy = vi
+      .spyOn(stripePayments, "getStripeClientForSecretKey")
+      .mockReturnValue(stripeMock);
+
+    process.env.STRIPE_SECRET_KEY = "sk_test_integration_sync_key";
+    delete process.env.ALLOW_LIVE_STORE_SYNC;
+
+    const result = await attemptStorePriceSyncFromEnv(price.id);
+
+    expect(result).toEqual({
+      synced: true,
+      stripePriceId: "price_integration_synced_1",
+      created: true,
+    });
+    expect(keyedClientSpy).toHaveBeenCalledWith("sk_test_integration_sync_key");
+    expect(stripeMock.prices.create).toHaveBeenCalledOnce();
+
+    const updatedPrice = await prisma.price.findUnique({
+      where: { id: price.id },
+      select: { stripeSyncStatus: true, stripePriceId: true, stripeSyncErrorCode: true },
+    });
+    expect(updatedPrice).not.toBeNull();
+    expect(updatedPrice!.stripeSyncStatus).toBe(StripeSyncStatus.SYNCED);
+    expect(updatedPrice!.stripePriceId).toBe("price_integration_synced_1");
+    expect(updatedPrice!.stripeSyncErrorCode).toBeNull();
+  });
+
+  it("blocks live mode unless ALLOW_LIVE_STORE_SYNC equals 1 exactly", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_live_integration_sync_key";
+    process.env.ALLOW_LIVE_STORE_SYNC = "true";
+
+    const keyedClientSpy = vi.spyOn(stripePayments, "getStripeClientForSecretKey");
+    const result = await attemptStorePriceSyncFromEnv("non-existent-price");
+
+    expect(result).toEqual({
+      synced: false,
+      reason: "Live Stripe key requires ALLOW_LIVE_STORE_SYNC=1 to proceed.",
+    });
+    expect(keyedClientSpy).not.toHaveBeenCalled();
   });
 });

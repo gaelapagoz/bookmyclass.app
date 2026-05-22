@@ -647,7 +647,7 @@ async function seedSchedulingAndBookings(input: {
       if (!session.isFuture && rng.next() < 0.07) { status = BookingStatus.CANCELLED; cancelledAt = addDaysUtc(session.startsAt, -2); }
 
       const booking = await prisma.booking.create({
-        data: { clientId: client.id, studioSessionId: session.id, orderId: entitlement.orderId, status, bookingIntent: BookingIntent.USE_PLAN, paymentSelection: BookingPaymentSelection.EXISTING_PLAN, selectedEntitlementId: entitlement.id, selectedPriceId: entitlement.priceId, bookedAt, customerName: client.name, customerEmail: client.email, consentTermsAccepted: true, consentPrivacyAccepted: true, consentAcceptedAt: bookedAt, cancellationEligibleUntilAt, cancelledAt: cancelledAt ?? null, creditRefundedAt: status === BookingStatus.CANCELLED ? cancelledAt ?? bookedAt : null },
+        data: { clientId: client.id, studioSessionId: session.id, orderId: entitlement.orderId, status, bookingIntent: BookingIntent.USE_ENTITLEMENT, paymentSelection: BookingPaymentSelection.EXISTING_PLAN, selectedEntitlementId: entitlement.id, selectedPriceId: entitlement.priceId, bookedAt, customerName: client.name, customerEmail: client.email, consentTermsAccepted: true, consentPrivacyAccepted: true, consentAcceptedAt: bookedAt, cancellationEligibleUntilAt, cancelledAt: cancelledAt ?? null, creditRefundedAt: status === BookingStatus.CANCELLED ? cancelledAt ?? bookedAt : null },
       });
       bookedPairs.add(pairKey);
       entitlement.creditsRemaining -= 1;

@@ -436,7 +436,7 @@ describe("admin actions", () => {
     formData.set("unitAmount", "89");
 
     await expect(createPlanAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/plans/new?error=Please%20complete%20all%20required%20plan%20fields.",
+      "NEXT_REDIRECT:/admin/plans/new?error=Please%20complete%20all%20required%20product%20fields.",
     );
     expect(createAdminPlan).not.toHaveBeenCalled();
   });
@@ -833,7 +833,7 @@ describe("admin actions", () => {
     formData.set("isActive", "on");
 
     await expect(createPlanAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/plans/new?error=Please%20complete%20all%20required%20plan%20fields.",
+      "NEXT_REDIRECT:/admin/plans/new?error=Please%20complete%20all%20required%20product%20fields.",
     );
     expect(createAdminPlan).not.toHaveBeenCalled();
   });

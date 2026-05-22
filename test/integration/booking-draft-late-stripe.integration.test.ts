@@ -180,7 +180,6 @@ describe("Late Stripe checkout.session.completed for an expired draft", () => {
           id: payment.providerReference,
           payment_status: "paid",
           metadata: {
-            paymentId: payment.id,
             bookingId: booking.id,
             selectedPriceId: price.id,
           },

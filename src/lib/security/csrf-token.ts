@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { headers as nextHeaders } from "next/headers";
+import { getRequiredAuthSecret } from "@/lib/auth/auth-secret";
 
 const CSRF_FIELD_NAME = "_csrf";
 const CSRF_TOKEN_VERSION = "v2";
@@ -43,26 +44,8 @@ function resolveRequestOrigin(headers: Pick<Headers, "get">): string | null {
   return normalizeOrigin(`${protocol}://${host}`);
 }
 
-function resolveCsrfSecret(): string | null {
-  const secret = normalizeValue(process.env.AUTH_SECRET);
-  if (secret) {
-    return secret;
-  }
-
-  if (process.env.NODE_ENV === "production") {
-    return null;
-  }
-
-  return "bookmyclass-dev-csrf-secret";
-}
-
-function signTokenPayload(payload: string): string | null {
-  const secret = resolveCsrfSecret();
-  if (!secret) {
-    return null;
-  }
-
-  return createHmac("sha256", secret).update(payload).digest("base64url");
+function signTokenPayload(payload: string): string {
+  return createHmac("sha256", getRequiredAuthSecret()).update(payload).digest("base64url");
 }
 
 function constantTimeEquals(a: string, b: string): boolean {
@@ -158,9 +141,6 @@ export function createCsrfTokenFromHeaders(
   });
   const signaturePayload = `${CSRF_TOKEN_VERSION}.${payloadEncoded}.${origin}`;
   const signature = signTokenPayload(signaturePayload);
-  if (!signature) {
-    return null;
-  }
 
   return `${CSRF_TOKEN_VERSION}.${payloadEncoded}.${signature}`;
 }
@@ -231,9 +211,6 @@ export function validateCsrfTokenFromHeadersAndFormData(
   for (const origin of allowedOrigins) {
     const signaturePayload = `${CSRF_TOKEN_VERSION}.${parsedToken.payloadEncoded}.${origin}`;
     const expectedSignature = signTokenPayload(signaturePayload);
-    if (!expectedSignature) {
-      continue;
-    }
 
     if (constantTimeEquals(parsedToken.signature, expectedSignature)) {
       return {

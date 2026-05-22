@@ -168,6 +168,164 @@ async function createDropInBookingFixture() {
   return { booking, payment, order, client, price };
 }
 
+async function createPlanPurchaseBookingFixture() {
+  const ts = Date.now();
+
+  const category = await createClassCategory(prisma, {
+    name: "Yoga Plan",
+    slug: `yoga-wh-plan-${ts}`,
+    sortOrder: 1,
+    isActive: true,
+  });
+  const classType = await createClassType(prisma, {
+    categoryId: category.id,
+    name: "Collective Flow",
+    slug: `collective-wh-plan-${ts}`,
+    sortOrder: 1,
+    isActive: true,
+    isVisible: true,
+  });
+  const teacher = await prisma.user.create({
+    data: {
+      name: "Teacher Plan",
+      email: `teacher.wh-plan.${ts}@example.test`,
+      role: Role.TEACHER,
+    },
+  });
+  const template = await prisma.classTemplate.create({
+    data: {
+      classTypeId: classType.id,
+      defaultTeacherId: teacher.id,
+      title: "Plan Template",
+      slug: `template-wh-plan-${ts}`,
+      defaultCapacity: 12,
+      defaultDurationMinutes: 60,
+      isActive: true,
+      isPublished: true,
+    },
+  });
+
+  const startsAt = new Date();
+  startsAt.setUTCDate(startsAt.getUTCDate() + 3);
+  startsAt.setUTCHours(9, 0, 0, 0);
+
+  const studioSession = await prisma.studioSession.create({
+    data: {
+      classTemplateId: template.id,
+      classTypeId: classType.id,
+      teacherId: teacher.id,
+      title: "Plan Session",
+      startsAt,
+      endsAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
+      capacity: 12,
+      status: StudioSessionStatus.SCHEDULED,
+      isPublished: true,
+    },
+  });
+
+  const product = await prisma.product.create({
+    data: {
+      name: "Collective 5 Pack",
+      slug: `collective-pack-wh-plan-${ts}`,
+      productType: ProductType.CLASS_PACK,
+      isActive: true,
+      isArchived: false,
+      sortOrder: 1,
+    },
+  });
+  const price = await prisma.price.create({
+    data: {
+      productId: product.id,
+      lookupKey: `collective-pack-price-wh-plan-${ts}`,
+      name: "Collective 5 Pack Price",
+      priceType: PriceType.ONE_TIME,
+      currencyCode: "EUR",
+      unitAmountMinor: 9900,
+      isActive: true,
+      isArchived: false,
+    },
+  });
+  await prisma.entitlementRule.create({
+    data: {
+      productId: product.id,
+      entitlementType: "CREDIT_PACK",
+      entitlementScope: "COLLECTIVE_CLASSES",
+      quantity: 5,
+      isActive: true,
+    },
+  });
+
+  const client = await prisma.user.create({
+    data: {
+      name: "Client Plan",
+      email: `client.wh-plan.${ts}@example.test`,
+      role: Role.CLIENT,
+    },
+  });
+
+  const order = await prisma.order.create({
+    data: {
+      clientId: client.id,
+      subtotalAmountMinor: price.unitAmountMinor,
+      discountAmountMinor: 0,
+      totalAmountMinor: price.unitAmountMinor,
+      currencyCode: "EUR",
+      status: OrderStatus.PLACED,
+    },
+  });
+  await prisma.orderItem.create({
+    data: {
+      orderId: order.id,
+      productId: product.id,
+      priceId: price.id,
+      quantity: 1,
+      productNameSnapshot: product.name,
+      priceNameSnapshot: price.name,
+      unitAmountMinor: price.unitAmountMinor,
+      lineSubtotalAmountMinor: price.unitAmountMinor,
+      lineDiscountAmountMinor: 0,
+      lineTotalAmountMinor: price.unitAmountMinor,
+      currencyCode: "EUR",
+    },
+  });
+
+  const booking = await prisma.booking.create({
+    data: {
+      studioSessionId: studioSession.id,
+      clientId: client.id,
+      orderId: order.id,
+      status: BookingStatus.PENDING,
+      paymentSelection: BookingPaymentSelection.NEW_PLAN_PURCHASE,
+      selectedPriceId: price.id,
+      draftAmountMinor: price.unitAmountMinor,
+      draftCurrencyCode: "EUR",
+      customerName: "Client Plan",
+      customerEmail: client.email,
+      customerPhone: "+32000000001",
+      consentTermsAccepted: true,
+      consentPrivacyAccepted: true,
+      consentAcceptedAt: new Date(),
+    },
+  });
+
+  const payment = await prisma.payment.create({
+    data: {
+      bookingId: booking.id,
+      orderId: order.id,
+      status: PaymentStatus.PENDING,
+      method: PaymentMethod.CARD,
+      provider: PaymentProvider.STRIPE,
+      checkoutSource: "CART_CHECKOUT_V1",
+      providerReference: `cs_test_wh_plan_${ts}`,
+      stripeCheckoutSessionId: `cs_test_wh_plan_${ts}`,
+      amountMinor: price.unitAmountMinor,
+      currencyCode: "EUR",
+    },
+  });
+
+  return { booking, payment, order, client, product };
+}
+
 function buildCheckoutCompletedEvent(
   eventId: string,
   sessionId: string,
@@ -451,5 +609,67 @@ describe("processStripeWebhookEvent — checkout.session.completed", () => {
     expect(updatedOrder?.status).toBe(OrderStatus.PAID);
     expect(updatedBooking?.status).toBe(BookingStatus.CONFIRMED);
     expect(receipt?.status).toBe(StripeWebhookReceiptStatus.PROCESSED);
+  });
+
+  it("booking plan purchase grants credits and consumes exactly one credit", async () => {
+    const { booking, payment, client, order, product } = await createPlanPurchaseBookingFixture();
+    const event = buildCheckoutCompletedEvent(
+      "evt_test_wh_plan_001",
+      payment.stripeCheckoutSessionId as string,
+      "pi_test_wh_plan_001",
+      payment.id,
+      booking.id,
+    );
+    event.data.object.metadata.selectedPriceId = booking.selectedPriceId as string;
+    event.data.object.metadata.source = "CART_CHECKOUT_V1";
+
+    await processStripeWebhookEvent(event as unknown as import("stripe").default.Event);
+
+    const entitlement = await prisma.clientEntitlement.findFirst({
+      where: { clientId: client.id, productId: product.id, orderId: order.id },
+      select: { id: true },
+    });
+    expect(entitlement?.id).toBeTruthy();
+
+    const balance = await prisma.creditLedgerEntry.aggregate({
+      where: { clientId: client.id, entitlementId: entitlement?.id },
+      _sum: { amount: true },
+    });
+    expect(balance._sum.amount).toBe(4);
+
+    const consumes = await prisma.creditLedgerEntry.count({
+      where: {
+        clientId: client.id,
+        bookingId: booking.id,
+        entryType: "CONSUME",
+      },
+    });
+    expect(consumes).toBe(1);
+  });
+
+  it("booking plan purchase replay does not consume a second credit", async () => {
+    const { booking, payment, client, order, product } = await createPlanPurchaseBookingFixture();
+    const event = buildCheckoutCompletedEvent(
+      "evt_test_wh_plan_002",
+      payment.stripeCheckoutSessionId as string,
+      "pi_test_wh_plan_002",
+      payment.id,
+      booking.id,
+    );
+    event.data.object.metadata.selectedPriceId = booking.selectedPriceId as string;
+    event.data.object.metadata.source = "CART_CHECKOUT_V1";
+
+    await processStripeWebhookEvent(event as unknown as import("stripe").default.Event);
+    await processStripeWebhookEvent(event as unknown as import("stripe").default.Event);
+
+    const entitlement = await prisma.clientEntitlement.findFirst({
+      where: { clientId: client.id, productId: product.id, orderId: order.id },
+      select: { id: true },
+    });
+    const balance = await prisma.creditLedgerEntry.aggregate({
+      where: { clientId: client.id, entitlementId: entitlement?.id },
+      _sum: { amount: true },
+    });
+    expect(balance._sum.amount).toBe(4);
   });
 });

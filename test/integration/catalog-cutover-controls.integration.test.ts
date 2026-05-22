@@ -244,12 +244,13 @@ describe("catalog cutover controls", () => {
       actorId: actor.id,
       environment: "UAT",
       notes: "Rollback rehearsal before Gate 2 signoff.",
-      beforeDbOnlyCheckoutEnabled: true,
     });
 
     expect(evidence.environment).toBe("UAT");
-    expect(evidence.beforeDbOnlyCheckoutEnabled).toBe(true);
-    expect(evidence.afterDbOnlyCheckoutEnabled).toBe(false);
+    expect(evidence.legacyFlagsRemoved).toBe(true);
+    expect(evidence).not.toHaveProperty("beforeDbOnlyCheckoutEnabled");
+    expect(evidence).not.toHaveProperty("afterDbOnlyCheckoutEnabled");
+    expect(evidence).not.toHaveProperty("rollbackArmed");
 
     const audit = await prisma.auditLog.findFirst({
       where: {
@@ -260,6 +261,15 @@ describe("catalog cutover controls", () => {
 
     expect(audit).not.toBeNull();
     expect(audit?.actorId).toBe(actor.id);
+    expect(audit?.metadata).toEqual(
+      expect.objectContaining({
+        environment: "UAT",
+        legacyFlagsRemoved: true,
+      }),
+    );
+    expect((audit?.metadata as Record<string, unknown>)["beforeDbOnlyCheckoutEnabled"]).toBeUndefined();
+    expect((audit?.metadata as Record<string, unknown>)["afterDbOnlyCheckoutEnabled"]).toBeUndefined();
+    expect((audit?.metadata as Record<string, unknown>)["rollbackArmed"]).toBeUndefined();
   });
 
   it("rejects unauthorized actor for mutating backfill and rollback evidence capture", async () => {
@@ -287,16 +297,11 @@ describe("catalog cutover controls", () => {
     ).rejects.toThrow("ADMIN_ACTOR_REQUIRED");
   });
 
-  it("blocks backfill writes when rollback is armed or writes are disabled by flags", async () => {
+  it("ignores removed legacy env flags and still runs deterministic backfill", async () => {
     const actor = await createAdminActor();
-    const rollbackCandidate = await createProductWithPrice({
-      name: "Rollback Block Candidate",
-      lookupKey: `lk-rollback-block-${Date.now()}`,
-      stripePriceId: null,
-    });
-    const disabledCandidate = await createProductWithPrice({
-      name: "Disabled Block Candidate",
-      lookupKey: `lk-disabled-block-${Date.now()}`,
+    const candidate = await createProductWithPrice({
+      name: "Legacy Flag Ignored Candidate",
+      lookupKey: `lk-legacy-flag-ignored-${Date.now()}`,
       stripePriceId: null,
     });
 
@@ -304,28 +309,17 @@ describe("catalog cutover controls", () => {
     const previousWrites = process.env.CATALOG_BACKFILL_WRITES_ENABLED;
     try {
       process.env.CATALOG_CUTOVER_ROLLBACK_MODE = "1";
-      delete process.env.CATALOG_BACKFILL_WRITES_ENABLED;
-      await expect(
-        runCatalogStripePriceBackfill({
-          actorId: actor.id,
-          dryRun: false,
-          runId: `phase5-rollback-armed-${Date.now()}`,
-          persistEvidence: false,
-          resolveStripePriceIdByLookupKey: async () => "price_blocked_rollback_1",
-        }),
-      ).rejects.toThrow("CATALOG_BACKFILL_ROLLBACK_ARMED");
-
-      process.env.CATALOG_CUTOVER_ROLLBACK_MODE = "0";
       process.env.CATALOG_BACKFILL_WRITES_ENABLED = "0";
-      await expect(
-        runCatalogStripePriceBackfill({
-          actorId: actor.id,
-          dryRun: false,
-          runId: `phase5-writes-disabled-${Date.now()}`,
-          persistEvidence: false,
-          resolveStripePriceIdByLookupKey: async () => "price_blocked_disabled_1",
-        }),
-      ).rejects.toThrow("CATALOG_BACKFILL_WRITES_DISABLED");
+
+      const report = await runCatalogStripePriceBackfill({
+        actorId: actor.id,
+        dryRun: false,
+        runId: `phase10-legacy-flags-ignored-${Date.now()}`,
+        persistEvidence: false,
+        resolveStripePriceIdByLookupKey: async () => "price_legacy_flag_ignored_1",
+      });
+
+      expect(report.counts.linked).toBe(1);
     } finally {
       if (previousRollback === undefined) {
         delete process.env.CATALOG_CUTOVER_ROLLBACK_MODE;
@@ -340,11 +334,11 @@ describe("catalog cutover controls", () => {
       }
     }
 
-    const persisted = await prisma.price.findMany({
-      where: { id: { in: [rollbackCandidate.id, disabledCandidate.id] } },
+    const persisted = await prisma.price.findUnique({
+      where: { id: candidate.id },
       select: { stripePriceId: true },
     });
-    expect(persisted.every((row) => row.stripePriceId === null)).toBe(true);
+    expect(persisted?.stripePriceId).toBe("price_legacy_flag_ignored_1");
   });
 
   it("records dry-run and validator evidence summaries in audit log", async () => {

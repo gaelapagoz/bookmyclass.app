@@ -11,7 +11,17 @@ if (!databaseUrl) {
   throw new Error("DATABASE_URL is not set.");
 }
 
-const adapter = new PrismaPg({ connectionString: databaseUrl });
+const isE2ETestMode = process.env.E2E_TEST_MODE === "1";
+
+const adapter = new PrismaPg({
+  connectionString: databaseUrl,
+  ...(isE2ETestMode
+    ? {
+        max: 4,
+        idleTimeoutMillis: 10_000,
+      }
+    : {}),
+});
 
 function hasRequiredDelegates(client: PrismaClient): boolean {
   const runtimeClient = client as unknown as {

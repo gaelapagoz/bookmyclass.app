@@ -28,7 +28,6 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/studio_test
       AUTH_SECRET: ci-auth-secret
-      NEXTAUTH_SECRET: ci-nextauth-secret
       APP_URL: http://localhost:3000
       STRIPE_SECRET_KEY: sk_test_ci
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci
@@ -100,7 +99,6 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/studio_e2e_test
       AUTH_SECRET: ci-e2e-auth-secret
-      NEXTAUTH_SECRET: ci-e2e-nextauth-secret
       APP_URL: http://127.0.0.1:3100
       AUTH_URL: http://127.0.0.1:3100
       NEXTAUTH_URL: http://127.0.0.1:3100
@@ -138,7 +136,6 @@ jobs:
           cat <<EOF > .env.e2e
           DATABASE_URL=${DATABASE_URL}
           AUTH_SECRET=${AUTH_SECRET}
-          NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
           APP_URL=${APP_URL}
           AUTH_URL=${AUTH_URL}
           NEXTAUTH_URL=${NEXTAUTH_URL}

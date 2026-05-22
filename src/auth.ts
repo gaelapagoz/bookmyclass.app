@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import type { Role } from "@prisma/client";
 import Credentials from "next-auth/providers/credentials";
 
+import { getRequiredAuthSecret } from "@/lib/auth/auth-secret";
 import { authorizeCredentials, type AuthUser } from "@/lib/auth/credentials-authorize";
 import { assertAdminLoginAbuseGuardPreflight } from "@/lib/auth/admin-login-abuse-service";
 import { prisma } from "@/lib/db";
@@ -22,7 +23,7 @@ function isRole(value: unknown): value is Role {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
-  secret: process.env.AUTH_SECRET,
+  secret: getRequiredAuthSecret(),
   session: { strategy: "jwt" },
   pages: {
     signIn: "/sign-in",

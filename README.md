@@ -204,7 +204,7 @@ npm ci
 docker compose up -d postgres
 ```
 
-3. Create env file for app runtime (no `.env.example` is currently committed; use the Environment Variables section below).
+3. Create `.env` from the variables documented in [docs/40_02_environment_variables.md](docs/40_02_environment_variables.md). No `.env.example` is committed. Critical production-required vars: `AUTH_SECRET`, `DATABASE_URL`, `APP_URL`, `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `CRON_SECRET`, `UPLOADS_DIR`.
 
 4. Generate Prisma client and apply migrations:
 ```bash
@@ -223,6 +223,8 @@ npm run dev
 ```
 
 ## Testing And Validation
+
+**E2E setup:** E2E tests require a dedicated `.env.e2e` file (see `.env.e2e.example` and [docs/30_04_e2e_setup.md](docs/30_04_e2e_setup.md)). Required values include `E2E_TEST_MODE=1`, `E2E_TEST_SECRET`, a dedicated `DATABASE_URL`, and all `STRIPE_PRICE_ID_STORE_*` vars. Run `npm run db:e2e:setup` before the first run.
 
 Run tests:
 ```bash
@@ -323,9 +325,18 @@ Run artifacts are stored per execution at:
 
 Each round saves developer/reviewer/security-reviewer/qa prompts and outputs. The loop stops when reviewer, security reviewer, and QA all end with `VERDICT: APPROVED`, or after 5 rounds.
 
+## Store and Gift Card
+
+Store browsing, merchandise checkout, gift-card purchase, and gift-card redemption are active canonical runtime flows. They are not gated by rollout feature flags. Operational readiness depends on a correctly seeded catalog (Products + Prices with `StripeSyncStatus.SYNCED`) and `CRON_SECRET` protecting the gift-card maintenance route.
+
+## Admin Products (Plans)
+
+The admin area manages subscription and class products at `/admin/plans`. The UI labels this section **Products**. Admins can create, edit, and deactivate products and prices from this screen; Stripe sync is handled via `npm run stripe:catalog:sync`.
+
 ## Documentation Index
 
-* 00_*: canonical baselines and current-state truth.
+Canonical runtime truth lives in the `docs/00_*` files — consult these first for deployment, environment, and architecture decisions.
+
 * 10_*: business and domain rules.
 * 20_*: architecture and engineering implementation boundaries.
 * 30_*: testing standards and e2e scope.

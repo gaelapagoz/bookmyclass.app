@@ -44,15 +44,15 @@ export const studioPageContent = {
   ],
   images: [
     {
-      src: "/images/classes/vinyasa-yoga.jpg",
+      src: "/uploads/classes/vinyasa-yoga.jpg",
       alt: "Students practicing yoga in a bright studio room",
     },
     {
-      src: "/images/classes/mat-pilates.jpg",
+      src: "/uploads/classes/mat-pilates.jpg",
       alt: "Pilates class focused on core and posture",
     },
     {
-      src: "/images/classes/functional-strength.jpg",
+      src: "/uploads/classes/functional-strength.jpg",
       alt: "Functional training group class in studio",
     },
   ],
