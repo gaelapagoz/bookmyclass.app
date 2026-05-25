@@ -145,12 +145,22 @@ if (files.length === 0) {
   process.exit(1);
 }
 
+const failures: Array<{ file: string; exitCode: number }> = [];
+
 for (const [index, file] of files.entries()) {
   console.log(`[vitest-runner] (${index + 1}/${files.length}) ${file}`);
   const exitCode = runVitestForFile(file, parsedArgs.vitestArgs);
   if (exitCode !== 0) {
-    process.exit(exitCode);
+    failures.push({ file, exitCode });
   }
+}
+
+if (failures.length > 0) {
+  console.error(`[vitest-runner] Failed ${failures.length} of ${files.length} file(s):`);
+  for (const failure of failures) {
+    console.error(`[vitest-runner] - ${failure.file} (exit=${failure.exitCode})`);
+  }
+  process.exit(1);
 }
 
 console.log(`[vitest-runner] Completed ${files.length} file(s).`);

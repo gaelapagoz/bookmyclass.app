@@ -1,4 +1,5 @@
-﻿const ALLOWED_TAGS = new Set(["p", "strong", "em", "u", "a", "span", "br"]);
+import sanitizeHtml from "sanitize-html";
+
 const ALLOWED_ALIGN = new Set(["left", "center", "right"]);
 export type RichTextVariant = "heading" | "paragraph" | "button";
 
@@ -26,145 +27,34 @@ function decodeHtml(value: string): string {
     .replaceAll("&amp;", "&");
 }
 
-function sanitizeHref(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  try {
-    const url = new URL(trimmed, "https://example.com");
-    if (url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:" || url.protocol === "tel:") {
-      return trimmed;
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
-}
-
-function sanitizeStyle(styleValue: string, variant: RichTextVariant): string | null {
-  const declarations = styleValue
-    .split(";")
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  const allowed: string[] = [];
-  for (const declaration of declarations) {
-    const [rawProp, rawValue] = declaration.split(":");
-    if (!rawProp || !rawValue) {
-      continue;
-    }
-
-    const prop = rawProp.trim().toLowerCase();
-    const value = rawValue.trim().toLowerCase();
-
-    if (prop === "text-align" && variant !== "button" && ALLOWED_ALIGN.has(value)) {
-      allowed.push(`text-align:${value}`);
-    }
-
-    if (prop === "font-size" && FONT_SIZE_PRESETS[variant].has(value)) {
-      allowed.push(`font-size:${value}`);
-    }
-  }
-
-  return allowed.length > 0 ? allowed.join(";") : null;
-}
-
-function sanitizeTag(rawTag: string, variant: RichTextVariant): string {
-  const closingMatch = rawTag.match(/^<\s*\/\s*([a-z0-9]+)\s*>$/i);
-  if (closingMatch) {
-    const tagName = closingMatch[1]?.toLowerCase() ?? "";
-    if (!ALLOWED_TAGS.has(tagName)) {
-      return "";
-    }
-    if (variant === "button" && (tagName === "a" || tagName === "p" || tagName === "span" || tagName === "br")) {
-      return "";
-    }
-    return `</${tagName}>`;
-  }
-
-  const openMatch = rawTag.match(/^<\s*([a-z0-9]+)([^>]*)>$/i);
-  if (!openMatch) {
-    return "";
-  }
-
-  const tagName = openMatch[1]?.toLowerCase() ?? "";
-  if (!ALLOWED_TAGS.has(tagName)) {
-    return "";
-  }
-
-  if (variant === "button" && (tagName === "a" || tagName === "p" || tagName === "span" || tagName === "br")) {
-    return "";
-  }
-
-  if (tagName === "br") {
-    return "<br>";
-  }
-
-  const attrsRaw = openMatch[2] ?? "";
-  const attrs: string[] = [];
-  const attrPattern = /([a-zA-Z:-]+)\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = attrPattern.exec(attrsRaw)) !== null) {
-    const attrName = (match[1] ?? "").toLowerCase();
-    const attrValue = (match[3] ?? match[4] ?? match[5] ?? "").trim();
-
-    if (tagName === "a" && variant !== "button" && attrName === "href") {
-      const safeHref = sanitizeHref(attrValue);
-      if (safeHref) {
-        attrs.push(`href=\"${escapeHtml(safeHref)}\"`);
-      }
-      continue;
-    }
-
-    if ((tagName === "p" || tagName === "span") && attrName === "style") {
-      const safeStyle = sanitizeStyle(attrValue, variant);
-      if (safeStyle) {
-        attrs.push(`style=\"${escapeHtml(safeStyle)}\"`);
-      }
-    }
-  }
-
-  const attrSegment = attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
-  return `<${tagName}${attrSegment}>`;
-}
-
 function sanitizeRawHtml(input: string, variant: RichTextVariant): string {
-  const withoutScripts = input
-    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "")
-    .replace(/<!--([\s\S]*?)-->/g, "");
+  const allowedTags = variant === "button" ? ["strong", "em", "u"] : ["p", "strong", "em", "u", "a", "span", "br"];
+  const allowedFontSizePatterns = [...FONT_SIZE_PRESETS[variant]].map((value) => new RegExp(`^${value}$`));
+  const allowedAlignPatterns = [...ALLOWED_ALIGN].map((value) => new RegExp(`^${value}$`));
 
-  let output = "";
-  let cursor = 0;
-  const tagPattern = /<[^>]*>/g;
-
-  for (const match of withoutScripts.matchAll(tagPattern)) {
-    const start = match.index ?? 0;
-    const end = start + match[0].length;
-
-    if (start > cursor) {
-      const textChunk = withoutScripts.slice(cursor, start);
-      output += escapeHtml(textChunk);
-    }
-
-    output += sanitizeTag(match[0], variant);
-    cursor = end;
-  }
-
-  if (cursor < withoutScripts.length) {
-    output += escapeHtml(withoutScripts.slice(cursor));
-  }
-
-  output = output
-    .replace(/\s+(style=\")/g, " $1")
-    .replace(/<p>\s*<\/p>/g, "")
-    .trim();
-
-  return output;
+  return sanitizeHtml(input, {
+    allowedTags,
+    allowedAttributes: {
+      a: variant === "button" ? [] : ["href"],
+      p: variant === "button" ? [] : ["style"],
+      span: variant === "button" ? [] : ["style"],
+    },
+    allowedSchemes: ["http", "https", "mailto", "tel"],
+    allowedStyles:
+      variant === "button"
+        ? {}
+        : {
+            p: {
+              "text-align": allowedAlignPatterns,
+              "font-size": allowedFontSizePatterns,
+            },
+            span: {
+              "text-align": allowedAlignPatterns,
+              "font-size": allowedFontSizePatterns,
+            },
+          },
+    disallowedTagsMode: "discard",
+  }).trim();
 }
 
 export function toPlainTextFromRichHtml(input: string): string {
@@ -195,6 +85,33 @@ export function sanitizePastedRichHtml(input: string, variant: RichTextVariant):
     .replace(/id=\"[^\"]*\"/g, "");
 }
 
+const SNAPSHOT_ALLOWED_STYLE_PATTERN = /^[#(),.%\s\-a-zA-Z0-9/]+$/;
+
+export function sanitizeCampaignSnapshotHtml(input: string): string {
+  return sanitizeHtml(input, {
+    allowedTags: ["div", "p", "strong", "em", "u", "a", "span", "br", "img", "hr"],
+    allowedAttributes: {
+      div: ["style"],
+      p: ["style"],
+      span: ["style"],
+      a: ["href", "style"],
+      img: ["src", "alt", "style"],
+      hr: ["style"],
+    },
+    allowedSchemes: ["http", "https", "mailto", "tel"],
+    allowedSchemesAppliedToAttributes: ["href", "src"],
+    allowedStyles: {
+      div: { "*": [SNAPSHOT_ALLOWED_STYLE_PATTERN] },
+      p: { "*": [SNAPSHOT_ALLOWED_STYLE_PATTERN] },
+      span: { "*": [SNAPSHOT_ALLOWED_STYLE_PATTERN] },
+      a: { "*": [SNAPSHOT_ALLOWED_STYLE_PATTERN] },
+      img: { "*": [SNAPSHOT_ALLOWED_STYLE_PATTERN] },
+      hr: { "*": [SNAPSHOT_ALLOWED_STYLE_PATTERN] },
+    },
+    disallowedTagsMode: "discard",
+  }).trim();
+}
+
 export function textToRichHtml(input: string, variant: RichTextVariant): string {
   const escaped = escapeHtml(input.trim());
   if (!escaped) {
@@ -207,4 +124,3 @@ export function textToRichHtml(input: string, variant: RichTextVariant): string 
 
   return `<p>${escaped}</p>`;
 }
-

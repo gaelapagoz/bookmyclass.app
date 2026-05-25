@@ -76,8 +76,8 @@ describe("sendGiftCardIssuanceEmail", () => {
 
     const html = getCapturedTestEmails()[0]?.html ?? "";
     expect(html).not.toContain("<img src=x onerror=alert(1)>");
-    expect(html).toMatch(/&(?:amp;)+lt;img src=x onerror=alert\(1\)&(?:amp;)+gt;/);
-    expect(html).toMatch(/&(?:amp;)+lt;br \/&(?:amp;)+gt;hello/);
+    expect(html).toMatch(/&lt;img src=x onerror=alert\(1\)&gt;/);
+    expect(html).toMatch(/&lt;br \/&gt;hello/);
   });
 });
 

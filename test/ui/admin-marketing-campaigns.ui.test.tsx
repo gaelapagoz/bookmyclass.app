@@ -130,7 +130,7 @@ describe("admin marketing campaigns page", () => {
       recipientSentCount: 40,
       recipientFailedCount: 4,
       recipientPendingCount: 0,
-      htmlSnapshot: "<p>Rendered</p>",
+      htmlSnapshot: '<p onclick="alert(1)">Rendered</p><script>alert(1)</script><a href="javascript:alert(2)">Bad</a>',
     });
 
     render(
@@ -144,6 +144,10 @@ describe("admin marketing campaigns page", () => {
     expect(screen.getByText("Recipients")).toBeInTheDocument();
     expect(screen.getByText("44")).toBeInTheDocument();
     expect(screen.getByText("Rendered")).toBeInTheDocument();
+    expect(screen.queryByText("alert(1)")).not.toBeInTheDocument();
+    const badLink = screen.getByText("Bad").closest("a");
+    expect(badLink).not.toBeNull();
+    expect(badLink).not.toHaveAttribute("href");
   });
 
   it("redirects draft campaign away from sent-only summary", async () => {
