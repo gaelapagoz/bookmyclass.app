@@ -1027,6 +1027,56 @@ describe.sequential("POST /api/checkout/session", { timeout: 20000 }, () => {
     }
   });
 
+  it("blocks deterministic E2E synthetic checkout in production mode", async () => {
+    const previousE2EMode = process.env.E2E_TEST_MODE;
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.E2E_TEST_MODE = "1";
+    process.env.NODE_ENV = "production";
+
+    try {
+      const fixture = await createBookingWithSelection({
+        paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+        withClient: true,
+      });
+      vi.mocked(auth).mockResolvedValue({
+        user: {
+          id: fixture.client!.id,
+          name: fixture.client!.name,
+          email: fixture.client!.email,
+        },
+        expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      });
+
+      const response = await createCheckoutSession(
+        new Request("http://localhost/api/checkout/session", {
+          method: "POST",
+          headers: sameOriginJsonHeaders,
+          body: JSON.stringify({ bookingId: fixture.booking.id }),
+        }),
+      );
+      const body = (await response.json()) as {
+        checkout?: { checkoutSessionId?: string; checkoutUrl?: string };
+      };
+
+      expect(response.status).toBe(200);
+      expect(body.checkout?.checkoutSessionId).not.toContain("cs_e2e_");
+      expect(body.checkout?.checkoutUrl).toContain("checkout.stripe.com");
+      expect(createStripeCheckoutSessionMock).toHaveBeenCalledTimes(1);
+    } finally {
+      if (previousE2EMode === undefined) {
+        delete process.env.E2E_TEST_MODE;
+      } else {
+        process.env.E2E_TEST_MODE = previousE2EMode;
+      }
+
+      if (previousNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+    }
+  });
+
   it("keeps a single pending payment/order under concurrent duplicate submits", async () => {
     const fixture = await createBookingWithSelection({
       paymentSelection: BookingPaymentSelection.SINGLE_SESSION,

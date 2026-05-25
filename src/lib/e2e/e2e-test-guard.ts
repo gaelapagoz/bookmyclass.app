@@ -1,7 +1,11 @@
 const E2E_SECRET_HEADER = "x-e2e-test-secret";
 
-export function isE2ETestModeEnabled(): boolean {
+export function isE2ETestModeRequested(): boolean {
   return process.env.E2E_TEST_MODE === "1";
+}
+
+export function isE2ETestModeEnabled(): boolean {
+  return isE2ETestModeRequested() && process.env.NODE_ENV !== "production";
 }
 
 export function assertE2ETestRequest(request: Request): Response | null {

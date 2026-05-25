@@ -10,13 +10,21 @@ function makeRequest(headers: Record<string, string> = {}): Request {
 
 describe("isE2ETestModeEnabled", () => {
   it("returns false when E2E_TEST_MODE is unset", () => {
+    vi.stubEnv("NODE_ENV", "test");
     vi.stubEnv("E2E_TEST_MODE", "");
     expect(isE2ETestModeEnabled()).toBe(false);
   });
 
-  it("returns true when E2E_TEST_MODE is '1'", () => {
+  it("returns true when E2E_TEST_MODE is '1' outside production", () => {
+    vi.stubEnv("NODE_ENV", "test");
     vi.stubEnv("E2E_TEST_MODE", "1");
     expect(isE2ETestModeEnabled()).toBe(true);
+  });
+
+  it("returns false when E2E_TEST_MODE is '1' in production", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("E2E_TEST_MODE", "1");
+    expect(isE2ETestModeEnabled()).toBe(false);
   });
 });
 

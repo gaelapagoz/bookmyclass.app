@@ -556,6 +556,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate Prisma client
+        run: npx prisma generate
+
       - name: Setup k6
         uses: grafana/setup-k6-action@v1
 

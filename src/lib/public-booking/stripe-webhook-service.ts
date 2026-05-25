@@ -35,6 +35,7 @@ import { giftCardErrorCodes, GiftCardError } from "@/lib/gift-cards/gift-card-er
 import { getStripeClient } from "../payments/stripe";
 import { consumeCredit } from "@/lib/credits/credit-service";
 import { fulfillPaidCartOrder } from "@/lib/fulfillment/order-fulfillment-service";
+import { isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
 
 type CatalogCheckoutMetadata = {
   userId: string;
@@ -1454,7 +1455,7 @@ async function handleCheckoutCompleted(
         metadata: resolvedMetadata,
         checkoutSource,
       });
-    } else if (process.env.E2E_TEST_MODE === "1") {
+    } else if (isE2ETestModeEnabled()) {
       const resolvedPriceId = selectedPriceIdFromMetadata ?? null;
       const resolvedUserId = catalogMetadata?.userId ?? booking?.clientId ?? null;
       if (resolvedPriceId && resolvedUserId) {
@@ -1845,7 +1846,7 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
 export async function completeStripeCheckoutSessionForE2ETests(input: {
   checkoutSessionId: string;
 }): Promise<{ completed: boolean; reason?: string }> {
-  if (process.env.E2E_TEST_MODE !== "1") {
+  if (!isE2ETestModeEnabled()) {
     return { completed: false, reason: "E2E_TEST_MODE_DISABLED" };
   }
 

@@ -1,7 +1,7 @@
 ﻿import { BookingStatus, Role, StudioSessionStatus, WaitlistStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { assertE2ETestRequest } from "@/lib/e2e/e2e-test-guard";
+import { assertE2ETestRequest, isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
 import { clearPublicCatalogueAvailabilityCaches } from "@/lib/public-catalogue/availability-service";
 import { getStudioDateKey, getStudioTimeLabel } from "@/lib/public-catalogue/timezone";
 
@@ -227,7 +227,7 @@ export async function POST(request: Request) {
       {
         error: "Internal server error.",
         code: "INTERNAL_SERVER_ERROR",
-        ...(process.env.E2E_TEST_MODE === "1" ? { reason } : {}),
+        ...(isE2ETestModeEnabled() ? { reason } : {}),
       },
       { status: 500 },
     );

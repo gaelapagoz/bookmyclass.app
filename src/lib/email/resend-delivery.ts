@@ -41,7 +41,7 @@ function parseSenderEmail(from: string): string {
 }
 
 export function isDeterministicEmailDeliveryMode(): boolean {
-  return process.env.NODE_ENV === "test" || process.env.E2E_TEST_MODE === "1";
+  return process.env.NODE_ENV === "test" || isE2ETestModeEnabled();
 }
 
 function assertProductionSenderPolicy(from: string): void {
@@ -146,3 +146,4 @@ export async function sendEmailViaResend(input: SendEmailInput): Promise<EmailDe
     bypassed: false,
   };
 }
+import { isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";

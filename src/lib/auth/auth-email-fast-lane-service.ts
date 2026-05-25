@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { dispatchEmailAutomationBatch } from "@/lib/email/email-automation-dispatcher-service";
 import { enqueueEmailAutomationEvent } from "@/lib/email/email-automation-outbox-service";
+import { isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
 
 const AUTH_VERIFY_EMAIL_TEMPLATE_KEY = "auth.verify-email";
 const AUTH_EMAIL_CHANGE_TEMPLATE_KEY = "auth.verify-email-change";
@@ -8,7 +9,7 @@ const AUTH_PASSWORD_RESET_TEMPLATE_KEY = "auth.password-reset";
 
 function resolveAppUrl(inputAppUrl?: string): string {
   const resolved = inputAppUrl ?? process.env.APP_URL ?? "http://localhost:3000";
-  const allowLoopbackForE2E = process.env.E2E_TEST_MODE === "1";
+  const allowLoopbackForE2E = isE2ETestModeEnabled();
   if (process.env.NODE_ENV === "production" && !allowLoopbackForE2E) {
     const parsed = new URL(resolved);
     const host = parsed.hostname.toLowerCase();

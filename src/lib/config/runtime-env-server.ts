@@ -1,7 +1,6 @@
 import { UploadsConfigError, resolveUploadsConfig } from "@/lib/media/upload-config";
 import {
   RuntimeEnvError,
-  isLocalE2ERuntime,
   validateRuntimeEnvForEdge,
 } from "@/lib/config/runtime-env-edge";
 
@@ -11,9 +10,7 @@ export function validateRuntimeEnvForServer(): void {
   validateRuntimeEnvForEdge();
 
   const isProduction = process.env.NODE_ENV === "production";
-  const isAllowedLocalE2E = isLocalE2ERuntime();
-
-  if (isAllowedLocalE2E || !isProduction) {
+  if (!isProduction) {
     return;
   }
 

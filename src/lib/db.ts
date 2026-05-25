@@ -1,5 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import { isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
 
 const globalForPrisma = globalThis as unknown as {
   adapter?: PrismaPg;
@@ -27,7 +28,7 @@ function parsePositiveIntEnv(name: string, fallback: number): number {
 }
 
 function resolvePgPoolMaxConnections(): number {
-  const defaultPoolMax = process.env.NODE_ENV === "test" || process.env.E2E_TEST_MODE === "1"
+  const defaultPoolMax = process.env.NODE_ENV === "test" || isE2ETestModeEnabled()
     ? 12
     : 10;
   return parsePositiveIntEnv("PRISMA_PG_POOL_MAX", defaultPoolMax);

@@ -26,6 +26,7 @@ import {
 import { getSubscriptionCheckoutItemByProductId } from "../subscription/subscription-products";
 import { hasActiveRecurringSubscriptionForProduct } from "../subscription/ownership";
 import { isCatalogPriceCheckoutReady } from "../catalog/checkout-readiness";
+import { isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
 
 type CheckoutErrorCode =
   | "BOOKING_NOT_FOUND"
@@ -97,10 +98,6 @@ async function assertClientCheckoutEligibility(input: {
 
 function buildStripeIdempotencyKey(parts: string[]): string {
   return parts.join(":").slice(0, 255);
-}
-
-function isE2ETestModeEnabled(): boolean {
-  return process.env.E2E_TEST_MODE === "1";
 }
 
 function buildSubscriptionSyntheticCheckoutUrl(input: {

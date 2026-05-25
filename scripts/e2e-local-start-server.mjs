@@ -76,7 +76,9 @@ for (const key of ["AUTH_URL", "NEXTAUTH_URL"]) {
 }
 
 const nextBin = resolve(process.cwd(), "node_modules", "next", "dist", "bin", "next");
-const child = spawn(process.execPath, [nextBin, "start"], {
+// E2E deterministic mode is intentionally blocked in production runtime.
+// Run Next in dev mode so E2E_TEST_MODE can be used safely for test-only flows.
+const child = spawn(process.execPath, [nextBin, "dev", "-p", process.env.PORT], {
   cwd: process.cwd(),
   env: process.env,
   stdio: "inherit",

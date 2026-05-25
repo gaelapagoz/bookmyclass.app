@@ -5,6 +5,7 @@ import { buildBaseSecurityHeaders } from "./src/lib/security/response-security";
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactCompiler: true,
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   experimental: {
     serverActions: {
       bodySizeLimit: "6mb",

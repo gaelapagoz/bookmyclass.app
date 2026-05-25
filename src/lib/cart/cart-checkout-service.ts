@@ -34,6 +34,7 @@ import {
 import { GIFT_CARD_CURRENCY_CODE } from "@/lib/gift-cards/gift-card-types";
 import { GiftCardError, giftCardErrorCodes } from "@/lib/gift-cards/gift-card-errors";
 import { fulfillPaidCartOrder } from "@/lib/fulfillment/order-fulfillment-service";
+import { isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
 
 const GIFT_CARD_CHECKOUT_RATE_LIMIT = {
   maxAttempts: 10,
@@ -1590,7 +1591,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       });
     }
 
-    if (process.env.E2E_TEST_MODE === "1") {
+    if (isE2ETestModeEnabled()) {
       const syntheticCheckoutSessionId = `cs_e2e_${Date.now()}_${orderPayment.paymentId.slice(-8)}`;
       const syntheticCheckoutUrl = resolveSyntheticCheckoutSuccessUrl({
         template:

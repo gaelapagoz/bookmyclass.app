@@ -1,3 +1,4 @@
+import { isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
 import path from "node:path";
 
 export const DEFAULT_PUBLIC_UPLOADS_BASE_PATH = "/uploads";
@@ -38,7 +39,9 @@ export function normalizePublicUploadsBasePath(value: string | undefined): strin
 
 export function resolveUploadsConfig(env: NodeJS.ProcessEnv = process.env): UploadsConfig {
   const isProduction = env.NODE_ENV === "production";
-  const isE2eTestMode = env.E2E_TEST_MODE === "1";
+  const isE2eTestMode = env === process.env
+    ? isE2ETestModeEnabled()
+    : env.E2E_TEST_MODE === "1" && env.NODE_ENV !== "production";
   const configuredUploadsDir = env.UPLOADS_DIR?.trim();
 
   if (isProduction && !configuredUploadsDir && !isE2eTestMode) {
