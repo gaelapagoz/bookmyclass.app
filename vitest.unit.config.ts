@@ -20,11 +20,9 @@ export default defineConfig({
     globals: true,
     include: [
       "test/unit/**/*.test.ts",
+      "test/unit/**/*.test.tsx",
       "test/unit/**/*.spec.ts",
-      "test/ui/**/*.test.ts",
-      "test/ui/**/*.test.tsx",
-      "test/ui/**/*.spec.ts",
-      "test/ui/**/*.spec.tsx",
+      "test/unit/**/*.spec.tsx",
     ],
     fileParallelism: true,
     testTimeout: 120000,

@@ -18,7 +18,12 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
-    include: ["test/integration/**/*.test.ts", "test/integration/**/*.spec.ts"],
+    include: [
+      "test/integration/**/*.test.ts",
+      "test/integration/**/*.test.tsx",
+      "test/integration/**/*.spec.ts",
+      "test/integration/**/*.spec.tsx",
+    ],
     fileParallelism: false,
     testTimeout: 120000,
     hookTimeout: 120000,

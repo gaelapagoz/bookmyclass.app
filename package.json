@@ -12,6 +12,7 @@
                     "test":  "tsx scripts/test-entry.ts",
                     "test:vitest":  "vitest",
                     "test:unit": "npx vitest --config vitest.unit.config.ts --run",
+                    "test:ui": "npx vitest --config vitest.ui.config.ts --run",
                     "test:integration": "tsx scripts/test-vitest-run-files.ts --config vitest.integration.config.ts --run test/integration",
                     "prisma:generate":  "prisma generate",
                     "prisma:seed":  "prisma db seed",

@@ -18,11 +18,7 @@ import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const repoRoot = process.cwd();
-const testRoot = resolve(repoRoot, "test");
-const excludedDirectoryPaths = [
-  resolve(testRoot, "e2e"),
-  resolve(testRoot, "manual", "demo-screenshots"),
-].map(normalizePathForComparison);
+const testRoot = resolve(repoRoot, "test", "integration");
 const testFilePattern = /\.(test|spec)\.(ts|tsx|js|jsx)$/i;
 
 function normalizePathForComparison(value: string): string {
@@ -75,16 +71,8 @@ function parseRunnerArgs(args: string[]): { vitestArgs: string[]; requestedPaths
 function collectTestFiles(dir: string, output: string[]): void {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const fullPath = join(dir, entry.name);
-    const normalizedFullPath = normalizePathForComparison(fullPath);
 
     if (entry.isDirectory()) {
-      if (excludedDirectoryPaths.some((excludedPath) => (
-        normalizedFullPath === excludedPath ||
-        normalizedFullPath.startsWith(`${excludedPath}/`)
-      ))) {
-        continue;
-      }
-
       collectTestFiles(fullPath, output);
       continue;
     }
@@ -97,8 +85,18 @@ function collectTestFiles(dir: string, output: string[]): void {
 
 function resolveRequestedPath(arg: string): string[] {
   const fullPath = resolve(repoRoot, arg);
+  const normalizedFullPath = normalizePathForComparison(fullPath);
+  const normalizedIntegrationRoot = normalizePathForComparison(testRoot);
+  const isUnderIntegrationRoot =
+    normalizedFullPath === normalizedIntegrationRoot ||
+    normalizedFullPath.startsWith(`${normalizedIntegrationRoot}/`);
+
+  if (!isUnderIntegrationRoot) {
+    return [];
+  }
+
   if (!existsSync(fullPath)) {
-    return [arg];
+    return [];
   }
 
   const stat = statSync(fullPath);
