@@ -1,6 +1,6 @@
 import prisma from "@/lib/db";
 import { normalizeLearningImagePath } from "@/lib/learning/image-paths";
-import { getCanonicalMediaRenderState, getLocalMediaRenderState } from "@/lib/media";
+import { getCanonicalMediaRenderState } from "@/lib/media";
 
 export type LearningProgramView = {
   legacyId: string;
@@ -28,11 +28,7 @@ export type LearningCourseView = {
 
 async function resolveLearningImagePath(path: string | null): Promise<string | null> {
   const normalized = normalizeLearningImagePath(path);
-  if (normalized?.startsWith("/uploads/")) {
-    const renderState = await getCanonicalMediaRenderState(normalized, { allowedFolders: ["learning"] });
-    return renderState.src;
-  }
-  const renderState = await getLocalMediaRenderState(normalized, { allowedFolders: ["/images/learning"] });
+  const renderState = await getCanonicalMediaRenderState(normalized, { allowedFolders: ["learning"] });
   return renderState.src;
 }
 

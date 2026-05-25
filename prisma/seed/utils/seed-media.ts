@@ -5,24 +5,16 @@ import path from "node:path";
 import type { PrismaClient } from "@prisma/client";
 
 import { resolveUploadsConfig } from "../../../src/lib/media/upload-config";
+import { resolveSeedMode, type SeedMode } from "../config";
 
 export const SEED_MEDIA_FOLDERS = ["teachers", "classes", "learning", "products"] as const;
 export type SeedMediaFolder = (typeof SEED_MEDIA_FOLDERS)[number];
 
-const LEGACY_TO_CANONICAL_PREFIX: ReadonlyArray<{
-  readonly legacyPrefix: string;
-  readonly canonicalPrefix: string;
-}> = [
-  { legacyPrefix: "/images/instructors/", canonicalPrefix: "/uploads/teachers/" },
-  { legacyPrefix: "/images/classes/", canonicalPrefix: "/uploads/classes/" },
-  { legacyPrefix: "/images/learning/", canonicalPrefix: "/uploads/learning/" },
-];
-
-const SOURCE_RESOLUTION_BY_FOLDER: Readonly<Record<SeedMediaFolder, readonly string[]>> = {
-  teachers: ["/images/instructors/"],
-  classes: ["/images/classes/"],
-  learning: ["/images/learning/"],
-  products: ["/uploads/products/"],
+const SEED_MODE_TO_SOURCE_ROOT: Readonly<Record<SeedMode, string>> = {
+  development: "dev-images",
+  staging: "staging-images",
+  demo: "demo-images",
+  production: "prod-images",
 };
 
 export type SeedMediaPlan = {
@@ -41,14 +33,9 @@ export type SeedMediaSyncSummary = {
 
 export function toCanonicalSeedImagePath(inputPath: string): string {
   const normalized = normalizeRootRelativePath(inputPath);
-  if (normalized.startsWith("/uploads/")) return normalized;
-
-  for (const candidate of LEGACY_TO_CANONICAL_PREFIX) {
-    if (normalized.startsWith(candidate.legacyPrefix)) {
-      return `${candidate.canonicalPrefix}${normalized.slice(candidate.legacyPrefix.length)}`;
-    }
+  if (!normalized.startsWith("/uploads/")) {
+    throw new Error(`Seed media path must use /uploads/*: ${inputPath}`);
   }
-
   return normalized;
 }
 
@@ -66,6 +53,7 @@ export function buildSeedMediaPlan(
   options: {
     readonly sourceFolder?: SeedMediaFolder;
     readonly sourceFilename?: string;
+    readonly seedMode?: SeedMode;
   } = {},
 ): SeedMediaPlan {
   const publicPath = toCanonicalSeedImagePath(publicPathInput);
@@ -76,13 +64,17 @@ export function buildSeedMediaPlan(
 
   const folder = match[1]!.toLowerCase() as SeedMediaFolder;
   const filename = match[2]!;
-  const sourceCandidates = options.sourceFolder
-    ? SOURCE_RESOLUTION_BY_FOLDER[options.sourceFolder]
-    : SOURCE_RESOLUTION_BY_FOLDER[folder];
+  const sourceFolder = options.sourceFolder ?? folder;
+  const seedMode = options.seedMode ?? resolveSeedMode();
+  const sourceFilename = normalizeSeedFilename(options.sourceFilename ?? filename);
 
   const config = resolveUploadsConfig();
   const destinationAbsolutePath = path.resolve(config.uploadsDir, folder, filename);
-  const sourceAbsolutePath = resolveExistingSourcePath(options.sourceFilename ?? filename, sourceCandidates);
+  const sourceAbsolutePath = resolveExistingSourcePath({
+    filename: sourceFilename,
+    sourceFolder,
+    seedMode,
+  });
 
   return {
     sourceAbsolutePath,
@@ -109,6 +101,7 @@ export async function syncSeedMediaPath(
   options: {
     readonly sourceFolder?: SeedMediaFolder;
     readonly sourceFilename?: string;
+    readonly seedMode?: SeedMode;
   } = {},
 ): Promise<"copied" | "existing"> {
   const publicPath = toCanonicalSeedImagePath(publicPathInput);
@@ -213,19 +206,28 @@ export async function readSeedFileSizeBytes(absolutePath: string): Promise<numbe
   return metadata.size;
 }
 
-function resolveExistingSourcePath(filename: string, sourcePrefixes: readonly string[]): string {
-  const tried: string[] = [];
-  for (const prefix of sourcePrefixes) {
-    const normalizedPrefix = normalizeRootRelativePath(prefix).replace(/\/+$/, "/");
-    const absolute = path.resolve(process.cwd(), "public", normalizedPrefix.replace(/^\//, ""), filename);
-    tried.push(absolute);
-    if (existsSync(absolute)) {
-      return absolute;
-    }
-    continue;
+function resolveExistingSourcePath(params: {
+  readonly filename: string;
+  readonly sourceFolder: SeedMediaFolder;
+  readonly seedMode: SeedMode;
+}): string {
+  const modeSourceRoot = SEED_MODE_TO_SOURCE_ROOT[params.seedMode];
+  const absolute = path.resolve(
+    process.cwd(),
+    "prisma",
+    "seed-data",
+    modeSourceRoot,
+    params.sourceFolder,
+    params.filename,
+  );
+
+  if (existsSync(absolute)) {
+    return absolute;
   }
 
-  throw new Error(`Seed media source missing for ${filename}. Tried: ${tried.join(", ")}`);
+  throw new Error(
+    `Seed media source missing for mode=${params.seedMode}, folder=${params.sourceFolder}, filename=${params.filename}. Expected: ${absolute}`,
+  );
 }
 
 function normalizeRootRelativePath(value: string): string {
@@ -237,4 +239,18 @@ function normalizeRootRelativePath(value: string): string {
     throw new Error(`Path traversal is not allowed: ${value}`);
   }
   return path.posix.normalize(normalized);
+}
+
+function normalizeSeedFilename(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error("Seed media source filename must not be empty.");
+  }
+  if (trimmed.includes("..")) {
+    throw new Error(`Seed media source filename cannot include '..': ${value}`);
+  }
+  if (trimmed.includes("/") || trimmed.includes("\\")) {
+    throw new Error(`Seed media source filename must not include path separators: ${value}`);
+  }
+  return trimmed;
 }

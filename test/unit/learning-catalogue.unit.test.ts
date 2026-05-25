@@ -20,10 +20,8 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/media", () => ({
   assertCanonicalMediaPublicPath: vi.fn(),
-  assertSafeMediaPublicPath: vi.fn(),
-  getCanonicalMediaRenderState: vi.fn(async (path: string | null) => ({ src: path })),
-  getLocalMediaRenderState: vi.fn(async (path: string | null) => ({
-    src: path?.includes("missing") || !path?.startsWith("/images/learning/") ? null : path,
+  getCanonicalMediaRenderState: vi.fn(async (path: string | null) => ({
+    src: path?.includes("missing") || !path?.startsWith("/uploads/learning/") ? null : path,
     shouldRenderFallback: !path || path.includes("missing"),
   })),
 }));
@@ -51,7 +49,7 @@ describe("learning catalogue data layer", () => {
         description2: null,
         description3: null,
         videoPromo: null,
-        picture1: "/images/learning/p1.jpg",
+        picture1: "/uploads/learning/p1.jpg",
         picture2: null,
         picture3: null,
       },
@@ -63,7 +61,7 @@ describe("learning catalogue data layer", () => {
         description2: null,
         description3: null,
         videoPromo: null,
-        picture1: "/images/outside-learning/p2.jpg",
+        picture1: "/uploads/classes/p2.jpg",
         picture2: null,
         picture3: null,
       },
@@ -77,7 +75,7 @@ describe("learning catalogue data layer", () => {
       }),
     );
     expect(programs).toHaveLength(2);
-    expect(programs[0].picture1).toBe("/images/learning/p1.jpg");
+    expect(programs[0].picture1).toBe("/uploads/learning/p1.jpg");
     expect(programs[1].picture1).toBeNull();
   });
 
@@ -91,7 +89,7 @@ describe("learning catalogue data layer", () => {
         description2: null,
         description3: null,
         videoPromo: null,
-        picture1: "/images/online-yoga-image-1.jpg",
+        picture1: "/uploads/program-1.jpg",
         picture2: null,
         picture3: null,
       },
@@ -142,7 +140,7 @@ describe("learning catalogue data layer", () => {
       description: "desc",
       shortDescription: "short",
       category: "Yoga",
-      thumbnail: "/images/learning/t.jpg",
+      thumbnail: "/uploads/learning/t.jpg",
       videoUrl: "https://www.youtube.com/watch?v=abc",
       priority: 1,
     });
@@ -155,7 +153,7 @@ describe("learning catalogue data layer", () => {
       }),
     );
     expect(course?.legacyId).toBe("course-1");
-    expect(course?.thumbnail).toBe("/images/learning/t.jpg");
+    expect(course?.thumbnail).toBe("/uploads/learning/t.jpg");
   });
 
   it("drops invalid learning thumbnails from runtime views", async () => {
@@ -165,7 +163,7 @@ describe("learning catalogue data layer", () => {
       description: "desc",
       shortDescription: "short",
       category: "Yoga",
-      thumbnail: "/images/course-thumb.jpg",
+      thumbnail: "/uploads/course-thumb.jpg",
       videoUrl: "https://www.youtube.com/watch?v=abc",
       priority: 1,
     });

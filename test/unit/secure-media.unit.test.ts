@@ -28,19 +28,26 @@ function createFileSystem(overrides: Partial<SecureMediaFileSystem> = {}): Secur
 }
 
 describe("secure media helper", () => {
+  const classesFolder = "/uploads/classes";
+  const parentPrivatePath = "/uploads/classes/../private";
+  const parentClassesPath = "/uploads/classes/../classes";
+  const parentPrivateFile = "/uploads/classes/../private/file.png";
+  const parentClassesFile = "/uploads/classes/../classes/file.png";
+  const missingPath = "/uploads/classes/missing.png";
+
   it("accepts a valid image and normalizes the generated storage path", async () => {
     const fileSystem = createFileSystem();
     const persistPath = vi.fn(async () => undefined);
 
     const stored = await storeSecureImageWithPathPersistence({
       file: imageFile(pngBytes),
-      folder: "/images/classes",
+      folder: classesFolder,
       filenamePrefix: "Reformer Intro",
       persistPath,
       fileSystem,
     });
 
-    expect(stored.publicPath).toMatch(/^\/images\/classes\/reformer-intro-\d+-[a-f0-9-]+\.png$/);
+    expect(stored.publicPath).toMatch(/^\/uploads\/classes\/reformer-intro-\d+-[a-f0-9-]+\.png$/);
     expect(stored.absolutePath).toContain("public");
     expect(stored.mimeType).toBe("image/png");
     expect(fileSystem.writeFile).toHaveBeenCalledWith(stored.absolutePath, Buffer.from(pngBytes));
@@ -66,10 +73,10 @@ describe("secure media helper", () => {
   });
 
   it("rejects path traversal and non-allowed folders", () => {
-    expect(() => normalizeAllowedMediaFolder("/images/classes/../private")).toThrow(SecureMediaError);
-    expect(() => normalizeAllowedMediaFolder("/images/classes/../classes")).toThrow(SecureMediaError);
-    expect(() => assertSafeMediaPublicPath("/images/classes/../private/file.png")).toThrow(SecureMediaError);
-    expect(() => assertSafeMediaPublicPath("/images/classes/../classes/file.png")).toThrow(SecureMediaError);
+    expect(() => normalizeAllowedMediaFolder(parentPrivatePath)).toThrow(SecureMediaError);
+    expect(() => normalizeAllowedMediaFolder(parentClassesPath)).toThrow(SecureMediaError);
+    expect(() => assertSafeMediaPublicPath(parentPrivateFile)).toThrow(SecureMediaError);
+    expect(() => assertSafeMediaPublicPath(parentClassesFile)).toThrow(SecureMediaError);
     expect(() => normalizeAllowedMediaFolder("/uploads")).toThrow(SecureMediaError);
   });
 
@@ -80,7 +87,7 @@ describe("secure media helper", () => {
     await expect(
       storeSecureImageWithPathPersistence({
         file: imageFile(pngBytes),
-        folder: "/images/classes",
+        folder: classesFolder,
         filenamePrefix: "large",
         maxBytes: pngBytes.length - 1,
         persistPath,
@@ -103,7 +110,7 @@ describe("secure media helper", () => {
     await expect(
       storeSecureImageWithPathPersistence({
         file: imageFile(pngBytes),
-        folder: "/images/classes",
+        folder: classesFolder,
         filenamePrefix: "class",
         persistPath,
         fileSystem,
@@ -123,7 +130,7 @@ describe("secure media helper", () => {
     await expect(
       storeSecureImageWithPathPersistence({
         file: imageFile(pngBytes),
-        folder: "/images/classes",
+        folder: classesFolder,
         filenamePrefix: "class",
         persistPath,
         fileSystem,
@@ -142,7 +149,7 @@ describe("secure media helper", () => {
       }) as SecureMediaFileSystem["access"],
     });
 
-    await expect(getLocalMediaRenderState("/images/classes/missing.png", { fileSystem })).resolves.toEqual({
+    await expect(getLocalMediaRenderState(missingPath, { fileSystem })).resolves.toEqual({
       src: null,
       shouldRenderFallback: true,
     });

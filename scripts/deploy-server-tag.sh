@@ -46,7 +46,7 @@ PM2_TIMEOUT_SECONDS="${PM2_TIMEOUT_SECONDS:-120}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-120}"
 PRISMA_RESET_TIMEOUT_SECONDS="${PRISMA_RESET_TIMEOUT_SECONDS:-300}"
 SEED_PROD_TIMEOUT_SECONDS="${SEED_PROD_TIMEOUT_SECONDS:-600}"
-SEED_UAT_PERF_TIMEOUT_SECONDS="${SEED_UAT_PERF_TIMEOUT_SECONDS:-600}"
+SEED_STAGING_TIMEOUT_SECONDS="${SEED_STAGING_TIMEOUT_SECONDS:-600}"
 SEED_UAT_K6_TIMEOUT_SECONDS="${SEED_UAT_K6_TIMEOUT_SECONDS:-600}"
 SEED_STAGING_E2E_TIMEOUT_SECONDS="${SEED_STAGING_E2E_TIMEOUT_SECONDS:-300}"
 
@@ -115,7 +115,7 @@ CONFIRM_DESTRUCTIVE_STAGING_SEED="${21:-}"
 CONFIRM_PRODUCTION_SEED="${22:-}"
 PRISMA_RESET_TIMEOUT_SECONDS="${23:-300}"
 SEED_PROD_TIMEOUT_SECONDS="${24:-600}"
-SEED_UAT_PERF_TIMEOUT_SECONDS="${25:-600}"
+SEED_STAGING_TIMEOUT_SECONDS="${25:-600}"
 SEED_UAT_K6_TIMEOUT_SECONDS="${26:-600}"
 CONFIRM_TARGET="${27:-}"
 SEED_STAGING_E2E_TIMEOUT_SECONDS="${28:-300}"
@@ -320,13 +320,13 @@ if [[ "$RESET_STAGING_DB" == "1" ]]; then
   guard_destructive_staging_seed
   run_with_timeout "$PRISMA_RESET_TIMEOUT_SECONDS" "destructive staging database reset" npx prisma migrate reset --force --skip-seed
   run_with_timeout "$SEED_PROD_TIMEOUT_SECONDS" "seed prod baseline data for staging validation" env CONFIRM_PRODUCTION_SEED="$CONFIRM_PRODUCTION_SEED" npm run db:seed:prod
-  run_with_timeout "$SEED_UAT_PERF_TIMEOUT_SECONDS" "seed uat performance data for staging validation" npm run db:seed:uat-performance
+  run_with_timeout "$SEED_STAGING_TIMEOUT_SECONDS" "seed staging baseline data for staging validation" npm run db:seed:staging
   run_with_timeout "$SEED_UAT_K6_TIMEOUT_SECONDS" "seed uat k6 cohort data for staging validation" env UAT_K6_SEED=1 npm run db:seed:uat:k6
   run_with_timeout "$SEED_STAGING_E2E_TIMEOUT_SECONDS" "align staging e2e credential fixtures" env UAT_E2E_SEED=1 npm run db:seed:staging:e2e
   run_with_timeout "$SEED_STAGING_E2E_TIMEOUT_SECONDS" "verify staging e2e credential fixtures" npm run db:verify:staging:e2e
   log_step "staging reset/seed summary"
   echo "seed_baseline=completed"
-  echo "seed_uat_performance=completed"
+  echo "seed_staging=completed"
   echo "seed_uat_k6=completed"
   echo "seed_staging_e2e_credentials=completed"
 fi
@@ -378,7 +378,7 @@ REMOTE_SCRIPT="$1"; REMOTE_LOG="$2"; REMOTE_STATUS="$3"; shift 3
 ( set +e; "$REMOTE_SCRIPT" "$@" >"$REMOTE_LOG" 2>&1; printf "%s\n" "$?" >"$REMOTE_STATUS" ) </dev/null >/dev/null 2>&1 &
 REMOTE_START
 ssh "$ssh_target" "chmod 700 '$remote_start'"
-ssh "$ssh_target" "'$remote_start' '$remote_script' '$remote_log' '$remote_status' '$TARGET_ENV' '$RELEASE_TAG' '$APP_DIR' '$APP_NAME' '$HOMESITE_PUBLISH_DIR' '$BASE_URL' '$LOCAL_HEALTH_URL' '$HEALTH_ATTEMPTS' '$HEALTH_DELAY_SECONDS' '$EXPECTED_SHA' '$HOMESITE_BASE_URL' '$PUBLISH_HOMESITE' '$NPM_CI_TIMEOUT_SECONDS' '$PRISMA_GENERATE_TIMEOUT_SECONDS' '$PRISMA_MIGRATE_TIMEOUT_SECONDS' '$BUILD_TIMEOUT_SECONDS' '$NPM_PRUNE_TIMEOUT_SECONDS' '$PM2_TIMEOUT_SECONDS' '$HEALTH_TIMEOUT_SECONDS' '$RESET_STAGING_DB' '$CONFIRM_DESTRUCTIVE_STAGING_SEED' '$CONFIRM_PRODUCTION_SEED' '$PRISMA_RESET_TIMEOUT_SECONDS' '$SEED_PROD_TIMEOUT_SECONDS' '$SEED_UAT_PERF_TIMEOUT_SECONDS' '$SEED_UAT_K6_TIMEOUT_SECONDS' '$CONFIRM_TARGET' '$SEED_STAGING_E2E_TIMEOUT_SECONDS'"
+ssh "$ssh_target" "'$remote_start' '$remote_script' '$remote_log' '$remote_status' '$TARGET_ENV' '$RELEASE_TAG' '$APP_DIR' '$APP_NAME' '$HOMESITE_PUBLISH_DIR' '$BASE_URL' '$LOCAL_HEALTH_URL' '$HEALTH_ATTEMPTS' '$HEALTH_DELAY_SECONDS' '$EXPECTED_SHA' '$HOMESITE_BASE_URL' '$PUBLISH_HOMESITE' '$NPM_CI_TIMEOUT_SECONDS' '$PRISMA_GENERATE_TIMEOUT_SECONDS' '$PRISMA_MIGRATE_TIMEOUT_SECONDS' '$BUILD_TIMEOUT_SECONDS' '$NPM_PRUNE_TIMEOUT_SECONDS' '$PM2_TIMEOUT_SECONDS' '$HEALTH_TIMEOUT_SECONDS' '$RESET_STAGING_DB' '$CONFIRM_DESTRUCTIVE_STAGING_SEED' '$CONFIRM_PRODUCTION_SEED' '$PRISMA_RESET_TIMEOUT_SECONDS' '$SEED_PROD_TIMEOUT_SECONDS' '$SEED_STAGING_TIMEOUT_SECONDS' '$SEED_UAT_K6_TIMEOUT_SECONDS' '$CONFIRM_TARGET' '$SEED_STAGING_E2E_TIMEOUT_SECONDS'"
 
 last_lines=0
 remote_exit=""
@@ -403,3 +403,4 @@ fi
 
 echo "remote_exit_code=$remote_exit" | tee "$evidence_dir/exit-code.txt"
 exit "$remote_exit"
+

@@ -108,7 +108,11 @@
       "Bash(Remove-Item -Recurse -Force .next -ErrorAction SilentlyContinue)",
       "Bash(Get-ChildItem -Path c:\\\\Dev\\\\studio.saas.platform -Directory)",
       "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
-      "Bash(grep -E \"\\\\.ts$\")"
+      "Bash(grep -E \"\\\\.ts$\")",
+      "Bash(Get-ChildItem \"c:\\\\Dev\\\\studio.saas.platform\\\\public\" -ErrorAction SilentlyContinue)",
+      "Bash(xargs wc -l)",
+      "Bash(awk '{print $NF}')",
+      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\" && head -30 \"{}\"')"
     ],
     "additionalDirectories": [
       "c:\\Dev\\studio.saas.platform\\public\\images\\homesite",

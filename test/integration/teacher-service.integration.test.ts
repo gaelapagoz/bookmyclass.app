@@ -253,16 +253,16 @@ describe("teacher service", () => {
     const updated = await updateTeacherSelfImage({
       teacherUserId: teacherA.id,
       requestedTeacherUserId: teacherA.id,
-      imagePath: "/images/instructors/teacher-own.png",
+      imagePath: "/uploads/teachers/teacher-own.png",
     });
 
-    expect(updated.image).toBe("/images/instructors/teacher-own.png");
+    expect(updated.image).toBe("/uploads/teachers/teacher-own.png");
 
     await expect(
       updateTeacherSelfImage({
         teacherUserId: teacherA.id,
         requestedTeacherUserId: teacherB.id,
-        imagePath: "/images/instructors/teacher-cross.png",
+        imagePath: "/uploads/teachers/teacher-cross.png",
       }),
     ).rejects.toThrow("TEACHER_SELF_SCOPE_FORBIDDEN");
   });
@@ -286,12 +286,12 @@ describe("teacher service", () => {
     expect(persisted?.image).toBe("/uploads/teachers/teacher-own-canonical.png");
   });
 
-  it("returns fallback image when legacy teacher image file is missing", async () => {
+  it("returns fallback image when canonical teacher image file is missing", async () => {
     const { teacherA } = await seedTeacherSessionFixture();
 
     await prisma.user.update({
       where: { id: teacherA.id },
-      data: { image: "/images/instructors/missing-teacher-image.jpg" },
+      data: { image: "/uploads/teachers/missing-teacher-image.jpg" },
     });
 
     const profile = await getTeacherSelfProfile(teacherA.id);

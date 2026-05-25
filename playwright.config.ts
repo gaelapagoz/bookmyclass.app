@@ -8,7 +8,8 @@ const appUrl = process.env.APP_URL ?? "http://127.0.0.1:3100";
 export default defineConfig({
   testDir: "./test/e2e",
   testIgnore: ["**/uat/**"],
-  workers: Number(process.env.PLAYWRIGHT_E2E_WORKERS ?? "2"),
+  // Shared E2E database is mutable; run one worker by default to avoid cross-worker DB contention.
+  workers: Number(process.env.PLAYWRIGHT_E2E_WORKERS ?? "1"),
   timeout: 60_000,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,

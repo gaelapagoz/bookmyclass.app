@@ -61,6 +61,15 @@ jobs:
       - name: Apply migrations to temporary regression database
         run: npx prisma migrate deploy
 
+      - name: Enforce no-legacy contract guardrails
+        run: npm run verify:no-legacy-contract
+
+      - name: Enforce no-legacy docs guardrails
+        run: npm run verify:no-legacy-docs
+
+      - name: Enforce e2e artifact hygiene
+        run: npm run verify:e2e-artifacts
+
       - name: Build application
         run: npm run build
 

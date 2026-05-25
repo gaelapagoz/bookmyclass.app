@@ -368,9 +368,9 @@ const learningProgramSchema = z.object({
   description2: z.string().optional(),
   description3: z.string().optional(),
   videoPromo: z.string().optional(),
-  picture1: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /uploads/learning/ (legacy /images/learning/ allowed), JPG, PNG, or WEBP files."),
-  picture2: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /uploads/learning/ (legacy /images/learning/ allowed), JPG, PNG, or WEBP files."),
-  picture3: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /uploads/learning/ (legacy /images/learning/ allowed), JPG, PNG, or WEBP files."),
+  picture1: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /uploads/learning/ with JPG, PNG, or WEBP files."),
+  picture2: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /uploads/learning/ with JPG, PNG, or WEBP files."),
+  picture3: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /uploads/learning/ with JPG, PNG, or WEBP files."),
 });
 
 const learningVideoSchema = z.object({
@@ -378,7 +378,7 @@ const learningVideoSchema = z.object({
   description: z.string().optional(),
   shortDescription: z.string().optional(),
   category: z.string().min(1),
-  thumbnail: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /uploads/learning/ (legacy /images/learning/ allowed), JPG, PNG, or WEBP files."),
+  thumbnail: z.string().optional().refine((value) => !value || isLearningImagePath(value), "Learning images must use /uploads/learning/ with JPG, PNG, or WEBP files."),
   videoUrl: z.string().optional(),
   priority: z.coerce.number().int(),
 });
@@ -2816,6 +2816,7 @@ export async function bulkRemoveClientMarketingSegmentsAction(formData: FormData
   revalidatePath(returnTo);
   redirect(`${returnTo}?success=${encodeURIComponent("Segments removed from selected clients.")}`);
 }
+
 
 
 

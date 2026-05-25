@@ -19,13 +19,13 @@ vi.mock("@/lib/admin/admin-service", () => ({
     description2: null,
     description3: null,
     videoPromo: null,
-    picture1: "/images/learning/library.png",
+    picture1: "/uploads/learning/library.png",
     picture2: null,
     picture3: null,
   })),
   getLearningMediaLibraryOptions: vi.fn(async () => [
-    { path: "/images/learning/library.png", name: "library.png" },
-    { path: "/images/learning/second.webp", name: "second.webp" },
+    { path: "/uploads/learning/library.png", name: "library.png" },
+    { path: "/uploads/learning/second.webp", name: "second.webp" },
   ]),
 }));
 
@@ -123,7 +123,7 @@ describe("admin learning program media controls", () => {
 
     expect(screen.getByAltText("Picture 1 preview")).toHaveAttribute(
       "src",
-      expect.stringContaining(encodeURIComponent("/images/learning/library.png")),
+      expect.stringContaining(encodeURIComponent("/uploads/learning/library.png")),
     );
     expect(screen.getByTestId("learning-program-picture-2-preview")).toHaveTextContent("No image selected");
     expect(screen.getByTestId("learning-program-picture-3-preview")).toHaveTextContent("No image selected");
@@ -143,5 +143,4 @@ describe("admin learning program media controls", () => {
     expect(form?.getAttribute("encType")).toBeNull();
   });
 });
-
 

@@ -151,18 +151,18 @@ describe("admin class schedule service", () => {
 
     const updated = await updateAdminClassImage({
       classTypeId: classType.id,
-      imagePath: "/images/classes/reformer-intro-1.jpg",
+      imagePath: "/uploads/classes/reformer-intro-1.jpg",
       adminUserId: admin.id,
     });
 
-    expect(updated.imageUrl).toBe("/images/classes/reformer-intro-1.jpg");
+    expect(updated.imageUrl).toBe("/uploads/classes/reformer-intro-1.jpg");
 
     const persisted = await prisma.classType.findUnique({
       where: { id: classType.id },
       select: { imageUrl: true },
     });
 
-    expect(persisted?.imageUrl).toBe("/images/classes/reformer-intro-1.jpg");
+    expect(persisted?.imageUrl).toBe("/uploads/classes/reformer-intro-1.jpg");
   });
 
   it("rejects class image paths outside service media folder", async () => {
@@ -190,7 +190,7 @@ describe("admin class schedule service", () => {
       createAdminClass({
         categoryId: category.id,
         name: "Barre Basics",
-        imageUrl: "/images/learning/barre.png",
+        imageUrl: "/uploads/learning/barre.png",
         defaultDurationMinutes: 45,
         defaultCapacity: 8,
         isActive: true,
@@ -212,7 +212,7 @@ describe("admin class schedule service", () => {
     await expect(
       updateAdminClassImage({
         classTypeId: classType.id,
-        imagePath: "/images/learning/barre.png",
+        imagePath: "/uploads/learning/barre.png",
         adminUserId: admin.id,
       }),
     ).rejects.toThrow();
@@ -222,7 +222,7 @@ describe("admin class schedule service", () => {
         const created = await createAdminClass({
           categoryId: category.id,
           name: "Barre Basics Updated",
-          imageUrl: "/images/classes/barre.png",
+          imageUrl: "/uploads/classes/barre.png",
           defaultDurationMinutes: 45,
           defaultCapacity: 8,
           isActive: true,
@@ -233,7 +233,7 @@ describe("admin class schedule service", () => {
         return updateAdminClass(created.id, {
           categoryId: category.id,
           name: "Barre Basics Updated",
-          imageUrl: "/images/learning/barre.png",
+          imageUrl: "/uploads/learning/barre.png",
           defaultDurationMinutes: 45,
           defaultCapacity: 8,
           isActive: true,
@@ -272,7 +272,7 @@ describe("admin class schedule service", () => {
     const classType = await createAdminClass({
       categoryId: first.id,
       name: "Restorative Flow",
-      imageUrl: "/images/classes/missing-restorative-flow.png",
+      imageUrl: "/uploads/classes/missing-restorative-flow.png",
       defaultDurationMinutes: 60,
       defaultCapacity: 10,
       isActive: true,

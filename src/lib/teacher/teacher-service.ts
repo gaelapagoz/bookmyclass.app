@@ -11,9 +11,7 @@ import {
 import { assertTeacherSelfScope, assertTeacherSessionScope } from "@/lib/teacher/teacher-helpers";
 import {
   assertCanonicalMediaPublicPath,
-  assertSafeMediaPublicPath,
   getCanonicalMediaRenderState,
-  getLocalMediaRenderState,
 } from "@/lib/media";
 
 export type TeacherProfileData = {
@@ -141,9 +139,7 @@ export async function updateTeacherSelfImage(input: {
   });
 
   const trimmed = input.imagePath.trim();
-  const imagePath = trimmed.startsWith("/uploads/")
-    ? assertCanonicalMediaPublicPath(trimmed, ["teachers"])
-    : assertSafeMediaPublicPath(trimmed, ["/images/instructors"]);
+  const imagePath = assertCanonicalMediaPublicPath(trimmed, ["teachers"]);
   const existing = await prisma.user.findUnique({
     where: { id: input.teacherUserId },
     select: {
@@ -175,12 +171,7 @@ async function getTeacherImageRenderPath(imagePath: string | null): Promise<stri
     return "";
   }
 
-  if (trimmed.startsWith("/uploads/")) {
-    const renderState = await getCanonicalMediaRenderState(trimmed, { allowedFolders: ["teachers"] });
-    return renderState.src ?? "";
-  }
-
-  const renderState = await getLocalMediaRenderState(trimmed, { allowedFolders: ["/images/instructors"] });
+  const renderState = await getCanonicalMediaRenderState(trimmed, { allowedFolders: ["teachers"] });
   return renderState.src ?? "";
 }
 

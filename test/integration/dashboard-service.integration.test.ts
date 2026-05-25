@@ -749,10 +749,8 @@ describe("dashboard-service integration", () => {
       },
     });
 
-    const [home, membership] = await Promise.all([
-      getDashboardHomeData(client.id),
-      getDashboardMembershipData(client.id),
-    ]);
+    const home = await getDashboardHomeData(client.id);
+    const membership = await getDashboardMembershipData(client.id);
 
     expect(home.creditsLeft).toBe(0);
     expect(membership.usableCredits).toBe(0);

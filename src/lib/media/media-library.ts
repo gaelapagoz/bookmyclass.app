@@ -1,7 +1,10 @@
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { assertSafeMediaPublicPath, getLocalMediaRenderState } from "@/lib/media/secure-media";
+import { assertCanonicalMediaFolder, type CanonicalMediaFolder } from "@/lib/media/media-upload-service";
+import { assertCanonicalMediaPublicPath } from "@/lib/media/media-path-service";
+import { getCanonicalMediaRenderState } from "@/lib/media/media-render-service";
+import { assertContainedPath, resolveUploadsConfig } from "@/lib/media/upload-config";
 
 export type MediaLibraryItem = {
   readonly path: string;
@@ -10,12 +13,12 @@ export type MediaLibraryItem = {
 
 const IMAGE_FILE_PATTERN = /\.(jpe?g|png|webp)$/i;
 
-export async function listMediaLibraryImages(folder: string): Promise<MediaLibraryItem[]> {
-  const normalizedFolder = assertSafeMediaPublicPath(`${folder}/placeholder.jpg`, [folder]).replace(
-    /\/placeholder\.jpg$/,
-    "",
-  );
-  const absoluteFolder = resolve(process.cwd(), "public", normalizedFolder.replace(/^\/+/, ""));
+export async function listMediaLibraryImages(folder: CanonicalMediaFolder): Promise<MediaLibraryItem[]> {
+  const safeFolder = assertCanonicalMediaFolder(folder);
+  const config = resolveUploadsConfig();
+  const normalizedFolder = `${config.publicUploadsBasePath}/${safeFolder}`;
+  const absoluteFolder = resolve(config.uploadsDir, safeFolder);
+  assertContainedPath(config.uploadsDir, absoluteFolder);
 
   let entries: string[];
   try {
@@ -30,8 +33,8 @@ export async function listMediaLibraryImages(folder: string): Promise<MediaLibra
       continue;
     }
 
-    const path = assertSafeMediaPublicPath(`${normalizedFolder}/${entry}`, [normalizedFolder]);
-    const renderState = await getLocalMediaRenderState(path, { allowedFolders: [normalizedFolder] });
+    const path = assertCanonicalMediaPublicPath(`${normalizedFolder}/${entry}`, [safeFolder]);
+    const renderState = await getCanonicalMediaRenderState(path, { allowedFolders: [safeFolder] });
     if (!renderState.shouldRenderFallback && renderState.src) {
       items.push({ path: renderState.src, name: entry });
     }
@@ -41,5 +44,5 @@ export async function listMediaLibraryImages(folder: string): Promise<MediaLibra
 }
 
 export async function listLearningMediaLibraryImages(): Promise<MediaLibraryItem[]> {
-  return listMediaLibraryImages("/images/learning");
+  return listMediaLibraryImages("learning");
 }

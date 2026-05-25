@@ -33,6 +33,45 @@ function isOption(value: string): boolean {
   return value.startsWith("-");
 }
 
+function isConfigLikePath(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return normalized.endsWith(".config.ts")
+    || normalized.endsWith(".config.js")
+    || normalized.endsWith(".config.mts")
+    || normalized.endsWith(".config.mjs")
+    || normalized.endsWith(".config.cts")
+    || normalized.endsWith(".config.cjs");
+}
+
+function parseRunnerArgs(args: string[]): { vitestArgs: string[]; requestedPaths: string[] } {
+  const vitestArgs: string[] = [];
+  const requestedPaths: string[] = [];
+  const valueOptions = new Set(["--config", "-c"]);
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === "--run") {
+      continue;
+    }
+
+    if (!isOption(arg)) {
+      requestedPaths.push(arg);
+      continue;
+    }
+
+    vitestArgs.push(arg);
+
+    if (valueOptions.has(arg) && index + 1 < args.length) {
+      const nextValue = args[index + 1];
+      vitestArgs.push(nextValue);
+      index += 1;
+    }
+  }
+
+  return { vitestArgs, requestedPaths };
+}
+
 function collectTestFiles(dir: string, output: string[]): void {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const fullPath = join(dir, entry.name);
@@ -72,10 +111,12 @@ function resolveRequestedPath(arg: string): string[] {
   return discovered.sort((left, right) => left.localeCompare(right));
 }
 
-function resolveRequestedFiles(args: string[]): string[] {
-  const requestedFiles = args.filter((arg) => !isOption(arg));
+function resolveRequestedFiles(requestedFiles: string[]): string[] {
   if (requestedFiles.length > 0) {
-    return requestedFiles.flatMap(resolveRequestedPath);
+    const filteredRequestedFiles = requestedFiles.filter((arg) => !isConfigLikePath(arg));
+    if (filteredRequestedFiles.length > 0) {
+      return filteredRequestedFiles.flatMap(resolveRequestedPath);
+    }
   }
 
   const discovered: string[] = [];
@@ -98,9 +139,8 @@ function runVitestForFile(file: string, extraArgs: string[]): number {
   return result.status ?? 1;
 }
 
-const rawArgs = process.argv.slice(2).filter((arg) => arg !== "--run");
-const passthroughArgs = rawArgs.filter(isOption);
-const files = resolveRequestedFiles(rawArgs);
+const parsedArgs = parseRunnerArgs(process.argv.slice(2));
+const files = resolveRequestedFiles(parsedArgs.requestedPaths);
 
 if (files.length === 0) {
   console.error("[vitest-runner] No test files found.");
@@ -109,7 +149,7 @@ if (files.length === 0) {
 
 for (const [index, file] of files.entries()) {
   console.log(`[vitest-runner] (${index + 1}/${files.length}) ${file}`);
-  const exitCode = runVitestForFile(file, passthroughArgs);
+  const exitCode = runVitestForFile(file, parsedArgs.vitestArgs);
   if (exitCode !== 0) {
     process.exit(exitCode);
   }

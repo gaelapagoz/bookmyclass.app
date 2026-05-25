@@ -1,4 +1,6 @@
 import { execSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 // NOTE: Environment variables are injected by the test runner (see npm test).
 import * as dotenv from "dotenv";
@@ -27,11 +29,90 @@ const globalForTestSetup = globalThis as typeof globalThis & {
 };
 
 if (!globalForTestSetup.__integrationDbReady) {
-  execSync("npx prisma migrate deploy", {
-    cwd: resolve(process.cwd()),
-    env: process.env,
-    stdio: "ignore",
-  });
+  const dbUrl = process.env.DATABASE_URL ?? "";
+  const markerDir = resolve(tmpdir(), "studio-saas-vitest-db-ready");
+  const markerKey = Buffer.from(dbUrl).toString("base64url");
+  const markerPath = resolve(markerDir, `${markerKey}.marker`);
+  const lockPath = resolve(markerDir, `${markerKey}.lock`);
+
+  mkdirSync(markerDir, { recursive: true });
+
+  const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+  const runMigrateDeploy = () => {
+    const maxAttempts = 3;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        execSync("npx prisma migrate deploy", {
+          cwd: resolve(process.cwd()),
+          env: process.env,
+          stdio: "pipe",
+        });
+        writeFileSync(markerPath, new Date().toISOString(), "utf8");
+        return;
+      } catch (error) {
+        const typed = error as { stdout?: Buffer; stderr?: Buffer; message?: string };
+        const stdout = typed.stdout ? typed.stdout.toString("utf8") : "";
+        const stderr = typed.stderr ? typed.stderr.toString("utf8") : "";
+        lastError = new Error(
+          `npx prisma migrate deploy failed (attempt ${attempt}/${maxAttempts}).\nstdout:\n${stdout}\nstderr:\n${stderr}\n${typed.message ?? ""}`,
+        );
+
+        if (attempt < maxAttempts) {
+          sleep(attempt * 500);
+        }
+      }
+    }
+
+    throw lastError ?? new Error("npx prisma migrate deploy failed with unknown error.");
+  };
+
+  if (existsSync(markerPath)) {
+    globalForTestSetup.__integrationDbReady = true;
+  } else {
+    let hasLock = false;
+
+    try {
+      // Claim lock atomically. If it already exists, another worker/process is running migrations.
+      writeFileSync(lockPath, `${process.pid}`, { flag: "wx", encoding: "utf8" });
+      hasLock = true;
+      runMigrateDeploy();
+      globalForTestSetup.__integrationDbReady = true;
+    } catch (error) {
+      if (hasLock) {
+        throw error;
+      }
+
+      // Wait for the lock holder to finish and create marker.
+      const waitUntil = Date.now() + 120_000;
+      while (Date.now() < waitUntil) {
+        if (existsSync(markerPath)) {
+          globalForTestSetup.__integrationDbReady = true;
+          break;
+        }
+
+        if (!existsSync(lockPath)) {
+          // Lock disappeared without marker; try running migrations ourselves.
+          runMigrateDeploy();
+          globalForTestSetup.__integrationDbReady = true;
+          break;
+        }
+
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+      }
+
+      if (!globalForTestSetup.__integrationDbReady) {
+        const lockOwner = existsSync(lockPath) ? readFileSync(lockPath, "utf8").trim() : "(none)";
+        throw new Error(`Timed out waiting for integration DB migrate lock. lockPath=${lockPath} owner=${lockOwner}`);
+      }
+    } finally {
+      if (hasLock && existsSync(lockPath)) {
+        unlinkSync(lockPath);
+      }
+    }
+  }
 
   globalForTestSetup.__integrationDbReady = true;
 }

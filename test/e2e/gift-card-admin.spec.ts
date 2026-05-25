@@ -17,7 +17,7 @@ import {
 import { hash } from "bcryptjs";
 
 import prisma from "../../src/lib/db";
-import { signInAdmin } from "./support/auth";
+import { signInAdmin, signInAdminSession } from "./support/auth";
 import { E2E_PASSWORD } from "./support/constants";
 
 const password = E2E_PASSWORD;
@@ -286,7 +286,9 @@ test.describe("gift-card admin visibility and permissions", () => {
     const client = await createClient();
     const { reconciliationCase } = await createManualReviewCase(client.id);
 
-    await signInAdmin(page, master.credentials);
+    await signInAdminSession(page, master.credentials, {
+      callbackUrl: "http://127.0.0.1:3100/admin/gift-cards",
+    });
     const response = await page.request.post(
       `/api/admin/gift-cards/reconciliation/${encodeURIComponent(reconciliationCase.id)}/resolve`,
       {

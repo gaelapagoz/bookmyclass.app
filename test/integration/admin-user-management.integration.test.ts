@@ -37,30 +37,28 @@ describe("admin user management service", () => {
     const adminPasswordHash = await hash("AdminPass123!", 12);
     const masterPasswordHash = await hash("MasterPass123!", 12);
 
-    const [adminUser, masterAdmin] = await Promise.all([
-      prisma.user.create({
-        data: {
-          name: "Admin User",
-          firstName: "Admin",
-          lastName: "User",
-          email: `admin.${Date.now()}@example.test`,
-          role: Role.ADMIN,
-          passwordHash: adminPasswordHash,
-          emailVerified: new Date(),
-        },
-      }),
-      prisma.user.create({
-        data: {
-          name: "Master Admin",
-          firstName: "Master",
-          lastName: "Admin",
-          email: `master.${Date.now()}@example.test`,
-          role: Role.MASTER_ADMIN,
-          passwordHash: masterPasswordHash,
-          emailVerified: new Date(),
-        },
-      }),
-    ]);
+    const adminUser = await prisma.user.create({
+      data: {
+        name: "Admin User",
+        firstName: "Admin",
+        lastName: "User",
+        email: `admin.${Date.now()}@example.test`,
+        role: Role.ADMIN,
+        passwordHash: adminPasswordHash,
+        emailVerified: new Date(),
+      },
+    });
+    const masterAdmin = await prisma.user.create({
+      data: {
+        name: "Master Admin",
+        firstName: "Master",
+        lastName: "Admin",
+        email: `master.${Date.now()}@example.test`,
+        role: Role.MASTER_ADMIN,
+        passwordHash: masterPasswordHash,
+        emailVerified: new Date(),
+      },
+    });
 
     await expect(
       updateAdminUser(
@@ -171,30 +169,28 @@ describe("admin user management service", () => {
   });
 
   it("allows MASTER_ADMIN to update another MASTER_ADMIN password", async () => {
-    const [masterActor, masterTarget] = await Promise.all([
-      prisma.user.create({
-        data: {
-          name: "Master Actor",
-          firstName: "Master",
-          lastName: "Actor",
-          email: `master.actor.${Date.now()}@example.test`,
-          role: Role.MASTER_ADMIN,
-          passwordHash: await hash("MasterActor123!", 12),
-          emailVerified: new Date(),
-        },
-      }),
-      prisma.user.create({
-        data: {
-          name: "Master Target",
-          firstName: "Master",
-          lastName: "Target",
-          email: `master.target.${Date.now()}@example.test`,
-          role: Role.MASTER_ADMIN,
-          passwordHash: await hash("MasterTarget123!", 12),
-          emailVerified: new Date(),
-        },
-      }),
-    ]);
+    const masterActor = await prisma.user.create({
+      data: {
+        name: "Master Actor",
+        firstName: "Master",
+        lastName: "Actor",
+        email: `master.actor.${Date.now()}@example.test`,
+        role: Role.MASTER_ADMIN,
+        passwordHash: await hash("MasterActor123!", 12),
+        emailVerified: new Date(),
+      },
+    });
+    const masterTarget = await prisma.user.create({
+      data: {
+        name: "Master Target",
+        firstName: "Master",
+        lastName: "Target",
+        email: `master.target.${Date.now()}@example.test`,
+        role: Role.MASTER_ADMIN,
+        passwordHash: await hash("MasterTarget123!", 12),
+        emailVerified: new Date(),
+      },
+    });
 
     await updateAdminUser(
       masterTarget.id,
@@ -574,18 +570,18 @@ describe("admin user management service", () => {
 
     const result = await updateAdminTeacherImage({
       userId: teacher.id,
-      imagePath: "/images/instructors/teacher-profile-1.jpg",
+      imagePath: "/uploads/teachers/teacher-profile-1.jpg",
       adminUserId: admin.id,
     });
 
-    expect(result.image).toBe("/images/instructors/teacher-profile-1.jpg");
+    expect(result.image).toBe("/uploads/teachers/teacher-profile-1.jpg");
 
     const persisted = await prisma.user.findUnique({
       where: { id: teacher.id },
       select: { image: true },
     });
 
-    expect(persisted?.image).toBe("/images/instructors/teacher-profile-1.jpg");
+    expect(persisted?.image).toBe("/uploads/teachers/teacher-profile-1.jpg");
   });
 
   it("bulk updates marketing subscription status for CLIENT users", async () => {

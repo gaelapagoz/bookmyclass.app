@@ -41,9 +41,7 @@ import { normalizeBookingCancellationWindowHours } from "@/lib/booking/cancellat
 import { assertLearningImagePath } from "@/lib/learning/image-paths";
 import {
   assertCanonicalMediaPublicPath,
-  assertSafeMediaPublicPath,
   getCanonicalMediaRenderState,
-  getLocalMediaRenderState,
   listLearningMediaLibraryImages,
 } from "@/lib/media";
 import { getSiteTimeZone, updateSiteTimeZone } from "@/lib/site-settings/site-settings-service";
@@ -1384,98 +1382,96 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
 export async function getAdminDashboardInsights(period: AdminPeriod): Promise<AdminDashboardInsights> {
   const periodRange = getRollingPeriodRange(period, new Date());
 
-  const [bookingsInWindow, bookingsBeforeWindow, staffSessionsInWindow] = await Promise.all([
-    prisma.booking.findMany({
-      where: {
-        status: { in: VALID_BOOKING_STATUSES },
-        bookedAt: {
-          gte: periodRange.currentStart,
-          lt: periodRange.currentEnd,
+  const bookingsInWindow = await prisma.booking.findMany({
+    where: {
+      status: { in: VALID_BOOKING_STATUSES },
+      bookedAt: {
+        gte: periodRange.currentStart,
+        lt: periodRange.currentEnd,
+      },
+    },
+    select: {
+      id: true,
+      clientId: true,
+      bookedAt: true,
+      client: {
+        select: {
+          id: true,
+          name: true,
         },
       },
-      select: {
-        id: true,
-        clientId: true,
-        bookedAt: true,
-        client: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        studioSession: {
-          select: {
-            id: true,
-            classTemplateId: true,
-            title: true,
-            capacity: true,
-            teacher: {
-              select: {
-                name: true,
-              },
+      studioSession: {
+        select: {
+          id: true,
+          classTemplateId: true,
+          title: true,
+          capacity: true,
+          teacher: {
+            select: {
+              name: true,
             },
-            classTemplate: {
-              select: {
-                title: true,
-                defaultTeacher: {
-                  select: {
-                    name: true,
-                  },
+          },
+          classTemplate: {
+            select: {
+              title: true,
+              defaultTeacher: {
+                select: {
+                  name: true,
                 },
               },
             },
           },
         },
       },
-    }),
-    prisma.booking.findMany({
-      where: {
-        status: { in: VALID_BOOKING_STATUSES },
-        bookedAt: {
-          lt: periodRange.currentStart,
+    },
+  });
+  const bookingsBeforeWindow = await prisma.booking.findMany({
+    where: {
+      status: { in: VALID_BOOKING_STATUSES },
+      bookedAt: {
+        lt: periodRange.currentStart,
+      },
+    },
+    select: {
+      clientId: true,
+      bookedAt: true,
+      client: {
+        select: {
+          id: true,
+          name: true,
         },
       },
-      select: {
-        clientId: true,
-        bookedAt: true,
-        client: {
-          select: {
-            id: true,
-            name: true,
-          },
+    },
+  });
+  const staffSessionsInWindow = await prisma.studioSession.findMany({
+    where: {
+      startsAt: {
+        gte: periodRange.currentStart,
+        lt: periodRange.currentEnd,
+      },
+      status: {
+        in: [StudioSessionStatus.SCHEDULED, StudioSessionStatus.COMPLETED],
+      },
+    },
+    select: {
+      id: true,
+      capacity: true,
+      teacherId: true,
+      teacher: {
+        select: {
+          name: true,
         },
       },
-    }),
-    prisma.studioSession.findMany({
-      where: {
-        startsAt: {
-          gte: periodRange.currentStart,
-          lt: periodRange.currentEnd,
+      bookings: {
+        where: {
+          status: { in: VALID_BOOKING_STATUSES },
         },
-        status: {
-          in: [StudioSessionStatus.SCHEDULED, StudioSessionStatus.COMPLETED],
+        select: {
+          id: true,
         },
       },
-      select: {
-        id: true,
-        capacity: true,
-        teacherId: true,
-        teacher: {
-          select: {
-            name: true,
-          },
-        },
-        bookings: {
-          where: {
-            status: { in: VALID_BOOKING_STATUSES },
-          },
-          select: {
-            id: true,
-          },
-        },
-      },
-    }),
-  ]);
+    },
+  });
 
   const classAggregateMap = new Map<
     string,
@@ -1912,10 +1908,7 @@ function normalizeClassImagePath(value: string | null | undefined): string | nul
     return null;
   }
 
-  if (trimmed.startsWith("/uploads/")) {
-    return assertCanonicalMediaPublicPath(trimmed, ["classes"]);
-  }
-  return assertSafeMediaPublicPath(trimmed, ["/images/classes"]);
+  return assertCanonicalMediaPublicPath(trimmed, ["classes"]);
 }
 
 export async function getAdminClassCategoryById(id: string) {
@@ -1932,14 +1925,8 @@ export async function getAdminClassCategoryById(id: string) {
 }
 
 async function getClassImageRenderState(imageUrl: string | null) {
-  if (imageUrl?.startsWith("/uploads/")) {
-    return getCanonicalMediaRenderState(imageUrl, { allowedFolders: ["classes"] });
-  }
-  if (imageUrl?.startsWith("/images/")) {
-    return getLocalMediaRenderState(imageUrl, { allowedFolders: ["/images/classes"] });
-  }
-
-  return { src: imageUrl, shouldRenderFallback: !imageUrl };
+  const renderState = await getCanonicalMediaRenderState(imageUrl, { allowedFolders: ["classes"] });
+  return renderState;
 }
 
 async function buildUniqueClassSlug(name: string, excludeClassTypeId?: string): Promise<string> {
@@ -5178,21 +5165,19 @@ export async function updateAdminUser(
   const normalizedBio = toNullable(input.bio);
 
   return prisma.$transaction(async (tx) => {
-    const [existing, actorRecord] = await Promise.all([
-      tx.user.findUnique({
-        where: { id },
-        select: {
-          email: true,
-          role: true,
-        },
-      }),
-      tx.user.findUnique({
-        where: { id: actor.id },
-        select: {
-          role: true,
-        },
-      }),
-    ]);
+    const existing = await tx.user.findUnique({
+      where: { id },
+      select: {
+        email: true,
+        role: true,
+      },
+    });
+    const actorRecord = await tx.user.findUnique({
+      where: { id: actor.id },
+      select: {
+        role: true,
+      },
+    });
 
     const actorRole = actorRecord?.role ?? actor.role;
 
@@ -5379,18 +5364,16 @@ export async function bulkAddClientMarketingSegments(input: {
   return prisma.$transaction(async (tx) => {
     await assertAdminActor(tx, input.actorUserId);
 
-    const [clientCount, segments] = await Promise.all([
-      tx.user.count({
-        where: {
-          id: { in: userIds },
-          role: Role.CLIENT,
-        },
-      }),
-      tx.marketingSegment.findMany({
-        where: { id: { in: segmentIds } },
-        select: { id: true },
-      }),
-    ]);
+    const clientCount = await tx.user.count({
+      where: {
+        id: { in: userIds },
+        role: Role.CLIENT,
+      },
+    });
+    const segments = await tx.marketingSegment.findMany({
+      where: { id: { in: segmentIds } },
+      select: { id: true },
+    });
 
     if (clientCount !== userIds.length) {
       throw new Error("MARKETING_CLIENT_ONLY");
@@ -5433,18 +5416,16 @@ export async function bulkRemoveClientMarketingSegments(input: {
   return prisma.$transaction(async (tx) => {
     await assertAdminActor(tx, input.actorUserId);
 
-    const [clientCount, segments] = await Promise.all([
-      tx.user.count({
-        where: {
-          id: { in: userIds },
-          role: Role.CLIENT,
-        },
-      }),
-      tx.marketingSegment.findMany({
-        where: { id: { in: segmentIds } },
-        select: { id: true },
-      }),
-    ]);
+    const clientCount = await tx.user.count({
+      where: {
+        id: { in: userIds },
+        role: Role.CLIENT,
+      },
+    });
+    const segments = await tx.marketingSegment.findMany({
+      where: { id: { in: segmentIds } },
+      select: { id: true },
+    });
 
     if (clientCount !== userIds.length) {
       throw new Error("MARKETING_CLIENT_ONLY");
@@ -5470,9 +5451,7 @@ export async function updateAdminTeacherImage(input: {
   adminUserId: string;
 }) {
   const trimmed = input.imagePath.trim();
-  const imagePath = trimmed.startsWith("/uploads/")
-    ? assertCanonicalMediaPublicPath(trimmed, ["teachers"])
-    : assertSafeMediaPublicPath(trimmed, ["/images/instructors"]);
+  const imagePath = assertCanonicalMediaPublicPath(trimmed, ["teachers"]);
   const [teacherRecord, adminRecord] = await prisma.$transaction([
     prisma.user.findUnique({
       where: { id: input.userId },
@@ -5965,11 +5944,7 @@ export async function getAdminLearningProgramCourseTypeOptions(): Promise<string
 }
 
 async function getLearningImageRenderPath(path: string | null): Promise<string | null> {
-  if (path?.startsWith("/uploads/")) {
-    const renderState = await getCanonicalMediaRenderState(path, { allowedFolders: ["learning"] });
-    return renderState.src;
-  }
-  const renderState = await getLocalMediaRenderState(path, { allowedFolders: ["/images/learning"] });
+  const renderState = await getCanonicalMediaRenderState(path, { allowedFolders: ["learning"] });
   return renderState.src;
 }
 

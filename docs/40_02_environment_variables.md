@@ -39,6 +39,7 @@ Purpose: define environment-variable expectations by runtime context using repos
 - Deterministic email bypass is enabled by `NODE_ENV=test` or `E2E_TEST_MODE=1`.
 - Test/e2e runs do not require real provider delivery to be deterministic.
 - E2E helper security expects `E2E_TEST_SECRET`.
+- E2E seed and runtime server must use the same upload root (`UPLOADS_DIR`) so seeded Store media and runtime media resolve identically (recommended: `./.local/e2e-uploads`).
 
 ## Observability (Optional/Environment-Specific)
 - Sentry variables are optional and used when configured (`SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`, environment/release metadata vars).
@@ -61,15 +62,20 @@ In production, all 12 `STRIPE_PRICE_ID_*` values are required and the seed fails
 - `STRIPE_PRICE_ID_PRIVATE_5_PACK`
 - `STRIPE_PRICE_ID_PRIVATE_10_PACK`
 
-**Store gift card prices (required in production; optional in dev/UAT — PENDING when omitted):**
+**Store gift card prices (required in production; optional in development/staging/demo — PENDING when omitted):**
 - `STRIPE_PRICE_ID_STORE_GIFT_CARD_25_EUR`
 - `STRIPE_PRICE_ID_STORE_GIFT_CARD_50_EUR`
 - `STRIPE_PRICE_ID_STORE_GIFT_CARD_100_EUR`
 
-**Store merchandise prices (required in production; optional in dev/UAT — PENDING when omitted):**
+**Store merchandise prices (required in production; optional in development/staging/demo — PENDING when omitted):**
 - `STRIPE_PRICE_ID_STORE_MERCH_YOGA_MAT`
 - `STRIPE_PRICE_ID_STORE_MERCH_RESISTANCE_BANDS`
 - `STRIPE_PRICE_ID_STORE_MERCH_STUDIO_TOTE`
+
+## Seed Media Source Of Truth
+- Seed image source-of-truth is mode-scoped under `prisma/seed-data/<mode>-images/*`.
+- Canonical mode folders are `dev-images`, `staging-images`, `demo-images`, and `prod-images`.
+- Seed and reseed flows must not rely on legacy `public/images` seed image folders.
 
 ## Seed/Test Helpers
 - `.env.test.example` defines integration-test baseline.

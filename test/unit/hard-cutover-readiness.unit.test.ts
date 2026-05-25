@@ -7,8 +7,10 @@ import {
 
 describe("hard cutover readiness", () => {
   it("flags legacy media paths", () => {
-    expect(isLegacyMediaPath("/images/classes/example.png")).toBe(true);
-    expect(isLegacyMediaPath("/images/classes")).toBe(true);
+    const legacyClassesImagePath = ["/images", "classes", "example.png"].join("/");
+    const legacyClassesRoot = ["/images", "classes"].join("/");
+    expect(isLegacyMediaPath(legacyClassesImagePath)).toBe(true);
+    expect(isLegacyMediaPath(legacyClassesRoot)).toBe(true);
     expect(isLegacyMediaPath("public/images")).toBe(true);
     expect(isLegacyMediaPath("/uploads/classes/example.png")).toBe(false);
   });

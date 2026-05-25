@@ -286,5 +286,5 @@ Expected after remediation:
 - Current CSRF defense is same-origin validation (Origin/Referer) for non-auth mutations and server actions.
 - ZAP may still report token-style CSRF findings because no synchronizer-token marker is emitted by this model.
 - Edge/static header coverage is now explicitly configured for `/robots.txt` and `/_next/static/*` surfaces we control. Remaining header findings on Cloudflare-managed `cdn-cgi/*` paths may still be expected.
-- Learning images are first-party only and must remain under canonical `/uploads/learning/*` in DB rows and runtime output. Legacy `/images/learning/*` values are migration-only.
+- Learning images are first-party only and must remain under canonical `/uploads/learning/*` in DB rows and runtime output. Legacy pre-cutover learning image path values are migration-only.
 

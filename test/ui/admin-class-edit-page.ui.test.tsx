@@ -31,7 +31,7 @@ vi.mock("@/lib/admin/admin-service", () => ({
     categoryId: "cat-1",
     name: "Morning Flow",
     slug: "morning-flow",
-    imageUrl: "/images/classes/morning-flow.jpg",
+    imageUrl: "/uploads/classes/morning-flow.jpg",
     description: "desc",
     defaultDurationMinutes: 60,
     defaultCapacity: 12,
@@ -79,7 +79,7 @@ describe("admin class edit page", () => {
     expect(screen.getByLabelText("End Date")).toBeInTheDocument();
 
     expect(screen.getByRole("heading", { name: "Service Image" })).toBeInTheDocument();
-    expect(screen.getByTestId("class-image-preview")).toHaveAttribute("src", "/images/classes/morning-flow.jpg");
+    expect(screen.getByTestId("class-image-preview")).toHaveAttribute("src", "/uploads/classes/morning-flow.jpg");
     expect(screen.getByTestId("class-image-preview-container")).toBeInTheDocument();
   });
 

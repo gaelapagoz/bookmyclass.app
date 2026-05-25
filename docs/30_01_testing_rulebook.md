@@ -78,6 +78,13 @@ Prefer deterministic page/component tests with mocked data helpers.
 
 Use the smallest test type that proves behavior. Add E2E only for cross-flow smoke scenarios.
 
+## Execution Safety Contract
+- Unit/UI test files may run in parallel.
+- DB-backed integration tests must run serially by default because they use shared destructive resets (`resetDb` + truncate).
+- DB-mutating E2E runs must use one Playwright worker by default unless each worker has an isolated database.
+- Full local `npm test` should execute `test:unit` first, then `test:integration`.
+- Full-suite runs are operator-approved only when runtime cost is acceptable.
+
 ## Definition of Done
 A change is done only when:
 1. Required tests were added or updated.

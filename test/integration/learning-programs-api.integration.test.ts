@@ -1,5 +1,8 @@
 import "./helpers/setup-env";
 
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
@@ -10,6 +13,13 @@ describe("GET /api/programs", () => {
     await resetDb();
     await prisma.learningCourse.deleteMany();
     await prisma.learningProgram.deleteMany();
+    const uploadsDir = await mkdtemp(path.join(os.tmpdir(), "bookmyclass-learning-programs-"));
+    process.env.UPLOADS_DIR = uploadsDir;
+    process.env.PUBLIC_UPLOADS_BASE_PATH = "/uploads";
+    await mkdir(path.join(uploadsDir, "learning"), { recursive: true });
+    for (const file of ["a1.jpg", "a2.jpg", "a3.jpg", "b1.jpg", "b2.jpg", "b3.jpg", "program-c.jpg"]) {
+      await writeFile(path.join(uploadsDir, "learning", file), Buffer.from([0xff, 0xd8, 0xff]));
+    }
   });
 
   it("returns legacy-shaped programs ordered by legacyId ascending", async () => {
@@ -22,9 +32,9 @@ describe("GET /api/programs", () => {
         description2: "d2b",
         description3: "d3b",
         videoPromo: "https://www.youtube.com/watch?v=b",
-        picture1: "/images/learning/b1.jpg",
-        picture2: "/images/learning/b2.jpg",
-        picture3: "/images/learning/b3.jpg",
+        picture1: "/uploads/learning/b1.jpg",
+        picture2: "/uploads/learning/b2.jpg",
+        picture3: "/uploads/learning/b3.jpg",
       },
     });
 
@@ -37,9 +47,9 @@ describe("GET /api/programs", () => {
         description2: "d2a",
         description3: "d3a",
         videoPromo: "https://www.youtube.com/watch?v=a",
-        picture1: "/images/learning/a1.jpg",
-        picture2: "/images/learning/a2.jpg",
-        picture3: "/images/learning/a3.jpg",
+        picture1: "/uploads/learning/a1.jpg",
+        picture2: "/uploads/learning/a2.jpg",
+        picture3: "/uploads/learning/a3.jpg",
       },
     });
 
@@ -61,9 +71,9 @@ describe("GET /api/programs", () => {
       Description2: "d2a",
       Description3: "d3a",
       VideoPromo: "https://www.youtube.com/watch?v=a",
-      Picture1: "/images/learning/a1.jpg",
-      Picture2: "/images/learning/a2.jpg",
-      Picture3: "/images/learning/a3.jpg",
+      Picture1: "/uploads/learning/a1.jpg",
+      Picture2: "/uploads/learning/a2.jpg",
+      Picture3: "/uploads/learning/a3.jpg",
     });
   });
 
@@ -77,9 +87,9 @@ describe("GET /api/programs", () => {
         description2: "d2c",
         description3: "d3c",
         videoPromo: "https://www.youtube.com/watch?v=c",
-        picture1: "/images/program.jpg",
-        picture2: "/images/not-learning.jpg",
-        picture3: "/images/learning/program-c.jpg",
+        picture1: "/uploads/program.jpg",
+        picture2: "/uploads/classes/not-learning.jpg",
+        picture3: "/uploads/learning/program-c.jpg",
       },
     });
 
@@ -90,7 +100,7 @@ describe("GET /api/programs", () => {
     expect(program).toMatchObject({
       Picture1: null,
       Picture2: null,
-      Picture3: "/images/learning/program-c.jpg",
+      Picture3: "/uploads/learning/program-c.jpg",
     });
   });
 
@@ -102,4 +112,3 @@ describe("GET /api/programs", () => {
     expect(body).toEqual([]);
   });
 });
-

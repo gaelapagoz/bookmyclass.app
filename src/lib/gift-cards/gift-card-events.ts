@@ -1,7 +1,9 @@
 import * as Sentry from "@sentry/nextjs";
-import { Prisma } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+
+type AuditLogWriter = Pick<PrismaClient | Prisma.TransactionClient, "auditLog">;
 
 type GiftCardAlertEventInput = {
   readonly eventName: string;
@@ -26,7 +28,10 @@ function serializeError(error: unknown): Prisma.InputJsonObject | undefined {
   return { message: String(error) };
 }
 
-export async function emitGiftCardAlertEvent(input: GiftCardAlertEventInput): Promise<void> {
+export async function emitGiftCardAlertEvent(
+  input: GiftCardAlertEventInput,
+  db: AuditLogWriter = prisma,
+): Promise<void> {
   const errorMetadata = serializeError(input.error);
   const metadata: Prisma.InputJsonObject = {
     ...(input.metadata ?? {}),
@@ -64,7 +69,7 @@ export async function emitGiftCardAlertEvent(input: GiftCardAlertEventInput): Pr
     });
   }
 
-  await prisma.auditLog.create({
+  await db.auditLog.create({
     data: {
       actionType: input.eventName,
       entityType: input.entityType,

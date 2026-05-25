@@ -78,7 +78,7 @@ Validation gate behavior:
 - Smoke, E2E, and k6 are hard release gates in staging release workflow execution.
 - Steps that pipe command output to `tee` must run under `set -euo pipefail` so failures from the left side of the pipeline are not masked.
 - `origin_smoke_staging` is the first hard deployed-environment gate after deploy.
-- Staging deploy is destructive by design for disposable validation: it resets the staging DB then runs deterministic seed chain (`db:seed:prod`, `db:seed:uat-performance`, `UAT_K6_SEED=1 db:seed:uat:k6`, and E2E credential alignment seed) before PM2 restart.
+- Staging deploy is destructive by design for disposable validation: it resets the staging DB then runs deterministic seed chain (`db:seed:prod`, `db:seed:staging`, `UAT_K6_SEED=1 db:seed:uat:k6`, and E2E credential alignment seed) before PM2 restart.
 - Smoke/E2E/k6 run against the reseeded deterministic staging state.
 - Production deploy remains non-destructive and must not run reset/seed commands.
 - Existing GitHub secrets remain `UAT_*` for compatibility; no required `STAGING_*` secret renaming is introduced.
@@ -112,8 +112,8 @@ Canonical UAT seeded credentials:
 - `UAT_E2E_ADMIN_PASSWORD=Book4Ever!`
 
 Seeded credential policy:
-- Deterministic seed/test/demo users use only `@bookmyclass.app` emails.
-- Deterministic seed/test/demo passwords use `Book4Ever!`.
+- Deterministic seeded users in `development`, `staging`, `demo`, and `production` use only `@bookmyclass.app` emails.
+- Deterministic seeded users in `development`, `staging`, `demo`, and `production` use password `Book4Ever!`.
 - This does not apply to real human production accounts.
 
 ### Optional repository/environment variables

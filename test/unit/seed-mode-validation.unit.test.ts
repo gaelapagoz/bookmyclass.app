@@ -1,3 +1,6 @@
+import { readdir } from "node:fs/promises";
+import path from "node:path";
+
 import { isLearningImagePath } from "../../src/lib/learning/image-paths";
 import {
   PRODUCTION_CONFIRM_VALUE,
@@ -72,8 +75,24 @@ describe("seed config", () => {
         /production database/i,
       );
       expect(() =>
-        validateEnvironmentForMode("uat-performance", `postgres://x@${indicator}/db`),
+        validateEnvironmentForMode("staging", `postgres://x@${indicator}/db`),
       ).toThrow(/production database/i);
+      expect(() =>
+        validateEnvironmentForMode("demo", `postgres://x@${indicator}/db`),
+      ).toThrow(/production database/i);
+    }
+  });
+
+  it("resolveSeedMode accepts canonical values", () => {
+    const prev = process.env.BOOKMYCLASS_SEED_MODE;
+    try {
+      for (const value of ["development", "staging", "demo", "production"] as const) {
+        process.env.BOOKMYCLASS_SEED_MODE = value;
+        expect(resolveSeedMode()).toBe(value);
+      }
+    } finally {
+      if (prev !== undefined) process.env.BOOKMYCLASS_SEED_MODE = prev;
+      else delete process.env.BOOKMYCLASS_SEED_MODE;
     }
   });
 });
@@ -152,7 +171,7 @@ describe("production learning catalogue data", () => {
 });
 
 describe("production learning image paths", () => {
-  it("all course thumbnails match /images/learning/*.jpg pattern", () => {
+  it("all course thumbnails match /uploads/learning/*.jpg pattern", () => {
     for (const course of PRODUCTION_LEARNING_COURSES) {
       if (course.thumbnail) {
         expect(isLearningImagePath(course.thumbnail)).toBe(true);
@@ -160,7 +179,7 @@ describe("production learning image paths", () => {
     }
   });
 
-  it("all program picture fields match /images/learning/*.jpg pattern", () => {
+  it("all program picture fields match /uploads/learning/*.jpg pattern", () => {
     for (const program of PRODUCTION_LEARNING_PROGRAMS) {
       if (program.picture1) expect(isLearningImagePath(program.picture1)).toBe(true);
       if (program.picture2) expect(isLearningImagePath(program.picture2)).toBe(true);
@@ -172,6 +191,17 @@ describe("production learning image paths", () => {
     expect(FITNESS_PROGRAM.picture1).toContain("fitness");
     expect(YOGA_PROGRAM.picture1).toContain("yoga");
     expect(PILATES_PROGRAM.picture1).toContain("pilates");
+  });
+
+  it("staging/demo learning seed folders are minimized to canonical 3 course images", async () => {
+    const expected = ["course_1_fitness.jpg", "course_2_yoga.jpg", "course_3_pilates.jpg"];
+    const stagingLearningDir = path.resolve(process.cwd(), "prisma", "seed-data", "staging-images", "learning");
+    const demoLearningDir = path.resolve(process.cwd(), "prisma", "seed-data", "demo-images", "learning");
+    const stagingFiles = (await readdir(stagingLearningDir)).sort();
+    const demoFiles = (await readdir(demoLearningDir)).sort();
+
+    expect(stagingFiles).toEqual(expected);
+    expect(demoFiles).toEqual(expected);
   });
 });
 

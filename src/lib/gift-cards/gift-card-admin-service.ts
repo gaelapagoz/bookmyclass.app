@@ -13,10 +13,19 @@ import {
   ProductType,
   Role,
   type Prisma,
+  type PrismaClient,
 } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { emitGiftCardAlertEvent } from "./gift-card-events";
+
+const debugResolve =
+  process.env.DEBUG_GIFT_CARD_RECONCILIATION_RESOLVE === "1";
+
+function logResolveStage(stage: string, details?: Record<string, unknown>) {
+  if (!debugResolve) return;
+  console.info(`[gift-card-resolve-service] ${stage}`, details ?? {});
+}
 
 export const GIFT_CARD_RESOLUTION_NOTE_DISCLAIMER =
   "Operational note only. This does not adjust wallet balance or payment state.";
@@ -218,6 +227,8 @@ function serializeReconciliationCase(caseRecord: GiftCardReconciliationCase) {
     updatedAt: caseRecord.updatedAt,
   };
 }
+
+type GiftCardAdminDbClient = PrismaClient | Prisma.TransactionClient;
 
 export async function listAdminGiftCardReconciliationCases(input: {
   readonly actor: AdminActor;
@@ -532,7 +543,19 @@ export async function verifyGiftCardReconciliationConsistency(caseId: string): P
   readonly ok: boolean;
   readonly reasons: string[];
 }> {
-  const reconciliationCase = await prisma.giftCardReconciliationCase.findUnique({
+  return verifyGiftCardReconciliationConsistencyWithClient(caseId, prisma);
+}
+
+async function verifyGiftCardReconciliationConsistencyWithClient(
+  caseId: string,
+  db: GiftCardAdminDbClient,
+): Promise<{
+  readonly ok: boolean;
+  readonly reasons: string[];
+}> {
+  const startedAt = Date.now();
+  logResolveStage("verify_start", { caseId });
+  const reconciliationCase = await db.giftCardReconciliationCase.findUnique({
     where: { id: caseId },
     include: {
       wallet: true,
@@ -548,16 +571,18 @@ export async function verifyGiftCardReconciliationConsistency(caseId: string): P
   });
 
   if (!reconciliationCase) {
+    logResolveStage("verify_case_not_found", { caseId, elapsedMs: Date.now() - startedAt });
     return { ok: false, reasons: ["CASE_NOT_FOUND"] };
   }
 
   const reasons: string[] = [];
   if (!reconciliationCase.wallet) {
     reasons.push("WALLET_MISSING");
+    logResolveStage("verify_wallet_missing", { caseId, elapsedMs: Date.now() - startedAt });
     return { ok: false, reasons };
   }
 
-  const entries = await prisma.giftCardLedgerEntry.findMany({
+  const entries = await db.giftCardLedgerEntry.findMany({
     where: { walletId: reconciliationCase.wallet.id },
     select: {
       entryType: true,
@@ -574,7 +599,7 @@ export async function verifyGiftCardReconciliationConsistency(caseId: string): P
     reasons.push("WALLET_BALANCE_MISMATCH");
   }
 
-  const reservedAggregate = await prisma.giftCardRedemption.aggregate({
+  const reservedAggregate = await db.giftCardRedemption.aggregate({
     where: { walletId: reconciliationCase.wallet.id, status: GiftCardRedemptionStatus.RESERVED },
     _sum: { reservedAmountMinor: true },
   });
@@ -669,7 +694,14 @@ export async function verifyGiftCardReconciliationConsistency(caseId: string): P
     reasons.push("UNRESOLVED_IDEMPOTENCY_CONFLICT");
   }
 
-  return { ok: reasons.length === 0, reasons };
+  const result = { ok: reasons.length === 0, reasons };
+  logResolveStage("verify_done", {
+    caseId,
+    ok: result.ok,
+    reasonCount: reasons.length,
+    elapsedMs: Date.now() - startedAt,
+  });
+  return result;
 }
 
 export async function resolveGiftCardManualReviewCase(input: {
@@ -677,6 +709,12 @@ export async function resolveGiftCardManualReviewCase(input: {
   readonly caseId: string;
   readonly note: string;
 }) {
+  const startedAt = Date.now();
+  logResolveStage("resolve_start", {
+    caseId: input.caseId,
+    actorUserId: input.actor.userId,
+    actorRole: input.actor.role,
+  });
   assertMasterAdmin(input.actor);
   const note = input.note.trim();
   if (!note) {
@@ -686,6 +724,11 @@ export async function resolveGiftCardManualReviewCase(input: {
   const reconciliationCase = await prisma.giftCardReconciliationCase.findUnique({
     where: { id: input.caseId },
     select: { id: true, status: true, metadata: true },
+  });
+  logResolveStage("resolve_case_loaded", {
+    caseId: input.caseId,
+    status: reconciliationCase?.status ?? null,
+    elapsedMs: Date.now() - startedAt,
   });
   if (!reconciliationCase) {
     throw new Error("GIFT_CARD_RECONCILIATION_NOT_FOUND");
@@ -697,44 +740,87 @@ export async function resolveGiftCardManualReviewCase(input: {
     throw new Error("GIFT_CARD_MANUAL_REVIEW_REQUIRED");
   }
 
-  const verification = await verifyGiftCardReconciliationConsistency(input.caseId);
-  if (!verification.ok) {
+  const resolutionResult = await prisma.$transaction(async (tx) => {
+    const verification = await verifyGiftCardReconciliationConsistencyWithClient(input.caseId, tx);
+    if (!verification.ok) {
+      logResolveStage("resolve_verification_failed", {
+        caseId: input.caseId,
+        reasonCount: verification.reasons.length,
+        elapsedMs: Date.now() - startedAt,
+      });
+      return {
+        resolved: false as const,
+        verification,
+      };
+    }
+
+    logResolveStage("resolve_update_start", {
+      caseId: input.caseId,
+      elapsedMs: Date.now() - startedAt,
+    });
+    const resolved = await tx.giftCardReconciliationCase.update({
+      where: { id: input.caseId },
+      data: {
+        status: GiftCardReconciliationStatus.RESOLVED,
+        resolvedAt: new Date(),
+        resolvedById: input.actor.userId,
+        resolutionNote: note,
+        metadata: {
+          ...metadataObject(reconciliationCase.metadata),
+          resolutionNoteDisclaimer: GIFT_CARD_RESOLUTION_NOTE_DISCLAIMER,
+          resolvedById: input.actor.userId,
+        },
+      },
+    });
+    logResolveStage("resolve_update_done", {
+      caseId: input.caseId,
+      elapsedMs: Date.now() - startedAt,
+    });
+
+    logResolveStage("resolve_emit_event_start", {
+      caseId: input.caseId,
+      elapsedMs: Date.now() - startedAt,
+    });
+    await emitGiftCardAlertEvent(
+      {
+        eventName: "gift_card.reconciliation_resolved",
+        entityType: "GiftCardReconciliationCase",
+        entityId: resolved.id,
+        metadata: {
+          resolvedById: input.actor.userId,
+          resolutionNoteDisclaimer: GIFT_CARD_RESOLUTION_NOTE_DISCLAIMER,
+        },
+      },
+      tx,
+    );
+    logResolveStage("resolve_emit_event_done", {
+      caseId: input.caseId,
+      elapsedMs: Date.now() - startedAt,
+    });
+
+    return {
+      resolved: true as const,
+      case: serializeReconciliationCase(resolved),
+      verification,
+    };
+  });
+
+  if (!resolutionResult.resolved) {
     return {
       resolved: false,
-      verification,
+      verification: resolutionResult.verification,
       metadata: { resolutionNoteDisclaimer: GIFT_CARD_RESOLUTION_NOTE_DISCLAIMER },
     };
   }
 
-  const resolved = await prisma.giftCardReconciliationCase.update({
-    where: { id: input.caseId },
-    data: {
-      status: GiftCardReconciliationStatus.RESOLVED,
-      resolvedAt: new Date(),
-      resolvedById: input.actor.userId,
-      resolutionNote: note,
-      metadata: {
-        ...metadataObject(reconciliationCase.metadata),
-        resolutionNoteDisclaimer: GIFT_CARD_RESOLUTION_NOTE_DISCLAIMER,
-        resolvedById: input.actor.userId,
-      },
-    },
+  logResolveStage("resolve_done", {
+    caseId: input.caseId,
+    elapsedMs: Date.now() - startedAt,
   });
-
-  await emitGiftCardAlertEvent({
-    eventName: "gift_card.reconciliation_resolved",
-    entityType: "GiftCardReconciliationCase",
-    entityId: resolved.id,
-    metadata: {
-      resolvedById: input.actor.userId,
-      resolutionNoteDisclaimer: GIFT_CARD_RESOLUTION_NOTE_DISCLAIMER,
-    },
-  });
-
   return {
     resolved: true,
-    case: serializeReconciliationCase(resolved),
-    verification,
+    case: resolutionResult.case,
+    verification: resolutionResult.verification,
     metadata: { resolutionNoteDisclaimer: GIFT_CARD_RESOLUTION_NOTE_DISCLAIMER },
   };
 }

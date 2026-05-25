@@ -56,7 +56,7 @@ export default async function AdminLearningVideoCreatePage({ searchParams }: { s
             Thumbnail Path
             <input
               name="thumbnail"
-              placeholder="/images/learning/example.jpg"
+              placeholder="/uploads/learning/example.jpg"
               className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
             />
           </label>
@@ -82,3 +82,4 @@ export default async function AdminLearningVideoCreatePage({ searchParams }: { s
     </section>
   );
 }
+

@@ -705,13 +705,13 @@ describe("admin actions", () => {
 
     const formData = new FormData();
     formData.set("courseType", "Yoga");
-    formData.set("picture1", "/images/learning/library.png");
+    formData.set("picture1", "/uploads/learning/library.png");
 
     await expect(createLearningProgramAction(formData)).rejects.toThrow(
       "NEXT_REDIRECT:/admin/learning-programs",
     );
     expect(createAdminLearningProgram).toHaveBeenCalledWith(
-      expect.objectContaining({ picture1: "/images/learning/library.png" }),
+      expect.objectContaining({ picture1: "/uploads/learning/library.png" }),
     );
   });
 

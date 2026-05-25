@@ -37,35 +37,33 @@ export async function POST(request: Request) {
   }
 
   try {
-    const [client, classType] = await Promise.all([
-      prisma.user.findFirst({
-        where: {
-          email: {
-            equals: parsed.data.clientEmail,
-            mode: "insensitive",
-          },
+    const client = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: parsed.data.clientEmail,
+          mode: "insensitive",
         },
-        select: { id: true },
-      }),
-      prisma.classType.findFirst({
-        where: {
-          slug: parsed.data.serviceSlug,
+      },
+      select: { id: true },
+    });
+    const classType = await prisma.classType.findFirst({
+      where: {
+        slug: parsed.data.serviceSlug,
+        isActive: true,
+        isVisible: true,
+        category: {
           isActive: true,
-          isVisible: true,
-          category: {
-            isActive: true,
+        },
+      },
+      select: {
+        id: true,
+        category: {
+          select: {
+            slug: true,
           },
         },
-        select: {
-          id: true,
-          category: {
-            select: {
-              slug: true,
-            },
-          },
-        },
-      }),
-    ]);
+      },
+    });
 
     if (!client) {
       return Response.json({ error: "Client not found." }, { status: 404 });
@@ -160,27 +158,35 @@ export async function POST(request: Request) {
       select: { id: true, startsAt: true, endsAt: true, title: true, capacity: true },
     });
 
-    await Promise.all([
-      prisma.booking.deleteMany({
-        where: { clientId: client.id, studioSessionId: session.id },
-      }),
-      prisma.waitlistEntry.deleteMany({
-        where: { clientId: client.id, studioSessionId: session.id },
-      }),
-    ]);
+    await prisma.booking.deleteMany({
+      where: { clientId: client.id, studioSessionId: session.id },
+    });
+    await prisma.waitlistEntry.deleteMany({
+      where: { clientId: client.id, studioSessionId: session.id },
+    });
 
     const fillerTs = uniqueId();
-    const fillerUsers = await Promise.all(
-      Array.from({ length: session.capacity }).map((_, index) =>
-        prisma.user.create({
-          data: {
-            name: `E2E Waitlist Filler ${index + 1}`,
-            email: `e2e.waitlist.filler.${fillerTs}.${index}@bookmyclass.app`,
-            role: Role.CLIENT,
-          },
-        }),
-      ),
-    );
+    const fillerUsersPayload = Array.from({ length: session.capacity }).map((_, index) => ({
+      name: `E2E Waitlist Filler ${index + 1}`,
+      email: `e2e.waitlist.filler.${fillerTs}.${index}@bookmyclass.app`,
+      role: Role.CLIENT,
+    }));
+    await prisma.user.createMany({
+      data: fillerUsersPayload,
+      skipDuplicates: true,
+    });
+    const fillerUsers = await prisma.user.findMany({
+      where: {
+        email: {
+          in: fillerUsersPayload.map((item) => item.email),
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    });
 
     await prisma.booking.createMany({
       data: fillerUsers.map((user) => ({
@@ -215,11 +221,16 @@ export async function POST(request: Request) {
       title: session.title,
     });
   } catch (error) {
-    console.error(
-      "[e2e/prepare-waitlist-session] unhandled error",
-      error instanceof Error ? error.message : String(error),
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error("[e2e/prepare-waitlist-session] unhandled error", reason);
+    return Response.json(
+      {
+        error: "Internal server error.",
+        code: "INTERNAL_SERVER_ERROR",
+        ...(process.env.E2E_TEST_MODE === "1" ? { reason } : {}),
+      },
+      { status: 500 },
     );
-    return Response.json({ error: "Internal server error.", code: "INTERNAL_SERVER_ERROR" }, { status: 500 });
   }
 }
 

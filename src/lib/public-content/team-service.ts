@@ -1,7 +1,7 @@
 import { Role } from "@prisma/client";
 import { prisma } from "../db";
 import { getPublicTeacherName } from "./teacher-display";
-import { getCanonicalMediaRenderState, getLocalMediaRenderState } from "@/lib/media";
+import { getCanonicalMediaRenderState } from "@/lib/media";
 
 export type PublicInstructor = {
   bio: string;
@@ -49,11 +49,6 @@ async function getTeacherImageUrl(imagePath: string | null): Promise<string> {
     return "";
   }
 
-  if (trimmed.startsWith("/uploads/")) {
-    const renderState = await getCanonicalMediaRenderState(trimmed, { allowedFolders: ["teachers"] });
-    return renderState.src ?? "";
-  }
-
-  const renderState = await getLocalMediaRenderState(trimmed, { allowedFolders: ["/images/instructors"] });
+  const renderState = await getCanonicalMediaRenderState(trimmed, { allowedFolders: ["teachers"] });
   return renderState.src ?? "";
 }

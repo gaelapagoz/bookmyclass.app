@@ -21,6 +21,70 @@ import {
   SEEDED_SERVICE_SLUG,
 } from "./support/constants";
 
+async function purchaseRecurringSubscriptionForClient(
+  page: import("@playwright/test").Page,
+  email: string,
+  password: string,
+): Promise<void> {
+  await signInClient(page, { email, password });
+  await page.goto("/subscription");
+
+  const plansResponse = await page.request.get("/api/subscription/plans");
+  expect(plansResponse.ok()).toBeTruthy();
+  const plansPayload = (await plansResponse.json()) as {
+    products?: Array<{ productId: string; name: string; priceType: PriceType }>;
+  };
+  const recurringProduct = plansPayload.products?.find((product) => product.priceType === PriceType.RECURRING);
+  expect(recurringProduct?.productId).toBeTruthy();
+  expect(recurringProduct?.name).toBeTruthy();
+
+  const monthlyCard = page
+    .locator("article")
+    .filter({ has: page.getByRole("heading", { name: recurringProduct?.name as string }) })
+    .first();
+  await expect(monthlyCard).toBeVisible();
+  const addToCartButton = monthlyCard.getByRole("button", { name: "Add to Cart" });
+  await expect(addToCartButton).toBeVisible();
+  await expect(addToCartButton).toBeEnabled();
+  await addToCartButton.click();
+
+  const goToCartLink = page.getByRole("link", { name: "Go to cart" });
+  await expect(goToCartLink).toBeVisible();
+  await goToCartLink.click();
+  await expect(page).toHaveURL(/\/cart$/);
+
+  const checkoutButton = page.getByRole("button", { name: "Checkout" });
+  await expect(checkoutButton).toBeVisible();
+  await expect(checkoutButton).toBeEnabled();
+  await checkoutButton.click();
+
+  try {
+    await expect(page).toHaveURL(/\/subscription\/success\?session_id=/);
+  } catch {
+    const checkoutResponse = await page.request.post("/api/subscription/checkout", {
+      headers: {
+        "content-type": "application/json",
+        origin: "http://127.0.0.1:3000",
+        referer: "http://127.0.0.1:3000/subscription",
+        "x-forwarded-host": "127.0.0.1:3000",
+        "x-forwarded-proto": "http",
+      },
+      data: { productId: recurringProduct?.productId },
+    });
+    expect(checkoutResponse.ok()).toBeTruthy();
+    const checkoutPayload = (await checkoutResponse.json()) as { checkoutUrl?: string };
+    expect(checkoutPayload.checkoutUrl).toBeTruthy();
+    await page.goto(checkoutPayload.checkoutUrl as string);
+    await expect(page).toHaveURL(/\/subscription\/success\?session_id=/);
+  }
+
+  const checkoutSessionId = new URL(page.url()).searchParams.get("session_id");
+  expect(checkoutSessionId).toBeTruthy();
+  await completeStripeCheckoutForTest(page.request, checkoutSessionId as string);
+  await page.goto(`/subscription/success?session_id=${encodeURIComponent(checkoutSessionId as string)}`);
+  await expect(page.getByRole("heading", { name: "Payment Confirmed" })).toBeVisible();
+}
+
 test.describe("critical client flows", () => {
   test.describe.configure({ mode: "serial" });
 
@@ -48,68 +112,12 @@ test.describe("critical client flows", () => {
   // @covers cross-stripe-reconciliation-works
   // @covers cross-webhook-final-state-visible
   test("buy subscription via Stripe checkout", async ({ page }) => {
-    await signInClient(page, { email: signupEmail, password: E2E_PASSWORD });
-
-    await page.goto("/subscription");
-    const plansResponse = await page.request.get("/api/subscription/plans");
-    expect(plansResponse.ok()).toBeTruthy();
-    const plansPayload = (await plansResponse.json()) as {
-      products?: Array<{ productId: string; name: string; priceType: PriceType }>;
-    };
-    const recurringProduct = plansPayload.products?.find(
-      (product) => product.priceType === PriceType.RECURRING,
-    );
-    expect(recurringProduct?.productId).toBeTruthy();
-    expect(recurringProduct?.name).toBeTruthy();
-
-    const monthlyCard = page
-      .locator("article")
-      .filter({ has: page.getByRole("heading", { name: recurringProduct?.name as string }) })
-      .first();
-    await expect(monthlyCard).toBeVisible();
-    const addToCartButton = monthlyCard.getByRole("button", { name: "Add to Cart" });
-    await expect(addToCartButton).toBeVisible();
-    await expect(addToCartButton).toBeEnabled();
-    await addToCartButton.click();
-
-    const goToCartLink = page.getByRole("link", { name: "Go to cart" });
-    await expect(goToCartLink).toBeVisible();
-    await goToCartLink.click();
-    await expect(page).toHaveURL(/\/cart$/);
-
-    const checkoutButton = page.getByRole("button", { name: "Checkout" });
-    await expect(checkoutButton).toBeVisible();
-    await expect(checkoutButton).toBeEnabled();
-    await checkoutButton.click();
-    try {
-      await expect(page).toHaveURL(/\/subscription\/success\?session_id=/);
-    } catch {
-      const checkoutResponse = await page.request.post("/api/subscription/checkout", {
-        headers: {
-          "content-type": "application/json",
-          origin: "http://127.0.0.1:3000",
-          referer: "http://127.0.0.1:3000/subscription",
-          "x-forwarded-host": "127.0.0.1:3000",
-          "x-forwarded-proto": "http",
-        },
-        data: {
-          productId: recurringProduct?.productId,
-        },
-      });
-      expect(checkoutResponse.ok()).toBeTruthy();
-      const checkoutPayload = (await checkoutResponse.json()) as { checkoutUrl?: string };
-      expect(checkoutPayload.checkoutUrl).toBeTruthy();
-      await page.goto(checkoutPayload.checkoutUrl as string);
-      await expect(page).toHaveURL(/\/subscription\/success\?session_id=/);
-    }
-
-    const checkoutSessionId = new URL(page.url()).searchParams.get("session_id");
-    expect(checkoutSessionId).toBeTruthy();
-
-    await completeStripeCheckoutForTest(page.request, checkoutSessionId as string);
-    await page.goto(`/subscription/success?session_id=${encodeURIComponent(checkoutSessionId as string)}`);
-
-    await expect(page.getByRole("heading", { name: "Payment Confirmed" })).toBeVisible();
+    const subscriptionCheckoutEmail = `e2e.subscription.checkout.${Date.now()}@bookmyclass.app`;
+    await createVerifiedClientForTest(page.request, {
+      email: subscriptionCheckoutEmail,
+      password: E2E_PASSWORD,
+    });
+    await purchaseRecurringSubscriptionForClient(page, subscriptionCheckoutEmail, E2E_PASSWORD);
   });
 
   // @covers customer-booking-draft-creation
@@ -166,14 +174,22 @@ test.describe("critical client flows", () => {
 
   // @covers customer-dashboard-booking-membership-state
   test("dashboard shows booking and subscription state", async ({ page }) => {
-    await signInClient(page, { email: signupEmail, password: E2E_PASSWORD });
+    const dashboardMembershipEmail = `e2e.dashboard.membership.${Date.now()}@bookmyclass.app`;
+    await createVerifiedClientForTest(page.request, {
+      email: dashboardMembershipEmail,
+      password: E2E_PASSWORD,
+    });
+    await purchaseRecurringSubscriptionForClient(page, dashboardMembershipEmail, E2E_PASSWORD);
+
+    await page.context().clearCookies();
+    await signInClient(page, { email: dashboardMembershipEmail, password: E2E_PASSWORD });
     await page.goto("/dashboard/membership");
     await expect(page.getByRole("heading", { name: "Membership & Credits" })).toBeVisible();
     await expect(page.getByText("No recurring subscriptions found.")).toHaveCount(0);
     await expect(page.getByText(/Status:\s*ACTIVE/i).first()).toBeVisible();
 
     await page.context().clearCookies();
-    await signInClient(page, { email: signupEmail, password: E2E_PASSWORD });
+    await signInClient(page, { email: dashboardMembershipEmail, password: E2E_PASSWORD });
     await page.goto("/dashboard");
     await expect(page.getByRole("heading", { name: "Client Dashboard" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Recent Bookings" })).toBeVisible();
@@ -286,8 +302,17 @@ test.describe("critical client flows", () => {
 
   // @covers-partial customer-billing-portal-access
   test("membership page exposes billing portal initiation", async ({ page }) => {
-    await signInClient(page, { email: signupEmail, password: E2E_PASSWORD });
+    const billingPortalEmail = `e2e.billing.portal.${Date.now()}@bookmyclass.app`;
+    await createVerifiedClientForTest(page.request, {
+      email: billingPortalEmail,
+      password: E2E_PASSWORD,
+    });
+    await purchaseRecurringSubscriptionForClient(page, billingPortalEmail, E2E_PASSWORD);
+
+    await page.context().clearCookies();
+    await signInClient(page, { email: billingPortalEmail, password: E2E_PASSWORD });
     await page.goto("/dashboard/membership");
+    await expect(page.getByRole("button", { name: "Manage billing" })).toBeVisible();
     await page.getByRole("button", { name: "Manage billing" }).click();
     await expect(page.getByText("Opening billing...")).toBeVisible();
   });

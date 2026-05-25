@@ -33,11 +33,12 @@ export async function verifyTestEmail(page: Page, email: string) {
 }
 
 export async function completeStripeCheckoutForTest(request: APIRequestContext, checkoutSessionId: string) {
+  const endpoint = "/api/test/e2e/stripe/complete";
   const response = await request.post("/api/test/e2e/stripe/complete", {
     headers: testHeaders(),
     data: { checkoutSessionId },
   });
-  expect(response.ok()).toBeTruthy();
+  await assertOk(response, endpoint);
   const payload = (await response.json()) as { completed?: boolean };
   expect(payload.completed).toBe(true);
 }

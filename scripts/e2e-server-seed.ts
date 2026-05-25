@@ -515,9 +515,9 @@ async function main() {
       description2: "Focus on deterministic fixtures",
       description3: "Stable for e2e",
       videoPromo: "https://example.test/e2e-promo",
-      picture1: "/images/learning/online-yoga-image-1.jpg",
-      picture2: "/images/learning/backbend-image-1.jpg",
-      picture3: "/images/learning/backbend-image-3.jpg",
+      picture1: "/uploads/learning/online-yoga-image-1.jpg",
+      picture2: "/uploads/learning/backbend-image-1.jpg",
+      picture3: "/uploads/learning/backbend-image-3.jpg",
     },
   });
 
@@ -530,7 +530,7 @@ async function main() {
       category: "e2e_course_type",
       categoryType: "Beginner",
       categoryLevel: "1",
-      thumbnail: "/images/learning/01-how-to-use-this-course.jpg",
+      thumbnail: "/uploads/learning/01-how-to-use-this-course.jpg",
       videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
       priority: 1,
     },
@@ -594,6 +594,7 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+
 
 
 

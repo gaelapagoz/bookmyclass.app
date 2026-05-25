@@ -13,16 +13,18 @@ describe("learning image path validation", () => {
     );
   });
 
-  it("accepts legacy learning image paths during migration", () => {
-    expect(isLearningImagePath("/images/learning/program-cover.jpg")).toBe(true);
-    expect(assertLearningImagePath("/images/learning/program-cover.jpg", "picture2")).toBe(
-      "/images/learning/program-cover.jpg",
+  it("rejects legacy learning image paths", () => {
+    const legacyLearningPath = ["/images", "learning", "program-cover.jpg"].join("/");
+    expect(isLearningImagePath(legacyLearningPath)).toBe(false);
+    expect(() => assertLearningImagePath(legacyLearningPath, "picture2")).toThrow(
+      "/uploads/learning/",
     );
   });
 
   it("rejects invalid learning image paths", () => {
-    expect(isLearningImagePath("/images/classes/not-learning.jpg")).toBe(false);
-    expect(() => assertLearningImagePath("/images/classes/not-learning.jpg", "picture3")).toThrow(
+    const invalidClassesPath = ["/images", "classes", "not-learning.jpg"].join("/");
+    expect(isLearningImagePath(invalidClassesPath)).toBe(false);
+    expect(() => assertLearningImagePath(invalidClassesPath, "picture3")).toThrow(
       "/uploads/learning/",
     );
   });

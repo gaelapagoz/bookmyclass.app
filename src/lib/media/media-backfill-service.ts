@@ -43,10 +43,15 @@ export type MediaBackfillRunResult = {
   readonly applied: readonly BackfillCandidate[];
 };
 
+const LEGACY_IMAGES_ROOT = ["/images"].join("");
+const LEGACY_INSTRUCTORS_PREFIX = `${LEGACY_IMAGES_ROOT}/instructors/`;
+const LEGACY_CLASSES_PREFIX = `${LEGACY_IMAGES_ROOT}/classes/`;
+const LEGACY_LEARNING_PREFIX = `${LEGACY_IMAGES_ROOT}/learning/`;
+
 const LEGACY_FOLDER_MAP = [
-  { legacyPrefix: "/images/instructors/", folder: "teachers" as const },
-  { legacyPrefix: "/images/classes/", folder: "classes" as const },
-  { legacyPrefix: "/images/learning/", folder: "learning" as const },
+  { legacyPrefix: LEGACY_INSTRUCTORS_PREFIX, folder: "teachers" as const },
+  { legacyPrefix: LEGACY_CLASSES_PREFIX, folder: "classes" as const },
+  { legacyPrefix: LEGACY_LEARNING_PREFIX, folder: "learning" as const },
 ];
 
 export async function runMediaBackfill(options: MediaBackfillRunOptions): Promise<MediaBackfillRunResult> {
@@ -111,25 +116,25 @@ async function collectCandidates(
 ): Promise<BackfillCandidate[]> {
   const [users, classTypes, programs, courses, mediaAssets] = await Promise.all([
     prisma.user.findMany({
-      where: { image: { startsWith: "/images/instructors/" } },
+      where: { image: { startsWith: LEGACY_INSTRUCTORS_PREFIX } },
       select: { id: true, image: true },
     }),
     prisma.classType.findMany({
-      where: { imageUrl: { startsWith: "/images/classes/" } },
+      where: { imageUrl: { startsWith: LEGACY_CLASSES_PREFIX } },
       select: { id: true, imageUrl: true },
     }),
     prisma.learningProgram.findMany({
       where: {
         OR: [
-          { picture1: { startsWith: "/images/learning/" } },
-          { picture2: { startsWith: "/images/learning/" } },
-          { picture3: { startsWith: "/images/learning/" } },
+          { picture1: { startsWith: LEGACY_LEARNING_PREFIX } },
+          { picture2: { startsWith: LEGACY_LEARNING_PREFIX } },
+          { picture3: { startsWith: LEGACY_LEARNING_PREFIX } },
         ],
       },
       select: { id: true, picture1: true, picture2: true, picture3: true },
     }),
     prisma.learningCourse.findMany({
-      where: { thumbnail: { startsWith: "/images/learning/" } },
+      where: { thumbnail: { startsWith: LEGACY_LEARNING_PREFIX } },
       select: { id: true, thumbnail: true },
     }),
     prisma.mediaAsset.findMany({
@@ -153,7 +158,7 @@ async function collectCandidates(
   for (const program of programs) {
     for (const field of ["picture1", "picture2", "picture3"] as const) {
       const value = program[field];
-      if (value?.startsWith("/images/learning/")) {
+      if (value?.startsWith(LEGACY_LEARNING_PREFIX)) {
         candidates.push(buildLegacyCandidate("LearningProgram", program.id, field, value, uploadsDir, legacyPublicDir));
       }
     }

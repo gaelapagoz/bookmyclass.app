@@ -14,6 +14,14 @@
 /coverage
 /test-results
 /playwright-report
+/.local/e2e-uploads/**
+/.local/e2e-uploads/
+/.local/uploads/classes/**
+/.local/uploads/learning/**
+/.local/uploads/products/**
+/.local/uploads/teachers/**
+/.local/uploads/**
+/.local/uploads/
 
 # next.js
 /.next/

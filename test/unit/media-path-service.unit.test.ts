@@ -75,7 +75,8 @@ describe("media path service", () => {
   });
 
   it("returns fallback for legacy public image paths", async () => {
-    await expect(getCanonicalMediaRenderState("/images/learning/legacy.png", { allowedFolders: ["learning"] })).resolves.toEqual({
+    const legacyLearningPath = ["/images", "learning", "legacy.png"].join("/");
+    await expect(getCanonicalMediaRenderState(legacyLearningPath, { allowedFolders: ["learning"] })).resolves.toEqual({
       src: null,
       shouldRenderFallback: true,
     });

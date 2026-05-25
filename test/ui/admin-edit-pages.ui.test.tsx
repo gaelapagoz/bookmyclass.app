@@ -105,7 +105,7 @@ describe("admin edit pages", () => {
       email: "teacher@example.test",
       role: "TEACHER",
       isActive: true,
-      image: "/images/instructors/teacher-1.jpg",
+      image: "/uploads/teachers/teacher-1.jpg",
       phone: "",
       notes: "",
       bio: "",
@@ -124,7 +124,7 @@ describe("admin edit pages", () => {
     );
 
     const preview = screen.getByTestId("teacher-image-preview");
-    expect(preview).toHaveAttribute("src", "/images/instructors/teacher-1.jpg");
+    expect(preview).toHaveAttribute("src", "/uploads/teachers/teacher-1.jpg");
   });
 
   it("renders distinct client activity credit forms with expected payload fields", async () => {

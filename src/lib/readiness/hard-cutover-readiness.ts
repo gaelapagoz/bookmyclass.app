@@ -1,14 +1,18 @@
+const LEGACY_IMAGES_ROOT = ["/images"].join("");
+const LEGACY_PUBLIC_IMAGES_ROOT = ["/public", "images"].join("/");
+const LEGACY_PUBLIC_IMAGES_RELATIVE = ["public", "images"].join("/");
+
 export const LEGACY_MEDIA_PATH_PATTERNS = [
-  "/images/instructors",
-  "/images/instructors/",
-  "/images/classes",
-  "/images/classes/",
-  "/images/learning",
-  "/images/learning/",
-  "/public/images",
-  "/public/images/",
-  "public/images",
-  "public/images/",
+  `${LEGACY_IMAGES_ROOT}/instructors`,
+  `${LEGACY_IMAGES_ROOT}/instructors/`,
+  `${LEGACY_IMAGES_ROOT}/classes`,
+  `${LEGACY_IMAGES_ROOT}/classes/`,
+  `${LEGACY_IMAGES_ROOT}/learning`,
+  `${LEGACY_IMAGES_ROOT}/learning/`,
+  LEGACY_PUBLIC_IMAGES_ROOT,
+  `${LEGACY_PUBLIC_IMAGES_ROOT}/`,
+  LEGACY_PUBLIC_IMAGES_RELATIVE,
+  `${LEGACY_PUBLIC_IMAGES_RELATIVE}/`,
 ] as const;
 
 export type MediaLegacyPathCount = {

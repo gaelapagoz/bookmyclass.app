@@ -39,19 +39,40 @@ async function signInViaAuthCallback(
   });
 }
 
+export async function signInAdminSession(
+  page: Page,
+  input: { email: string; password: string },
+  options?: { callbackUrl?: string },
+) {
+  await signInViaAuthCallback(page, input, {
+    authFlow: "admin",
+    callbackUrl: options?.callbackUrl ?? "http://127.0.0.1:3100/admin/gift-cards",
+  });
+}
+
 export async function signInTeacher(page: Page, input: { email: string; password: string }) {
   await signInViaAuthCallback(page, input, { authFlow: "admin", callbackUrl: "http://127.0.0.1:3100/teacher" });
   await page.goto("/teacher");
   await expect(page).toHaveURL(/\/teacher$/);
 }
 
-export async function signInAdmin(page: Page, input: { email: string; password: string }) {
+export async function signInAdmin(
+  page: Page,
+  input: { email: string; password: string },
+  options?: { callbackUrl?: string; landingPath?: string },
+) {
+  const callbackUrl = options?.callbackUrl ?? "http://127.0.0.1:3100/admin/dashboard";
+  const landingPath = options?.landingPath ?? "/admin/dashboard";
   await signInViaAuthCallback(page, input, {
     authFlow: "admin",
-    callbackUrl: "http://127.0.0.1:3100/admin/dashboard",
+    callbackUrl,
   });
-  await page.goto("/admin/dashboard");
-  await expect(page).toHaveURL(/\/admin\/dashboard$/);
+  await page.goto(landingPath);
+  if (landingPath === "/admin/dashboard") {
+    await expect(page).toHaveURL(/\/admin\/dashboard$/);
+  } else {
+    await expect(page).toHaveURL(new RegExp(`${landingPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
+  }
 }
 
 export async function signUpPublicUser(page: Page, input: {

@@ -1,6 +1,6 @@
-export type SeedMode = "development" | "uat-performance" | "production";
+export type SeedMode = "development" | "staging" | "demo" | "production";
 
-const VALID_SEED_MODES: SeedMode[] = ["development", "uat-performance", "production"];
+const VALID_SEED_MODES: SeedMode[] = ["development", "staging", "demo", "production"];
 
 const PRODUCTION_CONFIRM_VALUE = "bookmyclass-prod-seed";
 
@@ -16,7 +16,7 @@ export function resolveSeedMode(): SeedMode {
   const raw = process.env.BOOKMYCLASS_SEED_MODE?.trim();
   if (!raw) {
     throw new Error(
-      "BOOKMYCLASS_SEED_MODE is not set. Valid values: development | uat-performance | production",
+      "BOOKMYCLASS_SEED_MODE is not set. Valid values: development | staging | demo | production",
     );
   }
   if (!VALID_SEED_MODES.includes(raw as SeedMode)) {
@@ -48,7 +48,7 @@ export function validateEnvironmentForMode(mode: SeedMode, databaseUrl: string):
 
     console.info("[seed] Production safety checks passed.");
   } else {
-    // dev / uat-performance — refuse to run against production.
+    // non-production modes refuse to run against production.
     for (const indicator of PRODUCTION_URL_INDICATORS) {
       if (urlLower.includes(indicator)) {
         throw new Error(
@@ -66,3 +66,4 @@ export {
   NON_PRODUCTION_URL_INDICATORS,
   VALID_SEED_MODES,
 };
+

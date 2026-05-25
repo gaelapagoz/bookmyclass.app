@@ -103,6 +103,7 @@ function hashHomesiteContactRateLimitIp(ipAddress: string): string {
 async function assertHomesiteContactRateLimit(ipAddress: string, now: Date): Promise<void> {
   const ipHash = hashHomesiteContactRateLimitIp(ipAddress);
   const activeWindowThreshold = new Date(now.getTime() - HOMESITE_CONTACT_RATE_LIMIT_WINDOW_MS);
+  try {
 
   // Ensure the record exists before the transaction to avoid concurrent-upsert unique constraint races.
   const existing = await prisma.contactMessageRateLimit.findFirst({ where: { ipHash } });
@@ -154,6 +155,16 @@ async function assertHomesiteContactRateLimit(ipAddress: string, now: Date): Pro
 
   if (isRateLimited) {
     throw new ContactFormServiceError("RATE_LIMITED", "Too many homesite contact submissions from this IP.");
+  }
+  } catch (error) {
+    if (error instanceof ContactFormServiceError) {
+      throw error;
+    }
+
+    throw new ContactFormServiceError(
+      "RATE_LIMITED",
+      "Rate limit check unavailable for homesite contact submission.",
+    );
   }
 }
 

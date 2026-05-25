@@ -33,7 +33,7 @@ vi.mock("@/lib/admin/admin-service", () => ({
     description2: null,
     description3: null,
     videoPromo: null,
-    picture1: "/images/learning/library.png",
+    picture1: "/uploads/learning/library.png",
     picture2: null,
     picture3: null,
   })),

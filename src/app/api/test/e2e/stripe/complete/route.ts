@@ -28,5 +28,5 @@ export async function POST(request: Request) {
     checkoutSessionId: parsed.data.checkoutSessionId,
   });
 
-  return Response.json(result, { status: result.completed ? 200 : 404 });
+  return Response.json(result, { status: result.completed ? 200 : 422 });
 }

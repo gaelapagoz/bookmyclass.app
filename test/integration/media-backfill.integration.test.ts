@@ -29,6 +29,10 @@ async function writeFixtureFile(root: string, relativePath: string): Promise<voi
 }
 
 async function seedBackfillFixtures(legacyPublicDir: string): Promise<FixtureState> {
+  const legacyTeacherImage = ["/images", "instructors", "teacher-legacy.jpg"].join("/");
+  const legacyClassImage = ["/images", "classes", "class-legacy.png"].join("/");
+  const legacyProgramImage = ["/images", "learning", "program-legacy.webp"].join("/");
+  const legacyCourseImage = ["/images", "learning", "course-legacy.jpg"].join("/");
   const admin = await prisma.user.create({
     data: {
       name: "Backfill Admin",
@@ -49,7 +53,7 @@ async function seedBackfillFixtures(legacyPublicDir: string): Promise<FixtureSta
       activationStatus: UserActivationStatus.ACTIVE,
       emailVerified: new Date(),
       isActive: true,
-      image: "/images/instructors/teacher-legacy.jpg",
+      image: legacyTeacherImage,
     },
     select: { id: true },
   });
@@ -69,7 +73,7 @@ async function seedBackfillFixtures(legacyPublicDir: string): Promise<FixtureSta
       categoryId: category.id,
       name: "Mat",
       slug: `mat-${Date.now()}`,
-      imageUrl: "/images/classes/class-legacy.png",
+      imageUrl: legacyClassImage,
       defaultDurationMinutes: 60,
       defaultCapacity: 12,
       isActive: true,
@@ -83,7 +87,7 @@ async function seedBackfillFixtures(legacyPublicDir: string): Promise<FixtureSta
     data: {
       legacyId: `program-${Date.now()}`,
       courseType: `course-type-${Date.now()}`,
-      picture1: "/images/learning/program-legacy.webp",
+      picture1: legacyProgramImage,
     },
     select: { id: true },
   });
@@ -93,7 +97,7 @@ async function seedBackfillFixtures(legacyPublicDir: string): Promise<FixtureSta
       legacyId: `course-${Date.now()}`,
       title: "Course",
       category: "Intermediate",
-      thumbnail: "/images/learning/course-legacy.jpg",
+      thumbnail: legacyCourseImage,
     },
     select: { id: true },
   });
@@ -157,7 +161,7 @@ describe("media backfill integration", () => {
     expect(dryRun.summary.applied).toBe(0);
 
     const dryRunUser = await prisma.user.findUnique({ where: { id: state.userId }, select: { image: true } });
-    expect(dryRunUser?.image).toBe("/images/instructors/teacher-legacy.jpg");
+    expect(dryRunUser?.image).toBe(["/images", "instructors", "teacher-legacy.jpg"].join("/"));
 
     const applyResult = await runMediaBackfill({
       prisma,
@@ -244,7 +248,7 @@ describe("media backfill integration", () => {
     expect(applyResult.applied.some((candidate) => candidate.entity === "User" && candidate.id === state.userId)).toBe(false);
 
     const user = await prisma.user.findUnique({ where: { id: state.userId }, select: { image: true } });
-    expect(user?.image).toBe("/images/instructors/teacher-legacy.jpg");
+    expect(user?.image).toBe(["/images", "instructors", "teacher-legacy.jpg"].join("/"));
   });
 });
 

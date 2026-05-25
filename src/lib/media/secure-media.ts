@@ -44,10 +44,10 @@ const IMAGE_TYPES = {
 export type SecureImageMimeType = keyof typeof IMAGE_TYPES;
 
 export const DEFAULT_ALLOWED_MEDIA_FOLDERS = [
-  "/images/classes",
-  "/images/instructors",
-  "/images/learning",
-  "/images/marketing",
+  "/uploads/classes",
+  "/uploads/teachers",
+  "/uploads/learning",
+  "/uploads/marketing",
 ] as const;
 
 export type SecureMediaErrorCode =

@@ -293,16 +293,19 @@ cd /var/www/bookmyclass-uat
 git fetch --all --tags
 git checkout v0.2.37-rc.3   # or your target UAT tag
 npm ci
-npx prisma migrate reset
+npx prisma migrate reset --force --skip-seed
 npx prisma migrate deploy
 npx prisma generate
 
-# App baseline seed
-npm run prisma:seed
+# Canonical destructive staging/UAT reseed chain
+CONFIRM_PRODUCTION_SEED=bookmyclass-prod-seed npm run db:seed:prod
+npm run db:seed:staging
 
 # k6/UAT load-test seed (optional but usually needed for smoke/t100 flows)
 set -a && . ./.env && set +a
-UAT_K6_SEED=1 npm run db:seed:server:k6
+UAT_K6_SEED=1 npm run db:seed:uat:k6
+UAT_E2E_SEED=1 npm run db:seed:staging:e2e
+npm run db:verify:staging:e2e
 # optional server-side discover (local discover before each run is still mandatory)
 BASE_URL=https://uat.bookmyclass.app npm run k6:discover:server
 ```
@@ -311,7 +314,8 @@ If you also want a full destructive reset first, run:
 
 ```bash
 npx prisma migrate reset --force
-npm run prisma:seed
+CONFIRM_PRODUCTION_SEED=bookmyclass-prod-seed npm run db:seed:prod
+npm run db:seed:staging
 ```
 
 Use a **tag checkout only** for UAT (not `main`).

@@ -1844,9 +1844,9 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
 
 export async function completeStripeCheckoutSessionForE2ETests(input: {
   checkoutSessionId: string;
-}): Promise<{ completed: boolean }> {
+}): Promise<{ completed: boolean; reason?: string }> {
   if (process.env.E2E_TEST_MODE !== "1") {
-    return { completed: false };
+    return { completed: false, reason: "E2E_TEST_MODE_DISABLED" };
   }
 
   const payment = await prisma.payment.findFirst({
@@ -1894,7 +1894,7 @@ export async function completeStripeCheckoutSessionForE2ETests(input: {
   });
 
   if (!payment) {
-    return { completed: false };
+    return { completed: false, reason: "CHECKOUT_PAYMENT_NOT_FOUND" };
   }
 
   const metadata: Record<string, string> = {
@@ -1942,6 +1942,13 @@ export async function completeStripeCheckoutSessionForE2ETests(input: {
     currency: payment.currencyCode.toLowerCase(),
   } as unknown as Stripe.Checkout.Session;
 
-  await handleCheckoutCompleted(syntheticSession);
-  return { completed: true };
+  try {
+    await handleCheckoutCompleted(syntheticSession);
+    return { completed: true };
+  } catch (error) {
+    return {
+      completed: false,
+      reason: error instanceof Error ? error.message : "CHECKOUT_COMPLETION_FAILED",
+    };
+  }
 }

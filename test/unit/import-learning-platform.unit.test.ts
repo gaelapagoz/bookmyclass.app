@@ -15,9 +15,9 @@ describe("learning importer payload parsing", () => {
           Description2: "d2",
           Description3: "d3",
           VideoPromo: "https://www.youtube.com/watch?v=promo",
-          Picture1: "/images/learning/program-1.jpg",
-          Picture2: "/images/learning/program-2.jpg",
-          Picture3: "/images/learning/program-3.jpg",
+          Picture1: "/uploads/learning/program-1.jpg",
+          Picture2: "/uploads/learning/program-2.jpg",
+          Picture3: "/uploads/learning/program-3.jpg",
         },
       ],
       courses: [
@@ -29,7 +29,7 @@ describe("learning importer payload parsing", () => {
           Category: "Yoga",
           "Category Type": "Flow",
           "Category Level": "Beginner",
-          Thumbnail: "/images/learning/course-1.jpg",
+          Thumbnail: "/uploads/learning/course-1.jpg",
           VideoURL: "https://www.youtube.com/watch?v=course",
           Priority: "2",
         },
@@ -48,9 +48,9 @@ describe("learning importer payload parsing", () => {
       description2: "d2",
       description3: "d3",
       videoPromo: "https://www.youtube.com/watch?v=promo",
-      picture1: "/images/learning/program-1.jpg",
-      picture2: "/images/learning/program-2.jpg",
-      picture3: "/images/learning/program-3.jpg",
+      picture1: "/uploads/learning/program-1.jpg",
+      picture2: "/uploads/learning/program-2.jpg",
+      picture3: "/uploads/learning/program-3.jpg",
     });
     expect(result.payload?.courses[0]).toEqual({
       legacyId: "101",
@@ -60,7 +60,7 @@ describe("learning importer payload parsing", () => {
       category: "Online Yoga Classes",
       categoryType: "Flow",
       categoryLevel: "Beginner",
-      thumbnail: "/images/learning/course-1.jpg",
+      thumbnail: "/uploads/learning/course-1.jpg",
       videoUrl: "https://www.youtube.com/watch?v=course",
       priority: 2,
     });
@@ -145,8 +145,8 @@ describe("learning importer payload parsing", () => {
     const result = parsePayload(raw);
 
     expect(result.payload).toBeNull();
-    expect(result.errors).toContain("programs[0].Picture1 must use /uploads/learning/* (legacy /images/learning/* only for migration).");
-    expect(result.errors).toContain("courses[0].Thumbnail (or thumbnail) must use /uploads/learning/* (legacy /images/learning/* only for migration).");
+    expect(result.errors).toContain("programs[0].Picture1 must use /uploads/learning/*.");
+    expect(result.errors).toContain("courses[0].Thumbnail (or thumbnail) must use /uploads/learning/*.");
   });
 
   it("reports duplicate IDs and duplicate program courseType values", () => {

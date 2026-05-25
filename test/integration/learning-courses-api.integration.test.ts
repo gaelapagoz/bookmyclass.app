@@ -1,5 +1,8 @@
 import "./helpers/setup-env";
 
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
@@ -10,6 +13,13 @@ describe("GET /api/courses", () => {
     await resetDb();
     await prisma.learningCourse.deleteMany();
     await prisma.learningProgram.deleteMany();
+    const uploadsDir = await mkdtemp(path.join(os.tmpdir(), "bookmyclass-learning-courses-"));
+    process.env.UPLOADS_DIR = uploadsDir;
+    process.env.PUBLIC_UPLOADS_BASE_PATH = "/uploads";
+    await mkdir(path.join(uploadsDir, "learning"), { recursive: true });
+    for (const file of ["zeta.jpg", "alpha.jpg", "beta.jpg"]) {
+      await writeFile(path.join(uploadsDir, "learning", file), Buffer.from([0xff, 0xd8, 0xff]));
+    }
   });
 
   it("returns legacy-shaped courses ordered by priority then title", async () => {
@@ -23,7 +33,7 @@ describe("GET /api/courses", () => {
           category: "Yoga",
           categoryType: "Flow",
           categoryLevel: "Beginner",
-          thumbnail: "/images/learning/zeta.jpg",
+          thumbnail: "/uploads/learning/zeta.jpg",
           videoUrl: "https://www.youtube.com/watch?v=zeta",
           priority: 2,
         },
@@ -35,7 +45,7 @@ describe("GET /api/courses", () => {
           category: "Yoga",
           categoryType: "Flow",
           categoryLevel: "Beginner",
-          thumbnail: "/images/learning/alpha.jpg",
+          thumbnail: "/uploads/learning/alpha.jpg",
           videoUrl: "https://www.youtube.com/watch?v=alpha",
           priority: 1,
         },
@@ -47,7 +57,7 @@ describe("GET /api/courses", () => {
           category: "Yoga",
           categoryType: "Flow",
           categoryLevel: "Intermediate",
-          thumbnail: "/images/learning/beta.jpg",
+          thumbnail: "/uploads/learning/beta.jpg",
           videoUrl: "https://www.youtube.com/watch?v=beta",
           priority: 1,
         },
@@ -69,7 +79,7 @@ describe("GET /api/courses", () => {
       Category: "Yoga",
       "Category Type": "Flow",
       "Category Level": "Beginner",
-      Thumbnail: "/images/learning/alpha.jpg",
+      Thumbnail: "/uploads/learning/alpha.jpg",
       VideoURL: "https://www.youtube.com/watch?v=alpha",
       Priority: 1,
     });
@@ -85,7 +95,7 @@ describe("GET /api/courses", () => {
         category: "Yoga",
         categoryType: "Flow",
         categoryLevel: "Advanced",
-        thumbnail: "/images/gamma.jpg",
+        thumbnail: "/uploads/gamma.jpg",
         videoUrl: "https://www.youtube.com/watch?v=gamma",
         priority: 3,
       },

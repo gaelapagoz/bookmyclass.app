@@ -7,6 +7,29 @@ import { prisma } from "./helpers/db";
 import { createClassCategory, createClassType } from "./helpers/factories";
 import { resetDb } from "./helpers/reset-db";
 
+const DEBUG_INSIGHTS_TEST = process.env.DEBUG_ADMIN_DASHBOARD_INSIGHTS_TEST === "1";
+
+function debugStage(message: string) {
+  if (!DEBUG_INSIGHTS_TEST) {
+    return;
+  }
+  const timestamp = new Date().toISOString();
+  console.log(`[admin-dashboard-insights.test] ${timestamp} ${message}`);
+}
+
+async function withStage<T>(name: string, work: () => Promise<T>): Promise<T> {
+  const startedAt = Date.now();
+  debugStage(`${name} START`);
+  try {
+    const result = await work();
+    debugStage(`${name} END (${Date.now() - startedAt}ms)`);
+    return result;
+  } catch (error) {
+    debugStage(`${name} FAIL (${Date.now() - startedAt}ms): ${error instanceof Error ? error.message : "unknown"}`);
+    throw error;
+  }
+}
+
 function daysAgo(days: number) {
   const date = new Date();
   date.setDate(date.getDate() - days);
@@ -99,112 +122,125 @@ async function createTemplateAndSessions(input: {
   return { classType, template, sessions };
 }
 
+async function mapSeries<T, R>(
+  items: T[],
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let index = 0; index < items.length; index += 1) {
+    results.push(await mapper(items[index]!, index));
+  }
+  return results;
+}
+
 describe("admin dashboard insights integration", () => {
   beforeEach(async () => {
-    await resetDb();
+    await withStage("beforeEach.resetDb", async () => resetDb());
   });
 
   it("returns insights with limits, correct exclusions, and staff occupancy math", async () => {
-    const orsi = await createTeacher("Orsi", `orsi.${Date.now()}@example.test`);
-    const giulia = await createTeacher("Giulia Vago", `giulia.${Date.now()}@example.test`);
-    const elisa = await createTeacher("Elisa", `elisa.${Date.now()}@example.test`);
-    const ourania = await createTeacher("Ourania", `ourania.${Date.now()}@example.test`);
-    const occupancyCoach = await createTeacher(
+    const orsi = await withStage("t1.createTeacher.orsi", async () => createTeacher("Orsi", `orsi.${Date.now()}@example.test`));
+    const giulia = await withStage("t1.createTeacher.giulia", async () => createTeacher("Giulia Vago", `giulia.${Date.now()}@example.test`));
+    const elisa = await withStage("t1.createTeacher.elisa", async () => createTeacher("Elisa", `elisa.${Date.now()}@example.test`));
+    const ourania = await withStage("t1.createTeacher.ourania", async () => createTeacher("Ourania", `ourania.${Date.now()}@example.test`));
+    const occupancyCoach = await withStage("t1.createTeacher.occupancyCoach", async () => createTeacher(
       "Occupancy Coach",
       `occupancy.${Date.now()}@example.test`,
-    );
+    ));
 
-    const [pilates, rocket, vinyasa, trx, stretch, bonus] = await Promise.all([
-      createTemplateAndSessions({
+    const [pilates, rocket, vinyasa, trx, stretch, bonus] = await withStage("t1.createTemplateAndSessions.batch", async () => mapSeries([
+      {
         className: "Pilates with Props",
         classSlug: `pilates-with-props-${Date.now()}`,
         templateSlug: `template-pilates-${Date.now()}`,
         teacherId: orsi.id,
         capacity: 12,
         sessionDaysAgo: [3, 7, 10, 14],
-      }),
-      createTemplateAndSessions({
+      },
+      {
         className: "Rocket Yoga",
         classSlug: `rocket-yoga-${Date.now()}-a`,
         templateSlug: `template-rocket-${Date.now()}`,
         teacherId: giulia.id,
         capacity: 10,
         sessionDaysAgo: [4, 8, 12, 16],
-      }),
-      createTemplateAndSessions({
+      },
+      {
         className: "Vinyasa Yoga",
         classSlug: `vinyasa-yoga-${Date.now()}-a`,
         templateSlug: `template-vinyasa-${Date.now()}`,
         teacherId: elisa.id,
         capacity: 10,
         sessionDaysAgo: [5, 11, 17, 21],
-      }),
-      createTemplateAndSessions({
+      },
+      {
         className: "Functional Training TRX",
         classSlug: `trx-${Date.now()}`,
         templateSlug: `template-trx-${Date.now()}`,
         teacherId: giulia.id,
         capacity: 8,
         sessionDaysAgo: [6, 9, 13, 22],
-      }),
-      createTemplateAndSessions({
+      },
+      {
         className: "Stretch & Tone Pilates",
         classSlug: `stretch-tone-${Date.now()}`,
         templateSlug: `template-stretch-${Date.now()}`,
         teacherId: ourania.id,
         capacity: 8,
         sessionDaysAgo: [2, 15, 20, 24],
-      }),
-      createTemplateAndSessions({
+      },
+      {
         className: "Bonus Balance",
         classSlug: `bonus-balance-${Date.now()}`,
         templateSlug: `template-bonus-${Date.now()}`,
         teacherId: ourania.id,
         capacity: 8,
         sessionDaysAgo: [18, 23],
-      }),
-    ]);
+      },
+    ], async (fixture) => createTemplateAndSessions(fixture)));
 
-    const occupancyClass = await createTemplateAndSessions({
+    const occupancyClass = await withStage("t1.createTemplateAndSessions.occupancyClass", async () => createTemplateAndSessions({
       className: "Occupancy Math",
       classSlug: `occupancy-math-${Date.now()}`,
       templateSlug: `template-occupancy-${Date.now()}`,
       teacherId: occupancyCoach.id,
       capacity: 10,
       sessionDaysAgo: [1, 19],
-    });
+    }));
 
-    const allClients = await Promise.all(
-      Array.from({ length: 30 }).map((_, index) =>
-        createClient(`Client ${index + 1}`, `client.${index + 1}.${Date.now()}@example.test`),
-      ),
-    );
+    const allClients = await withStage("t1.createClients.bulk", async () => mapSeries(
+      Array.from({ length: 30 }, (_, index) => index),
+      async (index) => createClient(`Client ${index + 1}`, `client.${index + 1}.${Date.now()}@example.test`),
+    ));
 
-    const topClients = {
+    const topClients = await withStage("t1.createClients.top", async () => ({
       katalin: await createClient("Katalin", `katalin.${Date.now()}@example.test`),
       maja: await createClient("Maja Simunic", `maja.${Date.now()}@example.test`),
       eline: await createClient("Eline", `eline.${Date.now()}@example.test`),
       batool: await createClient("Batool Dodin", `batool.${Date.now()}@example.test`),
       kriselda: await createClient("Kriselda Deda", `kriselda.${Date.now()}@example.test`),
-    };
-    const cancelledOnly = await createClient(
+    }));
+    const cancelledOnly = await withStage("t1.createClient.cancelledOnly", async () => createClient(
       "Cancelled Heavy",
       `cancelled.${Date.now()}@example.test`,
-    );
+    ));
 
-    const atRiskClients = await Promise.all([
-      createClient("Engy Sawah", `engy.${Date.now()}@example.test`),
-      createClient("Nela O", `nela.${Date.now()}@example.test`),
-      createClient("Francesca", `francesca.${Date.now()}@example.test`),
-      createClient("Nolwenn Bertrand", `nolwenn.${Date.now()}@example.test`),
-      createClient("Svitlana Metelytsia", `svitlana.${Date.now()}@example.test`),
-      createClient("Historical Extra", `historical.extra.${Date.now()}@example.test`),
-    ]);
-    const recoveredClient = await createClient(
+    const atRiskClients = await withStage("t1.createClients.atRisk", async () => mapSeries(
+      [
+        "Engy Sawah",
+        "Nela O",
+        "Francesca",
+        "Nolwenn Bertrand",
+        "Svitlana Metelytsia",
+        "Historical Extra",
+      ],
+      async (name) => createClient(name, `${name.toLowerCase().replaceAll(" ", ".")}.${Date.now()}@example.test`),
+    ));
+    const recoveredClient = await withStage("t1.createClient.recovered", async () => createClient(
       "Recovered Client",
       `recovered.${Date.now()}@example.test`,
-    );
-    await createClient("Never Booked", `never.${Date.now()}@example.test`);
+    ));
+    await withStage("t1.createClient.neverBooked", async () => createClient("Never Booked", `never.${Date.now()}@example.test`));
 
     const sessionPool = [
       ...pilates.sessions,
@@ -225,7 +261,8 @@ describe("admin dashboard insights integration", () => {
     ];
     const clientSessionIndex = new Map<string, number>();
 
-    for (const plan of bookingPlan) {
+    await withStage("t1.createBookings.topClients", async () => {
+      for (const plan of bookingPlan) {
       for (let i = 0; i < plan.count; i += 1) {
         const offset = clientSessionIndex.get(plan.clientId) ?? 0;
         const sessionId = sessionPoolIds[(offset + i) % sessionPoolIds.length];
@@ -240,8 +277,10 @@ describe("admin dashboard insights integration", () => {
       }
       clientSessionIndex.set(plan.clientId, plan.count + 1);
     }
+    });
 
-    for (let i = 0; i < 8; i += 1) {
+    await withStage("t1.createBookings.cancelledWindow", async () => {
+      for (let i = 0; i < 8; i += 1) {
       const sessionId = sessionPoolIds[i % sessionPoolIds.length];
       await prisma.booking.create({
         data: {
@@ -253,8 +292,10 @@ describe("admin dashboard insights integration", () => {
         },
       });
     }
+    });
 
-    for (let i = 0; i < 6; i += 1) {
+    await withStage("t1.createBookings.cancelledOnly", async () => {
+      for (let i = 0; i < 6; i += 1) {
       const sessionId = sessionPoolIds[(i + 8) % sessionPoolIds.length];
       await prisma.booking.create({
         data: {
@@ -266,10 +307,11 @@ describe("admin dashboard insights integration", () => {
         },
       });
     }
+    });
 
     const historicalStartsAt = daysAgo(45);
     historicalStartsAt.setHours(10, 0, 0, 0);
-    const historicalSession = await prisma.studioSession.create({
+    const historicalSession = await withStage("t1.createSession.historical", async () => prisma.studioSession.create({
       data: {
         classTemplateId: pilates.template.id,
         classTypeId: pilates.classType.id,
@@ -281,9 +323,10 @@ describe("admin dashboard insights integration", () => {
         status: StudioSessionStatus.COMPLETED,
         isPublished: true,
       },
-    });
+    }));
 
-    for (const client of atRiskClients) {
+    await withStage("t1.createBookings.atRiskHistorical", async () => {
+      for (const client of atRiskClients) {
       await prisma.booking.create({
         data: {
           clientId: client.id,
@@ -293,27 +336,29 @@ describe("admin dashboard insights integration", () => {
         },
       });
     }
+    });
 
-    await prisma.booking.create({
+    await withStage("t1.createBookings.recovered", async () => prisma.booking.create({
       data: {
         clientId: recoveredClient.id,
         studioSessionId: historicalSession.id,
         status: BookingStatus.COMPLETED,
         bookedAt: daysAgo(40),
       },
-    });
-    await prisma.booking.create({
+    }));
+    await withStage("t1.createBookings.recoveredRecent", async () => prisma.booking.create({
       data: {
         clientId: recoveredClient.id,
         studioSessionId: sessionPool[0]!.id,
         status: BookingStatus.CONFIRMED,
         bookedAt: daysAgo(5),
       },
-    });
+    }));
 
     const [occupancySessionOne, occupancySessionTwo] = occupancyClass.sessions;
     const occupancyBookers = allClients.slice(10, 25);
-    for (let i = 0; i < 8; i += 1) {
+    await withStage("t1.createBookings.occupancySessionOne", async () => {
+      for (let i = 0; i < 8; i += 1) {
       await prisma.booking.create({
         data: {
           clientId: occupancyBookers[i]!.id,
@@ -323,7 +368,9 @@ describe("admin dashboard insights integration", () => {
         },
       });
     }
-    for (let i = 0; i < 4; i += 1) {
+    });
+    await withStage("t1.createBookings.occupancySessionTwo", async () => {
+      for (let i = 0; i < 4; i += 1) {
       await prisma.booking.create({
         data: {
           clientId: occupancyBookers[i + 8]!.id,
@@ -333,7 +380,8 @@ describe("admin dashboard insights integration", () => {
         },
       });
     }
-    await prisma.booking.create({
+    });
+    await withStage("t1.createBookings.occupancyCancelled", async () => prisma.booking.create({
       data: {
         clientId: occupancyBookers[13]!.id,
         studioSessionId: occupancySessionTwo!.id,
@@ -341,9 +389,9 @@ describe("admin dashboard insights integration", () => {
         bookedAt: daysAgo(6),
         cancelledAt: daysAgo(5),
       },
-    });
+    }));
 
-    const insights = await getAdminDashboardInsights("last90Days");
+    const insights = await withStage("t1.getAdminDashboardInsights.last90Days", async () => getAdminDashboardInsights("last90Days"));
 
     expect(insights.topClassSessions.length).toBeLessThanOrEqual(5);
     expect(insights.topClassSessions[0]?.classTitle).toBe("Pilates with Props");
@@ -366,14 +414,14 @@ describe("admin dashboard insights integration", () => {
   });
 
   it("scopes insights by selected period", async () => {
-    const teacher = await createTeacher("Scoped Teacher", `scoped.teacher.${Date.now()}@example.test`);
-    const category = await createClassCategory(prisma, {
+    const teacher = await withStage("t2.createTeacher", async () => createTeacher("Scoped Teacher", `scoped.teacher.${Date.now()}@example.test`));
+    const category = await withStage("t2.createClassCategory", async () => createClassCategory(prisma, {
       name: "Scoped Category",
       slug: `scoped-category-${Date.now()}`,
       sortOrder: 1,
       isActive: true,
-    });
-    const classType = await createClassType(prisma, {
+    }));
+    const classType = await withStage("t2.createClassType", async () => createClassType(prisma, {
       categoryId: category.id,
       name: "Scoped Class",
       slug: `scoped-class-${Date.now()}`,
@@ -382,8 +430,8 @@ describe("admin dashboard insights integration", () => {
       sortOrder: 1,
       isActive: true,
       isVisible: true,
-    });
-    const template = await prisma.classTemplate.create({
+    }));
+    const template = await withStage("t2.createClassTemplate", async () => prisma.classTemplate.create({
       data: {
         classTypeId: classType.id,
         defaultTeacherId: teacher.id,
@@ -394,7 +442,7 @@ describe("admin dashboard insights integration", () => {
         isActive: true,
         isPublished: true,
       },
-    });
+    }));
     const last7Date = daysAgo(5);
     last7Date.setHours(9, 0, 0, 0);
     const last30OnlyDate = daysAgo(20);
@@ -402,15 +450,15 @@ describe("admin dashboard insights integration", () => {
     const last90OnlyDate = daysAgo(70);
     last90OnlyDate.setHours(9, 0, 0, 0);
 
-    const clients = await Promise.all(
-      ["Last7 Client", "Last30 Client", "Last90 Client"].map((name, index) =>
-        createClient(name, `scoped.client.${index}.${Date.now()}@example.test`),
-      ),
-    );
+    const clients = await withStage("t2.createClients", async () => mapSeries(
+      ["Last7 Client", "Last30 Client", "Last90 Client"],
+      async (name, index) => createClient(name, `scoped.client.${index}.${Date.now()}@example.test`),
+    ));
 
     const bookingDates = [last7Date, last30OnlyDate, last90OnlyDate];
 
-    for (let index = 0; index < bookingDates.length; index += 1) {
+    await withStage("t2.createSessionsAndBookings", async () => {
+      for (let index = 0; index < bookingDates.length; index += 1) {
       const startsAt = bookingDates[index]!;
       const session = await prisma.studioSession.create({
         data: {
@@ -435,10 +483,11 @@ describe("admin dashboard insights integration", () => {
         },
       });
     }
+    });
 
-    const last7DaysInsights = await getAdminDashboardInsights("last7Days");
-    const last30DaysInsights = await getAdminDashboardInsights("last30Days");
-    const last90DaysInsights = await getAdminDashboardInsights("last90Days");
+    const last7DaysInsights = await withStage("t2.getInsights.last7Days", async () => getAdminDashboardInsights("last7Days"));
+    const last30DaysInsights = await withStage("t2.getInsights.last30Days", async () => getAdminDashboardInsights("last30Days"));
+    const last90DaysInsights = await withStage("t2.getInsights.last90Days", async () => getAdminDashboardInsights("last90Days"));
 
     expect(last7DaysInsights.topClients.length).toBe(1);
     expect(last30DaysInsights.topClients.length).toBe(2);

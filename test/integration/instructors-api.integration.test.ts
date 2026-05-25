@@ -14,6 +14,7 @@ describe("instructors api", () => {
   });
 
   it("returns teacher users with name, bio, and fallback-safe imageUrl", async () => {
+    const legacyInstructorImage = ["/images", "instructors", "legacy-teacher.jpg"].join("/");
     const uploadsDir = await mkdtemp(path.join(os.tmpdir(), "bookmyclass-instructors-"));
     process.env.UPLOADS_DIR = uploadsDir;
     process.env.PUBLIC_UPLOADS_BASE_PATH = "/uploads";
@@ -28,7 +29,15 @@ describe("instructors api", () => {
           lastName: "Van den Berg",
           email: "sofia.vandenberg.test@yogapilatesfitness.local",
           role: Role.TEACHER,
-          image: "/images/instructors/missing-sofia-instructor-bio.jpg",
+          image: "/uploads/teachers/missing-sofia-instructor-bio.jpg",
+        },
+        {
+          name: "Legacy Teacher",
+          firstName: "Legacy",
+          lastName: "Teacher",
+          email: "legacy.teacher.test@yogapilatesfitness.local",
+          role: Role.TEACHER,
+          image: legacyInstructorImage,
         },
         {
           name: "Ana Ionescu",
@@ -65,13 +74,18 @@ describe("instructors api", () => {
     };
 
     expect(response.status).toBe(200);
-    expect(body.instructors).toHaveLength(2);
+    expect(body.instructors).toHaveLength(3);
     expect(body.instructors[0]).toMatchObject({
       name: "Ana Ionescu",
       bio: "Ana leads classes with a clear and progressive approach to movement.",
       imageUrl: "/uploads/teachers/ana-profile.jpg",
     });
     expect(body.instructors[1]).toMatchObject({
+      name: "Legacy Teacher",
+      bio: "Sofia teaches flowing classes with a warm and supportive approach.",
+      imageUrl: "",
+    });
+    expect(body.instructors[2]).toMatchObject({
       name: "Sofia Van den Berg",
       bio: "Sofia teaches flowing classes with a warm and supportive approach.",
       imageUrl: "",

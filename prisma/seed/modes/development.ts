@@ -107,19 +107,19 @@ const REQUIRED_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[] = [
 const DEFAULT_LEARNING_SEED_JSON_PATH = resolve(process.cwd(), "prisma", "seed-data", "learning-content.json");
 
 const SEEDED_TEACHER_IMAGES = {
-  ana: toCanonicalSeedImagePath("/images/instructors/ana_instructor_bio.jpg"),
-  elena: toCanonicalSeedImagePath("/images/instructors/elena_instructor_bio.jpg"),
-  sofia: toCanonicalSeedImagePath("/images/instructors/sofia_instructor_bio.jpg"),
+  ana: "/uploads/teachers/ana_instructor_bio.jpg",
+  elena: "/uploads/teachers/elena_instructor_bio.jpg",
+  sofia: "/uploads/teachers/sofia_instructor_bio.jpg",
 } as const;
 
 const SEEDED_CLASS_IMAGES = {
-  vinyasaYoga: toCanonicalSeedImagePath("/images/classes/vinyasa-yoga.jpg"),
-  rocketYoga: toCanonicalSeedImagePath("/images/classes/rocket-yoga.jpg"),
-  hathaYoga: toCanonicalSeedImagePath("/images/classes/hatha-yoga.jpg"),
-  matPilates: toCanonicalSeedImagePath("/images/classes/mat-pilates.jpg"),
-  reformerFoundations: toCanonicalSeedImagePath("/images/classes/reformer-foundations.jpg"),
-  functionalStrength: toCanonicalSeedImagePath("/images/classes/functional-strength.jpg"),
-  privateReformerCoaching: toCanonicalSeedImagePath("/images/classes/private-reformer-coaching.jpg"),
+  vinyasaYoga: "/uploads/classes/vinyasa-yoga.jpg",
+  rocketYoga: "/uploads/classes/rocket-yoga.jpg",
+  hathaYoga: "/uploads/classes/hatha-yoga.jpg",
+  matPilates: "/uploads/classes/mat-pilates.jpg",
+  reformerFoundations: "/uploads/classes/reformer-foundations.jpg",
+  functionalStrength: "/uploads/classes/functional-strength.jpg",
+  privateReformerCoaching: "/uploads/classes/private-reformer-coaching.jpg",
 } as const;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -1274,5 +1274,6 @@ export async function runDevelopmentSeed(): Promise<void> {
     `[seed:dev] Completed: clients=${schedulingSummary.clientsSeeded}, pastSessions=${schedulingSummary.pastSessionsCount}, futureSessions=${schedulingSummary.futureSessionsCount}, pastBookings=${schedulingSummary.pastBookingsCount}, futureBookings=${schedulingSummary.futureBookingsCount}, orders=${schedulingSummary.ordersCreatedCount}.`,
   );
 }
+
 
 

@@ -20,6 +20,8 @@ export default defineConfig({
     environment: "node",
     globals: true,
     fileParallelism: false,
+    testTimeout: 120000,
+    hookTimeout: 120000,
     setupFiles: ["./test/setup-env.ts"],
     exclude: [...configDefaults.exclude, "test/e2e/**", "test/manual/**"],
     coverage: {

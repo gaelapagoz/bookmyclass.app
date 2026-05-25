@@ -92,7 +92,7 @@ async function seedClient(input: { verified: boolean }) {
   return prisma.user.create({
     data: {
       name: "Client",
-      email: `client.sliceb.${Date.now()}.${Math.random()}@example.test`,
+      email: `client.sliceb.${Date.now()}.${Math.random()}@bookmyclass.app`,
       role: Role.CLIENT,
       activationStatus: input.verified ? UserActivationStatus.ACTIVE : UserActivationStatus.PENDING,
       emailVerified: input.verified ? new Date() : null,

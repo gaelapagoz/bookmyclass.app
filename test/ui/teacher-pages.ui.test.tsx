@@ -88,7 +88,7 @@ describe("teacher pages", () => {
       lastName: "Coach",
       fullName: "Ana Coach",
       email: "teacher@example.test",
-      image: "/images/instructors/ana.png",
+      image: "/uploads/teachers/ana.png",
       phone: "+32000000000",
       bio: "Pilates coach",
       specialties: ["Pilates"],
@@ -102,7 +102,7 @@ describe("teacher pages", () => {
     );
 
     expect(screen.getByRole("heading", { name: "My Teacher Profile" })).toBeInTheDocument();
-    expect(screen.getByTestId("teacher-self-image-preview")).toHaveAttribute("src", "/images/instructors/ana.png");
+    expect(screen.getByTestId("teacher-self-image-preview")).toHaveAttribute("src", "/uploads/teachers/ana.png");
     expect(screen.getByRole("button", { name: "Upload picture" })).toBeInTheDocument();
     expect(screen.getByDisplayValue("teacher@example.test")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save Profile" })).toBeInTheDocument();

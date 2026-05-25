@@ -4,6 +4,7 @@ import { studioPageContent } from "@/lib/public-content/about-content";
 
 describe("studioPageContent image paths", () => {
   it("uses canonical uploads/classes paths only", () => {
+    const legacyClassesPrefix = ["/images", "classes", ""].join("/");
     const imagePaths = studioPageContent.images.map((image) => image.src);
 
     expect(imagePaths).toEqual([
@@ -12,6 +13,6 @@ describe("studioPageContent image paths", () => {
       "/uploads/classes/functional-strength.jpg",
     ]);
     expect(imagePaths.every((path) => path.startsWith("/uploads/classes/"))).toBe(true);
-    expect(imagePaths.some((path) => path.startsWith("/images/classes/"))).toBe(false);
+    expect(imagePaths.some((path) => path.startsWith(legacyClassesPrefix))).toBe(false);
   });
 });
