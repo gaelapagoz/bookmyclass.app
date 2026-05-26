@@ -631,12 +631,13 @@ describe("processStripeWebhookEvent — checkout.session.completed", () => {
     await processStripeWebhookEvent(event as unknown as import("stripe").default.Event);
     await processStripeWebhookEvent(event as unknown as import("stripe").default.Event);
 
-    const [updatedPayment, updatedOrder, updatedBooking, receipt] = await Promise.all([
-      prisma.payment.findUnique({ where: { id: payment.id }, select: { status: true } }),
-      prisma.order.findUnique({ where: { id: order.id }, select: { status: true } }),
-      prisma.booking.findUnique({ where: { id: booking.id }, select: { status: true } }),
-      prisma.stripeWebhookEventReceipt.findUnique({ where: { eventId: event.id }, select: { status: true } }),
-    ]);
+    const updatedPayment = await prisma.payment.findUnique({ where: { id: payment.id }, select: { status: true } });
+    const updatedOrder = await prisma.order.findUnique({ where: { id: order.id }, select: { status: true } });
+    const updatedBooking = await prisma.booking.findUnique({ where: { id: booking.id }, select: { status: true } });
+    const receipt = await prisma.stripeWebhookEventReceipt.findUnique({
+      where: { eventId: event.id },
+      select: { status: true },
+    });
     const confirmationOutboxCount = await prisma.emailAutomationEvent.count({
       where: {
         idempotencyKey: `booking-confirmation:${booking.id}:confirmed-v1`,

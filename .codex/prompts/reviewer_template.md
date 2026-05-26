@@ -23,3 +23,4 @@ Return:
 2. Required fixes
 3. Non-blocking improvements
 4. Risks to watch in the next slice
+5. The answer must be described in simple terms that a non-technical PM could understand

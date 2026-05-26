@@ -2332,39 +2332,43 @@ export async function getAdminSessionsData(input?: {
           name: true,
         },
       },
-      bookings: {
-        where: {
-          ...bookingDraftActiveBookingFilter(),
-        },
-        select: {
-          id: true,
-        },
-      },
-      waitlistEntries: {
-        where: {
-          status: WaitlistStatus.ACTIVE,
-        },
-        select: {
-          id: true,
-        },
-      },
     },
   });
 
-  return sessions.map((item) => ({
-    id: item.id,
-    title: item.title,
-    className: item.classType.name,
-    teacherName: item.teacher.name,
-    startsAt: item.startsAt.toISOString(),
-    endsAt: item.endsAt.toISOString(),
-    location: item.location,
-    capacity: item.capacity,
-    bookedCount: item.bookings.length,
-    waitlistCount: item.waitlistEntries.length,
-    status: item.status,
-    isPublished: item.isPublished,
-  }));
+  const items: AdminSessionItem[] = [];
+  for (const session of sessions) {
+    const [bookedCount, waitlistCount] = await Promise.all([
+      prisma.booking.count({
+        where: {
+          studioSessionId: session.id,
+          ...bookingDraftActiveBookingFilter(),
+        },
+      }),
+      prisma.waitlistEntry.count({
+        where: {
+          studioSessionId: session.id,
+          status: WaitlistStatus.ACTIVE,
+        },
+      }),
+    ]);
+
+    items.push({
+      id: session.id,
+      title: session.title,
+      className: session.classType.name,
+      teacherName: session.teacher.name,
+      startsAt: session.startsAt.toISOString(),
+      endsAt: session.endsAt.toISOString(),
+      location: session.location,
+      capacity: session.capacity,
+      bookedCount,
+      waitlistCount,
+      status: session.status,
+      isPublished: session.isPublished,
+    });
+  }
+
+  return items;
 }
 
 export async function getAdminSessionById(id: string): Promise<AdminSessionDetail | null> {

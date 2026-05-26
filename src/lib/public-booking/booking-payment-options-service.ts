@@ -691,7 +691,7 @@ async function getNextConsumableCreditEntitlement(input: {
 }
 
 async function getPlanPurchaseOptions(requiredScope: EntitlementScope): Promise<PlanOptionRecord[]> {
-  const products = await prisma.product.findMany({
+  const queryProducts = () => prisma.product.findMany({
     where: {
       isActive: true,
       isArchived: false,
@@ -761,6 +761,18 @@ async function getPlanPurchaseOptions(requiredScope: EntitlementScope): Promise<
     },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
+  let products;
+  try {
+    products = await queryProducts();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const isTransientConnectionClose = message.includes("Server has closed the connection")
+      || message.includes("ConnectionClosed");
+    if (!isTransientConnectionClose) {
+      throw error;
+    }
+    products = await queryProducts();
+  }
 
   return products.flatMap((product) => {
     const rule = product.entitlementRules[0];

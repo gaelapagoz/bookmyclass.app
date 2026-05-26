@@ -5,6 +5,8 @@ import {
 } from "@/lib/payments/stripe";
 import type Stripe from "stripe";
 
+// Compatibility facade: keep callers on this boundary while Stripe client/runtime
+// behavior remains centralized in src/lib/payments/stripe.ts.
 export async function createSubscriptionCheckoutSession(input: {
   cancelUrl: string;
   checkoutMode: Stripe.Checkout.SessionCreateParams.Mode;

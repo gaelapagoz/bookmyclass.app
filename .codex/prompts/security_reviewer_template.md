@@ -29,3 +29,4 @@ Return:
 8. Webhook/payment replay-idempotency review summary
 9. Safe to proceed to the next slice? yes/no
 10. Documentation conflicts found (or `none`)
+11. The answer must be described in simple terms that a non-technical PM could understand

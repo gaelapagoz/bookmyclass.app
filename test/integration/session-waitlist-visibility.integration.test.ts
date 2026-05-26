@@ -68,52 +68,51 @@ async function createSessionFixture() {
     },
   });
 
-  const clients = await Promise.all(
-    Array.from({ length: 4 }, (_, index) =>
-      prisma.user.create({
-        data: {
-          name: `Waitlist Visibility Client ${index + 1}`,
-          email: `waitlist.visibility.${Date.now()}.${index + 1}@example.test`,
-          role: Role.CLIENT,
-        },
-      }),
-    ),
-  );
+  const clients = [] as Array<{ id: string }>;
+  for (let index = 0; index < 4; index += 1) {
+    const client = await prisma.user.create({
+      data: {
+        name: `Waitlist Visibility Client ${index + 1}`,
+        email: `waitlist.visibility.${Date.now()}.${index + 1}@example.test`,
+        role: Role.CLIENT,
+      },
+      select: { id: true },
+    });
+    clients.push(client);
+  }
 
-  await Promise.all([
-    prisma.waitlistEntry.create({
-      data: {
-        clientId: clients[0].id,
-        studioSessionId: session.id,
-        status: WaitlistStatus.ACTIVE,
-        position: 1,
-      },
-    }),
-    prisma.waitlistEntry.create({
-      data: {
-        clientId: clients[1].id,
-        studioSessionId: session.id,
-        status: WaitlistStatus.ACTIVE,
-        position: 2,
-      },
-    }),
-    prisma.waitlistEntry.create({
-      data: {
-        clientId: clients[2].id,
-        studioSessionId: session.id,
-        status: WaitlistStatus.CANCELLED,
-        position: 3,
-      },
-    }),
-    prisma.waitlistEntry.create({
-      data: {
-        clientId: clients[3].id,
-        studioSessionId: session.id,
-        status: WaitlistStatus.PROMOTED,
-        position: 4,
-      },
-    }),
-  ]);
+  await prisma.waitlistEntry.create({
+    data: {
+      clientId: clients[0]!.id,
+      studioSessionId: session.id,
+      status: WaitlistStatus.ACTIVE,
+      position: 1,
+    },
+  });
+  await prisma.waitlistEntry.create({
+    data: {
+      clientId: clients[1]!.id,
+      studioSessionId: session.id,
+      status: WaitlistStatus.ACTIVE,
+      position: 2,
+    },
+  });
+  await prisma.waitlistEntry.create({
+    data: {
+      clientId: clients[2]!.id,
+      studioSessionId: session.id,
+      status: WaitlistStatus.CANCELLED,
+      position: 3,
+    },
+  });
+  await prisma.waitlistEntry.create({
+    data: {
+      clientId: clients[3]!.id,
+      studioSessionId: session.id,
+      status: WaitlistStatus.PROMOTED,
+      position: 4,
+    },
+  });
 
   return {
     sessionId: session.id,

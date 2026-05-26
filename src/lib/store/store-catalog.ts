@@ -237,9 +237,6 @@ export async function listStoreCatalogReadModels(): Promise<StoreCatalogReadMode
   return visible;
 }
 
-
-export const listStoreCatalog = listStoreCatalogReadModels;
-
 async function getRenderableStoreImageAsset<T extends { path: string }>(asset: T | null): Promise<T | null> {
   if (!asset) {
     return null;

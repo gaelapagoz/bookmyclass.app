@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 
 import { auth, signIn } from "@/auth";
-import { prisma } from "@/lib/db";
+import { getSignInEligibilityUserByEmail } from "@/lib/auth/sign-in-service";
 import { getSafeCallbackPath, getPostSignInRedirectUrl } from "@/lib/auth/safe-callback-url";
 import { isInvalidCredentialsAuthError } from "@/lib/auth/auth-error-utils";
 import { assertValidCsrfToken, createCsrfToken, getCsrfFieldName } from "@/lib/security/csrf-token";
@@ -37,19 +37,7 @@ export async function signInAction(formData: FormData) {
         redirect(`/sign-in?error=invalid_input&callbackUrl=${encodeURIComponent(sanitizedCallbackUrl)}`);
       }
 
-      const user = await prisma.user.findFirst({
-        where: {
-          email: {
-            equals: email,
-            mode: "insensitive",
-          },
-        },
-        select: {
-          role: true,
-          emailVerified: true,
-          activationStatus: true,
-        },
-      });
+      const user = await getSignInEligibilityUserByEmail(email);
 
       // Check user activation status (required for all roles)
       if (user && user.activationStatus !== UserActivationStatus.ACTIVE) {

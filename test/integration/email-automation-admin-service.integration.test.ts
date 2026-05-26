@@ -68,6 +68,7 @@ async function createEvent(
 describe("email-automation-admin-service", () => {
   beforeEach(async () => {
     await resetDb();
+    await prisma.emailTemplate.deleteMany();
     clearCapturedTestEmails();
   });
 

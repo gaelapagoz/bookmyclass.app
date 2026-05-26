@@ -47,16 +47,12 @@ vi.mock("@/lib/security/same-origin", () => ({
   assertSameOriginServerAction: vi.fn(async () => undefined),
 }));
 
-const { userFindFirstMock } = vi.hoisted(() => ({
-  userFindFirstMock: vi.fn(),
+const { getSignInEligibilityUserByEmailMock } = vi.hoisted(() => ({
+  getSignInEligibilityUserByEmailMock: vi.fn(),
 }));
 
-vi.mock("@/lib/db", () => ({
-  prisma: {
-    user: {
-      findFirst: userFindFirstMock,
-    },
-  },
+vi.mock("@/lib/auth/sign-in-service", () => ({
+  getSignInEligibilityUserByEmail: getSignInEligibilityUserByEmailMock,
 }));
 
 const { signInMock } = vi.hoisted(() => ({
@@ -76,7 +72,7 @@ describe("signInAction callback passthrough", () => {
   });
 
   it("forwards valid internal callbackUrl to signIn unchanged", async () => {
-    userFindFirstMock.mockResolvedValue({
+    getSignInEligibilityUserByEmailMock.mockResolvedValue({
       role: "CLIENT",
       emailVerified: new Date(),
       activationStatus: UserActivationStatus.ACTIVE,
@@ -97,7 +93,7 @@ describe("signInAction callback passthrough", () => {
   });
 
   it("redirects ADMIN to /admin when no callbackUrl is provided", async () => {
-    userFindFirstMock.mockResolvedValue({
+    getSignInEligibilityUserByEmailMock.mockResolvedValue({
       role: "ADMIN",
       emailVerified: new Date(),
       activationStatus: UserActivationStatus.ACTIVE,
@@ -117,7 +113,7 @@ describe("signInAction callback passthrough", () => {
   });
 
   it("redirects TEACHER to /teacher when no callbackUrl is provided", async () => {
-    userFindFirstMock.mockResolvedValue({
+    getSignInEligibilityUserByEmailMock.mockResolvedValue({
       role: "TEACHER",
       emailVerified: new Date(),
       activationStatus: UserActivationStatus.ACTIVE,
@@ -140,7 +136,7 @@ describe("signInAction callback passthrough", () => {
 describe("signInAction callback sanitization", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    userFindFirstMock.mockResolvedValue(null);
+    getSignInEligibilityUserByEmailMock.mockResolvedValue(null);
   });
 
   it("sanitizes callbackUrl on missing credential redirects", async () => {
@@ -153,7 +149,7 @@ describe("signInAction callback sanitization", () => {
   });
 
   it("sanitizes callbackUrl on email verification redirects", async () => {
-    userFindFirstMock.mockResolvedValue({
+    getSignInEligibilityUserByEmailMock.mockResolvedValue({
       role: "CLIENT",
       emailVerified: null,
       activationStatus: UserActivationStatus.PENDING,

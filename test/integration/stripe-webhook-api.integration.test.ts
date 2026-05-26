@@ -209,6 +209,7 @@ async function createWebhookFixture(input: {
     },
   });
 
+  const checkoutSessionId = `cs_test_${Date.now()}`;
   const payment = await prisma.payment.create({
     data: {
       bookingId: booking.id,
@@ -216,7 +217,8 @@ async function createWebhookFixture(input: {
       status: PaymentStatus.PENDING,
       method: PaymentMethod.CARD,
       provider: PaymentProvider.STRIPE,
-      providerReference: `cs_test_${Date.now()}`,
+      providerReference: checkoutSessionId,
+      stripeCheckoutSessionId: checkoutSessionId,
       amountMinor: price.unitAmountMinor,
       currencyCode: "EUR",
     },
@@ -342,13 +344,15 @@ async function createCatalogCheckoutFixture() {
       currencyCode: "EUR",
     },
   });
+  const checkoutSessionId = `cs_catalog_${Date.now()}`;
   const payment = await prisma.payment.create({
     data: {
       orderId: order.id,
       status: PaymentStatus.PENDING,
       method: PaymentMethod.CARD,
       provider: PaymentProvider.STRIPE,
-      providerReference: `cs_catalog_${Date.now()}`,
+      providerReference: checkoutSessionId,
+      stripeCheckoutSessionId: checkoutSessionId,
       amountMinor: price.unitAmountMinor,
       currencyCode: "EUR",
     },
@@ -445,13 +449,15 @@ async function createRecurringCatalogCheckoutFixture() {
     },
   });
 
+  const checkoutSessionId = `cs_recurring_${Date.now()}`;
   const payment = await prisma.payment.create({
     data: {
       orderId: order.id,
       status: PaymentStatus.PENDING,
       method: PaymentMethod.CARD,
       provider: PaymentProvider.STRIPE,
-      providerReference: `cs_recurring_${Date.now()}`,
+      providerReference: checkoutSessionId,
+      stripeCheckoutSessionId: checkoutSessionId,
       amountMinor: price.unitAmountMinor,
       currencyCode: "EUR",
     },

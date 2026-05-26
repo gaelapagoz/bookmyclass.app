@@ -184,8 +184,8 @@ Run on target server:
 git fetch --all --tags
 git checkout vX.Y.Z
 npm ci --include=dev
-npx prisma generate
 npx prisma migrate deploy
+npx prisma generate
 npm run build
 npm prune --omit=dev
 pm2 restart bookmyclass-app --update-env
@@ -249,8 +249,8 @@ For UAT and Production, after checking out the release tag, use this command ord
 git fetch --all --tags
 git checkout vX.Y.Z
 npm ci --include=dev
-npx prisma generate
 npx prisma migrate deploy
+npx prisma generate
 npm run build
 npm prune --omit=dev
 pm2 restart bookmyclass-app --update-env
@@ -451,14 +451,22 @@ Rollback to a previous tag:
 
 git fetch --all --tags
 git checkout <PREVIOUS_TAG>
-npm ci
+npm ci --include=dev
 npx prisma migrate deploy
+npx prisma generate
 npm run build
+npm prune --omit=dev
 pm2 restart bookmyclass-app --update-env
+npm run verify:media-runtime
 
 Then verify:
 
 curl -i https://<ENV_DOMAIN>/api/health
+
+Required rollback validation:
+- Run production smoke checks on critical routes (`/`, `/sign-in`, booking entry, admin entry).
+- Run release-scope E2E checks when rollback touches checkout/payment/auth paths.
+- Record evidence in `test-results/manual_test_<YYYY-MM-DD>.md`.
 
 ---
 
@@ -466,9 +474,15 @@ curl -i https://<ENV_DOMAIN>/api/health
 
 - Only rollback to a previously working tag
 - Rollback does not guarantee data consistency if schema/data changed
+- Rollback is tag-based and migration-aware; no runtime checkout toggle/flag is available.
 - If data corruption is suspected:
   - restore database backup
   - then redeploy known-good tag
+
+## Checkout Rollout Controls
+
+- Checkout rollouts are controlled by validated release tags and Stripe catalog readiness.
+- There are no runtime checkout rollout toggles or feature-flag controls in current runtime.
 
 ---
 

@@ -27,3 +27,4 @@ Return:
 6. Exact test commands that should pass (ordered)
 7. Results summary if outputs were provided (pass/fail/blocked)
 8. Documentation conflicts found (or `none`)
+9. The answer must be described in simple terms that a non-technical PM could understand
