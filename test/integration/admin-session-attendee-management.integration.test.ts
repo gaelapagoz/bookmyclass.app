@@ -181,8 +181,55 @@ async function grantCollectiveUnlimitedSubscription(input: { clientId: string })
 }
 
 describe("admin session attendee management service", () => {
+  async function seedWaitlistPromotionTemplate() {
+    await prisma.emailTemplate.upsert({
+      where: { templateKey: "waitlist.promotion.confirmed-booking" },
+      update: {
+        name: "Waitlist Promotion Booking Confirmation",
+        category: "BOOKING",
+        subjectTemplate: "You're in! Your class booking is now confirmed",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+      create: {
+        templateKey: "waitlist.promotion.confirmed-booking",
+        name: "Waitlist Promotion Booking Confirmation",
+        category: "BOOKING",
+        subjectTemplate: "You're in! Your class booking is now confirmed",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+    });
+  }
+
+  async function seedBookingConfirmationTemplate() {
+    await prisma.emailTemplate.upsert({
+      where: { templateKey: "booking.class-booked" },
+      update: {
+        name: "Booking Confirmation",
+        category: "BOOKING",
+        subjectTemplate: "You're booked for {{booking.classTitle}}",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+      create: {
+        templateKey: "booking.class-booked",
+        name: "Booking Confirmation",
+        category: "BOOKING",
+        subjectTemplate: "You're booked for {{booking.classTitle}}",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+    });
+  }
+
   beforeEach(async () => {
     await resetDb();
+    await Promise.all([seedBookingConfirmationTemplate(), seedWaitlistPromotionTemplate()]);
   });
 
   it("loads session attendees in admin session detail", async () => {
@@ -1261,9 +1308,16 @@ describe("admin session attendee management service", () => {
         status: true,
       },
     });
+    const confirmationOutboxCount = await prisma.emailAutomationEvent.count({
+      where: {
+        idempotencyKey: `booking-confirmation:${promotedBooking?.id}:confirmed-v1`,
+        recipientEmail: waitlistedClient.email.toLowerCase(),
+      },
+    });
 
     expect(promotedBooking?.id).toBeTruthy();
     expect(waitlistEntry?.status).toBe(WaitlistStatus.PROMOTED);
+    expect(confirmationOutboxCount).toBe(1);
   });
 
   it("returns selectable clients with credit visibility for the session scope", async () => {

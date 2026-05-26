@@ -68,6 +68,10 @@ function parseRunnerArgs(args: string[]): { vitestArgs: string[]; requestedPaths
   return { vitestArgs, requestedPaths };
 }
 
+function hasReporterArg(args: string[]): boolean {
+  return args.some((arg) => arg === "--reporter" || arg.startsWith("--reporter="));
+}
+
 function collectTestFiles(dir: string, output: string[]): void {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const fullPath = join(dir, entry.name);
@@ -138,6 +142,9 @@ function runVitestForFile(file: string, extraArgs: string[]): number {
 }
 
 const parsedArgs = parseRunnerArgs(process.argv.slice(2));
+if (!hasReporterArg(parsedArgs.vitestArgs)) {
+  parsedArgs.vitestArgs.push("--reporter=verbose");
+}
 const files = resolveRequestedFiles(parsedArgs.requestedPaths);
 
 if (files.length === 0) {

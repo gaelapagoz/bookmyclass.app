@@ -883,11 +883,35 @@ async function createBookingOnlyPaymentFixture() {
   return { owner, otherUser, booking, payment, checkoutSessionId };
 }
 describe("POST /api/stripe/webhook", () => {
+  async function seedBookingConfirmationTemplate() {
+    await prisma.emailTemplate.upsert({
+      where: { templateKey: "booking.class-booked" },
+      update: {
+        name: "Booking Confirmation",
+        category: "BOOKING",
+        subjectTemplate: "You're booked for {{booking.classTitle}}",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+      create: {
+        templateKey: "booking.class-booked",
+        name: "Booking Confirmation",
+        category: "BOOKING",
+        subjectTemplate: "You're booked for {{booking.classTitle}}",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+    });
+  }
+
   beforeEach(async () => {
     verifyStripeWebhookEventMock.mockReset();
     retrieveCheckoutSessionMock.mockReset();
     retrieveSubscriptionMock.mockReset();
     await resetDb();
+    await seedBookingConfirmationTemplate();
   });
 
   it("confirms booking, payment, and order for single-session checkout", async () => {

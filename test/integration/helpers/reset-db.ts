@@ -39,6 +39,20 @@ export async function resetDb() {
           END IF;
         END $$;
       `);
+
+      await tx.emailTemplate.create({
+        data: {
+          templateKey: "booking.class-booked",
+          name: "Booking Confirmation",
+          category: "BOOKING",
+          subjectTemplate: "You're booked for {{booking.classTitle}}",
+          bodyTemplateJson: {
+            blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }],
+          },
+          contentSchemaVersion: 1,
+          isActive: true,
+        },
+      });
     },
     {
       maxWait: 20_000,

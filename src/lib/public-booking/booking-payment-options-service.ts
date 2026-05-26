@@ -14,6 +14,7 @@ import {
 import { prisma } from "../db";
 import { resolveEntitlementScope } from "../booking/entitlement-scope";
 import { bookingDraftActiveBookingFilter } from "./booking-draft-service";
+import { transitionBookingToConfirmedAndQueueEmail } from "./booking-confirmation-transition-service";
 
 type PlanBalance = {
   credits: number | null;
@@ -1231,16 +1232,19 @@ async function applyExistingPlanSelection(input: {
       throw new BookingPaymentOptionsError("PLAN_NOT_USABLE", "Selected membership is not usable.");
     }
 
-    const booking = await prisma.booking.update({
+    await prisma.booking.update({
       where: { id: input.bookingId },
       data: {
-        status: BookingStatus.CONFIRMED,
         paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
         selectedEntitlementId: null,
         selectedPriceId: null,
         draftAmountMinor: 0,
         draftCurrencyCode: subscription.price.currencyCode,
       },
+    });
+    await transitionBookingToConfirmedAndQueueEmail({ bookingId: input.bookingId });
+    const booking = await prisma.booking.findUniqueOrThrow({
+      where: { id: input.bookingId },
       select: {
         id: true,
         status: true,
@@ -1353,16 +1357,19 @@ async function applyExistingPlanSelection(input: {
       });
     }
 
-    return tx.booking.update({
+    await tx.booking.update({
       where: { id: input.bookingId },
       data: {
-        status: BookingStatus.CONFIRMED,
         paymentSelection: BookingPaymentSelection.EXISTING_PLAN,
         selectedEntitlementId: effectiveEntitlement.id,
         selectedPriceId: null,
         draftAmountMinor: 0,
         draftCurrencyCode: "EUR",
       },
+    });
+    await transitionBookingToConfirmedAndQueueEmail({ bookingId: input.bookingId, db: tx });
+    return tx.booking.findUniqueOrThrow({
+      where: { id: input.bookingId },
       select: {
         id: true,
         status: true,

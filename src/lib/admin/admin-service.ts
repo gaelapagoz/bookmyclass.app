@@ -51,6 +51,7 @@ import {
   expireStaleBookingDraftsForSessionWithinTx,
 } from "@/lib/public-booking/booking-draft-service";
 import { enqueueWaitlistPromotionNotification } from "@/lib/public-booking/waitlist-notification-service";
+import { ensureBookingConfirmationEventForConfirmedBooking } from "@/lib/public-booking/booking-confirmation-transition-service";
 import { promoteWaitlistAfterCancellationWithinTx } from "@/lib/public-booking/waitlist-service";
 import { resolveWaitlistPromotionCoverage } from "@/lib/public-booking/waitlist-service";
 import { isCatalogPriceCheckoutReady } from "@/lib/catalog/checkout-readiness";
@@ -3378,7 +3379,12 @@ export async function removeSessionAttendeeByManager(input: {
   await Promise.all(
     promotionResult.waitlistNotifications.map(async (promotion) => {
       try {
-        await enqueueWaitlistPromotionNotification(promotion);
+        await Promise.all([
+          enqueueWaitlistPromotionNotification(promotion),
+          ensureBookingConfirmationEventForConfirmedBooking({
+            bookingId: promotion.bookingId,
+          }),
+        ]);
       } catch (error) {
         try {
           await prisma.auditLog.create({

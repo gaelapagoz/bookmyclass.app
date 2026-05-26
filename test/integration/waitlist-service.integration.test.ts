@@ -254,11 +254,38 @@ async function seedWaitlistPromotionTemplate() {
   });
 }
 
+async function seedBookingConfirmationTemplate() {
+  await prisma.emailTemplate.upsert({
+    where: { templateKey: "booking.class-booked" },
+    update: {
+      name: "Booking Confirmation",
+      category: "BOOKING",
+      subjectTemplate: "You're booked for {{booking.classTitle}}",
+      bodyTemplateJson: {
+        blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }],
+      },
+      contentSchemaVersion: 1,
+      isActive: true,
+    },
+    create: {
+      templateKey: "booking.class-booked",
+      name: "Booking Confirmation",
+      category: "BOOKING",
+      subjectTemplate: "You're booked for {{booking.classTitle}}",
+      bodyTemplateJson: {
+        blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }],
+      },
+      contentSchemaVersion: 1,
+      isActive: true,
+    },
+  });
+}
+
 describe("waitlist runtime integration", () => {
   beforeEach(async () => {
     await resetDb();
     process.env.EMAIL_FROM = process.env.EMAIL_FROM || "Test <test@example.test>";
-    await seedWaitlistPromotionTemplate();
+    await Promise.all([seedWaitlistPromotionTemplate(), seedBookingConfirmationTemplate()]);
   });
 
   it("joins and cancels waitlist for a full collective class without consuming credit", async () => {
@@ -855,7 +882,14 @@ describe("waitlist runtime integration", () => {
         idempotencyKey: `waitlist-promotion:${joined.waitlistEntryId}:${promotedBookings[0]?.id}`,
       },
     });
+    const bookingConfirmationOutboxCount = await prisma.emailAutomationEvent.count({
+      where: {
+        recipientEmail: waitlistedClient.email.toLowerCase(),
+        idempotencyKey: `booking-confirmation:${promotedBookings[0]?.id}:confirmed-v1`,
+      },
+    });
     expect(waitlistEmailOutboxCount).toBe(1);
+    expect(bookingConfirmationOutboxCount).toBe(1);
   });
 
   it("cancellation still succeeds when enqueue-failure audit logging also fails", async () => {

@@ -221,6 +221,29 @@ async function createFixture(input: {
 describe("booking payment options api", () => {
   let adminActor: { actorId: string; actorRole: Role };
 
+  async function seedBookingConfirmationTemplate() {
+    await prisma.emailTemplate.upsert({
+      where: { templateKey: "booking.class-booked" },
+      update: {
+        name: "Booking Confirmation",
+        category: "BOOKING",
+        subjectTemplate: "You're booked for {{booking.classTitle}}",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+      create: {
+        templateKey: "booking.class-booked",
+        name: "Booking Confirmation",
+        category: "BOOKING",
+        subjectTemplate: "You're booked for {{booking.classTitle}}",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+    });
+  }
+
   async function createAdminTestPlan(
     input: Omit<Parameters<typeof createAdminPlan>[0], "actor">,
   ) {
@@ -233,6 +256,7 @@ describe("booking payment options api", () => {
   beforeEach(async () => {
     vi.mocked(auth).mockResolvedValue(null);
     await resetDb();
+    await seedBookingConfirmationTemplate();
     const admin = await prisma.user.create({
       data: {
         name: "Admin",
@@ -320,6 +344,81 @@ describe("booking payment options api", () => {
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({ code: "BOOKING_NOT_PENDING" });
+  });
+
+  it("does not enqueue confirmation when apply-plan is attempted on non-confirming statuses", async () => {
+    const cancelledFixture = await createFixture({
+      bookingIntent: BookingIntent.USE_ENTITLEMENT,
+      createActivePlanCount: 1,
+    });
+    const expiredFixture = await createFixture({
+      bookingIntent: BookingIntent.USE_ENTITLEMENT,
+      createActivePlanCount: 1,
+    });
+
+    await prisma.booking.update({
+      where: { id: cancelledFixture.booking.id },
+      data: { status: BookingStatus.CANCELLED },
+    });
+    await prisma.booking.update({
+      where: { id: expiredFixture.booking.id },
+      data: { status: BookingStatus.EXPIRED },
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: cancelledFixture.bookingUser.id,
+        email: cancelledFixture.bookingUser.email,
+        name: cancelledFixture.bookingUser.name,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+    const cancelledResponse = await applyPlan(
+      new Request("http://localhost/api", {
+        method: "POST",
+        headers: sameOriginJsonHeaders,
+        body: JSON.stringify({
+          mode: "EXISTING_PLAN",
+          entitlementId: cancelledFixture.entitlementIds[0],
+        }),
+      }),
+      { params: Promise.resolve({ bookingId: cancelledFixture.booking.id }) },
+    );
+
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: expiredFixture.bookingUser.id,
+        email: expiredFixture.bookingUser.email,
+        name: expiredFixture.bookingUser.name,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+    const expiredResponse = await applyPlan(
+      new Request("http://localhost/api", {
+        method: "POST",
+        headers: sameOriginJsonHeaders,
+        body: JSON.stringify({
+          mode: "EXISTING_PLAN",
+          entitlementId: expiredFixture.entitlementIds[0],
+        }),
+      }),
+      { params: Promise.resolve({ bookingId: expiredFixture.booking.id }) },
+    );
+
+    const outboxCount = await prisma.emailAutomationEvent.count({
+      where: {
+        idempotencyKey: {
+          in: [
+            `booking-confirmation:${cancelledFixture.booking.id}:confirmed-v1`,
+            `booking-confirmation:${expiredFixture.booking.id}:confirmed-v1`,
+          ],
+        },
+      },
+    });
+
+    expect(cancelledResponse.status).toBe(409);
+    expect(expiredResponse.status).toBe(409);
+    expect(outboxCount).toBe(0);
   });
 
   it("returns 400 when session is no longer bookable", async () => {
@@ -613,11 +712,27 @@ describe("booking payment options api", () => {
         entryType: CreditLedgerEntryType.CONSUME,
       },
     });
+    const confirmationOutboxEvents = await prisma.emailAutomationEvent.findMany({
+      where: {
+        idempotencyKey: `booking-confirmation:${fixture.booking.id}:confirmed-v1`,
+      },
+      select: {
+        idempotencyKey: true,
+        recipientEmail: true,
+        template: { select: { templateKey: true } },
+      },
+    });
 
     expect(updated?.status).toBe(BookingStatus.CONFIRMED);
     expect(updated?.paymentSelection).toBe(BookingPaymentSelection.EXISTING_PLAN);
     expect(consumeEntries).toHaveLength(1);
     expect(consumeEntries[0]?.amount).toBe(-1);
+    expect(confirmationOutboxEvents).toHaveLength(1);
+    expect(confirmationOutboxEvents[0]?.idempotencyKey).toBe(
+      `booking-confirmation:${fixture.booking.id}:confirmed-v1`,
+    );
+    expect(confirmationOutboxEvents[0]?.recipientEmail).toBe(fixture.bookingUser.email.toLowerCase());
+    expect(confirmationOutboxEvents[0]?.template.templateKey).toBe("booking.class-booked");
   });
 
   it("returns 404 when selected existing plan is not found", async () => {
@@ -737,8 +852,15 @@ describe("booking payment options api", () => {
         entryType: CreditLedgerEntryType.CONSUME,
       },
     });
+    const confirmationOutboxEvents = await prisma.emailAutomationEvent.findMany({
+      where: {
+        idempotencyKey: `booking-confirmation:${fixture.booking.id}:confirmed-v1`,
+      },
+      select: { id: true },
+    });
 
     expect(consumeEntries).toHaveLength(1);
     expect(consumeEntries[0]?.idempotencyKey).toBeTruthy();
+    expect(confirmationOutboxEvents).toHaveLength(1);
   });
 });

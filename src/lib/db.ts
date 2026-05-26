@@ -29,13 +29,16 @@ function parsePositiveIntEnv(name: string, fallback: number): number {
 
 function resolvePgPoolMaxConnections(): number {
   const defaultPoolMax = process.env.NODE_ENV === "test" || isE2ETestModeEnabled()
-    ? 12
+    ? 4
     : 10;
   return parsePositiveIntEnv("PRISMA_PG_POOL_MAX", defaultPoolMax);
 }
 
 function resolvePgPoolConnectionTimeoutMs(): number {
-  return parsePositiveIntEnv("PRISMA_PG_POOL_CONNECTION_TIMEOUT_MS", 30_000);
+  const defaultTimeout = process.env.NODE_ENV === "test" || isE2ETestModeEnabled()
+    ? 60_000
+    : 30_000;
+  return parsePositiveIntEnv("PRISMA_PG_POOL_CONNECTION_TIMEOUT_MS", defaultTimeout);
 }
 
 function resolvePgPoolIdleTimeoutMs(): number {
@@ -43,7 +46,10 @@ function resolvePgPoolIdleTimeoutMs(): number {
 }
 
 function resolvePgPoolMaxLifetimeSeconds(): number {
-  return parsePositiveIntEnv("PRISMA_PG_POOL_MAX_LIFETIME_SECONDS", 300);
+  const defaultLifetimeSeconds = process.env.NODE_ENV === "test" || isE2ETestModeEnabled()
+    ? 1_800
+    : 300;
+  return parsePositiveIntEnv("PRISMA_PG_POOL_MAX_LIFETIME_SECONDS", defaultLifetimeSeconds);
 }
 
 function getOrCreateAdapter(): PrismaPg {

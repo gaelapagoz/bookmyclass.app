@@ -15,6 +15,7 @@ import { prisma } from "@/lib/db";
 import { STORE_PICKUP_WORDING } from "@/lib/store/store-constants";
 import { requestEmailChange, UserIdentityError } from "@/lib/auth/user-identity-service";
 import { enqueueWaitlistPromotionNotification } from "@/lib/public-booking/waitlist-notification-service";
+import { ensureBookingConfirmationEventForConfirmedBooking } from "@/lib/public-booking/booking-confirmation-transition-service";
 import {
   cancelSessionWaitlistEntry,
   promoteWaitlistAfterCancellationWithinTx,
@@ -782,7 +783,12 @@ export async function cancelClientBooking(input: {
   await Promise.all(
     promotionResult.notifications.map(async (promotion) => {
       try {
-        await enqueueWaitlistPromotionNotification(promotion);
+        await Promise.all([
+          enqueueWaitlistPromotionNotification(promotion),
+          ensureBookingConfirmationEventForConfirmedBooking({
+            bookingId: promotion.bookingId,
+          }),
+        ]);
       } catch (error) {
         try {
           await prisma.auditLog.create({

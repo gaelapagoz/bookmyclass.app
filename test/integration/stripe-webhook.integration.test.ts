@@ -17,15 +17,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "./helpers/db";
 import { createClassCategory, createClassType } from "./helpers/factories";
 import { resetDb } from "./helpers/reset-db";
-import { processStripeWebhookEvent } from "../../src/lib/public-booking/stripe-webhook-service";
+import {
+  processStripeWebhookEvent,
+  reconcileCheckoutSessionAfterReturn,
+} from "../../src/lib/public-booking/stripe-webhook-service";
+
+const mockCheckoutSessionRetrieve = vi.fn();
 
 vi.mock("@/lib/payments/stripe", () => ({
   getStripeClient: () => ({
     checkout: {
       sessions: {
-        retrieve: () => {
-          throw new Error("Stripe checkout.sessions.retrieve should not be called in this test");
-        },
+        retrieve: (...args: unknown[]) => mockCheckoutSessionRetrieve(...args),
       },
     },
     subscriptions: {
@@ -358,6 +361,30 @@ function buildCheckoutCompletedEvent(
 describe("processStripeWebhookEvent — checkout.session.completed", () => {
   beforeEach(async () => {
     await Promise.all([resetDb(), prisma.stripeWebhookEventReceipt.deleteMany()]);
+    await prisma.emailTemplate.upsert({
+      where: { templateKey: "booking.class-booked" },
+      update: {
+        name: "Booking Confirmation",
+        category: "BOOKING",
+        subjectTemplate: "You're booked for {{booking.classTitle}}",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+      create: {
+        templateKey: "booking.class-booked",
+        name: "Booking Confirmation",
+        category: "BOOKING",
+        subjectTemplate: "You're booked for {{booking.classTitle}}",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+    });
+    mockCheckoutSessionRetrieve.mockReset();
+    mockCheckoutSessionRetrieve.mockImplementation(() => {
+      throw new Error("Stripe checkout.sessions.retrieve should not be called in this test");
+    });
   });
 
   it("marks payment SUCCEEDED, order PAID, and booking CONFIRMED", async () => {
@@ -378,10 +405,16 @@ describe("processStripeWebhookEvent — checkout.session.completed", () => {
       prisma.order.findUnique({ where: { id: order.id }, select: { status: true } }),
       prisma.booking.findUnique({ where: { id: booking.id }, select: { status: true } }),
     ]);
+    const confirmationOutboxCount = await prisma.emailAutomationEvent.count({
+      where: {
+        idempotencyKey: `booking-confirmation:${booking.id}:confirmed-v1`,
+      },
+    });
 
     expect(updatedPayment?.status).toBe(PaymentStatus.SUCCEEDED);
     expect(updatedOrder?.status).toBe(OrderStatus.PAID);
     expect(updatedBooking?.status).toBe(BookingStatus.CONFIRMED);
+    expect(confirmationOutboxCount).toBe(1);
   });
 
   it("confirms only the intended new pending booking when cancelled history exists", async () => {
@@ -604,11 +637,17 @@ describe("processStripeWebhookEvent — checkout.session.completed", () => {
       prisma.booking.findUnique({ where: { id: booking.id }, select: { status: true } }),
       prisma.stripeWebhookEventReceipt.findUnique({ where: { eventId: event.id }, select: { status: true } }),
     ]);
+    const confirmationOutboxCount = await prisma.emailAutomationEvent.count({
+      where: {
+        idempotencyKey: `booking-confirmation:${booking.id}:confirmed-v1`,
+      },
+    });
 
     expect(updatedPayment?.status).toBe(PaymentStatus.SUCCEEDED);
     expect(updatedOrder?.status).toBe(OrderStatus.PAID);
     expect(updatedBooking?.status).toBe(BookingStatus.CONFIRMED);
     expect(receipt?.status).toBe(StripeWebhookReceiptStatus.PROCESSED);
+    expect(confirmationOutboxCount).toBe(1);
   });
 
   it("booking plan purchase grants credits and consumes exactly one credit", async () => {
@@ -671,5 +710,109 @@ describe("processStripeWebhookEvent — checkout.session.completed", () => {
       _sum: { amount: true },
     });
     expect(balance._sum.amount).toBe(4);
+  });
+
+  it("does not enqueue confirmation events for non-confirmed paths (PENDING, EXPIRED, CANCELLED, payment FAILED)", async () => {
+    const pendingFixture = await createDropInBookingFixture();
+    const expiredFixture = await createDropInBookingFixture();
+    const cancelledFixture = await createDropInBookingFixture();
+    const failedPaymentFixture = await createDropInBookingFixture();
+
+    await prisma.booking.update({
+      where: { id: expiredFixture.booking.id },
+      data: { status: BookingStatus.EXPIRED },
+    });
+    await prisma.booking.update({
+      where: { id: cancelledFixture.booking.id },
+      data: { status: BookingStatus.CANCELLED },
+    });
+    await prisma.payment.update({
+      where: { id: failedPaymentFixture.payment.id },
+      data: { status: PaymentStatus.FAILED },
+    });
+
+    const events = [
+      buildCheckoutCompletedEvent(
+        "evt_test_wh_negative_pending",
+        "cs_test_wh_negative_pending",
+        "pi_test_wh_negative_pending",
+        pendingFixture.payment.id,
+        pendingFixture.booking.id,
+      ),
+      buildCheckoutCompletedEvent(
+        "evt_test_wh_negative_expired",
+        "cs_test_wh_negative_expired",
+        "pi_test_wh_negative_expired",
+        expiredFixture.payment.id,
+        expiredFixture.booking.id,
+      ),
+      buildCheckoutCompletedEvent(
+        "evt_test_wh_negative_cancelled",
+        "cs_test_wh_negative_cancelled",
+        "pi_test_wh_negative_cancelled",
+        cancelledFixture.payment.id,
+        cancelledFixture.booking.id,
+      ),
+      buildCheckoutCompletedEvent(
+        "evt_test_wh_negative_failed_payment",
+        "cs_test_wh_negative_failed_payment",
+        "pi_test_wh_negative_failed_payment",
+        failedPaymentFixture.payment.id,
+        failedPaymentFixture.booking.id,
+      ),
+    ];
+
+    for (const event of events) {
+      event.data.object.payment_status = "unpaid";
+      await processStripeWebhookEvent(event as unknown as import("stripe").default.Event);
+    }
+
+    const outboxCount = await prisma.emailAutomationEvent.count({
+      where: {
+        idempotencyKey: {
+          in: [
+            `booking-confirmation:${pendingFixture.booking.id}:confirmed-v1`,
+            `booking-confirmation:${expiredFixture.booking.id}:confirmed-v1`,
+            `booking-confirmation:${cancelledFixture.booking.id}:confirmed-v1`,
+            `booking-confirmation:${failedPaymentFixture.booking.id}:confirmed-v1`,
+          ],
+        },
+      },
+    });
+    expect(outboxCount).toBe(0);
+  });
+
+  it("webhook and manual reconciliation race for same booking still enqueue one confirmation event", async () => {
+    const { booking, payment, client } = await createDropInBookingFixture();
+    const event = buildCheckoutCompletedEvent(
+      "evt_test_wh_reconcile_race_001",
+      "cs_test_wh_reconcile_race_001",
+      "pi_test_wh_reconcile_race_001",
+      payment.id,
+      booking.id,
+    );
+    mockCheckoutSessionRetrieve.mockResolvedValue({
+      ...event.data.object,
+      metadata: {
+        ...event.data.object.metadata,
+        bookingId: booking.id,
+      },
+    });
+
+    await Promise.all([
+      processStripeWebhookEvent(event as unknown as import("stripe").default.Event),
+      reconcileCheckoutSessionAfterReturn({
+        checkoutSessionId: event.data.object.id,
+        bookingId: booking.id,
+        userId: client.id,
+      }),
+    ]);
+
+    const outboxCount = await prisma.emailAutomationEvent.count({
+      where: {
+        idempotencyKey: `booking-confirmation:${booking.id}:confirmed-v1`,
+      },
+    });
+    expect(outboxCount).toBe(1);
   });
 });

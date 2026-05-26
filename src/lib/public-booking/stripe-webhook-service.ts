@@ -36,6 +36,7 @@ import { getStripeClient } from "../payments/stripe";
 import { consumeCredit } from "@/lib/credits/credit-service";
 import { fulfillPaidCartOrder } from "@/lib/fulfillment/order-fulfillment-service";
 import { isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
+import { transitionBookingToConfirmedAndQueueEmail } from "@/lib/public-booking/booking-confirmation-transition-service";
 
 type CatalogCheckoutMetadata = {
   userId: string;
@@ -56,6 +57,11 @@ type GenericCheckoutMetadata = {
 };
 
 const STALE_PROCESSING_THRESHOLD_MS = 10 * 60 * 1000;
+const E2E_SYNTHETIC_CHECKOUT_SESSION_PREFIX = "cs_e2e_";
+
+function isE2ESyntheticCheckoutSessionId(checkoutSessionId: string): boolean {
+  return checkoutSessionId.startsWith(E2E_SYNTHETIC_CHECKOUT_SESSION_PREFIX);
+}
 
 async function createPaidAfterReleaseManualReviewCase(input: {
   orderId: string;
@@ -1481,10 +1487,7 @@ async function handleCheckoutCompleted(
   }
 
   if (booking && booking.status === BookingStatus.PENDING) {
-    await prisma.booking.update({
-      where: { id: booking.id },
-      data: { status: BookingStatus.CONFIRMED },
-    });
+    await transitionBookingToConfirmedAndQueueEmail({ bookingId: booking.id });
   }
 }
 
@@ -1541,6 +1544,13 @@ export async function reconcileCheckoutSessionAfterReturn(input: {
   }
 
   if (booking.status === BookingStatus.CONFIRMED && payment.status === PaymentStatus.SUCCEEDED) {
+    return;
+  }
+
+  if (
+    isE2ETestModeEnabled() &&
+    isE2ESyntheticCheckoutSessionId(input.checkoutSessionId)
+  ) {
     return;
   }
 
@@ -1626,8 +1636,22 @@ export async function reconcileCatalogCheckoutSessionAfterReturn(input: {
       return;
     }
 
+    if (
+      isE2ETestModeEnabled() &&
+      isE2ESyntheticCheckoutSessionId(input.checkoutSessionId)
+    ) {
+      return;
+    }
+
     const stripeSession = await getStripeClient().checkout.sessions.retrieve(input.checkoutSessionId);
     await handleCheckoutCompleted(stripeSession);
+    return;
+  }
+
+  if (
+    isE2ETestModeEnabled() &&
+    isE2ESyntheticCheckoutSessionId(input.checkoutSessionId)
+  ) {
     return;
   }
 

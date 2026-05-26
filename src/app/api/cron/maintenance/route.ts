@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import {
   dispatchEmailAutomationBatch,
 } from "@/lib/email/email-automation-dispatcher-service";
+import { reconcileMissingBookingConfirmationEvents } from "@/lib/public-booking/booking-confirmation-transition-service";
 
 const CART_IDEMPOTENCY_TERMINAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const CART_IDEMPOTENCY_IN_PROGRESS_RETENTION_MS = 60 * 60 * 1000; // 1 hour
@@ -12,6 +13,7 @@ const CART_IDEMPOTENCY_IN_PROGRESS_RETENTION_MS = 60 * 60 * 1000; // 1 hour
 const CLEANUP_ERROR_CODE = "WEBHOOK_RECEIPT_CLEANUP_FAILED";
 const CART_IDEMPOTENCY_ERROR_CODE = "CART_CHECKOUT_IDEMPOTENCY_CLEANUP_FAILED";
 const DISPATCH_ERROR_CODE = "EMAIL_AUTOMATION_DISPATCH_FAILED";
+const BOOKING_CONFIRMATION_RECONCILE_ERROR_CODE = "BOOKING_CONFIRMATION_RECONCILE_FAILED";
 
 async function cleanupStaleCartCheckoutIdempotency(): Promise<{ deletedCount: number }> {
   const now = new Date();
@@ -51,10 +53,11 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [draftsResult, cleanupResult, cartIdempotencyResult] = await Promise.allSettled([
+  const [draftsResult, cleanupResult, cartIdempotencyResult, bookingConfirmationResult] = await Promise.allSettled([
     expireStaleBookingDrafts(),
     cleanupStaleWebhookReceipts(),
     cleanupStaleCartCheckoutIdempotency(),
+    reconcileMissingBookingConfirmationEvents({ limit: 100 }),
   ]);
   const dispatcherResult = await Promise.allSettled([
     dispatchEmailAutomationBatch({
@@ -71,10 +74,16 @@ export async function GET(request: Request) {
   const cartIdempotencyError = cartIdempotencyResult.status === "rejected" ? CART_IDEMPOTENCY_ERROR_CODE : null;
   const dispatchResult = dispatcherResult.status === "fulfilled" ? dispatcherResult.value : null;
   const dispatchError = dispatcherResult.status === "rejected" ? DISPATCH_ERROR_CODE : null;
+  const bookingConfirmationReconcile =
+    bookingConfirmationResult.status === "fulfilled" ? bookingConfirmationResult.value : null;
+  const bookingConfirmationError =
+    bookingConfirmationResult.status === "rejected" ? BOOKING_CONFIRMATION_RECONCILE_ERROR_CODE : null;
   const cleanupErrorDetail = cleanupResult.status === "rejected" ? String(cleanupResult.reason) : null;
   const cartIdempotencyErrorDetail =
     cartIdempotencyResult.status === "rejected" ? String(cartIdempotencyResult.reason) : null;
   const dispatchErrorDetail = dispatcherResult.status === "rejected" ? String(dispatcherResult.reason) : null;
+  const bookingConfirmationErrorDetail =
+    bookingConfirmationResult.status === "rejected" ? String(bookingConfirmationResult.reason) : null;
 
   if (cleanupError) {
     console.error("[cron/maintenance] webhook receipt cleanup failed", {
@@ -94,6 +103,12 @@ export async function GET(request: Request) {
       error: dispatchErrorDetail,
     });
   }
+  if (bookingConfirmationError) {
+    console.error("[cron/maintenance] booking confirmation reconciliation failed", {
+      code: BOOKING_CONFIRMATION_RECONCILE_ERROR_CODE,
+      error: bookingConfirmationErrorDetail,
+    });
+  }
 
   return Response.json({
     ok: cleanupResult.status === "fulfilled" && cartIdempotencyResult.status === "fulfilled",
@@ -101,8 +116,10 @@ export async function GET(request: Request) {
     cleanedWebhookReceipts: cleanedWebhooks,
     deletedCartCheckoutIdempotency: deletedCartIdempotency,
     emailAutomationDispatch: dispatchResult,
+    bookingConfirmationReconcile,
     ...(cleanupError ? { cleanupError } : {}),
     ...(cartIdempotencyError ? { cartIdempotencyError } : {}),
     ...(dispatchError ? { dispatchError } : {}),
+    ...(bookingConfirmationError ? { bookingConfirmationError } : {}),
   });
 }
