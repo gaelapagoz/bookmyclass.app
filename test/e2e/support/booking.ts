@@ -9,10 +9,14 @@ export async function openBookingFormFromFirstAvailableSlot(page: Page, serviceS
 }
 
 export async function submitBookingWithPaymentOption(page: Page, optionLabelContains: RegExp | string) {
+  await expect(page.getByRole("heading", { name: "Booking Details" })).toBeVisible();
+  await expect(page.getByLabel("Phone")).toBeVisible();
+  await expect(page.getByLabel("Phone")).toBeEditable();
   await page.getByLabel("Phone").fill("+32000012345");
 
   const paymentSelect = page.getByLabel("Select how you want to continue");
   await expect(paymentSelect).toBeVisible();
+  await expect(page.getByText("Loading payment options...")).toHaveCount(0);
 
   let selectedValue: string | null = null;
   if (typeof optionLabelContains === "string") {
