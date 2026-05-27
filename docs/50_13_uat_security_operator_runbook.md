@@ -242,6 +242,44 @@ Set these response headers (overwrite):
 
 Keep CSP handling unchanged. Do not add/force COEP in this remediation.
 
+## 9.3) CSP rollout mode (report-only -> enforce)
+
+Use middleware CSP mode for phased rollout during Phase 6 hardening.
+
+Mode source:
+- `CSP_HEADER_MODE` environment variable.
+- `ALLOW_CSP_REPORT_ONLY_IN_UAT` environment variable (explicit override gate).
+- `report-only` emits `Content-Security-Policy-Report-Only`.
+- `enforce` emits `Content-Security-Policy`.
+- Unset/invalid defaults to `enforce`.
+- Precedence:
+  - Production runtime enforces CSP by default.
+  - UAT report-only requires all three: `NODE_ENV=production`, `CSP_HEADER_MODE=report-only`, `ALLOW_CSP_REPORT_ONLY_IN_UAT=1` (and UAT host).
+  - Without explicit UAT override, production runtime stays enforce-only.
+
+Compatibility route matrix for every UAT run:
+- `/`
+- `/sign-in`
+- `/sign-up`
+- `/subscription`
+- booking checkout entry route(s) and booking success route(s)
+- authenticated dashboard entry route
+
+Promotion rule (report-only -> enforce):
+- Keep `CSP_HEADER_MODE=report-only` in UAT until 2 consecutive runs show zero high/critical CSP violations on compatibility routes.
+- After threshold, switch UAT to `CSP_HEADER_MODE=enforce` and rerun header/security checks.
+
+Rollback trigger after enforce:
+- Any high/critical CSP regression on compatibility routes.
+- Immediate rollback action: set `CSP_HEADER_MODE=report-only`, redeploy same tag configuration, rerun checks, and capture evidence.
+
+Required evidence record for this gate:
+- Append to `test-results/manual_test_<YYYY-MM-DD>.md`:
+  - run #1 date/time, tag, mode (`report-only`), compatibility-route results, high/critical CSP count
+  - run #2 date/time, tag, mode (`report-only`), compatibility-route results, high/critical CSP count
+  - explicit statement: "2 consecutive UAT runs clean: yes/no"
+  - enforce switch verification run with effective header name on compatibility routes
+
 ### Step C - targeted cache purge
 
 Purge only:

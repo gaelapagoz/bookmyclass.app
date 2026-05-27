@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildBaseSecurityHeaders,
   buildContentSecurityPolicy,
+  getCspHeaderName,
+  resolveCspMode,
+  resolveEffectiveCspMode,
   shouldAttachContentSecurityPolicy,
 } from "../../src/lib/security/response-security";
 
@@ -48,6 +51,12 @@ describe("response security headers", () => {
   it("attaches CSP for document and metadata routes", () => {
     expect(shouldAttachContentSecurityPolicy("/")).toBe(true);
     expect(shouldAttachContentSecurityPolicy("/about/studio")).toBe(true);
+    expect(shouldAttachContentSecurityPolicy("/sign-in")).toBe(true);
+    expect(shouldAttachContentSecurityPolicy("/sign-up")).toBe(true);
+    expect(shouldAttachContentSecurityPolicy("/subscription")).toBe(true);
+    expect(shouldAttachContentSecurityPolicy("/book-a-class")).toBe(true);
+    expect(shouldAttachContentSecurityPolicy("/book-a-class/success")).toBe(true);
+    expect(shouldAttachContentSecurityPolicy("/dashboard")).toBe(true);
     expect(shouldAttachContentSecurityPolicy("/sitemap.xml")).toBe(true);
     expect(shouldAttachContentSecurityPolicy("/robots.txt")).toBe(true);
     expect(shouldAttachContentSecurityPolicy("/_next/image")).toBe(true);
@@ -57,5 +66,29 @@ describe("response security headers", () => {
     expect(shouldAttachContentSecurityPolicy("/api/health")).toBe(false);
     expect(shouldAttachContentSecurityPolicy("/_next/static/chunks/app.js")).toBe(false);
     expect(shouldAttachContentSecurityPolicy("/_next/static/media/font.woff2")).toBe(false);
+  });
+
+  it("resolves CSP mode with enforce fallback", () => {
+    expect(resolveCspMode("report-only")).toBe("report-only");
+    expect(resolveCspMode("REPORT-ONLY")).toBe("report-only");
+    expect(resolveCspMode("enforce")).toBe("enforce");
+    expect(resolveCspMode("unexpected")).toBe("enforce");
+    expect(resolveCspMode(undefined)).toBe("enforce");
+  });
+
+  it("maps CSP mode to the correct response header", () => {
+    expect(getCspHeaderName("report-only")).toBe("Content-Security-Policy-Report-Only");
+    expect(getCspHeaderName("enforce")).toBe("Content-Security-Policy");
+  });
+
+  it("forces enforce mode in production context", () => {
+    expect(resolveEffectiveCspMode("report-only", { isProduction: true })).toBe("enforce");
+    expect(resolveEffectiveCspMode("report-only", { isProduction: false })).toBe("report-only");
+    expect(
+      resolveEffectiveCspMode("report-only", {
+        isProduction: true,
+        allowReportOnlyInProduction: true,
+      }),
+    ).toBe("report-only");
   });
 });

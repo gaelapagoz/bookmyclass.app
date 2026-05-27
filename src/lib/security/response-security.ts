@@ -2,6 +2,8 @@ type CspOptions = {
   nonce?: string;
 };
 
+export type CspMode = "report-only" | "enforce";
+
 type HeaderOptions = {
   appUrl?: string;
   forwardedProto?: string | null;
@@ -65,6 +67,27 @@ export function buildContentSecurityPolicy(options: CspOptions = {}): string {
   ];
 
   return directives.join("; ");
+}
+
+export function resolveCspMode(rawMode: string | null | undefined): CspMode {
+  const normalized = rawMode?.trim().toLowerCase();
+  if (normalized === "report-only") return "report-only";
+  return "enforce";
+}
+
+export function resolveEffectiveCspMode(
+  rawMode: string | null | undefined,
+  options: { isProduction?: boolean; allowReportOnlyInProduction?: boolean } = {},
+): CspMode {
+  const configuredMode = resolveCspMode(rawMode);
+  if (options.isProduction && !(options.allowReportOnlyInProduction && configuredMode === "report-only")) {
+    return "enforce";
+  }
+  return configuredMode;
+}
+
+export function getCspHeaderName(mode: CspMode): "Content-Security-Policy" | "Content-Security-Policy-Report-Only" {
+  return mode === "report-only" ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy";
 }
 
 export function buildBaseSecurityHeaders(options: HeaderOptions = {}): Array<{ key: string; value: string }> {

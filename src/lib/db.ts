@@ -29,7 +29,7 @@ function parsePositiveIntEnv(name: string, fallback: number): number {
 
 function resolvePgPoolMaxConnections(): number {
   const defaultPoolMax = process.env.NODE_ENV === "test" || isE2ETestModeEnabled()
-    ? 4
+    ? 1
     : 10;
   return parsePositiveIntEnv("PRISMA_PG_POOL_MAX", defaultPoolMax);
 }
@@ -57,6 +57,7 @@ function getOrCreateAdapter(): PrismaPg {
     return globalForPrisma.adapter;
   }
 
+  const isTestRuntime = process.env.NODE_ENV === "test" || isE2ETestModeEnabled();
   const adapter = new PrismaPg({
     connectionString: databaseUrl,
     // Integration/E2E paths create bursty parallel queries during fixture setup.
@@ -64,7 +65,7 @@ function getOrCreateAdapter(): PrismaPg {
     max: resolvePgPoolMaxConnections(),
     connectionTimeoutMillis: resolvePgPoolConnectionTimeoutMs(),
     idleTimeoutMillis: resolvePgPoolIdleTimeoutMs(),
-    keepAlive: true,
+    keepAlive: !isTestRuntime,
     keepAliveInitialDelayMillis: 0,
     maxLifetimeSeconds: resolvePgPoolMaxLifetimeSeconds(),
   });

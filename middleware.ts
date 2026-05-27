@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { buildBaseSecurityHeaders, buildContentSecurityPolicy, shouldAttachContentSecurityPolicy } from "@/lib/security/response-security";
+import {
+  buildBaseSecurityHeaders,
+  buildContentSecurityPolicy,
+  getCspHeaderName,
+  resolveEffectiveCspMode,
+  shouldAttachContentSecurityPolicy,
+} from "@/lib/security/response-security";
 
 function createNonce(): string {
   const random = crypto.getRandomValues(new Uint8Array(16));
@@ -32,7 +38,14 @@ export function middleware(request: NextRequest) {
   }
 
   if (shouldAttachContentSecurityPolicy(request.nextUrl.pathname)) {
-    response.headers.set("Content-Security-Policy", buildContentSecurityPolicy({ nonce }));
+    const isUatHost = request.nextUrl.hostname.toLowerCase().includes("uat.");
+    const allowReportOnlyInUat = process.env.ALLOW_CSP_REPORT_ONLY_IN_UAT === "1" && isUatHost;
+    // Precedence: production => enforce, unless UAT override is explicitly enabled and mode=report-only.
+    const cspMode = resolveEffectiveCspMode(process.env.CSP_HEADER_MODE, {
+      isProduction: process.env.NODE_ENV === "production",
+      allowReportOnlyInProduction: allowReportOnlyInUat,
+    });
+    response.headers.set(getCspHeaderName(cspMode), buildContentSecurityPolicy({ nonce }));
   }
 
   return response;

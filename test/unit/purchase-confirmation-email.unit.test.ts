@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { clearCapturedTestEmails, getCapturedTestEmails } from "../../src/lib/email/resend-delivery";
 import { sendPurchaseConfirmationEmail } from "../../src/lib/email/purchase-confirmation-email";
 
+function testOrderId(label: string): string {
+  return `ord_test_${label}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 beforeEach(() => {
   clearCapturedTestEmails();
   process.env.E2E_TEST_MODE = "1";
@@ -12,7 +16,7 @@ describe("sendPurchaseConfirmationEmail", () => {
     await sendPurchaseConfirmationEmail({
       to: "buyer@example.test",
       purchaserName: "Jane",
-      orderId: "ord_test_01",
+      orderId: testOrderId("01"),
       items: [{ name: "10-Class Pack", quantity: 1, lineTotalAmountMinor: 15000, currencyCode: "EUR" }],
       totalAmountMinor: 15000,
       currencyCode: "EUR",
@@ -33,7 +37,7 @@ describe("sendPurchaseConfirmationEmail", () => {
     await sendPurchaseConfirmationEmail({
       to: "buyer@example.test",
       purchaserName: null,
-      orderId: "ord_test_02",
+      orderId: testOrderId("02"),
       items: [{ name: "5-Class Pack", quantity: 1, lineTotalAmountMinor: 8000, currencyCode: "EUR" }],
       totalAmountMinor: 8000,
       currencyCode: "EUR",
@@ -51,7 +55,7 @@ describe("sendPurchaseConfirmationEmail", () => {
     await sendPurchaseConfirmationEmail({
       to: "buyer@example.test",
       purchaserName: "Alex",
-      orderId: "ord_test_03",
+      orderId: testOrderId("03"),
       items: [{ name: "Drop-in Class", quantity: 1, lineTotalAmountMinor: 2000, currencyCode: "EUR" }],
       totalAmountMinor: 2000,
       currencyCode: "EUR",
@@ -68,7 +72,7 @@ describe("sendPurchaseConfirmationEmail", () => {
     await sendPurchaseConfirmationEmail({
       to: "buyer@example.test",
       purchaserName: "Maria",
-      orderId: "ord_test_04",
+      orderId: testOrderId("04"),
       items: [{ name: "Private Pack", quantity: 1, lineTotalAmountMinor: 25000, currencyCode: "EUR" }],
       totalAmountMinor: 25000,
       currencyCode: "EUR",

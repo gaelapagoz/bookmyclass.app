@@ -36,7 +36,8 @@ export async function sendPurchaseConfirmationEmail(
   input: SendPurchaseConfirmationEmailInput,
 ): Promise<void> {
   const now = new Date();
-  await ensureLifecycleEmailTemplate({
+  const ensureTemplate = () =>
+    ensureLifecycleEmailTemplate({
     templateKey: PAYMENT_PURCHASE_CONFIRMATION_TEMPLATE_KEY,
     name: "Payment Purchase Confirmation",
     category: "PAYMENT",
@@ -60,21 +61,18 @@ export async function sendPurchaseConfirmationEmail(
       ],
     },
   });
-
-  const orderSummaryText = input.items
-    .map((item) => {
-      const qty = item.quantity > 1 ? ` x${item.quantity}` : "";
-      return `${item.name}${qty}`;
-    })
-    .join(", ");
-
-  await enqueueLifecycleEmail({
+  const enqueuePayload = {
     templateKey: PAYMENT_PURCHASE_CONFIRMATION_TEMPLATE_KEY,
     recipientEmail: input.to,
     payloadJson: {
       deliveryContext: "purchase-confirmation",
       greeting: input.purchaserName ? `Hi ${input.purchaserName},` : "Hi there,",
-      orderSummaryText,
+      orderSummaryText: input.items
+        .map((item) => {
+          const qty = item.quantity > 1 ? ` x${item.quantity}` : "";
+          return `${item.name}${qty}`;
+        })
+        .join(", "),
       totalAmountFormatted: new Intl.NumberFormat("en-GB", {
         style: "currency",
         currency: input.currencyCode,
@@ -99,7 +97,22 @@ export async function sendPurchaseConfirmationEmail(
     },
     idempotencyKey: derivePurchaseConfirmationIdempotencyKey(input),
     now,
-  });
+  } as const;
+  const enqueueOnce = () => enqueueLifecycleEmail(enqueuePayload);
+  const isUnknownTemplateError = (error: unknown): boolean =>
+    error instanceof Error && error.message.includes("Unknown email template key:");
+
+  await ensureTemplate();
+
+  try {
+    await enqueueOnce();
+  } catch (error) {
+    if (!isUnknownTemplateError(error)) {
+      throw error;
+    }
+    await ensureTemplate();
+    await enqueueOnce();
+  }
 
   await attemptImmediateLifecycleDispatch(now);
 }

@@ -44,6 +44,19 @@ Purpose: define environment-variable expectations by runtime context using repos
 ## Observability (Optional/Environment-Specific)
 - Sentry variables are optional and used when configured (`SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`, environment/release metadata vars).
 
+## Security Headers
+- `CSP_HEADER_MODE` (optional): controls CSP header emission mode in middleware.
+- `ALLOW_CSP_REPORT_ONLY_IN_UAT` (optional): explicit UAT-only override gate for production runtimes.
+- Allowed values:
+  - `report-only` -> emits `Content-Security-Policy-Report-Only`
+  - `enforce` -> emits `Content-Security-Policy`
+- Default/fallback: `enforce` when unset or invalid.
+- Precedence:
+  - `NODE_ENV=production` => enforce by default.
+  - Exception: `report-only` is allowed only when `CSP_HEADER_MODE=report-only` and `ALLOW_CSP_REPORT_ONLY_IN_UAT=1` and request host is UAT (`uat.*`).
+  - Non-production runtime follows `CSP_HEADER_MODE` with enforce fallback.
+- UAT rollout rule: set `CSP_HEADER_MODE=report-only` and `ALLOW_CSP_REPORT_ONLY_IN_UAT=1`, validate compatibility routes, then switch to `enforce`.
+
 ## Cron Maintenance
 - `GET /api/cron/gift-cards/maintenance` requires `Authorization: Bearer $CRON_SECRET`.
 - The route releases expired `RESERVED` gift-card redemptions only; reconciliation retry is not active in this slice.
