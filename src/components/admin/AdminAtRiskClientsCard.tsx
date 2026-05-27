@@ -1,4 +1,4 @@
-import type { AtRiskClientItem } from "@/lib/admin/admin-service";
+import type { AtRiskClientItem } from "@/lib/admin/admin-analytics-service";
 
 type Props = {
   items: AtRiskClientItem[];
@@ -33,4 +33,5 @@ export default function AdminAtRiskClientsCard({ items, className }: Props) {
     </article>
   );
 }
+
 

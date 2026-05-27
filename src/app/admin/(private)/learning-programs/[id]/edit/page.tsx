@@ -3,7 +3,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 
 import { updateLearningProgramAction } from "@/app/admin/(private)/actions";
-import { getAdminLearningProgramById, getLearningMediaLibraryOptions } from "@/lib/admin/admin-service";
+import { getAdminLearningProgramById, getLearningMediaLibraryOptions } from "@/lib/admin/admin-catalog-core-service";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ error?: string }>;

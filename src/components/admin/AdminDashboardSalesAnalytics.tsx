@@ -6,10 +6,10 @@ import AdminDashboardTrendChart from "@/components/admin/AdminDashboardTrendChar
 import AdminMetricCard from "@/components/admin/AdminMetricCard";
 import type {
   AdminMetricCard as AdminMetricCardData,
-  AdminPeriod,
   DashboardMetricKey,
   DashboardTrendPoint,
-} from "@/lib/admin/admin-service";
+  AdminPeriod,
+} from "@/lib/admin/admin-analytics-service";
 
 type Props = {
   cards: AdminMetricCardData[];
@@ -61,3 +61,4 @@ export default function AdminDashboardSalesAnalytics({ cards, trend, period }: P
     </div>
   );
 }
+

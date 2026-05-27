@@ -11,7 +11,7 @@ import {
   getAdminClientStats,
   getAdminClientsPageData,
   listAdminMarketingSegmentOptions,
-} from "@/lib/admin/admin-service";
+} from "@/lib/admin/admin-user-service";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -158,3 +158,4 @@ export default async function AdminUsersClientsPage({
     );
   }
 }
+

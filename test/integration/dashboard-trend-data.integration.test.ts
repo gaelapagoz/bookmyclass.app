@@ -1,7 +1,7 @@
-﻿import "./helpers/setup-env";
+import "./helpers/setup-env";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { getDashboardTrendData } from "../../src/lib/admin/admin-service";
+import { getDashboardTrendData } from "../../src/lib/admin/admin-analytics-service";
 import { resetDb } from "./helpers/reset-db";
 
 function toDayKey(date: Date): string {

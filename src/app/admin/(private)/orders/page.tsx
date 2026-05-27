@@ -1,6 +1,6 @@
 import AdminListControls from "@/components/admin/AdminListControls";
 import AdminPagination from "@/components/admin/AdminPagination";
-import { getAdminOrdersPageData, type AdminOrderDateFilter } from "@/lib/admin/admin-service";
+import { getAdminOrdersPageData, type AdminOrderDateFilter } from "@/lib/admin/admin-catalog-core-service";
 
 type SearchParams = Promise<{
   page?: string | string[];
@@ -140,3 +140,4 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
     );
   }
 }
+

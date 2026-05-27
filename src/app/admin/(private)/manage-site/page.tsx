@@ -13,7 +13,7 @@ import {
   getAdminSiteTimeZone,
   listAdminSiteScheduleServiceOptions,
   listAdminSiteWeeklyScheduleEntries,
-} from "@/lib/admin/admin-service";
+} from "@/lib/admin/admin-catalog-core-service";
 import { getActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
 import { getSiteTimeZoneOptions } from "@/lib/site-settings/site-settings-service";
 
@@ -300,3 +300,4 @@ export default async function AdminManageSitePage({ searchParams }: { searchPara
     );
   }
 }
+

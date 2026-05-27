@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { createClassCategoryAction } from "@/app/admin/(private)/actions";
-import { getAdminClassCategoriesData, getAdminClassesData } from "@/lib/admin/admin-service";
+import { getAdminClassCategoriesData, getAdminClassesData } from "@/lib/admin/admin-catalog-core-service";
 
 type SearchParams = Promise<{
   error?: string;
@@ -251,3 +251,4 @@ export default async function AdminClassesPage(
     </section>
   );
 }
+

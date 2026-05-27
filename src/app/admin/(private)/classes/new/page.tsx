@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { createClassAction } from "@/app/admin/(private)/actions";
 import ClassScheduleFields from "@/components/admin/ClassScheduleFields";
-import { getAdminClassScheduleOptions, getClassCategoryOptions } from "@/lib/admin/admin-service";
+import { getAdminClassScheduleOptions, getClassCategoryOptions } from "@/lib/admin/admin-catalog-core-service";
 
 type SearchParams = Promise<{ error?: string }>;
 
@@ -110,4 +110,5 @@ export default async function AdminClassCreatePage({ searchParams }: { searchPar
     </section>
   );
 }
+
 

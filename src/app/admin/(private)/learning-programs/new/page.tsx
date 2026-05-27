@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { createLearningProgramAction } from "@/app/admin/(private)/actions";
-import { getLearningMediaLibraryOptions } from "@/lib/admin/admin-service";
+import { getLearningMediaLibraryOptions } from "@/lib/admin/admin-catalog-core-service";
 
 type SearchParams = Promise<{ error?: string }>;
 
@@ -81,3 +81,4 @@ export default async function AdminLearningProgramCreatePage({ searchParams }: {
     </section>
   );
 }
+

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { getAdminPlansData } from "@/lib/admin/admin-service";
+import { getAdminPlansData } from "@/lib/admin/admin-catalog-core-service";
 
 function formatPrice(amountMinor: number | null, currencyCode: string | null): string {
   if (amountMinor === null || !currencyCode) {
@@ -107,4 +107,5 @@ export default async function AdminPlansPage() {
     );
   }
 }
+
 

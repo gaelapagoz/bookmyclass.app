@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { createLearningVideoAction } from "@/app/admin/(private)/actions";
-import { getAdminLearningProgramCourseTypeOptions } from "@/lib/admin/admin-service";
+import { getAdminLearningProgramCourseTypeOptions } from "@/lib/admin/admin-catalog-core-service";
 
 type SearchParams = Promise<{ error?: string }>;
 
@@ -82,4 +82,5 @@ export default async function AdminLearningVideoCreatePage({ searchParams }: { s
     </section>
   );
 }
+
 

@@ -19,12 +19,14 @@ import {
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  addSessionAttendeeByManager,
   getAdminSessionById,
   getAdminSessionsData,
   getAdminSessionOptions,
+} from "../../src/lib/admin/admin-session-service";
+import {
+  addSessionAttendeeByManager,
   removeSessionAttendeeByManager,
-} from "../../src/lib/admin/admin-service";
+} from "../../src/lib/admin/admin-booking-service";
 import { markBookingAttendanceByStaff } from "../../src/lib/attendance/attendance-service";
 import { createPendingBookingDraft } from "../../src/lib/public-booking/booking-draft-service";
 import { promoteWaitlistAfterCancellationWithinTx } from "../../src/lib/public-booking/waitlist-service";

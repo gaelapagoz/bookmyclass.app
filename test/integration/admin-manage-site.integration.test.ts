@@ -8,13 +8,13 @@ import {
   deleteAdminSiteWeeklyScheduleEntry,
   getAdminCancellationPeriodHours,
   getAdminSiteTimeZone,
-  getAdminClientStats,
   listAdminSiteScheduleServiceOptions,
   listAdminSiteWeeklyScheduleEntries,
   updateAdminCancellationPeriodHours,
   updateAdminSiteTimeZone,
   updateAdminSiteWeeklyScheduleEntry,
-} from "../../src/lib/admin/admin-service";
+} from "../../src/lib/admin/admin-catalog-core-service";
+import { getAdminClientStats } from "../../src/lib/admin/admin-user-service";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
 

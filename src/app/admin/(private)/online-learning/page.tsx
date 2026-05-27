@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { getAdminOnlineLearningData } from "@/lib/admin/admin-service";
+import { getAdminOnlineLearningData } from "@/lib/admin/admin-catalog-core-service";
 export const dynamic = "force-dynamic";
 
 function formatDate(value: string) {
@@ -117,3 +117,4 @@ export default async function AdminOnlineLearningPage() {
     );
   }
 }
+

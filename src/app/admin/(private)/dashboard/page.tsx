@@ -8,11 +8,13 @@ import AdminTopClassSessionsCard from "@/components/admin/AdminTopClassSessionsC
 import AdminTopClientsCard from "@/components/admin/AdminTopClientsCard";
 import {
   type AdminPeriod,
-  getAdminDashboardData,
   getAdminDashboardInsights,
   getDashboardTrendData,
   getOperationalMetricCards,
-} from "@/lib/admin/admin-service";
+} from "@/lib/admin/admin-analytics-service";
+import {
+  getAdminDashboardData,
+} from "@/lib/admin/admin-catalog-core-service";
 
 type SearchParams = Promise<{ period?: string | string[] }>;
 
@@ -116,3 +118,4 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
     </section>
   );
 }
+

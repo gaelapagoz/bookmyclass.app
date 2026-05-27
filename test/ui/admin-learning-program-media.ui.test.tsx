@@ -9,7 +9,7 @@ vi.mock("@/app/admin/(private)/actions", () => ({
   updateLearningProgramAction: vi.fn(),
 }));
 
-vi.mock("@/lib/admin/admin-service", () => ({
+vi.mock("@/lib/admin/admin-catalog-core-service", () => ({
   getAdminLearningProgramById: vi.fn(async () => ({
     id: "program-1",
     legacyId: "legacy-1",
@@ -143,4 +143,5 @@ describe("admin learning program media controls", () => {
     expect(form?.getAttribute("encType")).toBeNull();
   });
 });
+
 

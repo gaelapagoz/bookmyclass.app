@@ -1,4 +1,4 @@
-import type { AdminMetricCard as AdminMetricCardData } from "@/lib/admin/admin-service";
+import type { AdminMetricCard as AdminMetricCardData } from "@/lib/admin/admin-analytics-service";
 
 type AdminMetricCardProps = AdminMetricCardData & {
   isSelected?: boolean;
@@ -83,4 +83,5 @@ export default function AdminMetricCard(props: AdminMetricCardProps) {
     </button>
   );
 }
+
 

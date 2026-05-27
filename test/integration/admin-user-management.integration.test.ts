@@ -23,7 +23,7 @@ import {
   getAdminClientRecoveryState,
   updateAdminTeacherImage,
   updateAdminUser,
-} from "../../src/lib/admin/admin-service";
+} from "../../src/lib/admin/admin-user-service";
 import { excludeUnsubscribedRecipients } from "../../src/lib/marketing/marketing-audience";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";

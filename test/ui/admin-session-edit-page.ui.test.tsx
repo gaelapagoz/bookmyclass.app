@@ -25,7 +25,7 @@ vi.mock("@/app/admin/(private)/actions", () => ({
   updateSessionAttendanceAction: vi.fn(),
 }));
 
-vi.mock("@/lib/admin/admin-service", () => ({
+vi.mock("@/lib/admin/admin-session-service", () => ({
   getAdminSessionById: vi.fn(),
   getAdminSessionOptions: vi.fn(),
 }));
@@ -34,7 +34,7 @@ vi.mock("@/lib/auth/require-auth", () => ({
   requireStaffSession: vi.fn(),
 }));
 
-import { getAdminSessionById, getAdminSessionOptions } from "@/lib/admin/admin-service";
+import { getAdminSessionById, getAdminSessionOptions } from "@/lib/admin/admin-session-service";
 import { requireStaffSession } from "@/lib/auth/require-auth";
 
 import AdminSessionEditPage from "../../src/app/admin/(private)/sessions/[id]/edit/page";
@@ -165,3 +165,4 @@ describe("admin session edit page", () => {
     expect(screen.queryByLabelText(/Manual no-credit override reason/i)).not.toBeInTheDocument();
   });
 });
+

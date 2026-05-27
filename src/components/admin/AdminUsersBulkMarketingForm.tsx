@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { MarketingSubscriptionStatus } from "@prisma/client";
 
-import type { AdminUserItem } from "@/lib/admin/admin-service";
+import type { AdminUserItem } from "@/lib/admin/admin-user-service";
 
 type MarketingSegmentOption = {
   id: string;
@@ -176,3 +176,4 @@ export default function AdminUsersBulkMarketingForm({
     </form>
   );
 }
+

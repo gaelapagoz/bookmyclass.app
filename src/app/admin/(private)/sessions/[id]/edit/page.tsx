@@ -12,7 +12,7 @@ import { StaffAttendanceControls } from "@/components/attendance/StaffAttendance
 import AdminFormFooter from "@/components/admin/AdminFormFooter";
 import { isAdminRole } from "@/lib/auth/admin-access";
 import { requireStaffSession } from "@/lib/auth/require-auth";
-import { getAdminSessionById, getAdminSessionOptions } from "@/lib/admin/admin-service";
+import { getAdminSessionById, getAdminSessionOptions } from "@/lib/admin/admin-session-service";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ error?: string; success?: string }>;

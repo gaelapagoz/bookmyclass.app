@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { createSubscriptionAction } from "@/app/admin/(private)/actions";
-import { getAdminSubscriptionOptions } from "@/lib/admin/admin-service";
+import { getAdminSubscriptionOptions } from "@/lib/admin/admin-catalog-core-service";
 
 type SearchParams = Promise<{ error?: string }>;
 
@@ -118,3 +118,4 @@ export default async function AdminSubscriptionCreatePage({ searchParams }: { se
     </section>
   );
 }
+

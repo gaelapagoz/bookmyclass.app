@@ -24,7 +24,7 @@ vi.mock("../../src/auth", () => ({
 import { auth } from "../../src/auth";
 import { POST as applyPlan } from "../../src/app/api/bookings/[bookingId]/apply-plan/route";
 import { GET as getPaymentOptions } from "../../src/app/api/bookings/[bookingId]/payment-options/route";
-import { createAdminPlan } from "../../src/lib/admin/admin-service";
+import { createAdminPlan } from "../../src/lib/admin/admin-catalog-core-service";
 import { backfillMissingPlanEntitlementRules } from "../../src/lib/admin/plan-entitlement-rules";
 
 const sameOriginJsonHeaders = {

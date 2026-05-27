@@ -7,7 +7,7 @@ import {
   getActiveSubscriptionCatalogProducts,
   getSubscriptionCheckoutItemByProductId,
 } from "../../src/lib/subscription/subscription-products";
-import { getAdminPlansData } from "../../src/lib/admin/admin-service";
+import { getAdminPlansData } from "../../src/lib/admin/admin-catalog-core-service";
 import { listStoreCatalogReadModels } from "../../src/lib/store/store-catalog";
 import {
   PLAN_PRODUCT_TYPES,

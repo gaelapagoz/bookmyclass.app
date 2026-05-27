@@ -49,7 +49,7 @@ import {
   getAdminPlansData,
   remediatePriceStripeId,
   updateAdminPlan,
-} from "../../src/lib/admin/admin-service";
+} from "../../src/lib/admin/admin-catalog-core-service";
 import { buildStripeIdempotencyKey } from "@/lib/admin/plan-provisioning";
 import { getActiveSubscriptionCatalogProducts } from "../../src/lib/subscription/subscription-products";
 import { prisma } from "./helpers/db";

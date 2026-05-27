@@ -8,7 +8,7 @@ import {
   updateUserAction,
 } from "@/app/admin/(private)/actions";
 import AdminFormFooter from "@/components/admin/AdminFormFooter";
-import { getAdminClientActivityData, getAdminUserById, listAdminMarketingSegmentOptions } from "@/lib/admin/admin-service";
+import { getAdminClientActivityData, getAdminUserById, listAdminMarketingSegmentOptions } from "@/lib/admin/admin-user-service";
 import { requireAdminSession } from "@/lib/auth/require-auth";
 
 type Params = Promise<{ id: string }>;

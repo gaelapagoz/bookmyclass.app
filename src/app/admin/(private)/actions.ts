@@ -22,9 +22,6 @@ import * as Sentry from "@sentry/nextjs";
 import { auth } from "@/auth";
 
 import {
-  addSessionAttendeeByManager,
-  adjustAdminClientCredits,
-  cancelAdminClientMembership,
   createAdminClass,
   createAdminClassCategory,
   cleanupAdminClassCreateFailure,
@@ -34,13 +31,9 @@ import {
   getAdminLearningVideoById,
   createAdminLearningVideo,
   createAdminPlan,
-  createAdminSession,
-  createAdminRecurringSessions,
   createAdminSubscription,
-  createAdminUser,
   createAdminSiteWeeklyScheduleEntry,
   deleteAdminSiteWeeklyScheduleEntry,
-  upsertAdminClassScheduleConfig,
   updateAdminClass,
   updateAdminClassCategory,
   updateAdminCancellationPeriodHours,
@@ -48,17 +41,30 @@ import {
   updateAdminLearningProgram,
   updateAdminLearningVideo,
   updateAdminPlan,
-  updateAdminSession,
   updateAdminSiteWeeklyScheduleEntry,
   updateAdminSubscription,
-  updateAdminTeacherImage,
-  updateAdminUser,
+  resolveAdminActorUser,
+} from "@/lib/admin/admin-catalog-core-service";
+import {
+  createAdminRecurringSessions,
+  createAdminSession,
+  updateAdminSession,
+  upsertAdminClassScheduleConfig,
+} from "@/lib/admin/admin-session-service";
+import {
+  addSessionAttendeeByManager,
   removeSessionAttendeeByManager,
+} from "@/lib/admin/admin-booking-service";
+import {
+  adjustAdminClientCredits,
   bulkAddClientMarketingSegments,
   bulkRemoveClientMarketingSegments,
   bulkSetClientMarketingSubscriptionStatus,
-  resolveAdminActorUser,
-} from "@/lib/admin/admin-service";
+  cancelAdminClientMembership,
+  createAdminUser,
+  updateAdminTeacherImage,
+  updateAdminUser,
+} from "@/lib/admin/admin-user-service";
 import { requireAdminSession } from "@/lib/auth/require-auth";
 import { upsertActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
 import { updateClientMessageStatus } from "@/lib/client-messages/client-message-service";
@@ -2816,6 +2822,7 @@ export async function bulkRemoveClientMarketingSegmentsAction(formData: FormData
   revalidatePath(returnTo);
   redirect(`${returnTo}?success=${encodeURIComponent("Segments removed from selected clients.")}`);
 }
+
 
 
 

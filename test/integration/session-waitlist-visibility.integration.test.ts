@@ -3,7 +3,7 @@ import "./helpers/setup-env";
 import { Role, StudioSessionStatus, WaitlistStatus } from "@prisma/client";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { getAdminSessionsData } from "../../src/lib/admin/admin-service";
+import { getAdminSessionsData } from "../../src/lib/admin/admin-session-service";
 import { getTeacherAssignedSessions } from "../../src/lib/teacher/teacher-service";
 import { prisma } from "./helpers/db";
 import { createClassCategory, createClassType } from "./helpers/factories";

@@ -27,7 +27,7 @@ vi.mock("@/app/admin/(private)/actions", () => ({
   uploadTeacherImageAction: vi.fn(),
 }));
 
-vi.mock("@/lib/admin/admin-service", () => ({
+vi.mock("@/lib/admin/admin-user-service", () => ({
   getAdminUserById: vi.fn(),
   getAdminClientActivityData: vi.fn(),
   listAdminMarketingSegmentOptions: vi.fn(),
@@ -40,7 +40,7 @@ vi.mock("@/lib/auth/require-auth", () => ({
   })),
 }));
 
-import { getAdminClientActivityData, getAdminUserById, listAdminMarketingSegmentOptions } from "@/lib/admin/admin-service";
+import { getAdminClientActivityData, getAdminUserById, listAdminMarketingSegmentOptions } from "@/lib/admin/admin-user-service";
 import { requireAdminSession } from "@/lib/auth/require-auth";
 
 import AdminUserEditPage from "../../src/app/admin/(private)/users/[id]/edit/page";
@@ -264,6 +264,7 @@ describe("admin edit pages", () => {
     expect(screen.queryByRole("option", { name: "MASTER_ADMIN" })).not.toBeInTheDocument();
   });
 });
+
 
 
 

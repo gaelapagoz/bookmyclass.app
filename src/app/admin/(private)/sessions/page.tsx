@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { getAdminSessionsData } from "@/lib/admin/admin-service";
+import { getAdminSessionsData } from "@/lib/admin/admin-session-service";
 import { SessionsWeeklyCalendar, type SessionCalendarItem } from "@/components/shared/SessionsWeeklyCalendar";
 
 type SearchParams = Promise<{

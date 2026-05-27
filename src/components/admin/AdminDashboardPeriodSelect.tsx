@@ -1,6 +1,6 @@
 "use client";
 
-import type { AdminPeriod } from "@/lib/admin/admin-service";
+import type { AdminPeriod } from "@/lib/admin/admin-analytics-service";
 
 export default function AdminDashboardPeriodSelect({ period }: { period: AdminPeriod }) {
   return (
@@ -22,3 +22,4 @@ export default function AdminDashboardPeriodSelect({ period }: { period: AdminPe
     </form>
   );
 }
+

@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import AdminUsersBulkMarketingForm from "@/components/admin/AdminUsersBulkMarketingForm";
-import type { AdminUserItem } from "@/lib/admin/admin-service";
+import type { AdminUserItem } from "@/lib/admin/admin-user-service";
 
 type MarketingSegmentOption = {
   id: string;
@@ -93,3 +93,4 @@ export default function AdminUsersRoleTable({ title, users, marketingBulkActions
     </article>
   );
 }
+

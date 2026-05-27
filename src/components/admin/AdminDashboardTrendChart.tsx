@@ -1,6 +1,7 @@
 "use client";
 
-import type { AdminPeriod, DashboardMetricKey, DashboardTrendPoint } from "@/lib/admin/admin-service";
+import type { AdminPeriod } from "@/lib/admin/admin-analytics-service";
+import type { DashboardMetricKey, DashboardTrendPoint } from "@/lib/admin/admin-analytics-service";
 
 type Props = {
   data: DashboardTrendPoint[];
@@ -132,3 +133,4 @@ export default function AdminDashboardTrendChart({ data, selectedMetric, period 
     </article>
   );
 }
+

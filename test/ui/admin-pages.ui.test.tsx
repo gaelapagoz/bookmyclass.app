@@ -39,20 +39,11 @@ vi.mock("@/lib/email/email-automation-admin-service", () => ({
 vi.mock("@/auth", () => ({
   auth: vi.fn(async () => null),
 }));
-vi.mock("@/lib/admin/admin-service", () => ({
+vi.mock("@/lib/admin/admin-catalog-core-service", () => ({
   getAdminDashboardData: vi.fn(),
-  getAdminDashboardInsights: vi.fn(),  getDashboardTrendData: vi.fn(),
-  getOperationalMetricCards: vi.fn(),
   getAdminClassesData: vi.fn(),
   getAdminClassCategoriesData: vi.fn(),
-  getAdminSessionsData: vi.fn(),
   getAdminPlansData: vi.fn(),
-  getBookings: vi.fn(),
-  getAdminAdminsPageData: vi.fn(),
-  getAdminTeachersPageData: vi.fn(),
-  getAdminClientsPageData: vi.fn(),
-  getAdminClientStats: vi.fn(),
-  listAdminMarketingSegmentOptions: vi.fn(),
   getAdminSubscriptionsPageData: vi.fn(),
   listAdminSiteWeeklyScheduleEntries: vi.fn(),
   listAdminSiteScheduleServiceOptions: vi.fn(),
@@ -61,29 +52,48 @@ vi.mock("@/lib/admin/admin-service", () => ({
   getAdminOrdersPageData: vi.fn(),
   getAdminOnlineLearningData: vi.fn(),
 }));
+vi.mock("@/lib/admin/admin-analytics-service", () => ({
+  getAdminDashboardInsights: vi.fn(),
+  getDashboardTrendData: vi.fn(),
+  getOperationalMetricCards: vi.fn(),
+}));
+vi.mock("@/lib/admin/admin-session-service", () => ({
+  getAdminSessionsData: vi.fn(),
+}));
+vi.mock("@/lib/admin/admin-booking-service", () => ({
+  getBookings: vi.fn(),
+}));
+vi.mock("@/lib/admin/admin-user-service", () => ({
+  getAdminAdminsPageData: vi.fn(),
+  getAdminTeachersPageData: vi.fn(),
+  getAdminClientsPageData: vi.fn(),
+  getAdminClientStats: vi.fn(),
+  listAdminMarketingSegmentOptions: vi.fn(),
+}));
 
 import {
-  getBookings,
   getAdminClassesData,
   getAdminClassCategoriesData,
   getAdminDashboardData,
-  getAdminDashboardInsights,  getDashboardTrendData,
-  getOperationalMetricCards,
   getAdminOnlineLearningData,
   getAdminPlansData,
-  getAdminSessionsData,
   getAdminSubscriptionsPageData,
   getAdminOrdersPageData,
+  listAdminSiteWeeklyScheduleEntries,
+  listAdminSiteScheduleServiceOptions,
+  getAdminCancellationPeriodHours,
+  getAdminSiteTimeZone,
+} from "@/lib/admin/admin-catalog-core-service";
+import { getAdminDashboardInsights, getDashboardTrendData, getOperationalMetricCards } from "@/lib/admin/admin-analytics-service";
+import { getAdminSessionsData } from "@/lib/admin/admin-session-service";
+import { getBookings } from "@/lib/admin/admin-booking-service";
+import {
   getAdminAdminsPageData,
   getAdminTeachersPageData,
   getAdminClientsPageData,
   getAdminClientStats,
   listAdminMarketingSegmentOptions,
-  listAdminSiteWeeklyScheduleEntries,
-  listAdminSiteScheduleServiceOptions,
-  getAdminCancellationPeriodHours,
-  getAdminSiteTimeZone,
-} from "@/lib/admin/admin-service";
+} from "@/lib/admin/admin-user-service";
 import { listMarketingSegments } from "@/lib/marketing/marketing-service";
 import { getAutomationScaffoldRows } from "@/lib/email/email-automation-admin-service";
 import { listClientMessages } from "@/lib/client-messages/client-message-service";
@@ -1038,6 +1048,7 @@ describe("Admin pages branching", () => {
     expect(screen.getByText("Unable to load online learning right now.")).toBeInTheDocument();
   });
 });
+
 
 
 

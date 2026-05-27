@@ -2,7 +2,7 @@ import "./helpers/setup-env";
 import { BookingStatus, Role, ServicePricingMode, StudioSessionStatus } from "@prisma/client";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { getAdminDashboardInsights } from "../../src/lib/admin/admin-service";
+import { getAdminDashboardInsights } from "../../src/lib/admin/admin-analytics-service";
 import { prisma } from "./helpers/db";
 import { createClassCategory, createClassType } from "./helpers/factories";
 import { resetDb } from "./helpers/reset-db";

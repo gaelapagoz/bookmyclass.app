@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import AdminListControls from "@/components/admin/AdminListControls";
 import AdminPagination from "@/components/admin/AdminPagination";
-import { getAdminSubscriptionsPageData, type AdminSubscriptionStatusFilter } from "@/lib/admin/admin-service";
+import { getAdminSubscriptionsPageData, type AdminSubscriptionStatusFilter } from "@/lib/admin/admin-catalog-core-service";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -166,3 +166,4 @@ export default async function AdminSubscriptionsPage({ searchParams }: { searchP
     );
   }
 }
+

@@ -1,0 +1,31 @@
+export type {
+  AdminClientActivityData,
+  AdminClientRecoveryState,
+  AdminClientStats,
+  AdminMarketingSegmentOption,
+  AdminUserDetail,
+  AdminUserItem,
+  AdminUsersGroupedPageData,
+  AdminUsersRolePageData,
+} from "@/lib/admin/admin-user-core-service";
+
+export {
+  adjustAdminClientCredits,
+  bulkAddClientMarketingSegments,
+  bulkRemoveClientMarketingSegments,
+  bulkSetClientMarketingSubscriptionStatus,
+  cancelAdminClientMembership,
+  createAdminUser,
+  getAdminAdminsPageData,
+  getAdminClientActivityData,
+  getAdminClientRecoveryState,
+  getAdminClientStats,
+  getAdminClientsPageData,
+  getAdminTeachersPageData,
+  getAdminUserById,
+  getAdminUsersData,
+  getAdminUsersGroupedPageData,
+  listAdminMarketingSegmentOptions,
+  updateAdminTeacherImage,
+  updateAdminUser,
+} from "@/lib/admin/admin-user-core-service";

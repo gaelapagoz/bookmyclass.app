@@ -9,10 +9,10 @@ import {
   getAdminClassCategoriesData,
   getAdminClassesData,
   getAdminClassById,
-  upsertAdminClassScheduleConfig,
   updateAdminClass,
   updateAdminClassImage,
-} from "../../src/lib/admin/admin-service";
+} from "../../src/lib/admin/admin-catalog-core-service";
+import { upsertAdminClassScheduleConfig } from "../../src/lib/admin/admin-session-service";
 import { getPublicCategories, getPublicServicesByCategorySlug } from "../../src/lib/public-catalogue/catalogue-service";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";

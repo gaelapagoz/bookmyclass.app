@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { updateClassCategoryAction } from "@/app/admin/(private)/actions";
-import { getAdminClassCategoryById } from "@/lib/admin/admin-service";
+import { getAdminClassCategoryById } from "@/lib/admin/admin-catalog-core-service";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{

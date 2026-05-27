@@ -1,4 +1,4 @@
-import type { StaffPerformanceItem } from "@/lib/admin/admin-service";
+import type { StaffPerformanceItem } from "@/lib/admin/admin-analytics-service";
 
 type Props = {
   items: StaffPerformanceItem[];
@@ -42,4 +42,5 @@ export default function AdminStaffPerformanceTable({ items, className }: Props) 
     </article>
   );
 }
+
 

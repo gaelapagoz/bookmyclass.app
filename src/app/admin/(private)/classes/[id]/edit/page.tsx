@@ -7,7 +7,7 @@ import {
   getAdminClassById,
   getAdminClassScheduleOptions,
   getClassCategoryOptions,
-} from "@/lib/admin/admin-service";
+} from "@/lib/admin/admin-catalog-core-service";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ error?: string }>;

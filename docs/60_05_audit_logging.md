@@ -24,4 +24,4 @@ Purpose: document audit/provenance mechanisms currently present.
 
 ## Canonical References
 - `prisma/schema.prisma`
-- `src/lib/admin/admin-service.ts`
+- `src/lib/admin/admin-catalog-service.ts`

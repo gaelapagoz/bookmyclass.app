@@ -1,4 +1,4 @@
-﻿/* @vitest-environment jsdom */
+/* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
@@ -11,7 +11,7 @@ vi.mock("@/app/admin/(private)/actions", () => ({
   createLearningProgramAction: vi.fn(),
 }));
 
-vi.mock("@/lib/admin/admin-service", () => ({
+vi.mock("@/lib/admin/admin-catalog-core-service", () => ({
   getAdminLearningVideoById: vi.fn(async () => ({
     id: "video-1",
     legacyId: "course-1",
@@ -58,7 +58,7 @@ describe("admin learning video edit page", () => {
     expect(screen.getByRole("link", { name: "Back to learning videos" })).toBeInTheDocument();
     expect(screen.getByTestId("admin-learning-video-edit-form")).toBeInTheDocument();
     expect(screen.getByTestId("learning-video-thumbnail-upload")).toBeInTheDocument();
-    expect(screen.getByText("Recommended 1600×900 · JPG or PNG · < 2 MB")).toBeInTheDocument();
+    expect(screen.getByText(/Recommended 1600.*900 .* JPG or PNG .* < 2 MB/)).toBeInTheDocument();
     expect(screen.getByTestId("learning-video-thumbnail-preview")).toBeInTheDocument();
     expect(screen.getByTestId("learning-video-update-submit")).toHaveTextContent("Update learning video");
     expect(screen.getByLabelText("Course Type")).toBeInTheDocument();
@@ -162,4 +162,5 @@ describe("admin learning video edit page", () => {
     }
   });
 });
+
 

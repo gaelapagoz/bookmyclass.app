@@ -1,4 +1,4 @@
-import type { TopClassSessionItem } from "@/lib/admin/admin-service";
+import type { TopClassSessionItem } from "@/lib/admin/admin-analytics-service";
 
 type Props = {
   items: TopClassSessionItem[];
@@ -29,6 +29,7 @@ export default function AdminTopClassSessionsCard({ items, className }: Props) {
     </article>
   );
 }
+
 
 
 

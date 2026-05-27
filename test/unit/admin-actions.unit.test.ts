@@ -84,10 +84,7 @@ vi.mock("@/lib/auth/require-auth", () => ({
   }),
 }));
 
-vi.mock("@/lib/admin/admin-service", () => ({
-  addSessionAttendeeByManager: vi.fn(),
-  adjustAdminClientCredits: vi.fn(),
-  cancelAdminClientMembership: vi.fn(),
+vi.mock("@/lib/admin/admin-catalog-core-service", () => ({
   cleanupAdminClassCreateFailure: vi.fn(),
   cleanupAdminLearningProgramCreateFailure: vi.fn(),
   createAdminClass: vi.fn(),
@@ -96,24 +93,39 @@ vi.mock("@/lib/admin/admin-service", () => ({
   createAdminLearningProgram: vi.fn(),
   createAdminLearningVideo: vi.fn(),
   getAdminLearningVideoById: vi.fn(),
-  upsertAdminClassScheduleConfig: vi.fn(),
-  createAdminRecurringSessions: vi.fn(),
-  createAdminSession: vi.fn(),
   createAdminPlan: vi.fn(),
   createAdminSubscription: vi.fn(),
-  createAdminUser: vi.fn(),
   createAdminSiteWeeklyScheduleEntry: vi.fn(),
   updateAdminSiteWeeklyScheduleEntry: vi.fn(),
   deleteAdminSiteWeeklyScheduleEntry: vi.fn(),
   updateAdminCancellationPeriodHours: vi.fn(),
   updateAdminSiteTimeZone: vi.fn(),
-  removeSessionAttendeeByManager: vi.fn(),
   resolveAdminActorUser: vi.fn(),
   updateAdminClassImage: vi.fn(),
   updateAdminLearningProgram: vi.fn(),
   updateAdminLearningVideo: vi.fn(),
   updateAdminPlan: vi.fn(),
+}));
+
+vi.mock("@/lib/admin/admin-session-service", () => ({
+  createAdminRecurringSessions: vi.fn(),
+  createAdminSession: vi.fn(),
   updateAdminSession: vi.fn(),
+  upsertAdminClassScheduleConfig: vi.fn(),
+}));
+
+vi.mock("@/lib/admin/admin-booking-service", () => ({
+  addSessionAttendeeByManager: vi.fn(),
+  removeSessionAttendeeByManager: vi.fn(),
+}));
+
+vi.mock("@/lib/admin/admin-user-service", () => ({
+  adjustAdminClientCredits: vi.fn(),
+  bulkAddClientMarketingSegments: vi.fn(),
+  bulkRemoveClientMarketingSegments: vi.fn(),
+  bulkSetClientMarketingSubscriptionStatus: vi.fn(),
+  cancelAdminClientMembership: vi.fn(),
+  createAdminUser: vi.fn(),
   updateAdminTeacherImage: vi.fn(),
   updateAdminUser: vi.fn(),
 }));
@@ -148,9 +160,6 @@ vi.mock("@/lib/client-messages/client-message-service", () => ({
 import { auth } from "@/auth";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 import {
-  addSessionAttendeeByManager,
-  adjustAdminClientCredits,
-  cancelAdminClientMembership,
   cleanupAdminClassCreateFailure,
   cleanupAdminLearningProgramCreateFailure,
   createAdminClass,
@@ -161,22 +170,32 @@ import {
   getAdminLearningVideoById,
   createAdminPlan,
   createAdminSubscription,
-  createAdminUser,
   createAdminSiteWeeklyScheduleEntry,
   updateAdminSiteWeeklyScheduleEntry,
   deleteAdminSiteWeeklyScheduleEntry,
   updateAdminCancellationPeriodHours,
   updateAdminSiteTimeZone,
-  upsertAdminClassScheduleConfig,
-  removeSessionAttendeeByManager,
   resolveAdminActorUser,
   updateAdminLearningProgram,
   updateAdminLearningVideo,
   updateAdminPlan,
+} from "@/lib/admin/admin-catalog-core-service";
+import {
+  createAdminSession,
   updateAdminSession,
+  upsertAdminClassScheduleConfig,
+} from "@/lib/admin/admin-session-service";
+import {
+  addSessionAttendeeByManager,
+  removeSessionAttendeeByManager,
+} from "@/lib/admin/admin-booking-service";
+import {
+  adjustAdminClientCredits,
+  cancelAdminClientMembership,
+  createAdminUser,
   updateAdminTeacherImage,
   updateAdminUser,
-} from "@/lib/admin/admin-service";
+} from "@/lib/admin/admin-user-service";
 import { updateMarketingCampaignFlowDraft } from "@/lib/marketing/marketing-service";
 
 import {
@@ -1349,5 +1368,6 @@ describe("admin actions", () => {
     expect(writtenPath).not.toContain("/etc/");
   });
 });
+
 
 

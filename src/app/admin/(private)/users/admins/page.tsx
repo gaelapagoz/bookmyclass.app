@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import AdminPagination from "@/components/admin/AdminPagination";
 import AdminUsersRoleTable from "@/components/admin/AdminUsersRoleTable";
-import { getAdminAdminsPageData } from "@/lib/admin/admin-service";
+import { getAdminAdminsPageData } from "@/lib/admin/admin-user-service";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -110,3 +110,4 @@ export default async function AdminUsersAdminsPage({
     );
   }
 }
+

@@ -8,7 +8,7 @@ vi.mock("@/app/admin/(private)/actions", () => ({
   createClassAction: vi.fn(),
 }));
 
-vi.mock("@/lib/admin/admin-service", () => ({
+vi.mock("@/lib/admin/admin-catalog-core-service", () => ({
   getAdminClassScheduleOptions: vi.fn(async () => [{ id: "teacher-1", name: "Teacher One" }]),
   getClassCategoryOptions: vi.fn(async () => [{ id: "cat-1", name: "Yoga" }]),
 }));
@@ -27,3 +27,4 @@ describe("admin class create page", () => {
     expect(screen.getByLabelText("Service Image")).toHaveAttribute("type", "file");
   });
 });
+

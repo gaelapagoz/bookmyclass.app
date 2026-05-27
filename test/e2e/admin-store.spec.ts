@@ -15,6 +15,27 @@ function testHeaders(): Record<string, string> {
   };
 }
 
+async function openGiftCardEditByName(page: import("@playwright/test").Page, name: string) {
+  await page.goto("/admin/store/gift-cards");
+
+  for (let pageIndex = 0; pageIndex < 8; pageIndex += 1) {
+    const row = page.locator("tr").filter({ hasText: name }).first();
+    if ((await row.count()) > 0) {
+      await row.getByRole("link", { name: "Edit" }).click();
+      return;
+    }
+
+    const nextLink = page.getByRole("link", { name: "Next" });
+    if ((await nextLink.count()) === 0) {
+      break;
+    }
+
+    await Promise.all([page.waitForLoadState("networkidle"), nextLink.click()]);
+  }
+
+  throw new Error(`Could not locate gift-card row for "${name}" across pagination.`);
+}
+
 async function createStoreProductWithPrice(input: {
   name: string;
   productType: ProductType;
@@ -295,9 +316,7 @@ test.describe("admin store catalog coverage", () => {
       await page.goto("/store");
       await expect(page.getByText(unsyncedName)).toHaveCount(0);
 
-      await page.goto("/admin/store/gift-cards");
-      const row = page.locator("tr").filter({ hasText: createdName }).first();
-      await row.getByRole("link", { name: "Edit" }).click();
+      await openGiftCardEditByName(page, createdName);
 
       await page.getByLabel("Name").fill(updatedName);
       await page.getByLabel("Amount (EUR)").fill("50.00");
@@ -306,9 +325,7 @@ test.describe("admin store catalog coverage", () => {
       await expect(page).toHaveURL(/\/admin\/store$/);
       await expect(page.getByText(updatedName)).toBeVisible();
 
-      await page.goto("/admin/store/gift-cards");
-      const updatedRow = page.locator("tr").filter({ hasText: updatedName }).first();
-      await updatedRow.getByRole("link", { name: "Edit" }).click();
+      await openGiftCardEditByName(page, updatedName);
       await page.getByRole("button", { name: "Archive gift card" }).click();
 
       await expect(page).toHaveURL(/\/admin\/store$/);

@@ -3,11 +3,13 @@ import { Role } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
   addSessionAttendeeByManager,
+  removeSessionAttendeeByManager,
+} from "@/lib/admin/admin-booking-service";
+import {
   getAdminSessionById,
   getAdminSessionOptions,
   getAdminSessionsData,
-  removeSessionAttendeeByManager,
-} from "@/lib/admin/admin-service";
+} from "@/lib/admin/admin-session-service";
 import { assertTeacherSelfScope, assertTeacherSessionScope } from "@/lib/teacher/teacher-helpers";
 import {
   assertCanonicalMediaPublicPath,
@@ -241,3 +243,4 @@ export async function removeTeacherSessionAttendee(input: {
     },
   });
 }
+

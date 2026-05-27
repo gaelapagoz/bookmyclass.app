@@ -25,7 +25,7 @@ vi.mock("@/app/admin/(private)/actions", () => ({
   uploadClassImageAction: vi.fn(),
 }));
 
-vi.mock("@/lib/admin/admin-service", () => ({
+vi.mock("@/lib/admin/admin-catalog-core-service", () => ({
   getAdminClassById: vi.fn(async () => ({
     id: "class-1",
     categoryId: "cat-1",
@@ -103,3 +103,4 @@ describe("admin class edit page", () => {
     expect(friday).toBeChecked();
   });
 });
+

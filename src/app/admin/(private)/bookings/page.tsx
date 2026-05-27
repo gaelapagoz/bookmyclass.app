@@ -1,6 +1,6 @@
 import AdminListControls from "@/components/admin/AdminListControls";
 import AdminPagination from "@/components/admin/AdminPagination";
-import { getBookings, type AdminBookingStatusFilter } from "@/lib/admin/admin-service";
+import { getBookings, type AdminBookingStatusFilter } from "@/lib/admin/admin-booking-service";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -145,5 +145,6 @@ export default async function AdminBookingsPage({ searchParams }: { searchParams
     </section>
   );
 }
+
 
 

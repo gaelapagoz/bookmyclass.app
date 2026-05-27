@@ -77,7 +77,7 @@ Evidence label legend used in this file:
   - Admin calendar session cards show active waitlist counts for operational visibility (read-only).
   - Admin session detail supports manual attendee add/remove with server-side eligibility enforcement (eligible credit or qualifying subscription required).
   - Admin sidebar includes an `Automations` placeholder page at `/admin/automations`; operational automations are not yet configurable from UI.
-  - Evidence status: Confirmed from repo (`src/app/admin/(private)/actions.ts`, `src/lib/admin/admin-service.ts`, `src/lib/navigation/admin-nav.ts`, `src/app/admin/(private)/automations/page.tsx`, `src/lib/marketing/*`).
+  - Evidence status: Confirmed from repo (`src/app/admin/(private)/actions.ts`, `src/lib/admin/admin-catalog-service.ts`, `src/lib/navigation/admin-nav.ts`, `src/app/admin/(private)/automations/page.tsx`, `src/lib/marketing/*`).
 - Authentication/account flows:
   - Credentials auth, pending registration + verification, verification resend, password reset, profile update, password change, email change verification.
   - Evidence status: Confirmed from repo (`src/auth.ts`, `src/lib/auth/*`, `src/app/(public)/sign-*.tsx`, `src/app/(public)/verify-email/page.tsx`, `src/app/(public)/forgot-password/page.tsx`, `src/app/(public)/reset-password/page.tsx`).
@@ -106,11 +106,11 @@ Evidence label legend used in this file:
 - Admin/MasterAdmin behavior:
   - Shared route/admin access checks use `isAdminRole`.
   - Privileged `MASTER_ADMIN` assignment/management is enforced server-side in admin user create/update flows.
-  - Evidence status: Confirmed from repo (`src/lib/auth/admin-access.ts`, `src/lib/admin/admin-service.ts`, `src/app/admin/(private)/actions.ts`).
+  - Evidence status: Confirmed from repo (`src/lib/auth/admin-access.ts`, `src/lib/admin/admin-catalog-service.ts`, `src/app/admin/(private)/actions.ts`).
 - Role escalation protections:
   - Admin session required for admin mutation paths.
   - `MASTER_ADMIN` assignment/management is protected server-side: `ADMIN` actors are blocked and `MASTER_ADMIN` is required for privileged role operations, with UI defense-in-depth reflecting that boundary.
-  - Evidence status: Confirmed from repo (`src/app/admin/(private)/actions.ts`, `src/lib/admin/admin-service.ts`, `src/app/admin/(private)/users/new/page.tsx`, `src/app/admin/(private)/users/[id]/edit/page.tsx`).
+  - Evidence status: Confirmed from repo (`src/app/admin/(private)/actions.ts`, `src/lib/admin/admin-catalog-service.ts`, `src/app/admin/(private)/users/new/page.tsx`, `src/app/admin/(private)/users/[id]/edit/page.tsx`).
 
 ## 4. Architecture overview
 - High-level architecture:
@@ -185,7 +185,7 @@ Evidence label legend used in this file:
   2. Server actions validate inputs and invoke admin/domain services.
   3. Services mutate DB and redirect to admin pages.
   - Flow status: Confirmed.
-  - Evidence status: Confirmed from repo (`src/app/admin/(private)/layout.tsx`, `src/app/admin/(private)/actions.ts`, `src/lib/admin/admin-service.ts`).
+  - Evidence status: Confirmed from repo (`src/app/admin/(private)/layout.tsx`, `src/app/admin/(private)/actions.ts`, `src/lib/admin/admin-catalog-service.ts`).
 - Email verification / password reset / identity changes:
   1. Verification tokens are generated/sent/consumed for signup and email change.
   2. Password reset tokens are hashed, one-time claimed transactionally, then sessions are invalidated.
@@ -218,7 +218,7 @@ Evidence label legend used in this file:
 - Audit/provenance fields:
   - Widespread `createdAt/updatedAt`.
   - `AuditLog` model and `createdById` references in ledger/admin mutations.
-  - Evidence status: Confirmed from repo (`prisma/schema.prisma`, `src/lib/admin/admin-service.ts`).
+  - Evidence status: Confirmed from repo (`prisma/schema.prisma`, `src/lib/admin/admin-catalog-service.ts`).
 
 ## 7. Auth and security architecture
 - Auth provider/library setup:
@@ -281,11 +281,11 @@ Evidence label legend used in this file:
   - Evidence status: Confirmed from repo (`src/app/admin/page.tsx`, `src/lib/auth/require-auth.ts`).
 - Admin data mutation paths:
   - Central server actions call service layer modules.
-  - Evidence status: Confirmed from repo (`src/app/admin/(private)/actions.ts`, `src/lib/admin/admin-service.ts`).
+  - Evidence status: Confirmed from repo (`src/app/admin/(private)/actions.ts`, `src/lib/admin/admin-catalog-service.ts`).
 - Special protections / restrictions:
   - Action-level `assertAdminAccess`.
   - Credit adjustments validate actor role and client target role.
-  - Evidence status: Confirmed from repo (`src/app/admin/(private)/actions.ts`, `src/lib/admin/admin-service.ts`).
+  - Evidence status: Confirmed from repo (`src/app/admin/(private)/actions.ts`, `src/lib/admin/admin-catalog-service.ts`).
 - MFA:
   - No MFA implementation found.
   - Evidence status: Missing / not verifiable from repository.
@@ -641,7 +641,7 @@ validation and must not be treated as an automatic release gate.
   - `sentry.edge.config.ts`
 - Admin and operations evidence:
   - `src/app/admin/(private)/actions.ts`
-  - `src/lib/admin/admin-service.ts`
+  - `src/lib/admin/admin-catalog-service.ts`
   - `src/app/admin/(private)/*`
   - `src/lib/client-messages/client-message-service.ts`
   - `src/lib/public-documents/agenda-document-service.ts`

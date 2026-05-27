@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   createAdminSubscription,
   updateAdminSubscription,
-} from "../../src/lib/admin/admin-service";
+} from "../../src/lib/admin/admin-catalog-core-service";
 import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
 

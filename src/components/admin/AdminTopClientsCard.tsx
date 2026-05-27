@@ -1,4 +1,4 @@
-import type { TopClientItem } from "@/lib/admin/admin-service";
+import type { TopClientItem } from "@/lib/admin/admin-analytics-service";
 
 type Props = {
   items: TopClientItem[];
@@ -24,5 +24,6 @@ export default function AdminTopClientsCard({ items, className }: Props) {
     </article>
   );
 }
+
 
 

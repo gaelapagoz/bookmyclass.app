@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { createSessionAction } from "@/app/admin/(private)/actions";
 import SessionScheduleModeFields from "@/components/admin/SessionScheduleModeFields";
-import { getAdminSessionOptions } from "@/lib/admin/admin-service";
+import { getAdminSessionOptions } from "@/lib/admin/admin-session-service";
 
 type SearchParams = Promise<{ error?: string }>;
 
@@ -83,4 +83,5 @@ export default async function AdminSessionCreatePage({ searchParams }: { searchP
     </section>
   );
 }
+
 

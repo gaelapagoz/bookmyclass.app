@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { updatePlanAction } from "@/app/admin/(private)/actions";
-import { getAdminPlanById } from "@/lib/admin/admin-service";
+import { getAdminPlanById } from "@/lib/admin/admin-catalog-core-service";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ error?: string }>;

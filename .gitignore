@@ -96,6 +96,9 @@ security-output/
 *.zip
 
 .tmp_ci_logs
+tmp_*
+tmp_*.ts
+tmp_*.js
 
 tools
 

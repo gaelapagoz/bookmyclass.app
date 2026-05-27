@@ -54,7 +54,7 @@ vi.mock("@/lib/auth/require-auth", () => ({
   }),
 }));
 
-vi.mock("@/lib/admin/admin-service", () => ({
+vi.mock("@/lib/admin/admin-catalog-core-service", () => ({
   addSessionAttendeeByManager: vi.fn(),
   adjustAdminClientCredits: vi.fn(),
   cancelAdminClientMembership: vi.fn(),
@@ -134,3 +134,4 @@ describe("sendMarketingCampaignFlowTestEmailAction", () => {
     });
   });
 });
+
