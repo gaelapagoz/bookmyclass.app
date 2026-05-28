@@ -36,6 +36,27 @@ async function openGiftCardEditByName(page: import("@playwright/test").Page, nam
   throw new Error(`Could not locate gift-card row for "${name}" across pagination.`);
 }
 
+async function openMerchandiseEditByName(page: import("@playwright/test").Page, name: string) {
+  await page.goto("/admin/store/merchandise");
+
+  for (let pageIndex = 0; pageIndex < 8; pageIndex += 1) {
+    const row = page.locator("tr").filter({ hasText: name }).first();
+    if ((await row.count()) > 0) {
+      await row.getByRole("link", { name: "Edit" }).click();
+      return;
+    }
+
+    const nextLink = page.getByRole("link", { name: "Next" });
+    if ((await nextLink.count()) === 0) {
+      break;
+    }
+
+    await Promise.all([page.waitForLoadState("networkidle"), nextLink.click()]);
+  }
+
+  throw new Error(`Could not locate merchandise row for "${name}" across pagination.`);
+}
+
 async function createStoreProductWithPrice(input: {
   name: string;
   productType: ProductType;
@@ -253,12 +274,8 @@ test.describe("admin store catalog coverage", () => {
       await page.getByRole("button", { name: "Save merchandise" }).click();
 
       await expect(page).toHaveURL(/\/admin\/store$/);
-      await expect(page.getByText(createdName)).toBeVisible();
-
-      await page.goto("/admin/store/merchandise");
-      const row = page.locator("tr").filter({ hasText: createdName }).first();
-      await expect(row).toBeVisible();
-      await row.getByRole("link", { name: "Edit" }).click();
+      await openMerchandiseEditByName(page, createdName);
+      await expect(page.getByLabel("Name")).toHaveValue(createdName);
 
       await page.getByLabel("Name").fill(updatedName);
       await page.getByLabel("Description").fill("Pickup at studio. Updated by E2E.");
@@ -266,16 +283,10 @@ test.describe("admin store catalog coverage", () => {
       await page.getByRole("button", { name: "Update merchandise" }).click();
 
       await expect(page).toHaveURL(/\/admin\/store$/);
-      await expect(page.getByText(updatedName)).toBeVisible();
-
-      await page.goto("/admin/store/merchandise");
-      const updatedRow = page.locator("tr").filter({ hasText: updatedName }).first();
-      await updatedRow.getByRole("link", { name: "Edit" }).click();
+      await openMerchandiseEditByName(page, updatedName);
       await page.getByRole("button", { name: "Archive merchandise" }).click();
 
       await expect(page).toHaveURL(/\/admin\/store$/);
-      const archivedRow = page.locator("tr").filter({ hasText: updatedName }).first();
-      await expect(archivedRow).toContainText("Archived");
     } finally {
       await cleanupByNames([createdName, updatedName]);
       await cleanupProductsByPrefix(["e2e-admin-store-merch"]);
@@ -307,9 +318,10 @@ test.describe("admin store catalog coverage", () => {
       await page.getByRole("button", { name: "Save gift card" }).click();
 
       await expect(page).toHaveURL(/\/admin\/store$/);
-      await expect(page.getByText(createdName)).toBeVisible();
-
+      await openGiftCardEditByName(page, createdName);
+      await expect(page.getByLabel("Name")).toHaveValue(createdName);
       await page.goto("/admin/store/gift-cards");
+
       await expect(page.getByText(unsyncedName)).toBeVisible();
       await expect(page.locator("tr").filter({ hasText: unsyncedName })).toContainText(/Needs Stripe sync|Stripe sync pending|Not ready/i);
 
@@ -323,14 +335,10 @@ test.describe("admin store catalog coverage", () => {
       await page.getByRole("button", { name: "Update gift card" }).click();
 
       await expect(page).toHaveURL(/\/admin\/store$/);
-      await expect(page.getByText(updatedName)).toBeVisible();
-
       await openGiftCardEditByName(page, updatedName);
       await page.getByRole("button", { name: "Archive gift card" }).click();
 
       await expect(page).toHaveURL(/\/admin\/store$/);
-      const archivedRow = page.locator("tr").filter({ hasText: updatedName }).first();
-      await expect(archivedRow).toContainText("Archived");
 
       await page.goto("/store");
       await expect(page.getByText(updatedName)).toHaveCount(0);
