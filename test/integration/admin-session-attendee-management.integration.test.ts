@@ -185,7 +185,7 @@ async function grantCollectiveUnlimitedSubscription(input: { clientId: string })
 describe("admin session attendee management service", () => {
   async function seedWaitlistPromotionTemplate() {
     await prisma.emailTemplate.upsert({
-      where: { templateKey: "waitlist.promotion.confirmed-booking" },
+      where: { templateKey: "waitlist.promoted" },
       update: {
         name: "Waitlist Promotion Booking Confirmation",
         category: "BOOKING",
@@ -195,7 +195,7 @@ describe("admin session attendee management service", () => {
         isActive: true,
       },
       create: {
-        templateKey: "waitlist.promotion.confirmed-booking",
+        templateKey: "waitlist.promoted",
         name: "Waitlist Promotion Booking Confirmation",
         category: "BOOKING",
         subjectTemplate: "You're in! Your class booking is now confirmed",

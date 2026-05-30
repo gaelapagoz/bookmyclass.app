@@ -15,7 +15,10 @@ import { prisma } from "@/lib/db";
 import { STORE_PICKUP_WORDING } from "@/lib/store/store-constants";
 import { requestEmailChange, UserIdentityError } from "@/lib/auth/user-identity-service";
 import { enqueueWaitlistPromotionNotification } from "@/lib/public-booking/waitlist-notification-service";
-import { ensureBookingConfirmationEventForConfirmedBooking } from "@/lib/public-booking/booking-confirmation-transition-service";
+import {
+  ensureBookingConfirmationEventForConfirmedBooking,
+  queueBookingCancellationEvent,
+} from "@/lib/public-booking/booking-confirmation-transition-service";
 import {
   cancelSessionWaitlistEntry,
   promoteWaitlistAfterCancellationWithinTx,
@@ -820,6 +823,16 @@ export async function cancelClientBooking(input: {
       }
     }),
   );
+
+  try {
+    await queueBookingCancellationEvent({ bookingId: booking.id });
+  } catch (error) {
+    console.error("[dashboard-service] booking cancellation email enqueue failed", {
+      alertCode: "BOOKING_CANCELLATION_EMAIL_ENQUEUE_FAILED",
+      bookingId: booking.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 export async function getDashboardMembershipData(

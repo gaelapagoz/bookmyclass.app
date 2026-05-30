@@ -12,6 +12,7 @@ import {
   StudioSessionStatus,
 } from "@prisma/client";
 import { prisma } from "../db";
+import { ensureExpectedAutomationTemplateExists } from "../email/email-automation-admin-service";
 import { resolveEntitlementScope } from "../booking/entitlement-scope";
 import { bookingDraftActiveBookingFilter } from "./booking-draft-service";
 import { transitionBookingToConfirmedAndQueueEmail } from "./booking-confirmation-transition-service";
@@ -1206,6 +1207,8 @@ async function applyExistingPlanSelection(input: {
   requiredScope: EntitlementScope;
   userId: string;
 }): Promise<SelectPaymentResult> {
+  await ensureExpectedAutomationTemplateExists("booking.class-booked");
+
   if (input.entitlementId.startsWith("subscription:")) {
     const subscriptionId = input.entitlementId.replace("subscription:", "");
     const now = new Date();

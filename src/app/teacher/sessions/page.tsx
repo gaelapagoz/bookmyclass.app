@@ -1,6 +1,8 @@
 import { requireTeacherSession } from "@/lib/auth/require-auth";
 import { getTeacherAssignedSessions } from "@/lib/teacher/teacher-service";
 import { SessionsWeeklyCalendar, type SessionCalendarItem } from "@/components/shared/SessionsWeeklyCalendar";
+import { getSiteDateKey, getDateRangeUtc, isValidDateKey } from "@/lib/public-catalogue/timezone";
+import { getSiteTimeZone } from "@/lib/site-settings/site-settings-service";
 
 type SearchParams = Promise<{
   week?: string;
@@ -10,39 +12,46 @@ const HOUR_START = 6;
 const HOUR_END = 22;
 const DAYS_IN_WEEK = 7;
 
-function parseDateOnly(value: string | undefined): Date | null {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+function parseDateOnly(value: string | undefined): string | null {
+  if (!value || !isValidDateKey(value)) {
     return null;
   }
-
-  const parsed = new Date(`${value}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return value;
 }
 
-function startOfWeek(input: Date): Date {
-  const date = new Date(input);
-  date.setHours(0, 0, 0, 0);
-  const day = date.getDay();
-  const offset = day === 0 ? -6 : 1 - day;
-  date.setDate(date.getDate() + offset);
-  return date;
+function addDaysToDateKey(dateKey: string, amount: number): string {
+  const [yearRaw, monthRaw, dayRaw] = dateKey.split("-");
+  const base = new Date(Date.UTC(Number(yearRaw), Number(monthRaw) - 1, Number(dayRaw), 12, 0, 0));
+  base.setUTCDate(base.getUTCDate() + amount);
+  return `${base.getUTCFullYear()}-${String(base.getUTCMonth() + 1).padStart(2, "0")}-${String(base.getUTCDate()).padStart(2, "0")}`;
 }
 
-function addDays(input: Date, amount: number): Date {
-  const date = new Date(input);
-  date.setDate(date.getDate() + amount);
-  return date;
+function resolveWeekdayIndex(date: Date, timeZone: string): number {
+  const weekdayLabel = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "short",
+  }).format(date);
+  const map: Record<string, number> = {
+    Mon: 0,
+    Tue: 1,
+    Wed: 2,
+    Thu: 3,
+    Fri: 4,
+    Sat: 5,
+    Sun: 6,
+  };
+  return map[weekdayLabel] ?? 0;
 }
 
-function toDateKey(input: Date): string {
-  const year = input.getFullYear();
-  const month = String(input.getMonth() + 1).padStart(2, "0");
-  const day = String(input.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+function resolveWeekStartDateKey(dateKey: string, timeZone: string): string {
+  const { fromUtc } = getDateRangeUtc(dateKey, timeZone);
+  const weekdayIndex = resolveWeekdayIndex(fromUtc, timeZone);
+  return addDaysToDateKey(dateKey, -weekdayIndex);
 }
 
-function formatDate(input: Date): string {
+function formatDate(input: Date, timeZone: string): string {
   return new Intl.DateTimeFormat("en-BE", {
+    timeZone,
     dateStyle: "medium",
   }).format(input);
 }
@@ -58,16 +67,19 @@ export default async function TeacherSessionsPage({
   });
 
   const params = (await (searchParams ?? Promise.resolve({}))) as { week?: string };
+  const timeZone = await getSiteTimeZone();
   const today = new Date();
-  const selectedStart = startOfWeek(parseDateOnly(params.week) ?? today);
-  const selectedEnd = addDays(selectedStart, DAYS_IN_WEEK);
+  const anchorDateKey = parseDateOnly(params.week) ?? getSiteDateKey(today, timeZone);
+  const selectedStartDateKey = resolveWeekStartDateKey(anchorDateKey, timeZone);
+  const selectedEndDateKey = addDaysToDateKey(selectedStartDateKey, DAYS_IN_WEEK);
+  const previousWeek = addDaysToDateKey(selectedStartDateKey, -DAYS_IN_WEEK);
+  const nextWeek = addDaysToDateKey(selectedStartDateKey, DAYS_IN_WEEK);
+  const currentWeek = resolveWeekStartDateKey(getSiteDateKey(today, timeZone), timeZone);
 
-  const previousWeek = toDateKey(addDays(selectedStart, -DAYS_IN_WEEK));
-  const nextWeek = toDateKey(addDays(selectedStart, DAYS_IN_WEEK));
-  const currentWeek = toDateKey(startOfWeek(today));
-
+  const selectedStart = getDateRangeUtc(selectedStartDateKey, timeZone).fromUtc;
+  const selectedEnd = getDateRangeUtc(selectedEndDateKey, timeZone).fromUtc;
   const days = Array.from({ length: DAYS_IN_WEEK }, (_, index) =>
-    addDays(selectedStart, index),
+    getDateRangeUtc(addDaysToDateKey(selectedStartDateKey, index), timeZone).fromUtc,
   );
   const hours = Array.from(
     { length: HOUR_END - HOUR_START },
@@ -93,7 +105,7 @@ export default async function TeacherSessionsPage({
         <section className="rounded-xl border border-[#d3dbe5] bg-white p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-medium text-[#334155]">
-              Week of {formatDate(selectedStart)}
+              Week of {formatDate(selectedStart, timeZone)}
             </h2>
             <div className="flex items-center gap-2 text-sm">
               <a
@@ -127,9 +139,9 @@ export default async function TeacherSessionsPage({
                 ...s,
                 href: `/teacher/sessions/${s.id}`,
               }))}
-              weekStart={selectedStart}
               days={days}
               hours={hours}
+              timeZone={timeZone}
             />
           )}
         </section>
@@ -146,4 +158,3 @@ export default async function TeacherSessionsPage({
     );
   }
 }
-

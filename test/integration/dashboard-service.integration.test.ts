@@ -294,11 +294,21 @@ describe("dashboard-service integration", () => {
         entryType: CreditLedgerEntryType.RESTORE,
       },
     });
+    const cancellationOutboxEvents = await prisma.emailAutomationEvent.findMany({
+      where: {
+        idempotencyKey: `booking-cancelled:${booking.id}:cancelled-v1`,
+      },
+      select: {
+        template: { select: { templateKey: true } },
+      },
+    });
 
     expect(updatedBooking?.status).toBe(BookingStatus.CANCELLED);
     expect(updatedBooking?.creditRefundedAt).not.toBeNull();
     expect(restoreEntries).toHaveLength(1);
     expect(restoreEntries[0]?.amount).toBe(1);
+    expect(cancellationOutboxEvents).toHaveLength(1);
+    expect(cancellationOutboxEvents[0]?.template.templateKey).toBe("booking.class-cancelled");
   });
 
   it("rejects cancellation when it is past cutoff", async () => {

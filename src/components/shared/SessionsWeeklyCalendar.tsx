@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { type StudioSessionStatus } from "@prisma/client";
 import { getSessionWaitlistLabel } from "@/components/shared/session-waitlist-label";
+import { getSiteDateKey, getSiteTimeLabel } from "@/lib/public-catalogue/timezone";
 
 export type SessionCalendarItem = {
   id: string;
@@ -24,44 +25,39 @@ function getHourLabel(hour: number): string {
   return `${String(hour).padStart(2, "0")}:00`;
 }
 
-function formatDayHeader(input: Date): string {
+function formatDayHeader(input: Date, timeZone: string): string {
   return new Intl.DateTimeFormat("en-BE", {
+    timeZone,
     weekday: "short",
     day: "2-digit",
     month: "2-digit",
   }).format(input);
 }
 
-function formatTime(input: string): string {
-  return new Intl.DateTimeFormat("en-BE", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(input));
+function formatTime(input: string, timeZone: string): string {
+  return getSiteTimeLabel(new Date(input), timeZone);
 }
 
-function toDateKey(input: Date): string {
-  const year = input.getFullYear();
-  const month = String(input.getMonth() + 1).padStart(2, "0");
-  const day = String(input.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+function toDateKey(input: Date, timeZone: string): string {
+  return getSiteDateKey(input, timeZone);
 }
 
 function groupByDayHour(
   sessions: SessionCalendarItem[],
-  weekStart: Date,
+  dayKeys: string[],
+  timeZone: string,
 ): Map<string, SessionCalendarItem[]> {
   const grouped = new Map<string, SessionCalendarItem[]>();
+  const dayIndexByDateKey = new Map(dayKeys.map((dateKey, index) => [dateKey, index]));
 
   for (const session of sessions) {
-    const date = new Date(session.startsAt);
-    const dayOffset = Math.floor(
-      (date.getTime() - weekStart.getTime()) / (24 * 60 * 60 * 1000),
-    );
-    if (dayOffset < 0 || dayOffset >= DAYS_IN_WEEK) {
+    const startsAt = new Date(session.startsAt);
+    const dayOffset = dayIndexByDateKey.get(getSiteDateKey(startsAt, timeZone));
+    if (dayOffset === undefined || dayOffset < 0 || dayOffset >= DAYS_IN_WEEK) {
       continue;
     }
 
-    const hour = date.getHours();
+    const hour = Number.parseInt(getSiteTimeLabel(startsAt, timeZone).slice(0, 2), 10);
     const key = `${dayOffset}-${hour}`;
     const existing = grouped.get(key) ?? [];
     existing.push(session);
@@ -74,18 +70,19 @@ function groupByDayHour(
 
 interface SessionsWeeklyCalendarProps {
   sessions: SessionCalendarItem[];
-  weekStart: Date;
   days: Date[];
   hours: number[];
+  timeZone: string;
 }
 
 export function SessionsWeeklyCalendar({
   sessions,
-  weekStart,
   days,
   hours,
+  timeZone,
 }: SessionsWeeklyCalendarProps) {
-  const grouped = groupByDayHour(sessions, weekStart);
+  const dayKeys = days.map((day) => toDateKey(day, timeZone));
+  const grouped = groupByDayHour(sessions, dayKeys, timeZone);
 
   return (
     <div className="overflow-x-auto">
@@ -96,10 +93,10 @@ export function SessionsWeeklyCalendar({
           </div>
           {days.map((day) => (
             <div
-              key={toDateKey(day)}
+              key={toDateKey(day, timeZone)}
               className="border-r border-[#dbe3ee] px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-[#5a6d86] last:border-r-0"
             >
-              {formatDayHeader(day)}
+              {formatDayHeader(day, timeZone)}
             </div>
           ))}
         </div>
@@ -130,8 +127,8 @@ export function SessionsWeeklyCalendar({
                                 {session.className} - {session.title}
                               </p>
                               <p className="mt-1 text-[11px] text-[#334155]">
-                                {formatTime(session.startsAt)} -{" "}
-                                {formatTime(session.endsAt)}
+                                {formatTime(session.startsAt, timeZone)} -{" "}
+                                {formatTime(session.endsAt, timeZone)}
                               </p>
                               <p className="text-[11px] text-[#334155]">
                                 Teacher: {session.teacherName}
@@ -152,8 +149,8 @@ export function SessionsWeeklyCalendar({
                                 {session.className} - {session.title}
                               </p>
                               <p className="mt-1 text-[11px] text-[#334155]">
-                                {formatTime(session.startsAt)} -{" "}
-                                {formatTime(session.endsAt)}
+                                {formatTime(session.startsAt, timeZone)} -{" "}
+                                {formatTime(session.endsAt, timeZone)}
                               </p>
                               <p className="text-[11px] text-[#334155]">
                                 Teacher: {session.teacherName}

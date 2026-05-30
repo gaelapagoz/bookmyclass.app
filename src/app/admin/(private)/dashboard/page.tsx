@@ -15,11 +15,13 @@ import {
 import {
   getAdminDashboardData,
 } from "@/lib/admin/admin-catalog-core-service";
+import { getSiteTimeZone } from "@/lib/site-settings/site-settings-service";
 
 type SearchParams = Promise<{ period?: string | string[] }>;
 
-function formatDateTime(value: string) {
+function formatDateTime(value: string, timeZone: string) {
   return new Intl.DateTimeFormat("en-BE", {
+    timeZone,
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
@@ -36,6 +38,7 @@ function resolvePeriod(value: string | string[] | undefined): AdminPeriod {
 export default async function AdminDashboardPage({ searchParams }: { searchParams: SearchParams }) {
   const { period: rawPeriod } = await searchParams;
   const period = resolvePeriod(rawPeriod);
+  const timeZone = await getSiteTimeZone();
 
   let data: Awaited<ReturnType<typeof getAdminDashboardData>> | null = null;
   let metricCards: Awaited<ReturnType<typeof getOperationalMetricCards>> | null = null;
@@ -95,7 +98,7 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
                     {data.upcomingSessions.slice(0, 8).map((session) => (
                       <li key={session.id} className="rounded-md border border-[#e2e8f0] px-3 py-2">
                         <p className="text-sm font-medium text-[#1f2735]">{session.title}</p>
-                        <p className="text-xs text-[#5a6d86]">{formatDateTime(session.startsAt)}</p>
+                        <p className="text-xs text-[#5a6d86]">{formatDateTime(session.startsAt, timeZone)}</p>
                         <p className="text-xs text-[#5a6d86]">
                           {session.bookedSpots}/{session.capacity} booked
                         </p>

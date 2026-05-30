@@ -1,8 +1,9 @@
 import { enqueueEmailAutomationEvent } from "@/lib/email/email-automation-outbox-service";
+import { ensureExpectedAutomationTemplateExists } from "@/lib/email/email-automation-admin-service";
 import { formatSessionDateTime } from "@/lib/public-booking/format-session-date-time";
 import { type WaitlistPromotionNotification } from "@/lib/public-booking/waitlist-service";
 
-const WAITLIST_PROMOTION_TEMPLATE_KEY = "waitlist.promotion.confirmed-booking";
+const WAITLIST_PROMOTION_TEMPLATE_KEY = "waitlist.promoted";
 
 function buildWaitlistPromotionEmailIdempotencyKey(input: {
   bookingId: string;
@@ -14,6 +15,8 @@ function buildWaitlistPromotionEmailIdempotencyKey(input: {
 export async function enqueueWaitlistPromotionNotification(
   promotion: WaitlistPromotionNotification,
 ): Promise<void> {
+  await ensureExpectedAutomationTemplateExists(WAITLIST_PROMOTION_TEMPLATE_KEY);
+
   const dateTimeLabel = formatSessionDateTime({
     startsAt: promotion.sessionStartsAt,
     endsAt: promotion.sessionEndsAt,

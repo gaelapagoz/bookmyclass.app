@@ -229,7 +229,7 @@ async function fillSessionToCapacity(sessionId: string, capacity: number) {
 
 async function seedWaitlistPromotionTemplate() {
   await prisma.emailTemplate.upsert({
-    where: { templateKey: "waitlist.promotion.confirmed-booking" },
+    where: { templateKey: "waitlist.promoted" },
     update: {
       name: "Waitlist Promotion Booking Confirmation",
       category: "BOOKING",
@@ -241,7 +241,7 @@ async function seedWaitlistPromotionTemplate() {
       isActive: true,
     },
     create: {
-      templateKey: "waitlist.promotion.confirmed-booking",
+      templateKey: "waitlist.promoted",
       name: "Waitlist Promotion Booking Confirmation",
       category: "BOOKING",
       subjectTemplate: "You're in! Your class booking is now confirmed",
@@ -396,7 +396,7 @@ describe("waitlist runtime integration", () => {
 
   it("promotes waitlist clients using FIFO after cancellation", async () => {
     await prisma.emailTemplate.upsert({
-      where: { templateKey: "waitlist.promotion.confirmed-booking" },
+      where: { templateKey: "waitlist.promoted" },
       update: {
         name: "Custom Waitlist Name",
         category: "BOOKING",
@@ -408,7 +408,7 @@ describe("waitlist runtime integration", () => {
         isActive: true,
       },
       create: {
-        templateKey: "waitlist.promotion.confirmed-booking",
+        templateKey: "waitlist.promoted",
         name: "Custom Waitlist Name",
         category: "BOOKING",
         subjectTemplate: "Custom waitlist subject",
@@ -492,7 +492,7 @@ describe("waitlist runtime integration", () => {
         template: { select: { templateKey: true } },
       },
     });
-    expect(outboxEvent?.template.templateKey).toBe("waitlist.promotion.confirmed-booking");
+    expect(outboxEvent?.template.templateKey).toBe("waitlist.promoted");
     expect(outboxEvent?.payloadJson).toMatchObject({
       clientName: waitlistFirst.name,
       sessionTitle: session.title,
@@ -503,7 +503,8 @@ describe("waitlist runtime integration", () => {
     expect((outboxEvent?.payloadJson as { dateTimeLabel?: unknown } | null)?.dateTimeLabel).toEqual(expect.any(String));
 
     const templateAfter = await prisma.emailTemplate.findUnique({
-      where: { templateKey: "waitlist.promotion.confirmed-booking" },
+      where: { templateKey: "waitlist.promoted" },
+      
       select: {
         name: true,
         subjectTemplate: true,
@@ -910,7 +911,7 @@ describe("waitlist runtime integration", () => {
     });
 
     await prisma.emailTemplate.delete({
-      where: { templateKey: "waitlist.promotion.confirmed-booking" },
+      where: { templateKey: "waitlist.promoted" },
     });
 
     const originalAuditCreate = prisma.auditLog.create.bind(prisma.auditLog);

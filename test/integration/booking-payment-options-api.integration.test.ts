@@ -735,6 +735,55 @@ describe("booking payment options api", () => {
     expect(confirmationOutboxEvents[0]?.template.templateKey).toBe("booking.class-booked");
   });
 
+  it("confirms existing-credit booking even when booking confirmation template is missing", async () => {
+    const fixture = await createFixture({
+      bookingIntent: BookingIntent.USE_ENTITLEMENT,
+      createActivePlanCount: 1,
+    });
+    await prisma.emailTemplate.delete({
+      where: { templateKey: "booking.class-booked" },
+    });
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: fixture.bookingUser.id, email: fixture.bookingUser.email, name: fixture.bookingUser.name },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await applyPlan(
+      new Request("http://localhost/api", {
+        method: "POST",
+        headers: sameOriginJsonHeaders,
+        body: JSON.stringify({
+          mode: "EXISTING_PLAN",
+          entitlementId: fixture.entitlementIds[0],
+        }),
+      }),
+      { params: Promise.resolve({ bookingId: fixture.booking.id }) },
+    );
+
+    const updated = await prisma.booking.findUnique({ where: { id: fixture.booking.id } });
+    const consumeEntries = await prisma.creditLedgerEntry.findMany({
+      where: {
+        bookingId: fixture.booking.id,
+        entitlementId: fixture.entitlementIds[0],
+        entryType: CreditLedgerEntryType.CONSUME,
+      },
+    });
+    const confirmationOutboxEvents = await prisma.emailAutomationEvent.findMany({
+      where: {
+        idempotencyKey: `booking-confirmation:${fixture.booking.id}:confirmed-v1`,
+      },
+      select: {
+        template: { select: { templateKey: true } },
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(updated?.status).toBe(BookingStatus.CONFIRMED);
+    expect(consumeEntries).toHaveLength(1);
+    expect(confirmationOutboxEvents).toHaveLength(1);
+    expect(confirmationOutboxEvents[0]?.template.templateKey).toBe("booking.class-booked");
+  });
+
   it("returns 404 when selected existing plan is not found", async () => {
     const fixture = await createFixture({
       bookingIntent: BookingIntent.USE_ENTITLEMENT,

@@ -17,7 +17,10 @@ import {
   expireStaleBookingDraftsForSessionWithinTx,
 } from "@/lib/public-booking/booking-draft-service";
 import { enqueueWaitlistPromotionNotification } from "@/lib/public-booking/waitlist-notification-service";
-import { ensureBookingConfirmationEventForConfirmedBooking } from "@/lib/public-booking/booking-confirmation-transition-service";
+import {
+  ensureBookingConfirmationEventForConfirmedBooking,
+  queueBookingCancellationEvent,
+} from "@/lib/public-booking/booking-confirmation-transition-service";
 import { promoteWaitlistAfterCancellationWithinTx, resolveWaitlistPromotionCoverage } from "@/lib/public-booking/waitlist-service";
 
 export type AdminBookingStatusFilter =
@@ -437,6 +440,16 @@ export async function removeSessionAttendeeByManager(input: {
       }
     }),
   );
+
+  try {
+    await queueBookingCancellationEvent({ bookingId: promotionResult.bookingId });
+  } catch (error) {
+    console.error("[admin-booking-core-service] booking cancellation email enqueue failed", {
+      alertCode: "BOOKING_CANCELLATION_EMAIL_ENQUEUE_FAILED",
+      bookingId: promotionResult.bookingId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   return {
     bookingId: promotionResult.bookingId,
