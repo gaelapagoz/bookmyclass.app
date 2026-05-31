@@ -98,6 +98,18 @@ function zonedDateTimeToUtcDate(params: {
   return secondGuess;
 }
 
+export function siteDateTimeToUtcDate(params: {
+  day: number;
+  hour: number;
+  minute: number;
+  month: number;
+  second?: number;
+  timeZone?: string;
+  year: number;
+}): Date {
+  return zonedDateTimeToUtcDate(params);
+}
+
 export function getStudioDateKey(date: Date): string {
   return getDateFormatter(STUDIO_TIMEZONE).format(date);
 }

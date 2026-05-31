@@ -3,15 +3,20 @@ import { expect, type Page } from "@playwright/test";
 export async function openBookingFormFromFirstAvailableSlot(page: Page, serviceSlug: string, slotIndex = 0) {
   await page.goto(`/book-a-class/${serviceSlug}`);
   const slotBookButtons = page.getByRole("link", { name: /Book slot/i });
+  const nextAvailabilityButton = page.getByRole("button", { name: /Check next available date/i });
 
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    if ((await slotBookButtons.count()) > slotIndex) break;
-    const nextAvailableButton = page.getByRole("button", { name: "Check next available date" });
-    if ((await nextAvailableButton.count()) === 0) break;
-    await nextAvailableButton.click();
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    await page.waitForLoadState("networkidle");
+    if ((await slotBookButtons.count()) > slotIndex) {
+      break;
+    }
+    if ((await nextAvailabilityButton.count()) === 0) {
+      break;
+    }
+    await nextAvailabilityButton.click();
   }
 
-  await expect(slotBookButtons.nth(slotIndex)).toBeVisible();
+  await expect(slotBookButtons.nth(slotIndex)).toBeVisible({ timeout: 20_000 });
   await slotBookButtons.nth(slotIndex).click();
   await expect(page).toHaveURL(new RegExp(`/book-a-class/${serviceSlug}/book\\?sessionId=`));
 }
@@ -62,12 +67,22 @@ export async function submitBookingWithPaymentOption(page: Page, optionLabelCont
     return /\/api\/checkout\/session$/.test(url);
   });
 
-  await Promise.all([cta.click(), submitResponsePromise]);
+  const [, submitResponse] = await Promise.all([cta.click(), submitResponsePromise]);
+  expect(submitResponse.ok()).toBeTruthy();
 
   const bookingPathMatch = page.url().match(/(\/book-a-class\/[^/]+)\/book\?/);
   if (bookingPathMatch) {
-    await expect(page).not.toHaveURL(new RegExp(`${bookingPathMatch[1]}/book\\?sessionId=`), {
-      timeout: 15_000,
-    });
+    if (usesExistingPlan) {
+      await expect(page).not.toHaveURL(new RegExp(`${bookingPathMatch[1]}/book\\?sessionId=`), {
+        timeout: 20_000,
+      });
+      return;
+    }
+
+    await page.waitForURL(
+      (url) =>
+        !new RegExp(`${bookingPathMatch[1]}/book\\?sessionId=`).test(url.toString()),
+      { timeout: 20_000 },
+    );
   }
 }

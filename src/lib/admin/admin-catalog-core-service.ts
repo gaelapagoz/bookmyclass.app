@@ -15,6 +15,7 @@ import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 
 import { prisma } from "@/lib/db";
+import { getSiteDateKey, getSiteTimeLabel } from "@/lib/public-catalogue/timezone";
 import { resolveEntitlementScopeFromCategorySlug } from "@/lib/booking/entitlement-scope";
 import { generatePlanSlug } from "@/lib/admin/plan-slug";
 import { ensureEntitlementRuleForProduct } from "@/lib/admin/plan-entitlement-rules";
@@ -1203,6 +1204,7 @@ export async function getAdminClassesData(): Promise<AdminClassItem[]> {
 }
 
 export async function getAdminClassById(id: string) {
+  const timeZone = await getSiteTimeZone();
   const classType = await prisma.classType.findUnique({
     where: { id },
     select: {
@@ -1260,14 +1262,18 @@ export async function getAdminClassById(id: string) {
   const template = classType.templates[0] ?? null;
   const recurringRules = template?.recurringRules ?? [];
   const nextSession = template?.studioSessions[0] ?? null;
-  const startTime = recurringRules[0]?.startTime ?? (nextSession ? formatTimeString(nextSession.startsAt) : "18:00");
+  const startTime = nextSession
+    ? formatTimeString(nextSession.startsAt, timeZone)
+    : (recurringRules[0]?.startTime ?? "18:00");
   const defaultDuration =
     template?.defaultDurationMinutes ?? classType.defaultDurationMinutes;
   const endTime = addMinutesToTimeString(startTime, defaultDuration);
   const isRecurring = recurringRules.length > 0;
-  const defaultDate = isRecurring
-    ? recurringRules[0]?.startDate.toISOString().slice(0, 10) ?? null
-    : nextSession?.startsAt.toISOString().slice(0, 10) ?? null;
+  const defaultDate = nextSession?.startsAt
+    ? getSiteDateKey(nextSession.startsAt, timeZone)
+    : isRecurring
+      ? (recurringRules[0]?.startDate ? getSiteDateKey(recurringRules[0].startDate, timeZone) : null)
+      : null;
 
   const schedule: AdminClassScheduleConfig = {
     defaultTeacherId: template?.defaultTeacherId ?? "",
@@ -1276,7 +1282,7 @@ export async function getAdminClassById(id: string) {
     isRecurring,
     date: defaultDate,
     weekdays: [...new Set(recurringRules.map((rule) => rule.weekday))],
-    endDate: recurringRules[0]?.endDate?.toISOString().slice(0, 10) ?? null,
+    endDate: recurringRules[0]?.endDate ? getSiteDateKey(recurringRules[0].endDate, timeZone) : null,
   };
   const imageRenderState = await getClassImageRenderState(classType.imageUrl);
 
@@ -1296,10 +1302,8 @@ export async function getAdminClassById(id: string) {
   };
 }
 
-function formatTimeString(date: Date): string {
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
+function formatTimeString(date: Date, timeZone: string): string {
+  return getSiteTimeLabel(date, timeZone);
 }
 
 function addMinutesToTimeString(time: string, amount: number): string {

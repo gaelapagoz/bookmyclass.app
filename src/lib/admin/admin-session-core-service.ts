@@ -15,6 +15,8 @@ import {
 import { prisma } from "@/lib/db";
 import { resolveEntitlementScope } from "@/lib/booking/entitlement-scope";
 import { bookingDraftActiveBookingFilter } from "@/lib/public-booking/booking-draft-service";
+import { siteDateTimeToUtcDate } from "@/lib/public-catalogue/timezone";
+import { getSiteTimeZone } from "@/lib/site-settings/site-settings-service";
 
 export type AdminSessionItem = {
   id: string;
@@ -219,11 +221,25 @@ function buildRecurringOccurrences(input: AdminRecurringSessionScheduleInput): A
   return occurrences.sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime());
 }
 
-function combineDateAndTime(dateValue: Date, timeValue: string): Date {
+function getDateOnlyParts(dateValue: Date): { year: number; month: number; day: number } {
+  return {
+    year: dateValue.getUTCFullYear(),
+    month: dateValue.getUTCMonth() + 1,
+    day: dateValue.getUTCDate(),
+  };
+}
+
+function combineDateAndTime(dateValue: Date, timeValue: string, timeZone: string): Date {
   const [hours, minutes] = timeValue.split(":").map((part) => Number.parseInt(part, 10));
-  const date = new Date(dateValue);
-  date.setHours(hours, minutes, 0, 0);
-  return date;
+  const { year, month, day } = getDateOnlyParts(dateValue);
+  return siteDateTimeToUtcDate({
+    year,
+    month,
+    day,
+    hour: hours,
+    minute: minutes,
+    timeZone,
+  });
 }
 
 function validateTimeRange(startTime: string, endTime: string) {
@@ -240,12 +256,13 @@ function buildDateRangeOccurrences(input: {
   endDate: Date;
   startTime: string;
   endTime: string;
+  timeZone: string;
   weekdays: Weekday[];
 }): Array<{ weekday: Weekday; startsAt: Date; endsAt: Date }> {
   const startDay = new Date(input.startDate);
   const endDay = new Date(input.endDate);
-  startDay.setHours(0, 0, 0, 0);
-  endDay.setHours(23, 59, 59, 999);
+  startDay.setUTCHours(0, 0, 0, 0);
+  endDay.setUTCHours(23, 59, 59, 999);
 
   const durationMinutes = validateTimeRange(input.startTime, input.endTime);
   const allowedWeekdays = new Set(input.weekdays);
@@ -263,13 +280,13 @@ function buildDateRangeOccurrences(input: {
   const cursor = new Date(startDay);
 
   while (cursor <= endDay) {
-    const weekday = indexToWeekday[cursor.getDay()];
+    const weekday = indexToWeekday[cursor.getUTCDay()];
     if (allowedWeekdays.has(weekday)) {
-      const startsAt = combineDateAndTime(cursor, input.startTime);
+      const startsAt = combineDateAndTime(cursor, input.startTime, input.timeZone);
       const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
       results.push({ weekday, startsAt, endsAt });
     }
-    cursor.setDate(cursor.getDate() + 1);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
   return results;
@@ -433,6 +450,7 @@ export async function upsertAdminClassScheduleConfig(input: {
   const durationMinutes = validateTimeRange(input.startTime, input.endTime);
   const weekdays = [...new Set(input.weekdays ?? [])];
   const now = new Date();
+  const timeZone = await getSiteTimeZone();
 
   if (input.isRecurring && weekdays.length < 1) {
     throw new Error("INVALID_RECURRENCE_WEEKDAYS");
@@ -505,6 +523,7 @@ export async function upsertAdminClassScheduleConfig(input: {
         endDate: input.endDate!,
         startTime: input.startTime,
         endTime: input.endTime,
+        timeZone,
         weekdays,
       });
       if (occurrences.length < 1) {
@@ -563,7 +582,7 @@ export async function upsertAdminClassScheduleConfig(input: {
       return;
     }
 
-    const startsAt = combineDateAndTime(input.date!, input.startTime);
+    const startsAt = combineDateAndTime(input.date!, input.startTime, timeZone);
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
     await tx.studioSession.upsert({
       where: {
