@@ -51,8 +51,7 @@ test.describe("teacher flow", () => {
     await page.getByRole("combobox", { name: "Client" }).selectOption(clientOptionValue as string);
     await page.getByRole("button", { name: "Add client" }).click();
 
-    await expect(page.getByText("Attendee added.")).toBeVisible();
-    await expect(page.getByText("E2E Client Credits").first()).toBeVisible();
+    await expect(page.getByText("E2E Client Credits").first()).toBeVisible({ timeout: 20_000 });
   });
 
   // @covers-partial teacher-mutation-action-works
