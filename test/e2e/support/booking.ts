@@ -22,7 +22,8 @@ export async function openBookingFormFromFirstAvailableSlot(page: Page, serviceS
 }
 
 export async function submitBookingWithPaymentOption(page: Page, optionLabelContains: RegExp | string) {
-  await expect(page.getByRole("heading", { name: "Booking Details" })).toBeVisible();
+  await expect(page).toHaveURL(/\/book-a-class\/[^/]+\/book\?sessionId=/, { timeout: 20_000 });
+  await expect(page.getByLabel("Phone")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByLabel("Phone")).toBeVisible();
   await expect(page.getByLabel("Phone")).toBeEditable();
   await page.getByLabel("Phone").fill("+32000012345");

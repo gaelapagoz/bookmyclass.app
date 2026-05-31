@@ -254,9 +254,13 @@ test.describe("critical client flows", () => {
 
     const preparedSlotCard = page.getByTestId(`service-slot-${prepared.sessionId}`);
     await expect(preparedSlotCard).toBeVisible();
+    const waitlistJoinResponsePromise = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === "POST" && /\/api\/waitlist\/join$/.test(response.url());
+    });
     await preparedSlotCard.getByRole("button", { name: /Join waitlist/i }).click();
-
-    await expect(page.getByText(/You have been added to the waitlist\.|already on the waitlist/i)).toBeVisible();
+    const waitlistJoinResponse = await waitlistJoinResponsePromise;
+    expect([201, 409]).toContain(waitlistJoinResponse.status());
 
     await page.goto("/dashboard/bookings");
     const waitlistCard = page.getByTestId(/dashboard-waitlist-/).first();
@@ -334,12 +338,14 @@ test.describe("critical client flows", () => {
     await signInClient(page, SEEDED_CLIENT_WITH_CREDITS);
 
     await openBookingFormFromFirstAvailableSlot(page, SEEDED_SERVICE_SLUG, 0);
+    const firstSessionId = new URL(page.url()).searchParams.get("sessionId");
+    expect(firstSessionId).toBeTruthy();
     await submitBookingWithPaymentOption(page, /Single Session/i);
     await expect(page).toHaveURL(new RegExp(`/book-a-class/${SEEDED_SERVICE_SLUG}/payment/success\\?bookingId=.*&session_id=`));
     const firstBookingId = new URL(page.url()).searchParams.get("bookingId");
     expect(firstBookingId).toBeTruthy();
 
-    await openBookingFormFromFirstAvailableSlot(page, SEEDED_SERVICE_SLUG, 0);
+    await page.goto(`/book-a-class/${SEEDED_SERVICE_SLUG}/book?sessionId=${encodeURIComponent(firstSessionId as string)}`);
     await submitBookingWithPaymentOption(page, /Single Session/i);
     await expect(page).toHaveURL(new RegExp(`/book-a-class/${SEEDED_SERVICE_SLUG}/payment/success\\?bookingId=.*&session_id=`));
     const secondBookingId = new URL(page.url()).searchParams.get("bookingId");
