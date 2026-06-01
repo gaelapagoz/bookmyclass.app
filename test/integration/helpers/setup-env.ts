@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 // NOTE: Environment variables are injected by the test runner (see npm test).
@@ -37,6 +37,21 @@ if (!globalForTestSetup.__integrationDbReady) {
 
   mkdirSync(markerDir, { recursive: true });
 
+  function buildMigrationSignature(): string {
+    const migrationsDir = resolve(process.cwd(), "prisma", "migrations");
+    if (!existsSync(migrationsDir)) {
+      return "no-migrations-dir";
+    }
+
+    const names = readdirSync(migrationsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+    return names.join("|");
+  }
+
+  const migrationSignature = buildMigrationSignature();
+
   const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
   const runMigrateDeploy = () => {
@@ -50,7 +65,7 @@ if (!globalForTestSetup.__integrationDbReady) {
           env: process.env,
           stdio: "pipe",
         });
-        writeFileSync(markerPath, new Date().toISOString(), "utf8");
+        writeFileSync(markerPath, JSON.stringify({ at: new Date().toISOString(), migrationSignature }), "utf8");
         return;
       } catch (error) {
         const typed = error as { stdout?: Buffer; stderr?: Buffer; message?: string };
@@ -69,9 +84,30 @@ if (!globalForTestSetup.__integrationDbReady) {
     throw lastError ?? new Error("npx prisma migrate deploy failed with unknown error.");
   };
 
+  let markerIsCurrent = false;
   if (existsSync(markerPath)) {
-    globalForTestSetup.__integrationDbReady = true;
-  } else {
+    const markerRaw = readFileSync(markerPath, "utf8").trim();
+    let markerSignature: string | null = null;
+    if (markerRaw.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(markerRaw) as { migrationSignature?: string };
+        markerSignature = parsed.migrationSignature ?? null;
+      } catch {
+        markerSignature = null;
+      }
+    }
+
+    if (markerSignature === migrationSignature) {
+      markerIsCurrent = true;
+      globalForTestSetup.__integrationDbReady = true;
+    } else {
+      if (existsSync(markerPath)) {
+        unlinkSync(markerPath);
+      }
+    }
+  }
+
+  if (!markerIsCurrent) {
     let hasLock = false;
 
     try {

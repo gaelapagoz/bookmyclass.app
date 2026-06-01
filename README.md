@@ -8,7 +8,7 @@ At a high level, it combines:
 * booking engine
 * subscription and entitlement management
 * store for merchandise and gift cards
-* coupons and loyalty points
+* coupons
 * learning platform
 * admin backoffice
 * operational tooling
@@ -33,7 +33,7 @@ Clients can:
 * buy subscriptions, packs, and memberships
 * book classes through entitlement-aware flows
 * buy merchandise and gift cards
-* redeem coupons, loyalty points and gift cards
+* redeem coupons and gift cards
 * access a personal dashboard
 * manage subscriptions through the Stripe billing portal
 * watch learning videos
@@ -67,7 +67,6 @@ The platform supports:
 * recurring subscription billing
 * ticket validity windows
 * credit expiration
-* loyalty point accumulation
 * multiple payment options
 * coupon support
 
@@ -84,7 +83,7 @@ The admin area acts as a full operational control center for the studio. Admins 
 * learning content
 * inbox and contact requests
 * marketing campaigns
-* loyalty and credits
+* credits
 * documents and public assets
 * support notes and audit logs
 * waitlists and no-show handling

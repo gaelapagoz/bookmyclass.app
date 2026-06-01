@@ -167,6 +167,25 @@ enum PaymentProvider {
   INTERNAL
 }
 
+enum CouponStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum CouponDiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum CouponRedemptionStatus {
+  RESERVED
+  APPLIED
+  REJECTED
+  EXPIRED
+  REVERSED
+}
+
 enum GiftCardWalletStatus {
   ACTIVE
   SUSPENDED
@@ -245,20 +264,6 @@ enum CreditLedgerEntryType {
   ADJUSTMENT
 }
 
-enum LoyaltyLedgerEntryType {
-  EARN
-  REDEEM
-  EXPIRE
-  ADJUSTMENT
-}
-
-enum LoyaltyCouponStatus {
-  GENERATED
-  SENT
-  USED
-  EXPIRED
-  VOIDED
-}
 
 enum ContactMessageStatus {
   OPEN
@@ -375,9 +380,6 @@ model User {
   clientEntitlements                  ClientEntitlement[]          @relation("ClientEntitlementClient")
   creditLedgerEntries                 CreditLedgerEntry[]          @relation("UserCreditLedger")
   createdCreditLedgerEntries          CreditLedgerEntry[]          @relation("CreditLedgerEntryCreatedBy")
-  clientLoyaltyLedgerEntries          LoyaltyLedgerEntry[]         @relation("LoyaltyLedgerEntryClient")
-  createdLoyaltyEntries               LoyaltyLedgerEntry[]         @relation("LoyaltyLedgerEntryCreatedBy")
-  loyaltyCoupons                      LoyaltyCoupon[]              @relation("LoyaltyCouponClient")
   giftCardWallets                     GiftCardWallet[]             @relation("GiftCardWalletClient")
   giftCardLedgerEntries               GiftCardLedgerEntry[]        @relation("GiftCardLedgerEntryClient")
   giftCardRedemptions                 GiftCardRedemption[]         @relation("GiftCardRedemptionClient")
@@ -387,10 +389,9 @@ model User {
   redeemedGiftCardCodes               GiftCardCode[]               @relation("RedeemedGiftCards")
   generatedGiftCardCodes              GiftCardCode[]               @relation("GeneratedGiftCards")
   voidedGiftCardCodes                 GiftCardCode[]               @relation("VoidedGiftCards")
-  createdLoyaltyCoupons               LoyaltyCoupon[]              @relation("LoyaltyCouponCreatedBy")
-  voidedLoyaltyCoupons                LoyaltyCoupon[]              @relation("LoyaltyCouponVoidedBy")
-  createdLoyaltyRewardRules           LoyaltyRewardRule[]          @relation("LoyaltyRewardRuleCreatedBy")
-  updatedLoyaltyRewardRules           LoyaltyRewardRule[]          @relation("LoyaltyRewardRuleUpdatedBy")
+  couponsCreated                      Coupon[]                     @relation("CouponsCreatedBy")
+  couponsUpdated                      Coupon[]                     @relation("CouponsUpdatedBy")
+  couponRedemptions                   CouponRedemption[]           @relation("CouponRedemptionsClient")
   auditLogsAsActor                    AuditLog[]                   @relation("AuditLogActor")
   adminNotesAuthored                  AdminNote[]                  @relation("AdminNoteAuthor")
   adminNotesAboutClient               AdminNote[]                  @relation("AdminNoteClient")
@@ -500,6 +501,7 @@ model Product {
   sortOrder             Int                    @default(0)
   imageAssetId          String?
   prices                Price[]
+  couponEligibilities   CouponEligibility[]
   entitlementRules      EntitlementRule[]
   clientEntitlements    ClientEntitlement[]
   orderItems            OrderItem[]
@@ -535,6 +537,7 @@ model Price {
   startsAt              DateTime?
   endsAt                DateTime?
   orderItems            OrderItem[]
+  couponEligibilities   CouponEligibility[]
   selectedByBookings    Booking[]              @relation("BookingSelectedPrice")
   subscriptionContracts SubscriptionContract[]
   createdAt             DateTime               @default(now())
@@ -852,7 +855,10 @@ model Order {
   bookings                    Booking[]                    @relation("BookingOrder")
   clientEntitlements          ClientEntitlement[]
   creditLedgerEntries         CreditLedgerEntry[]
-  loyaltyLedgerEntries        LoyaltyLedgerEntry[]
+  couponId                    String?
+  couponCodeSnapshot          String?
+  coupon                      Coupon?                     @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  couponRedemptions           CouponRedemption[]
   giftCardLedgerEntries       GiftCardLedgerEntry[]
   giftCardRedemptions         GiftCardRedemption[]
   giftCardReconciliationCases GiftCardReconciliationCase[]
@@ -862,6 +868,7 @@ model Order {
   updatedAt                   DateTime                     @updatedAt
 
   @@index([clientId, status, placedAt])
+  @@index([couponId])
   @@index([placedAt])
 }
 
@@ -912,6 +919,7 @@ model Payment {
   failureReason               String?
   order                       Order?                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
   booking                     Booking?                     @relation("BookingPayment", fields: [bookingId], references: [id], onDelete: SetNull)
+  couponRedemptions           CouponRedemption[]
   giftCardLedgerEntries       GiftCardLedgerEntry[]
   giftCardReconciliationCases GiftCardReconciliationCase[]
   createdAt                   DateTime                     @default(now())
@@ -1226,86 +1234,85 @@ model CreditLedgerEntry {
   @@index([orderId])
 }
 
-model LoyaltyLedgerEntry {
-  id              String                 @id @default(cuid())
-  clientId        String
-  entryType       LoyaltyLedgerEntryType
-  amount          Int
-  happenedAt      DateTime               @default(now())
-  orderId         String?
-  rewardRuleId    String?
-  couponId        String?
-  sourceType      String?
-  sourceReference String?
-  idempotencyKey  String?                @unique
-  createdById     String?
-  notes           String?
-  client          User                   @relation("LoyaltyLedgerEntryClient", fields: [clientId], references: [id], onDelete: Restrict)
-  order           Order?                 @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  rewardRule      LoyaltyRewardRule?     @relation(fields: [rewardRuleId], references: [id], onDelete: SetNull)
-  coupon          LoyaltyCoupon?         @relation(fields: [couponId], references: [id], onDelete: SetNull)
-  createdBy       User?                  @relation("LoyaltyLedgerEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
+model Coupon {
+  id                      String             @id @default(cuid())
+  code                    String             @unique
+  name                    String?
+  description             String?
+  status                  CouponStatus       @default(ACTIVE)
+  discountType            CouponDiscountType
+  discountPercentBps      Int?
+  discountAmountMinor     Int?
+  currencyCode            String?
+  startsAt                DateTime?
+  expiresAt               DateTime
+  minOrderAmountMinor     Int?
+  maxTotalRedemptions     Int?
+  maxRedemptionsPerClient Int?
+  createdById             String
+  updatedById             String?
+  archivedAt              DateTime?
+  createdBy               User               @relation("CouponsCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy               User?              @relation("CouponsUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  eligibilities           CouponEligibility[]
+  redemptions             CouponRedemption[]
+  orders                  Order[]
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
-  @@index([clientId, happenedAt])
-  @@index([clientId, entryType, happenedAt])
-  @@index([orderId])
-  @@index([rewardRuleId])
+  @@index([status, expiresAt])
+  @@index([createdAt])
+}
+
+model CouponEligibility {
+  id        String    @id @default(cuid())
+  couponId  String
+  productId String?
+  priceId   String?
+  coupon    Coupon    @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  product   Product?  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  price     Price?    @relation(fields: [priceId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
   @@index([couponId])
-  @@index([sourceType, sourceReference])
+  @@index([productId])
+  @@index([priceId])
 }
 
-model LoyaltyRewardRule {
-  id                 String               @id @default(cuid())
-  name               String
-  pointsThreshold    Int
-  couponValueMinor   Int
-  couponCurrencyCode String               @default("EUR")
-  isActive           Boolean              @default(true)
-  createdById        String?
-  updatedById        String?
-  createdBy          User?                @relation("LoyaltyRewardRuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy          User?                @relation("LoyaltyRewardRuleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  ledgerEntries      LoyaltyLedgerEntry[]
-  coupons            LoyaltyCoupon[]
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+model CouponRedemption {
+  id                       String                 @id @default(cuid())
+  couponId                 String
+  clientId                 String
+  orderId                  String?
+  paymentId                String?
+  stripeCheckoutSessionId  String?
+  status                   CouponRedemptionStatus
+  couponCodeSnapshot       String
+  subtotalBeforeMinor      Int
+  discountAmountMinor      Int
+  totalAfterMinor          Int
+  currencyCode             String
+  failureReason            String?
+  idempotencyKey           String                 @unique
+  payloadHash              String
+  metadata                 Json?
+  reservedAt               DateTime?
+  appliedAt                DateTime?
+  reversedAt               DateTime?
+  expiresAt                DateTime
+  coupon                   Coupon                 @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  client                   User                   @relation("CouponRedemptionsClient", fields: [clientId], references: [id], onDelete: Restrict)
+  order                    Order?                 @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  payment                  Payment?               @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
 
-  @@index([isActive, updatedAt])
-}
-
-model LoyaltyCoupon {
-  id                 String               @id @default(cuid())
-  clientId           String
-  rewardRuleId       String
-  code               String               @unique
-  pointsRedeemed     Int
-  couponValueMinor   Int
-  couponCurrencyCode String
-  status             LoyaltyCouponStatus  @default(GENERATED)
-  idempotencyKey     String?              @unique
-  emailSentAt        DateTime?
-  emailSendAttempts  Int                  @default(0)
-  emailLastError     String?
-  usedAt             DateTime?
-  expiredAt          DateTime?
-  voidedAt           DateTime?
-  voidReason         String?
-  createdById        String?
-  voidedById         String?
-  notes              String?
-  client             User                 @relation("LoyaltyCouponClient", fields: [clientId], references: [id], onDelete: Restrict)
-  rewardRule         LoyaltyRewardRule    @relation(fields: [rewardRuleId], references: [id], onDelete: Restrict)
-  createdBy          User?                @relation("LoyaltyCouponCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  voidedBy           User?                @relation("LoyaltyCouponVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
-  ledgerEntries      LoyaltyLedgerEntry[]
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-
-  @@index([clientId, status, createdAt])
-  @@index([rewardRuleId, status, createdAt])
-  @@index([status, createdAt])
+  @@index([couponId, status])
+  @@index([clientId, createdAt])
+  @@index([orderId])
+  @@index([paymentId])
+  @@index([stripeCheckoutSessionId])
+  @@index([status, expiresAt])
 }
 
 model AuditLog {

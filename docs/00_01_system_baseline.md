@@ -198,7 +198,7 @@ Evidence label legend used in this file:
   - Auth/identity: `User`, `Account`, `Session`, `VerificationToken`, `PendingUserRegistration`, `PasswordResetToken`, rate-limit tables.
   - Catalog/pricing: `Product`, `Price`, `EntitlementRule`.
   - Scheduling/booking: `ClassCategory`, `ClassType`, `ClassTemplate`, `RecurringRule`, `StudioSession`, `Booking`, `BookingPolicy`, `WaitlistEntry`, `AttendanceRecord`.
-  - Commerce: `Order`, `OrderItem`, `Payment`, `SubscriptionContract`, `ClientEntitlement`, `CreditLedgerEntry`, `LoyaltyLedgerEntry`.
+  - Commerce: `Order`, `OrderItem`, `Payment`, `SubscriptionContract`, `ClientEntitlement`, `CreditLedgerEntry`.
   - Gift cards: `GiftCardWallet`, `GiftCardLedgerEntry`, `GiftCardRedemption`, `GiftCardReconciliationCase` foundation tables.
   - Admin/support/marketing/content: `AuditLog`, `AdminNote`, `ContactMessage`, `ClientMessage`, `PublicDocument`, learning and marketing models.
   - Evidence status: Confirmed from repo (`prisma/schema.prisma`).
@@ -206,7 +206,7 @@ Evidence label legend used in this file:
   - Booking -> session + optional client/order/selected entitlement/selected price.
   - Product -> prices + entitlement rules.
   - SubscriptionContract -> user + product + price.
-  - Credit/Loyalty ledgers reference user and optional entitlement/booking/order.
+  - Credit ledgers reference user and optional entitlement/booking/order.
   - Evidence status: Confirmed from repo (`prisma/schema.prisma`).
 - Constraints / uniqueness:
   - Active bookings use migration-owned partial uniqueness on `Booking(clientId, studioSessionId)` where status is `PENDING` or `CONFIRMED`.

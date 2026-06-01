@@ -1020,15 +1020,6 @@ export async function getDashboardMembershipData(
   };
 }
 
-export async function getDashboardLoyaltyPlaceholder(clientId: string): Promise<number> {
-  const result = await prisma.loyaltyLedgerEntry.aggregate({
-    where: { clientId },
-    _sum: { amount: true },
-  });
-
-  return result._sum.amount ?? 0;
-}
-
 const ACTIVITY_ALLOWED_FILTERS = ["all", "bookings", "orders", "payments", "subscriptions", "credits"] as const;
 type ActivityFilter = (typeof ACTIVITY_ALLOWED_FILTERS)[number];
 const ACTIVITY_DEFAULT_PAGE_SIZE = 20;

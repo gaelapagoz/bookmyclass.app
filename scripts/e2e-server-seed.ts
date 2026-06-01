@@ -93,7 +93,6 @@ async function resetE2EDatabase() {
   await prisma.classTemplate.deleteMany();
   await prisma.classType.deleteMany();
   await prisma.classCategory.deleteMany();
-  await prisma.loyaltyLedgerEntry.deleteMany();
   await prisma.giftCardReconciliationCase.deleteMany();
   await prisma.giftCardLedgerEntry.deleteMany();
   await prisma.giftCardRedemption.deleteMany();

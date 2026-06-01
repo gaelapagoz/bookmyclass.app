@@ -21,7 +21,7 @@ describe("DashboardPage", () => {
     vi.clearAllMocks();
   });
 
-  it("does not render loyalty points and still renders core summary cards", async () => {
+  it("renders core dashboard summary cards", async () => {
     vi.mocked(requireAuth).mockResolvedValue({
       user: { id: "client-1" },
     } as Awaited<ReturnType<typeof requireAuth>>);
@@ -39,6 +39,5 @@ describe("DashboardPage", () => {
     expect(screen.getByText("Upcoming Booking")).toBeInTheDocument();
     expect(screen.getByText("Active Membership")).toBeInTheDocument();
     expect(screen.getByText("Credits Left")).toBeInTheDocument();
-    expect(screen.queryByText("Loyalty Points")).not.toBeInTheDocument();
   });
 });

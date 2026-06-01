@@ -280,7 +280,7 @@ HAVING COUNT(*) > 1;
 
 ---
 
-## 11. Credits and Loyalty
+## 11. Credits
 
 ### Credits
 - Credits are tracked using an immutable ledger.
@@ -291,10 +291,6 @@ HAVING COUNT(*) > 1;
   - expire
   - adjustment
 - Credit balance is derived from ledger entries.
-
-### Loyalty
-- Loyalty points are tracked using an immutable ledger.
-- Same principles as credits apply.
 
 ### Admin actions
 - Manual adjustments are allowed.

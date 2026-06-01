@@ -266,7 +266,7 @@ Auth, Booking, Catalog (Product/Price), Commerce (Order/Payment), Entitlements /
 
 +----------------------------------------------------------------------------------+
 | LEDGERS / SUPPORT / OPERATIONS                                                   |
-| CreditLedgerEntry | LoyaltyLedgerEntry | AuditLog | AdminNote |                  |
+| CreditLedgerEntry | AuditLog | AdminNote |                                      |
 | ContactMessage | ClientMessage | PublicDocument                                  |
 +----------------------------------------------------------------------------------+
 
@@ -673,14 +673,14 @@ event processing. Local DB is updated through webhook/reconciliation paths. :con
 
 +----------------------------------------------------------------------------------+
 | LEDGERS / SUPPORT / OPERATIONS                                                   |
-| CreditLedgerEntry | LoyaltyLedgerEntry | AuditLog | AdminNote |                  |
+| CreditLedgerEntry | AuditLog | AdminNote |                                      |
 | ContactMessage | ClientMessage | PublicDocument                                  |
 +----------------------------------------------------------------------------------+
 
 Important domain shape:
 - bookings target sessions
 - every booking must be backed by a valid entitlement
-- credits and loyalty are immutable ledgers
+- credits are tracked with an immutable ledger
 - historical payment/order/subscription data must be preserved
 :contentReference[oaicite:15]{index=15} :contentReference[oaicite:16]{index=16}
 

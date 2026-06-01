@@ -27,3 +27,4 @@ Return:
 5. Minimum safe implementation order
 6. Whether it is safe to start implementation yet (yes/no)
 7. Best first slice for Developer
+8. Score for the plan (0-100, with 100 being perfect)

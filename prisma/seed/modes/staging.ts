@@ -175,7 +175,6 @@ async function purgeForCleanSeed() {
   await prisma.classCategory.deleteMany();
   await prisma.siteWeeklyScheduleEntry.deleteMany();
 
-  await prisma.loyaltyLedgerEntry.deleteMany();
   await prisma.giftCardLedgerEntry.deleteMany();
   await prisma.giftCardReconciliationCase.deleteMany();
   await prisma.giftCardRedemption.deleteMany();

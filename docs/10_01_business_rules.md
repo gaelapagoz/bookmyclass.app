@@ -159,21 +159,9 @@ TEACHER users cannot use this override.
 
 ## 8. Loyalty Program
 
-### 8.1 Earning
-Clients earn loyalty points based on spending:
-- **1 euro spent = 1 point earned**
+Loyalty points are not implemented in the active runtime.
 
-### 8.2 Redemption
-Points can be redeemed for discounts.
-
-### 8.3 Configurability
-Loyalty redemption rules must be configurable by the business, including:
-- Point thresholds
-- Discount amounts
-- Discount types
-- Whether redemption can be combined with other promotions
-
-Exact thresholds are not frozen in this document and must be stored in configurable settings.
+Any future loyalty design, earning, redemption, or coupon-combination behavior is out of scope until a dedicated loyalty implementation plan is approved and shipped.
 
 ---
 
