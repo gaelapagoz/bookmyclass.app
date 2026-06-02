@@ -47,6 +47,15 @@ describe("adminNavConfig - Store navigation structure", () => {
     expect(walletEntry!.label).toBe("Gift Cards");
   });
 
+  it("Sales group contains coupon usage without replacing Gift Cards", () => {
+    const sales = getGroup("sales");
+    expect(sales).toBeDefined();
+    const hrefs = sales!.children.map((child) => child.href);
+
+    expect(hrefs).toContain("/admin/sales/coupons");
+    expect(hrefs).toContain("/admin/gift-cards");
+  });
+
   it("Catalog group still contains Booking Services and Plans", () => {
     const catalog = getGroup("catalog");
     expect(catalog).toBeDefined();

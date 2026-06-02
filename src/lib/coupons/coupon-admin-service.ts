@@ -1,4 +1,4 @@
-import { CouponDiscountType, CouponStatus, Prisma, Role } from "@prisma/client";
+import { CouponDiscountType, CouponRedemptionStatus, CouponStatus, Prisma, Role } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { normalizeCouponCode } from "@/lib/coupons/coupon-primitives";
@@ -22,6 +22,38 @@ export type AdminCouponRow = {
   createdAt: Date;
   updatedAt: Date;
 };
+
+export type AdminCouponUsageStatusFilter = CouponRedemptionStatus | "ALL";
+
+export type AdminCouponUsageHistoryRow = {
+  id: string;
+  status: CouponRedemptionStatus;
+  couponCode: string;
+  couponName: string | null;
+  clientName: string | null;
+  clientEmail: string;
+  subtotalBeforeMinor: number;
+  discountAmountMinor: number;
+  totalAfterMinor: number;
+  currencyCode: string;
+  orderId: string | null;
+  orderStatus: string | null;
+  paymentId: string | null;
+  paymentStatus: string | null;
+  paymentMethod: string | null;
+  paymentProvider: string | null;
+  paymentAmountMinor: number | null;
+  stripeCheckoutSessionId: string | null;
+  reservedAt: Date | null;
+  appliedAt: Date | null;
+  reversedAt: Date | null;
+  expiresAt: Date;
+  createdAt: Date;
+};
+
+const DEFAULT_COUPON_USAGE_PAGE_SIZE = 20;
+const MAX_COUPON_USAGE_PAGE_SIZE = 100;
+const MAX_COUPON_USAGE_QUERY_LENGTH = 120;
 
 type CouponAdminActor = {
   id: string;
@@ -53,6 +85,19 @@ async function resolveCouponAdminActor(actorUserId: string): Promise<CouponAdmin
     throw new Error("ADMIN_ROLE_REQUIRED");
   }
   return actor;
+}
+
+function normalizeCouponUsagePage(input: { page?: number; pageSize?: number }) {
+  const page = Number.isInteger(input.page) && input.page && input.page > 0 ? input.page : 1;
+  const requestedPageSize =
+    Number.isInteger(input.pageSize) && input.pageSize ? input.pageSize : DEFAULT_COUPON_USAGE_PAGE_SIZE;
+  const pageSize = Math.min(Math.max(requestedPageSize, 1), MAX_COUPON_USAGE_PAGE_SIZE);
+
+  return {
+    page,
+    pageSize,
+    skip: (page - 1) * pageSize,
+  };
 }
 
 function normalizeOptionalText(value: string | null | undefined): string | null {
@@ -161,6 +206,115 @@ export async function listAdminCoupons(): Promise<AdminCouponRow[]> {
       updatedAt: true,
     },
   });
+}
+
+export async function listAdminCouponUsageHistory(input: {
+  actor: { readonly userId: string; readonly role: Role };
+  page?: number;
+  pageSize?: number;
+  status?: AdminCouponUsageStatusFilter;
+  query?: string;
+}): Promise<{
+  items: AdminCouponUsageHistoryRow[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  status: AdminCouponUsageStatusFilter;
+  query: string;
+}> {
+  await resolveCouponAdminActor(input.actor.userId);
+  const { page, pageSize, skip } = normalizeCouponUsagePage(input);
+  const status = input.status ?? "ALL";
+  const query = input.query?.trim().slice(0, MAX_COUPON_USAGE_QUERY_LENGTH) ?? "";
+
+  const where: Prisma.CouponRedemptionWhereInput = {
+    ...(status === "ALL" ? {} : { status }),
+    ...(query
+      ? {
+          OR: [
+            { couponCodeSnapshot: { contains: query, mode: "insensitive" } },
+            { coupon: { code: { contains: query, mode: "insensitive" } } },
+            { coupon: { name: { contains: query, mode: "insensitive" } } },
+            { client: { name: { contains: query, mode: "insensitive" } } },
+            { client: { email: { contains: query, mode: "insensitive" } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [items, totalItems] = await prisma.$transaction([
+    prisma.couponRedemption.findMany({
+      where,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip,
+      take: pageSize,
+      select: {
+        id: true,
+        status: true,
+        couponCodeSnapshot: true,
+        subtotalBeforeMinor: true,
+        discountAmountMinor: true,
+        totalAfterMinor: true,
+        currencyCode: true,
+        orderId: true,
+        paymentId: true,
+        stripeCheckoutSessionId: true,
+        reservedAt: true,
+        appliedAt: true,
+        reversedAt: true,
+        expiresAt: true,
+        createdAt: true,
+        coupon: { select: { code: true, name: true } },
+        client: { select: { name: true, email: true } },
+        order: { select: { status: true } },
+        payment: {
+          select: {
+            status: true,
+            method: true,
+            provider: true,
+            stripeCheckoutSessionId: true,
+            amountMinor: true,
+          },
+        },
+      },
+    }),
+    prisma.couponRedemption.count({ where }),
+  ]);
+
+  return {
+    items: items.map((item) => ({
+      id: item.id,
+      status: item.status,
+      couponCode: item.couponCodeSnapshot || item.coupon.code,
+      couponName: item.coupon.name,
+      clientName: item.client.name,
+      clientEmail: item.client.email,
+      subtotalBeforeMinor: item.subtotalBeforeMinor,
+      discountAmountMinor: item.discountAmountMinor,
+      totalAfterMinor: item.totalAfterMinor,
+      currencyCode: item.currencyCode,
+      orderId: item.orderId,
+      orderStatus: item.order?.status ?? null,
+      paymentId: item.paymentId,
+      paymentStatus: item.payment?.status ?? null,
+      paymentMethod: item.payment?.method ?? null,
+      paymentProvider: item.payment?.provider ?? null,
+      paymentAmountMinor: item.payment?.amountMinor ?? null,
+      stripeCheckoutSessionId: item.payment?.stripeCheckoutSessionId ?? item.stripeCheckoutSessionId ?? null,
+      reservedAt: item.reservedAt,
+      appliedAt: item.appliedAt,
+      reversedAt: item.reversedAt,
+      expiresAt: item.expiresAt,
+      createdAt: item.createdAt,
+    })),
+    page,
+    pageSize,
+    totalItems,
+    totalPages: Math.max(1, Math.ceil(totalItems / pageSize)),
+    status,
+    query,
+  };
 }
 
 export async function createAdminCoupon(input: {
