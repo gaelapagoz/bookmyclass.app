@@ -56,6 +56,7 @@ export const adminNavConfig: AdminNavItem[] = [
     children: [
       { type: "link", href: "/admin/classes", label: "Booking Services" },
       { type: "link", href: "/admin/plans", label: "Plans" },
+      { type: "link", href: "/admin/coupons", label: "Coupons" },
       {
         type: "link",
         href: "/admin/store",
