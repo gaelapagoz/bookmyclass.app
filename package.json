@@ -5,7 +5,7 @@
     "scripts": {
         "dev": "next dev",
         "build": "next build",
-        "build:e2e": "npm run build",
+        "build:e2e": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && npm run build",
         "start": "next start",
         "start:e2e": "node scripts/e2e-local-start-server.mjs",
         "lint": "eslint",

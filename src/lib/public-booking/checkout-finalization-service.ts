@@ -15,6 +15,13 @@ import { ensureCartOrderOwnershipFromPersistedItems } from "@/lib/public-booking
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
+export class CouponSettlementAfterPaymentError extends Error {
+  constructor(message: string, readonly cause: unknown) {
+    super(message);
+    this.name = "CouponSettlementAfterPaymentError";
+  }
+}
+
 export async function settleSuccessfulCheckoutOrder(input: {
   orderId: string;
   paymentId?: string | null;
@@ -66,13 +73,20 @@ export async function settleSuccessfulCheckoutOrder(input: {
       data: { status: OrderStatus.PAID },
     });
 
-    await settleCouponRedemptionForCartCheckout({
-      tx,
-      orderId: input.orderId,
-      paymentId: input.paymentId,
-      stripeCheckoutSessionId: input.stripeCheckoutSessionId,
-      nextStatus: "APPLIED",
-    });
+    try {
+      await settleCouponRedemptionForCartCheckout({
+        tx,
+        orderId: input.orderId,
+        paymentId: input.paymentId,
+        stripeCheckoutSessionId: input.stripeCheckoutSessionId,
+        nextStatus: "APPLIED",
+      });
+    } catch (error) {
+      throw new CouponSettlementAfterPaymentError(
+        "Coupon settlement failed after payment success.",
+        error,
+      );
+    }
   });
 }
 

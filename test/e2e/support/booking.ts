@@ -74,9 +74,10 @@ export async function submitBookingWithPaymentOption(page: Page, optionLabelCont
   const bookingPathMatch = page.url().match(/(\/book-a-class\/[^/]+)\/book\?/);
   if (bookingPathMatch) {
     if (usesExistingPlan) {
-      await expect(page).not.toHaveURL(new RegExp(`${bookingPathMatch[1]}/book\\?sessionId=`), {
-        timeout: 20_000,
-      });
+      await page.waitForURL(
+        new RegExp(`${bookingPathMatch[1]}/confirmed\\?bookingId=`),
+        { timeout: 20_000 },
+      );
       return;
     }
 

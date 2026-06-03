@@ -52,7 +52,7 @@ export async function signInAdminSession(
 
 export async function signInTeacher(page: Page, input: { email: string; password: string }) {
   await signInViaAuthCallback(page, input, { authFlow: "admin", callbackUrl: "http://127.0.0.1:3100/teacher" });
-  await page.goto("/teacher");
+  await page.goto("/teacher", { waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(/\/teacher$/);
 }
 

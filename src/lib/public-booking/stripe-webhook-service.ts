@@ -30,9 +30,11 @@ import { giftCardErrorCodes, GiftCardError } from "@/lib/gift-cards/gift-card-er
 import { fulfillPaidCartOrder } from "@/lib/fulfillment/order-fulfillment-service";
 import { getStripeClient } from "../payments/stripe";
 import { isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
+import { emitCouponAlertEvent } from "@/lib/coupons/coupon-events";
 import { settleCouponRedemptionForCartCheckout } from "@/lib/coupons/coupon-validation-service";
 import { transitionBookingToConfirmedAndQueueEmail } from "@/lib/public-booking/booking-confirmation-transition-service";
 import {
+  CouponSettlementAfterPaymentError,
   finalizeCartOrderCompletion,
   settleSuccessfulCheckoutOrder,
 } from "@/lib/public-booking/checkout-finalization-service";
@@ -139,18 +141,29 @@ async function acquireWebhookEventLease(eventId: string): Promise<"skip" | "proc
   return "proceed";
 }
 
-async function markWebhookEventProcessed(eventId: string): Promise<void> {
-  await prisma.stripeWebhookEventReceipt.update({
+async function markWebhookEventStatus(
+  eventId: string,
+  status: StripeWebhookReceiptStatus,
+): Promise<void> {
+  const result = await prisma.stripeWebhookEventReceipt.updateMany({
     where: { eventId },
-    data: { status: StripeWebhookReceiptStatus.PROCESSED },
+    data: { status },
   });
+
+  if (result.count === 0) {
+    logWarn("webhook receipt missing during status update", {
+      eventId,
+      status,
+    });
+  }
+}
+
+async function markWebhookEventProcessed(eventId: string): Promise<void> {
+  await markWebhookEventStatus(eventId, StripeWebhookReceiptStatus.PROCESSED);
 }
 
 async function markWebhookEventRetryable(eventId: string): Promise<void> {
-  await prisma.stripeWebhookEventReceipt.update({
-    where: { eventId },
-    data: { status: StripeWebhookReceiptStatus.RETRYABLE_FAILED },
-  });
+  await markWebhookEventStatus(eventId, StripeWebhookReceiptStatus.RETRYABLE_FAILED);
 }
 
 async function resolveGiftCardRetryContext(event: Stripe.Event): Promise<{
@@ -716,6 +729,51 @@ async function markPaymentFailedByCheckoutSession(input: {
   });
 }
 
+async function emitCouponSettlementFailureAlert(input: {
+  orderId: string;
+  paymentId: string;
+  stripeCheckoutSessionId: string;
+  error: unknown;
+}) {
+  const redemption = await prisma.couponRedemption.findFirst({
+    where: {
+      OR: [
+        { orderId: input.orderId },
+        { paymentId: input.paymentId },
+        { stripeCheckoutSessionId: input.stripeCheckoutSessionId },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      couponId: true,
+      clientId: true,
+      status: true,
+    },
+  });
+
+  if (!redemption) {
+    return;
+  }
+
+  await emitCouponAlertEvent({
+    eventName: "coupon.reconciliation_required",
+    entityType: "CouponRedemption",
+    entityId: redemption.id,
+    metadata: {
+      couponId: redemption.couponId,
+      clientId: redemption.clientId,
+      orderId: input.orderId,
+      paymentId: input.paymentId,
+      stripeCheckoutSessionId: input.stripeCheckoutSessionId,
+      redemptionStatus: redemption.status,
+      stage: "stripe_checkout_success_coupon_settlement",
+      source: "stripe-webhook",
+    },
+    error: input.error,
+  });
+}
+
 async function handleCheckoutCompleted(
   session: Stripe.Checkout.Session,
   options?: {
@@ -1061,12 +1119,24 @@ async function handleCheckoutCompleted(
   });
 
   if (orderId) {
-    await settleSuccessfulCheckoutOrder({
-      orderId,
-      paymentId: payment.id,
-      stripeCheckoutSessionId: session.id,
-      internalPaymentIds: capturedGiftCardPaymentId ? [capturedGiftCardPaymentId] : [],
-    });
+    try {
+      await settleSuccessfulCheckoutOrder({
+        orderId,
+        paymentId: payment.id,
+        stripeCheckoutSessionId: session.id,
+        internalPaymentIds: capturedGiftCardPaymentId ? [capturedGiftCardPaymentId] : [],
+      });
+    } catch (error) {
+      if (error instanceof CouponSettlementAfterPaymentError) {
+        await emitCouponSettlementFailureAlert({
+          orderId,
+          paymentId: payment.id,
+          stripeCheckoutSessionId: session.id,
+          error: error.cause,
+        });
+      }
+      throw error;
+    }
   }
 
   if (checkoutSource === CheckoutSource.CART_CHECKOUT_V1) {

@@ -49,6 +49,8 @@ import { auth } from "../../src/auth";
 import { POST as cartCheckoutRoute } from "../../src/app/api/cart/checkout/route";
 import { GET as cartSuccessValidateRoute } from "../../src/app/api/cart/success/validate/route";
 import { startCartCheckout } from "../../src/lib/cart/cart-checkout-service";
+import * as checkoutFinalizationService from "../../src/lib/public-booking/checkout-finalization-service";
+import * as couponValidationService from "../../src/lib/coupons/coupon-validation-service";
 import { reserveCouponRedemptionForCartCheckout } from "../../src/lib/coupons/coupon-validation-service";
 import { computeCartHash as computeHash } from "../../src/lib/cart/cart-hash";
 import { validateCart } from "../../src/lib/cart/cart-service";
@@ -2482,6 +2484,89 @@ describe("POST /api/cart/checkout — Slice 1D coupon checkout", () => {
     });
   });
 
+  it("replayed Stripe completion does not double-apply coupon redemption", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.CLASS_PACK,
+      unitAmountMinor: 2500,
+    });
+    const coupon = await seedCoupon({
+      code: `REPLAYOK${Date.now()}`,
+      discountPercentBps: 1000,
+      eligibleProductId: product.id,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000009-1000-0000-0000-000000000009",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          couponCode: coupon.code,
+        },
+      }),
+    );
+
+    const order = await prisma.order.findFirstOrThrow({
+      where: { clientId: client.id },
+      include: { payments: true, couponRedemptions: true },
+    });
+    const stripePayment = order.payments.find((payment) => payment.provider === PaymentProvider.STRIPE)!;
+    const redemption = order.couponRedemptions[0]!;
+
+    const buildCompletedEvent = (eventId: string) =>
+      ({
+        id: eventId,
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_test_coupon_checkout_123",
+            mode: "payment",
+            payment_status: "paid",
+            payment_intent: "pi_coupon_success_replay",
+            metadata: {
+              source: "CART_CHECKOUT_V1",
+              orderId: order.id,
+              paymentId: stripePayment.id,
+              userId: client.id,
+            },
+          },
+        },
+      }) as never;
+
+    await processStripeWebhookEvent(buildCompletedEvent(`evt_coupon_success_replay_a_${Date.now()}`));
+    await processStripeWebhookEvent(buildCompletedEvent(`evt_coupon_success_replay_b_${Date.now()}`));
+
+    expect(
+      await prisma.couponRedemption.count({
+        where: { orderId: order.id },
+      }),
+    ).toBe(1);
+    await expect(
+      prisma.couponRedemption.findUniqueOrThrow({
+        where: { id: redemption.id },
+      }),
+    ).resolves.toMatchObject({
+      status: CouponRedemptionStatus.APPLIED,
+      paymentId: stripePayment.id,
+      stripeCheckoutSessionId: "cs_test_coupon_checkout_123",
+    });
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          actionType: "coupon.reconciliation_required",
+          entityType: "CouponRedemption",
+          entityId: redemption.id,
+        },
+      }),
+    ).toBe(0);
+  });
+
   it("Stripe checkout expiration moves coupon redemption from RESERVED to EXPIRED", async () => {
     const client = await seedClient({ verified: true });
     const { product, price } = await seedCheckoutReadyCatalog({
@@ -2590,6 +2675,254 @@ describe("POST /api/cart/checkout — Slice 1D coupon checkout", () => {
       failureReason: "Async payment failed.",
       reversedAt: expect.any(Date),
     });
+  });
+
+  it("writes a reconciliation audit signal when coupon settlement fails after Stripe payment success", async () => {
+    const client = await seedClient({ verified: true });
+    const couponCode = `AUDIT${Date.now()}`;
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.CLASS_PACK,
+      unitAmountMinor: 2500,
+    });
+    const coupon = await seedCoupon({
+      code: couponCode,
+      discountPercentBps: 1000,
+      eligibleProductId: product.id,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000011-1000-0000-0000-000000000011",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          couponCode,
+        },
+      }),
+    );
+
+    const order = await prisma.order.findFirstOrThrow({
+      where: { clientId: client.id },
+      include: { payments: true, couponRedemptions: true },
+    });
+    const stripePayment = order.payments.find((payment) => payment.provider === PaymentProvider.STRIPE)!;
+    const redemption = order.couponRedemptions[0]!;
+
+    const settleSpy = vi
+      .spyOn(couponValidationService, "settleCouponRedemptionForCartCheckout")
+      .mockImplementationOnce(async (input) => {
+        if (input.nextStatus === CouponRedemptionStatus.APPLIED) {
+          throw new Error("coupon apply failed after Stripe success");
+        }
+
+        return 0;
+      });
+
+    await expect(
+      processStripeWebhookEvent({
+        id: `evt_coupon_apply_failure_${Date.now()}`,
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_test_coupon_checkout_123",
+            mode: "payment",
+            payment_status: "paid",
+            payment_intent: "pi_coupon_apply_failure",
+            metadata: {
+              source: "CART_CHECKOUT_V1",
+              orderId: order.id,
+              paymentId: stripePayment.id,
+              userId: client.id,
+            },
+          },
+        },
+      } as never),
+    ).rejects.toThrow("Coupon settlement failed after payment success.");
+
+    settleSpy.mockRestore();
+
+    await expect(prisma.payment.findUniqueOrThrow({ where: { id: stripePayment.id } })).resolves.toMatchObject({
+      status: PaymentStatus.SUCCEEDED,
+      stripeCheckoutSessionId: "cs_test_coupon_checkout_123",
+    });
+    await expect(prisma.order.findUniqueOrThrow({ where: { id: order.id } })).resolves.toMatchObject({
+      status: OrderStatus.PLACED,
+    });
+    await expect(prisma.couponRedemption.findUniqueOrThrow({ where: { id: redemption.id } })).resolves.toMatchObject({
+      status: CouponRedemptionStatus.RESERVED,
+    });
+    await expect(
+      prisma.auditLog.findFirstOrThrow({
+        where: {
+          actionType: "coupon.reconciliation_required",
+          entityType: "CouponRedemption",
+          entityId: redemption.id,
+        },
+      }),
+    ).resolves.toMatchObject({
+      metadata: expect.objectContaining({
+        couponId: coupon.id,
+        clientId: client.id,
+        orderId: order.id,
+        paymentId: stripePayment.id,
+        stripeCheckoutSessionId: "cs_test_coupon_checkout_123",
+        redemptionStatus: CouponRedemptionStatus.RESERVED,
+        stage: "stripe_checkout_success_coupon_settlement",
+        source: "stripe-webhook",
+        error: expect.objectContaining({
+          message: "coupon apply failed after Stripe success",
+        }),
+      }),
+    });
+  });
+
+  it("replayed coupon settlement failures record only one reconciliation alert", async () => {
+    const client = await seedClient({ verified: true });
+    const couponCode = `REPLAY${Date.now()}`;
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.CLASS_PACK,
+      unitAmountMinor: 2500,
+    });
+    await seedCoupon({
+      code: couponCode,
+      discountPercentBps: 1000,
+      eligibleProductId: product.id,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000011-2000-0000-0000-000000000011",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          couponCode,
+        },
+      }),
+    );
+
+    const order = await prisma.order.findFirstOrThrow({
+      where: { clientId: client.id },
+      include: { payments: true, couponRedemptions: true },
+    });
+    const stripePayment = order.payments.find((payment) => payment.provider === PaymentProvider.STRIPE)!;
+    const redemption = order.couponRedemptions[0]!;
+
+    const settleSpy = vi
+      .spyOn(couponValidationService, "settleCouponRedemptionForCartCheckout")
+      .mockRejectedValue(new Error("coupon apply failed after Stripe success"));
+
+    const buildCompletedEvent = (eventId: string) =>
+      ({
+        id: eventId,
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_test_coupon_checkout_123",
+            mode: "payment",
+            payment_status: "paid",
+            payment_intent: "pi_coupon_apply_failure_replay",
+            metadata: {
+              source: "CART_CHECKOUT_V1",
+              orderId: order.id,
+              paymentId: stripePayment.id,
+              userId: client.id,
+            },
+          },
+        },
+      }) as never;
+
+    await expect(
+      processStripeWebhookEvent(buildCompletedEvent(`evt_coupon_apply_failure_replay_a_${Date.now()}`)),
+    ).rejects.toThrow("Coupon settlement failed after payment success.");
+    await expect(
+      processStripeWebhookEvent(buildCompletedEvent(`evt_coupon_apply_failure_replay_b_${Date.now()}`)),
+    ).rejects.toThrow("Coupon settlement failed after payment success.");
+
+    settleSpy.mockRestore();
+
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          actionType: "coupon.reconciliation_required",
+          entityType: "CouponRedemption",
+          entityId: redemption.id,
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it("does not write a coupon reconciliation alert for non-coupon settlement failures", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.CLASS_PACK,
+      unitAmountMinor: 2500,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000011-3000-0000-0000-000000000011",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+        },
+      }),
+    );
+
+    const order = await prisma.order.findFirstOrThrow({
+      where: { clientId: client.id },
+      include: { payments: true },
+    });
+    const stripePayment = order.payments.find((payment) => payment.provider === PaymentProvider.STRIPE)!;
+
+    const settleOrderSpy = vi
+      .spyOn(checkoutFinalizationService, "settleSuccessfulCheckoutOrder")
+      .mockRejectedValueOnce(new Error("non-coupon settlement failed after Stripe success"));
+
+    await expect(
+      processStripeWebhookEvent({
+        id: `evt_non_coupon_failure_${Date.now()}`,
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_test_coupon_checkout_123",
+            mode: "payment",
+            payment_status: "paid",
+            payment_intent: "pi_non_coupon_failure",
+            metadata: {
+              source: "CART_CHECKOUT_V1",
+              orderId: order.id,
+              paymentId: stripePayment.id,
+              userId: client.id,
+            },
+          },
+        },
+      } as never),
+    ).rejects.toThrow("non-coupon settlement failed after Stripe success");
+
+    settleOrderSpy.mockRestore();
+
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          actionType: "coupon.reconciliation_required",
+        },
+      }),
+    ).toBe(0);
   });
 
   it("same-key retry after deterministic pre-Stripe failure re-reserves and later applies the coupon", async () => {
