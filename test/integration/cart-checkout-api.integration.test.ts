@@ -2,6 +2,9 @@ import "./helpers/setup-env";
 
 import {
   BillingInterval,
+  CouponDiscountType,
+  CouponRedemptionStatus,
+  CouponStatus,
   GiftCardReconciliationStatus,
   GiftCardRedemptionStatus,
   OrderStatus,
@@ -41,6 +44,7 @@ import { auth } from "../../src/auth";
 import { POST as cartCheckoutRoute } from "../../src/app/api/cart/checkout/route";
 import { GET as cartSuccessValidateRoute } from "../../src/app/api/cart/success/validate/route";
 import { startCartCheckout } from "../../src/lib/cart/cart-checkout-service";
+import { reserveCouponRedemptionForCartCheckout } from "../../src/lib/coupons/coupon-validation-service";
 import { computeCartHash as computeHash } from "../../src/lib/cart/cart-hash";
 import { hashRateLimitKey } from "../../src/lib/security/db-rate-limit";
 import { processStripeWebhookEvent } from "../../src/lib/public-booking/stripe-webhook-service";
@@ -102,6 +106,20 @@ async function seedClient(input: { verified: boolean }) {
   });
 }
 
+async function seedAdmin() {
+  return prisma.user.create({
+    data: {
+      name: "Admin",
+      email: `coupon.admin.${Date.now()}.${Math.random()}@bookmyclass.app`,
+      role: Role.ADMIN,
+      activationStatus: UserActivationStatus.ACTIVE,
+      emailVerified: new Date(),
+      isActive: true,
+    },
+    select: { id: true },
+  });
+}
+
 async function seedCheckoutReadyCatalog(input?: {
   priceType?: PriceType;
   stripePriceId?: string | null;
@@ -139,6 +157,59 @@ async function seedCheckoutReadyCatalog(input?: {
   });
 
   return { product, price };
+}
+
+async function seedCoupon(input?: {
+  code?: string;
+  discountType?: CouponDiscountType;
+  discountPercentBps?: number | null;
+  discountAmountMinor?: number | null;
+  currencyCode?: string | null;
+  status?: CouponStatus;
+  startsAt?: Date | null;
+  expiresAt?: Date;
+  minOrderAmountMinor?: number | null;
+  maxTotalRedemptions?: number | null;
+  maxRedemptionsPerClient?: number | null;
+  eligibleProductId?: string | null;
+  eligiblePriceId?: string | null;
+}) {
+  const admin = await seedAdmin();
+  return prisma.coupon.create({
+    data: {
+      code: input?.code ?? `SAVE${Math.floor(Math.random() * 900 + 100)}`,
+      name: "Test coupon",
+      status: input?.status ?? CouponStatus.ACTIVE,
+      discountType: input?.discountType ?? CouponDiscountType.PERCENTAGE,
+      discountPercentBps:
+        input?.discountType === CouponDiscountType.FIXED_AMOUNT
+          ? null
+          : (input?.discountPercentBps ?? 2000),
+      discountAmountMinor:
+        input?.discountType === CouponDiscountType.FIXED_AMOUNT
+          ? (input?.discountAmountMinor ?? 1000)
+          : null,
+      currencyCode:
+        input?.discountType === CouponDiscountType.FIXED_AMOUNT
+          ? (input?.currencyCode ?? "EUR")
+          : null,
+      startsAt: input?.startsAt ?? new Date(Date.now() - 60_000),
+      expiresAt: input?.expiresAt ?? new Date(Date.now() + 24 * 60 * 60 * 1000),
+      minOrderAmountMinor: input?.minOrderAmountMinor ?? null,
+      maxTotalRedemptions: input?.maxTotalRedemptions ?? null,
+      maxRedemptionsPerClient: input?.maxRedemptionsPerClient ?? null,
+      createdById: admin.id,
+      eligibilities:
+        input?.eligibleProductId || input?.eligiblePriceId
+          ? {
+              create: {
+                productId: input?.eligibleProductId ?? null,
+                priceId: input?.eligiblePriceId ?? null,
+              },
+            }
+          : undefined,
+    },
+  });
 }
 
 describe("POST /api/cart/checkout", () => {
@@ -1839,6 +1910,872 @@ describe("POST /api/cart/checkout — Slice 4 gift-card rate limits", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(createStripeCheckoutSessionWithIdempotencyMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("POST /api/cart/checkout — Slice 1D coupon checkout", () => {
+  beforeEach(async () => {
+    await resetDb();
+    createStripeCheckoutSessionWithIdempotencyMock.mockReset();
+    getStripeServerEnvMock.mockReset();
+    getStripeServerEnvMock.mockReturnValue({
+      appUrl: "http://localhost:3000",
+      secretKey: "sk_test_123",
+      webhookSecret: "whsec_123",
+    });
+    createStripeCheckoutSessionWithIdempotencyMock.mockResolvedValue({
+      id: "cs_test_coupon_checkout_123",
+      url: "https://checkout.stripe.com/pay/cs_test_coupon_checkout_123",
+    });
+    vi.mocked(auth).mockResolvedValue(null);
+  }, 60000);
+
+  it("applies a percentage coupon and charges Stripe only for the discounted remainder", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.CLASS_PACK,
+      unitAmountMinor: 2500,
+    });
+    const coupon = await seedCoupon({
+      code: "SAVE20",
+      discountType: CouponDiscountType.PERCENTAGE,
+      discountPercentBps: 2000,
+      eligibleProductId: product.id,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000001-0000-0000-0000-000000000001",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          couponCode: " save20 ",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      type: "stripe_redirect",
+      checkoutSessionId: "cs_test_coupon_checkout_123",
+    });
+    expect(createStripeCheckoutSessionWithIdempotencyMock).toHaveBeenCalledTimes(1);
+    expect(createStripeCheckoutSessionWithIdempotencyMock.mock.calls[0]?.[0]).toMatchObject({
+      params: {
+        line_items: [
+          {
+            price_data: expect.objectContaining({
+              unit_amount: 2000,
+            }),
+            quantity: 1,
+          },
+        ],
+        metadata: expect.objectContaining({
+          couponId: coupon.id,
+          couponCode: coupon.code,
+        }),
+      },
+    });
+
+    const order = await prisma.order.findFirstOrThrow({
+      where: { clientId: client.id },
+      include: { items: true, payments: true },
+    });
+    expect(order).toMatchObject({
+      couponId: coupon.id,
+      couponCodeSnapshot: "SAVE20",
+      discountAmountMinor: 500,
+      totalAmountMinor: 2000,
+      status: OrderStatus.PLACED,
+    });
+    expect(order.items[0]).toMatchObject({
+      lineDiscountAmountMinor: 500,
+      lineTotalAmountMinor: 2000,
+    });
+    expect(order.payments).toEqual([
+      expect.objectContaining({
+        provider: PaymentProvider.STRIPE,
+        amountMinor: 2000,
+        status: PaymentStatus.PENDING,
+      }),
+    ]);
+  });
+
+  it("rejects coupons for recurring memberships", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      priceType: PriceType.RECURRING,
+      unitAmountMinor: 4900,
+    });
+    await seedCoupon({
+      code: "MEMBER20",
+      discountType: CouponDiscountType.PERCENTAGE,
+      discountPercentBps: 2000,
+      eligibleProductId: product.id,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000002-0000-0000-0000-000000000002",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          couponCode: "MEMBER20",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "COUPON_RECURRING_NOT_SUPPORTED",
+      message:
+        "Coupons are not available for recurring memberships yet. Remove the coupon or choose a one-time product.",
+    });
+    expect(createStripeCheckoutSessionWithIdempotencyMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects coupons for gift-card purchases", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.GIFT_CARD,
+      unitAmountMinor: 2500,
+    });
+    await seedCoupon({
+      code: "GIFTSAVE",
+      discountType: CouponDiscountType.FIXED_AMOUNT,
+      discountAmountMinor: 1000,
+      currencyCode: "EUR",
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000003-0000-0000-0000-000000000003",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          couponCode: "GIFTSAVE",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "COUPON_GIFT_CARD_NOT_SUPPORTED",
+      message: "Coupons cannot be used for gift-card purchases.",
+    });
+    expect(createStripeCheckoutSessionWithIdempotencyMock).not.toHaveBeenCalled();
+  });
+
+  it("applies coupon before wallet and charges Stripe only for the final remainder", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.MERCHANDISE,
+      unitAmountMinor: 5000,
+    });
+    await prisma.giftCardWallet.create({
+      data: { clientId: client.id, currencyCode: "EUR", balanceMinor: 5000 },
+    });
+    await seedCoupon({
+      code: "SAVE10FIX",
+      discountType: CouponDiscountType.FIXED_AMOUNT,
+      discountAmountMinor: 1000,
+      currencyCode: "EUR",
+      eligibleProductId: product.id,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000004-0000-0000-0000-000000000004",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          couponCode: "SAVE10FIX",
+          walletAmountMinor: 2000,
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      type: "stripe_redirect",
+      checkoutSessionId: "cs_test_coupon_checkout_123",
+    });
+    expect(createStripeCheckoutSessionWithIdempotencyMock.mock.calls[0]?.[0]).toMatchObject({
+      params: {
+        line_items: [
+          {
+            price_data: expect.objectContaining({
+              unit_amount: 2000,
+            }),
+            quantity: 1,
+          },
+        ],
+      },
+    });
+
+    const order = await prisma.order.findFirstOrThrow({
+      where: { clientId: client.id },
+      include: { payments: true },
+    });
+    expect(order).toMatchObject({
+      discountAmountMinor: 1000,
+      totalAmountMinor: 4000,
+      status: OrderStatus.PLACED,
+    });
+    expect(order.payments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: PaymentProvider.INTERNAL,
+          method: PaymentMethod.GIFT_CARD,
+          amountMinor: 2000,
+        }),
+        expect.objectContaining({
+          provider: PaymentProvider.STRIPE,
+          amountMinor: 2000,
+        }),
+      ]),
+    );
+  });
+
+  it("coupon-only zero-payable checkout completes locally with a zero-value manual payment", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.MERCHANDISE,
+      unitAmountMinor: 2500,
+    });
+    const coupon = await seedCoupon({
+      code: "FREE2500",
+      discountType: CouponDiscountType.FIXED_AMOUNT,
+      discountAmountMinor: 2500,
+      currencyCode: "EUR",
+      eligibleProductId: product.id,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000005-0000-0000-0000-000000000005",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          couponCode: "FREE2500",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      type: "completed",
+      paymentMethod: PaymentMethod.MANUAL,
+      redirectUrl: expect.stringContaining("/store/success?orderId="),
+    });
+    expect(createStripeCheckoutSessionWithIdempotencyMock).not.toHaveBeenCalled();
+
+    const order = await prisma.order.findFirstOrThrow({
+      where: { clientId: client.id },
+      include: { payments: true, couponRedemptions: true },
+    });
+    expect(order).toMatchObject({
+      status: OrderStatus.PAID,
+      couponId: coupon.id,
+      couponCodeSnapshot: coupon.code,
+      discountAmountMinor: 2500,
+      totalAmountMinor: 0,
+    });
+    expect(order.payments).toEqual([
+      expect.objectContaining({
+        method: PaymentMethod.MANUAL,
+        provider: PaymentProvider.INTERNAL,
+        status: PaymentStatus.SUCCEEDED,
+        amountMinor: 0,
+      }),
+    ]);
+    expect(order.couponRedemptions).toEqual([
+      expect.objectContaining({
+        status: "APPLIED",
+        discountAmountMinor: 2500,
+        totalAfterMinor: 0,
+      }),
+    ]);
+  });
+
+  it("ignores expired reserved coupon rows when enforcing usage limits", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.CLASS_PACK,
+      unitAmountMinor: 2500,
+    });
+    const coupon = await seedCoupon({
+      code: "LIMIT1",
+      discountPercentBps: 1000,
+      eligibleProductId: product.id,
+      maxTotalRedemptions: 1,
+    });
+
+    await prisma.couponRedemption.create({
+      data: {
+        couponId: coupon.id,
+        clientId: client.id,
+        status: CouponRedemptionStatus.RESERVED,
+        couponCodeSnapshot: coupon.code,
+        subtotalBeforeMinor: 2500,
+        discountAmountMinor: 250,
+        totalAfterMinor: 2250,
+        currencyCode: "EUR",
+        idempotencyKey: `expired-reservation-${Date.now()}`,
+        payloadHash: `expired-payload-${Date.now()}`,
+        reservedAt: new Date(Date.now() - 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() - 30 * 60 * 1000),
+      },
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000008-0000-0000-0000-000000000008",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          couponCode: coupon.code,
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(
+      prisma.couponRedemption.findMany({
+        where: { couponId: coupon.id },
+        orderBy: { createdAt: "asc" },
+      }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: CouponRedemptionStatus.RESERVED,
+          expiresAt: expect.any(Date),
+        }),
+      ]),
+    );
+  });
+
+  it("Stripe completion moves coupon redemption from RESERVED to APPLIED", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.CLASS_PACK,
+      unitAmountMinor: 2500,
+    });
+    const coupon = await seedCoupon({
+      code: "SAVE10",
+      discountPercentBps: 1000,
+      eligibleProductId: product.id,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000009-0000-0000-0000-000000000009",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          couponCode: coupon.code,
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const order = await prisma.order.findFirstOrThrow({
+      where: { clientId: client.id },
+      include: { payments: true, couponRedemptions: true },
+    });
+    const stripePayment = order.payments.find((payment) => payment.provider === PaymentProvider.STRIPE)!;
+    expect(order.couponRedemptions).toEqual([
+      expect.objectContaining({
+        status: CouponRedemptionStatus.RESERVED,
+        stripeCheckoutSessionId: "cs_test_coupon_checkout_123",
+      }),
+    ]);
+
+    await processStripeWebhookEvent({
+      id: `evt_coupon_success_${Date.now()}`,
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_test_coupon_checkout_123",
+          mode: "payment",
+          payment_status: "paid",
+          payment_intent: "pi_coupon_success",
+          metadata: {
+            source: "CART_CHECKOUT_V1",
+            orderId: order.id,
+            paymentId: stripePayment.id,
+            userId: client.id,
+          },
+        },
+      },
+    } as never);
+
+    await expect(
+      prisma.couponRedemption.findFirstOrThrow({
+        where: { orderId: order.id },
+      }),
+    ).resolves.toMatchObject({
+      status: CouponRedemptionStatus.APPLIED,
+      paymentId: stripePayment.id,
+      stripeCheckoutSessionId: "cs_test_coupon_checkout_123",
+      appliedAt: expect.any(Date),
+    });
+  });
+
+  it("Stripe checkout expiration moves coupon redemption from RESERVED to EXPIRED", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.CLASS_PACK,
+      unitAmountMinor: 2500,
+    });
+    const coupon = await seedCoupon({
+      code: "SAVE10",
+      discountPercentBps: 1000,
+      eligibleProductId: product.id,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000010-0000-0000-0000-000000000010",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          couponCode: coupon.code,
+        },
+      }),
+    );
+
+    const order = await prisma.order.findFirstOrThrow({
+      where: { clientId: client.id },
+    });
+
+    await processStripeWebhookEvent({
+      id: `evt_coupon_expired_${Date.now()}`,
+      type: "checkout.session.expired",
+      data: {
+        object: {
+          id: "cs_test_coupon_checkout_123",
+        },
+      },
+    } as never);
+
+    await expect(
+      prisma.couponRedemption.findFirstOrThrow({
+        where: { orderId: order.id },
+      }),
+    ).resolves.toMatchObject({
+      status: CouponRedemptionStatus.EXPIRED,
+      stripeCheckoutSessionId: "cs_test_coupon_checkout_123",
+      failureReason: "Checkout session expired.",
+    });
+    await expect(prisma.order.findUnique({ where: { id: order.id } })).resolves.toMatchObject({
+      status: OrderStatus.CANCELLED,
+    });
+  });
+
+  it("async Stripe payment failure moves coupon redemption from RESERVED to REVERSED", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.CLASS_PACK,
+      unitAmountMinor: 2500,
+    });
+    const coupon = await seedCoupon({
+      code: "SAVE10",
+      discountPercentBps: 1000,
+      eligibleProductId: product.id,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000011-0000-0000-0000-000000000011",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          couponCode: coupon.code,
+        },
+      }),
+    );
+
+    const order = await prisma.order.findFirstOrThrow({
+      where: { clientId: client.id },
+    });
+
+    await processStripeWebhookEvent({
+      id: `evt_coupon_async_failed_${Date.now()}`,
+      type: "checkout.session.async_payment_failed",
+      data: {
+        object: {
+          id: "cs_test_coupon_checkout_123",
+        },
+      },
+    } as never);
+
+    await expect(
+      prisma.couponRedemption.findFirstOrThrow({
+        where: { orderId: order.id },
+      }),
+    ).resolves.toMatchObject({
+      status: CouponRedemptionStatus.REVERSED,
+      stripeCheckoutSessionId: "cs_test_coupon_checkout_123",
+      failureReason: "Async payment failed.",
+      reversedAt: expect.any(Date),
+    });
+  });
+
+  it("same-key retry after deterministic pre-Stripe failure re-reserves and later applies the coupon", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.CLASS_PACK,
+      unitAmountMinor: 2500,
+    });
+    await seedCoupon({
+      code: "SAVE10",
+      discountPercentBps: 1000,
+      eligibleProductId: product.id,
+      maxTotalRedemptions: 1,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    getStripeServerEnvMock.mockImplementationOnce(() => {
+      throw new Error("pre-stripe setup failure");
+    });
+
+    const requestBody = {
+      lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+      clientCartVersion: "v1",
+      couponCode: "SAVE10",
+    };
+
+    const first = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000012-0000-0000-0000-000000000012",
+        body: requestBody,
+      }),
+    );
+
+    expect(first.status).toBe(500);
+    await expect(first.json()).resolves.toMatchObject({
+      code: "CHECKOUT_CREATE_FAILED",
+      idempotency: {
+        state: "FAILED_AFTER_WRITE_PRE_STRIPE",
+      },
+    });
+
+    const orderAfterFirstAttempt = await prisma.order.findFirstOrThrow({
+      where: { clientId: client.id },
+    });
+    await expect(
+      prisma.couponRedemption.findFirstOrThrow({
+        where: { orderId: orderAfterFirstAttempt.id },
+      }),
+    ).resolves.toMatchObject({
+      status: CouponRedemptionStatus.REVERSED,
+      failureReason: "pre-stripe setup failure",
+      reversedAt: expect.any(Date),
+    });
+
+    const second = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000012-0000-0000-0000-000000000012",
+        body: requestBody,
+      }),
+    );
+
+    expect(second.status).toBe(200);
+    await expect(second.json()).resolves.toMatchObject({
+      type: "stripe_redirect",
+      checkoutSessionId: "cs_test_coupon_checkout_123",
+    });
+
+    const orderAfterRetry = await prisma.order.findFirstOrThrow({
+      where: { clientId: client.id },
+      include: { payments: true, couponRedemptions: true },
+    });
+    const stripePayment = orderAfterRetry.payments.find(
+      (payment) => payment.provider === PaymentProvider.STRIPE,
+    )!;
+    expect(orderAfterRetry.id).toBe(orderAfterFirstAttempt.id);
+    expect(orderAfterRetry.couponRedemptions).toEqual([
+      expect.objectContaining({
+        status: CouponRedemptionStatus.RESERVED,
+        paymentId: stripePayment.id,
+        stripeCheckoutSessionId: "cs_test_coupon_checkout_123",
+        reversedAt: null,
+        failureReason: null,
+      }),
+    ]);
+
+    await processStripeWebhookEvent({
+      id: `evt_coupon_retry_success_${Date.now()}`,
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_test_coupon_checkout_123",
+          mode: "payment",
+          payment_status: "paid",
+          payment_intent: "pi_coupon_retry_success",
+          metadata: {
+            source: "CART_CHECKOUT_V1",
+            orderId: orderAfterRetry.id,
+            paymentId: stripePayment.id,
+            userId: client.id,
+          },
+        },
+      },
+    } as never);
+
+    await expect(
+      prisma.couponRedemption.findFirstOrThrow({
+        where: { orderId: orderAfterRetry.id },
+      }),
+    ).resolves.toMatchObject({
+      status: CouponRedemptionStatus.APPLIED,
+      paymentId: stripePayment.id,
+      stripeCheckoutSessionId: "cs_test_coupon_checkout_123",
+      appliedAt: expect.any(Date),
+    });
+  });
+
+  it("expired coupon retry is revalidated before reservation revival", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.CLASS_PACK,
+      unitAmountMinor: 2500,
+    });
+    const coupon = await seedCoupon({
+      code: "FLASH10",
+      discountPercentBps: 1000,
+      eligibleProductId: product.id,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    const order = await prisma.order.create({
+      data: {
+        clientId: client.id,
+        subtotalAmountMinor: 2500,
+        discountAmountMinor: 250,
+        totalAmountMinor: 2250,
+        currencyCode: "EUR",
+        status: OrderStatus.PLACED,
+      },
+      select: { id: true },
+    });
+
+    await prisma.couponRedemption.create({
+      data: {
+        couponId: coupon.id,
+        clientId: client.id,
+        orderId: order.id,
+        status: CouponRedemptionStatus.EXPIRED,
+        couponCodeSnapshot: coupon.code,
+        subtotalBeforeMinor: 2500,
+        discountAmountMinor: 250,
+        totalAfterMinor: 2250,
+        currencyCode: "EUR",
+        idempotencyKey: `coupon:${coupon.id}:client:${client.id}:order:${order.id}:attempt:expired-retry`,
+        payloadHash: `expired-retry-${Date.now()}`,
+        reservedAt: new Date(Date.now() - 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() - 30 * 60 * 1000),
+        failureReason: "Checkout session expired.",
+      },
+    });
+
+    await prisma.coupon.update({
+      where: { id: coupon.id },
+      data: {
+        expiresAt: new Date(Date.now() - 1_000),
+      },
+    });
+
+    const result = await prisma.$transaction((tx) =>
+      reserveCouponRedemptionForCartCheckout({
+        tx,
+        coupon: {
+          couponId: coupon.id,
+          couponCode: coupon.code,
+          discountType: CouponDiscountType.PERCENTAGE,
+        },
+        clientId: client.id,
+        orderId: order.id,
+        paymentId: null,
+        pricing: {
+          subtotalAmountMinor: 2500,
+          discountAmountMinor: 250,
+          totalAmountMinor: 2250,
+          currencyCode: "EUR",
+          coupon: {
+            couponId: coupon.id,
+            couponCode: coupon.code,
+            discountType: CouponDiscountType.PERCENTAGE,
+          },
+          pricedLines: [
+            {
+              productId: product.id,
+              priceId: price.id,
+              productName: product.name,
+              priceName: price.name,
+              productDescription: null,
+              quantity: 1,
+              unitAmountMinor: 2500,
+              lineSubtotalAmountMinor: 2500,
+              billingInterval: null,
+              billingIntervalCount: null,
+              lineTotalAmountMinor: 2250,
+              lineDiscountAmountMinor: 250,
+              currencyCode: "EUR",
+              priceType: PriceType.ONE_TIME,
+              productType: ProductType.CLASS_PACK,
+              couponEligible: true,
+            },
+          ],
+        },
+        idempotencyKey: "expired-retry",
+      }),
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: "COUPON_NOT_ACTIVE",
+    });
+    await expect(
+      prisma.couponRedemption.findFirstOrThrow({
+        where: { orderId: order.id },
+      }),
+    ).resolves.toMatchObject({
+      status: CouponRedemptionStatus.EXPIRED,
+      failureReason: "Checkout session expired.",
+    });
+  });
+
+  it("same key with different coupon codes returns IDEMPOTENCY_CONFLICT", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.CLASS_PACK,
+      unitAmountMinor: 2500,
+    });
+    await seedCoupon({ code: "SAVE10", discountPercentBps: 1000, eligibleProductId: product.id });
+    await seedCoupon({ code: "SAVE20", discountPercentBps: 2000, eligibleProductId: product.id });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const first = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000006-0000-0000-0000-000000000006",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          couponCode: "SAVE10",
+        },
+      }),
+    );
+    const second = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000006-0000-0000-0000-000000000006",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          couponCode: "SAVE20",
+        },
+      }),
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(409);
+    await expect(second.json()).resolves.toMatchObject({ code: "IDEMPOTENCY_CONFLICT" });
+  });
+
+  it("same key with the same coupon code replays the completed checkout response", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.CLASS_PACK,
+      unitAmountMinor: 2500,
+    });
+    await seedCoupon({ code: "SAVE10", discountPercentBps: 1000, eligibleProductId: product.id });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const body = {
+      lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+      clientCartVersion: "v1",
+      couponCode: "SAVE10",
+    };
+
+    const first = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000007-0000-0000-0000-000000000007",
+        body,
+      }),
+    );
+    const second = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_d1000007-0000-0000-0000-000000000007",
+        body,
+      }),
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    await expect(second.json()).resolves.toMatchObject({
+      idempotency: {
+        replayed: true,
+      },
+    });
     expect(createStripeCheckoutSessionWithIdempotencyMock).toHaveBeenCalledTimes(1);
   });
 });

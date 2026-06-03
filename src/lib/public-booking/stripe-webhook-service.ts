@@ -3,6 +3,7 @@ import {
   BookingStatus,
   CheckoutSource,
   ClientEntitlementStatus,
+  CouponRedemptionStatus,
   CreditLedgerEntryType,
   EntitlementScope,
   EntitlementType,
@@ -36,6 +37,7 @@ import { getStripeClient } from "../payments/stripe";
 import { consumeCredit } from "@/lib/credits/credit-service";
 import { fulfillPaidCartOrder } from "@/lib/fulfillment/order-fulfillment-service";
 import { isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
+import { settleCouponRedemptionForCartCheckout } from "@/lib/coupons/coupon-validation-service";
 import { transitionBookingToConfirmedAndQueueEmail } from "@/lib/public-booking/booking-confirmation-transition-service";
 
 type CatalogCheckoutMetadata = {
@@ -939,6 +941,7 @@ async function ensureCatalogPaymentForCompletedSession(input: {
 async function markPaymentFailedByCheckoutSession(input: {
   checkoutSessionId: string;
   reason: string;
+  couponStatus?: Extract<CouponRedemptionStatus, "EXPIRED" | "REVERSED">;
 }) {
   logInfo("mark payment failed", input);
   const payment = await prisma.payment.findFirst({
@@ -1019,6 +1022,17 @@ async function markPaymentFailedByCheckoutSession(input: {
         where: { id: payment.orderId },
         data: { status: OrderStatus.CANCELLED },
       });
+
+      if (input.couponStatus) {
+        await settleCouponRedemptionForCartCheckout({
+          tx,
+          orderId: payment.orderId,
+          paymentId: payment.id,
+          stripeCheckoutSessionId: input.checkoutSessionId,
+          nextStatus: input.couponStatus,
+          failureReason: input.reason,
+        });
+      }
     }
   });
 }
@@ -1038,6 +1052,7 @@ async function handleCheckoutCompleted(
     await markPaymentFailedByCheckoutSession({
       checkoutSessionId: session.id,
       reason: "Checkout completed without successful payment status.",
+      couponStatus: CouponRedemptionStatus.REVERSED,
     });
     return;
   }
@@ -1363,6 +1378,14 @@ async function handleCheckoutCompleted(
       await tx.order.update({
         where: { id: orderId },
         data: { status: OrderStatus.PAID },
+      });
+
+      await settleCouponRedemptionForCartCheckout({
+        tx,
+        orderId,
+        paymentId: payment.id,
+        stripeCheckoutSessionId: session.id,
+        nextStatus: CouponRedemptionStatus.APPLIED,
       });
     }
   });
@@ -1763,6 +1786,7 @@ async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
   await markPaymentFailedByCheckoutSession({
     checkoutSessionId: session.id,
     reason: "Checkout session expired.",
+    couponStatus: CouponRedemptionStatus.EXPIRED,
   });
 }
 
@@ -1848,6 +1872,7 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
       await markPaymentFailedByCheckoutSession({
         checkoutSessionId: (event.data.object as Stripe.Checkout.Session).id,
         reason: "Async payment failed.",
+        couponStatus: CouponRedemptionStatus.REVERSED,
       });
     } else if (event.type === "invoice.payment_failed") {
       await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);

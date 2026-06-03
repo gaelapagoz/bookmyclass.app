@@ -30,6 +30,7 @@ const checkoutPayloadSchema = z.object({
     ),
   clientCartVersion: z.string().min(1),
   walletAmountMinor: z.number().int().min(0).max(CART_CHECKOUT_MAX_WALLET_AMOUNT_MINOR).optional(),
+  couponCode: z.string().trim().min(1).max(64).optional(),
 });
 const CART_CHECKOUT_DEBUG = process.env.CART_CHECKOUT_DEBUG === "1";
 
@@ -73,7 +74,10 @@ function buildDeterministicFailureCartHash(input: {
       (parsed.data.walletAmountMinor ?? 0) > 0
         ? `|walletAmountMinor=${parsed.data.walletAmountMinor}`
         : "";
-    return `AUTH_FAILURE_V1|cartHash=${computeCartHash(parsed.data.lines)}|clientCartVersion=${parsed.data.clientCartVersion}${walletSuffix}`;
+    const couponSuffix = parsed.data.couponCode
+      ? `|couponCode=${parsed.data.couponCode.trim().toUpperCase()}`
+      : "";
+    return `AUTH_FAILURE_V1|cartHash=${computeCartHash(parsed.data.lines)}|clientCartVersion=${parsed.data.clientCartVersion}${walletSuffix}${couponSuffix}`;
   }
 
   return `AUTH_FAILURE_V1|rawBodySha256=${sha256Hex(input.rawBody)}`;
@@ -255,6 +259,7 @@ export async function POST(request: Request) {
       lines: parsed.data.lines,
       clientCartVersion: parsed.data.clientCartVersion,
       walletAmountMinor: parsed.data.walletAmountMinor,
+      couponCode: parsed.data.couponCode,
     });
     debugLog("checkout_result", {
       userId,

@@ -863,6 +863,7 @@ export async function createCheckoutSessionForCart(input: {
   lines: Array<{ productId: string; priceId: string; quantity: number }>;
   clientCartVersion: string;
   walletAmountMinor?: number;
+  couponCode?: string;
   allowUnverifiedClient?: boolean;
   redirectUrls?: {
     successUrl: string;

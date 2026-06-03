@@ -2,6 +2,7 @@ import {
   CartCheckoutIdempotencyState,
   CartCheckoutResponseType as PrismaCartCheckoutResponseType,
   CheckoutSource,
+  CouponRedemptionStatus,
   OrderStatus,
   PaymentMethod,
   PaymentProvider,
@@ -35,6 +36,14 @@ import { GIFT_CARD_CURRENCY_CODE } from "@/lib/gift-cards/gift-card-types";
 import { GiftCardError, giftCardErrorCodes } from "@/lib/gift-cards/gift-card-errors";
 import { fulfillPaidCartOrder } from "@/lib/fulfillment/order-fulfillment-service";
 import { isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
+import {
+  type CartCheckoutPricing,
+  resolveCartCouponPricing,
+  reserveCouponRedemptionForCartCheckout,
+  settleCouponRedemptionForCartCheckout,
+  updateCouponRedemptionReferencesForCartCheckout,
+} from "@/lib/coupons/coupon-validation-service";
+import { buildZeroPaymentContract } from "@/lib/coupons/coupon-primitives";
 
 const GIFT_CARD_CHECKOUT_RATE_LIMIT = {
   maxAttempts: 10,
@@ -44,6 +53,11 @@ const GIFT_CARD_CHECKOUT_RATE_LIMIT = {
 const GIFT_CARD_REDEMPTION_RATE_LIMIT = {
   maxAttempts: 5,
   windowMs: 10 * 60 * 1000,
+} as const;
+
+const COUPON_CHECKOUT_RATE_LIMIT = {
+  maxAttempts: 10,
+  windowMs: 60 * 1000,
 } as const;
 
 const RETRY_AFTER_MS = 1500;
@@ -96,6 +110,7 @@ type CartCheckoutStartInput = {
   lines: CartLineInput[];
   clientCartVersion: string;
   walletAmountMinor?: number;
+  couponCode?: string;
   allowUnverifiedClient?: boolean;
   redirectUrls?: {
     successUrl: string;
@@ -118,9 +133,21 @@ type CartCheckoutPaymentRefs = {
   paymentId: string;
   stripePaymentId: string | null;
   giftCardPaymentId: string | null;
+  zeroPaymentId: string | null;
   redemptionId: string | null;
   stripeAmountMinor: number;
 };
+
+class CartCouponCheckoutError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CartCouponCheckoutError";
+  }
+}
 
 function debugLog(event: string, payload: Record<string, unknown>) {
   if (!CART_CHECKOUT_DEBUG) {
@@ -315,7 +342,9 @@ function createCompletedResponse(input: {
   key: string;
   replayed: boolean;
   orderId: string;
-  giftCardPaymentId: string;
+  paymentId: string;
+  paymentMethod: PaymentMethod;
+  redirectUrl: string;
 }): CartCheckoutResponse {
   return {
     status: 200,
@@ -323,9 +352,9 @@ function createCompletedResponse(input: {
       type: CART_CHECKOUT_RESPONSE_TYPES.COMPLETED,
       status: "CHECKOUT_COMPLETED",
       orderId: input.orderId,
-      paymentMethod: PaymentMethod.GIFT_CARD,
-      redirectUrl: `/store/success?orderId=${encodeURIComponent(input.orderId)}`,
-      paymentId: input.giftCardPaymentId,
+      paymentMethod: input.paymentMethod,
+      redirectUrl: input.redirectUrl,
+      paymentId: input.paymentId,
       idempotency: withIdempotency({
         key: input.key,
         state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,
@@ -672,12 +701,15 @@ async function assertCartCheckoutStillEligibleBeforeSession(input: {
 async function resolveOrCreateOrderPayment(input: {
   userId: string;
   idempotencyRecordId: string;
+  checkoutAttemptIdempotencyKey: string;
   existingOrderId: string | null;
   existingPaymentId: string | null;
   existingRedemptionId: string | null;
   existingGiftCardPaymentId: string | null;
   existingStripePaymentId: string | null;
+  existingZeroPaymentId: string | null;
   validation: Extract<CartValidationResult, { ok: true }>;
+  checkoutPricing: CartCheckoutPricing;
   walletAmountMinor: number;
 }): Promise<CartCheckoutPaymentRefs> {
   try {
@@ -704,6 +736,12 @@ async function resolveOrCreateOrderPayment(input: {
       const existingStripePaymentId = idempotency?.stripePaymentId ?? input.existingStripePaymentId ?? input.existingPaymentId;
       const existingGiftCardPaymentId = idempotency?.giftCardPaymentId ?? input.existingGiftCardPaymentId;
       const existingRedemptionId = idempotency?.redemptionId ?? input.existingRedemptionId;
+      const existingZeroPaymentId =
+        existingGiftCardPaymentId || existingStripePaymentId
+          ? null
+          : idempotency?.paymentId ?? input.existingZeroPaymentId;
+
+      let resolvedOrderId: string;
 
       if (existingOrderId) {
         const existingOrder = await tx.order.findFirst({
@@ -717,64 +755,182 @@ async function resolveOrCreateOrderPayment(input: {
         });
 
         if (existingOrder) {
-          return {
-            orderId: existingOrder.id,
-            redemptionId: existingRedemptionId,
-            giftCardPaymentId: existingGiftCardPaymentId,
-            stripePaymentId: existingStripePaymentId,
-          };
+          resolvedOrderId = existingOrder.id;
+        } else {
+          const order = await tx.order.create({
+            data: {
+              clientId: input.userId,
+              subtotalAmountMinor: input.checkoutPricing.subtotalAmountMinor,
+              discountAmountMinor: input.checkoutPricing.discountAmountMinor,
+              totalAmountMinor: input.checkoutPricing.totalAmountMinor,
+              currencyCode: input.checkoutPricing.currencyCode,
+              couponId: input.checkoutPricing.coupon?.couponId ?? null,
+              couponCodeSnapshot: input.checkoutPricing.coupon?.couponCode ?? null,
+              status: OrderStatus.PLACED,
+              notes: "Cart checkout order created from /api/cart/checkout.",
+            },
+            select: { id: true },
+          });
+
+          await tx.orderItem.createMany({
+            data: input.checkoutPricing.pricedLines.map((line) => ({
+              orderId: order.id,
+              productId: line.productId,
+              priceId: line.priceId,
+              quantity: line.quantity,
+              productNameSnapshot: line.productName,
+              priceNameSnapshot: line.priceName,
+              unitAmountMinor: line.unitAmountMinor,
+              lineSubtotalAmountMinor: line.lineSubtotalAmountMinor,
+              lineDiscountAmountMinor: line.lineDiscountAmountMinor,
+              lineTotalAmountMinor: line.lineTotalAmountMinor,
+              currencyCode: line.currencyCode,
+            })),
+          });
+
+          await tx.cartCheckoutIdempotency.update({
+            where: { id: input.idempotencyRecordId },
+            data: {
+              orderId: order.id,
+            },
+          });
+
+          resolvedOrderId = order.id;
+        }
+      } else {
+        const order = await tx.order.create({
+          data: {
+            clientId: input.userId,
+            subtotalAmountMinor: input.checkoutPricing.subtotalAmountMinor,
+            discountAmountMinor: input.checkoutPricing.discountAmountMinor,
+            totalAmountMinor: input.checkoutPricing.totalAmountMinor,
+            currencyCode: input.checkoutPricing.currencyCode,
+            couponId: input.checkoutPricing.coupon?.couponId ?? null,
+            couponCodeSnapshot: input.checkoutPricing.coupon?.couponCode ?? null,
+            status: OrderStatus.PLACED,
+            notes: "Cart checkout order created from /api/cart/checkout.",
+          },
+          select: { id: true },
+        });
+
+        await tx.orderItem.createMany({
+          data: input.checkoutPricing.pricedLines.map((line) => ({
+            orderId: order.id,
+            productId: line.productId,
+            priceId: line.priceId,
+            quantity: line.quantity,
+            productNameSnapshot: line.productName,
+            priceNameSnapshot: line.priceName,
+            unitAmountMinor: line.unitAmountMinor,
+            lineSubtotalAmountMinor: line.lineSubtotalAmountMinor,
+            lineDiscountAmountMinor: line.lineDiscountAmountMinor,
+            lineTotalAmountMinor: line.lineTotalAmountMinor,
+            currencyCode: line.currencyCode,
+          })),
+        });
+
+        await tx.cartCheckoutIdempotency.update({
+          where: { id: input.idempotencyRecordId },
+          data: {
+            orderId: order.id,
+          },
+        });
+
+        resolvedOrderId = order.id;
+      }
+
+      if (input.checkoutPricing.coupon) {
+        const reservation = await reserveCouponRedemptionForCartCheckout({
+          tx,
+          coupon: input.checkoutPricing.coupon,
+          clientId: input.userId,
+          orderId: resolvedOrderId,
+          paymentId: null,
+          pricing: input.checkoutPricing,
+          idempotencyKey: input.checkoutAttemptIdempotencyKey,
+        });
+
+        if (!reservation.ok) {
+          throw new CartCouponCheckoutError(
+            reservation.status,
+            reservation.code,
+            reservation.message,
+          );
         }
       }
 
-      const order = await tx.order.create({
-        data: {
-          clientId: input.userId,
-          subtotalAmountMinor: input.validation.pricing.subtotalAmountMinor,
-          discountAmountMinor: 0,
-          totalAmountMinor: input.validation.pricing.subtotalAmountMinor,
-          currencyCode: input.validation.pricing.currencyCode,
-          status: OrderStatus.PLACED,
-          notes: "Cart checkout order created from /api/cart/checkout.",
-        },
-        select: { id: true },
-      });
-
-      await tx.orderItem.createMany({
-        data: input.validation.repricedLines.map((line) => ({
-          orderId: order.id,
-          productId: line.productId,
-          priceId: line.priceId,
-          quantity: line.quantity,
-          productNameSnapshot: line.productName,
-          priceNameSnapshot: line.priceName,
-          unitAmountMinor: line.unitAmountMinor,
-          lineSubtotalAmountMinor: line.lineSubtotalAmountMinor,
-          lineDiscountAmountMinor: 0,
-          lineTotalAmountMinor: line.lineSubtotalAmountMinor,
-          currencyCode: line.currencyCode,
-        })),
-      });
-
-      await tx.cartCheckoutIdempotency.update({
-        where: { id: input.idempotencyRecordId },
-        data: {
-          orderId: order.id,
-        },
-      });
-
       return {
-        orderId: order.id,
-        redemptionId: null,
-        giftCardPaymentId: null,
-        stripePaymentId: null,
+        orderId: resolvedOrderId,
+        redemptionId: existingRedemptionId,
+        giftCardPaymentId: existingGiftCardPaymentId,
+        stripePaymentId: existingStripePaymentId,
+        zeroPaymentId: existingZeroPaymentId,
       };
     });
 
     const walletAmountMinor = input.walletAmountMinor;
-    const subtotalAmountMinor = input.validation.pricing.subtotalAmountMinor;
-    const stripeAmountMinor = subtotalAmountMinor - walletAmountMinor;
+    const subtotalAmountMinor = input.checkoutPricing.subtotalAmountMinor;
+    const totalAmountMinor = input.checkoutPricing.totalAmountMinor;
+    const stripeAmountMinor = totalAmountMinor - walletAmountMinor;
 
     if (walletAmountMinor <= 0) {
+      if (stripeAmountMinor === 0) {
+        const zeroPaymentId =
+          orderContext.zeroPaymentId ??
+          (
+            await prisma.payment.findFirst({
+              where: {
+                orderId: orderContext.orderId,
+                provider: PaymentProvider.INTERNAL,
+                method: PaymentMethod.MANUAL,
+                amountMinor: 0,
+              },
+              orderBy: { createdAt: "desc" },
+              select: { id: true },
+            })
+          )?.id ??
+          (
+            await prisma.payment.create({
+              data: {
+                orderId: orderContext.orderId,
+                ...buildZeroPaymentContract({
+                  currencyCode: input.checkoutPricing.currencyCode,
+                  checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+                }),
+              },
+              select: { id: true },
+            })
+          ).id;
+
+        await prisma.cartCheckoutIdempotency.update({
+          where: { id: input.idempotencyRecordId },
+          data: {
+            paymentId: zeroPaymentId,
+            stripePaymentId: null,
+          },
+        });
+
+        if (input.checkoutPricing.coupon) {
+          await updateCouponRedemptionReferencesForCartCheckout({
+            coupon: input.checkoutPricing.coupon,
+            clientId: input.userId,
+            orderId: orderContext.orderId,
+            idempotencyKey: input.checkoutAttemptIdempotencyKey,
+            paymentId: zeroPaymentId,
+          });
+        }
+
+        return {
+          orderId: orderContext.orderId,
+          paymentId: zeroPaymentId,
+          stripePaymentId: null,
+          giftCardPaymentId: null,
+          zeroPaymentId,
+          redemptionId: null,
+          stripeAmountMinor: 0,
+        };
+      }
+
       const stripePaymentId =
         orderContext.stripePaymentId ??
         (
@@ -795,8 +951,8 @@ async function resolveOrCreateOrderPayment(input: {
               status: PaymentStatus.PENDING,
               method: PaymentMethod.CARD,
               provider: PaymentProvider.STRIPE,
-              amountMinor: subtotalAmountMinor,
-              currencyCode: input.validation.pricing.currencyCode,
+              amountMinor: stripeAmountMinor,
+              currencyCode: input.checkoutPricing.currencyCode,
               checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
             },
             select: { id: true },
@@ -811,13 +967,24 @@ async function resolveOrCreateOrderPayment(input: {
         },
       });
 
+      if (input.checkoutPricing.coupon) {
+        await updateCouponRedemptionReferencesForCartCheckout({
+          coupon: input.checkoutPricing.coupon,
+          clientId: input.userId,
+          orderId: orderContext.orderId,
+          idempotencyKey: input.checkoutAttemptIdempotencyKey,
+          paymentId: stripePaymentId,
+        });
+      }
+
       return {
         orderId: orderContext.orderId,
         paymentId: stripePaymentId,
         stripePaymentId,
         giftCardPaymentId: null,
+        zeroPaymentId: null,
         redemptionId: null,
-        stripeAmountMinor: subtotalAmountMinor,
+        stripeAmountMinor,
       };
     }
 
@@ -861,7 +1028,7 @@ async function resolveOrCreateOrderPayment(input: {
               method: PaymentMethod.GIFT_CARD,
               provider: PaymentProvider.INTERNAL,
               amountMinor: walletAmountMinor,
-              currencyCode: input.validation.pricing.currencyCode,
+              currencyCode: input.checkoutPricing.currencyCode,
               checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
             },
             select: { id: true },
@@ -892,7 +1059,7 @@ async function resolveOrCreateOrderPayment(input: {
                   method: PaymentMethod.CARD,
                   provider: PaymentProvider.STRIPE,
                   amountMinor: stripeAmountMinor,
-                  currencyCode: input.validation.pricing.currencyCode,
+                  currencyCode: input.checkoutPricing.currencyCode,
                   checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
                 },
                 select: { id: true },
@@ -914,11 +1081,22 @@ async function resolveOrCreateOrderPayment(input: {
       return { giftCardPaymentId, stripePaymentId };
     });
 
+    if (input.checkoutPricing.coupon) {
+      await updateCouponRedemptionReferencesForCartCheckout({
+        coupon: input.checkoutPricing.coupon,
+        clientId: input.userId,
+        orderId: orderContext.orderId,
+        idempotencyKey: input.checkoutAttemptIdempotencyKey,
+        paymentId: paymentRefs.stripePaymentId ?? paymentRefs.giftCardPaymentId,
+      });
+    }
+
     return {
       orderId: orderContext.orderId,
       paymentId: paymentRefs.stripePaymentId ?? paymentRefs.giftCardPaymentId,
       stripePaymentId: paymentRefs.stripePaymentId,
       giftCardPaymentId: paymentRefs.giftCardPaymentId,
+      zeroPaymentId: null,
       redemptionId,
       stripeAmountMinor,
     };
@@ -1090,6 +1268,50 @@ function buildWalletAugmentedCartHash(cartHash: string, walletAmountMinor: numbe
   return `${cartHash}|walletAmountMinor=${walletAmountMinor}`;
 }
 
+function buildCouponAugmentedCartHash(cartHash: string, couponCode: string | undefined): string {
+  const normalizedCouponCode = couponCode?.trim().toUpperCase() ?? "";
+  if (!normalizedCouponCode) {
+    return cartHash;
+  }
+  return `${cartHash}|couponCode=${normalizedCouponCode}`;
+}
+
+function buildCartAttemptHash(input: {
+  cartHash: string;
+  walletAmountMinor: number | undefined;
+  couponCode: string | undefined;
+}): string {
+  return buildCouponAugmentedCartHash(
+    buildWalletAugmentedCartHash(input.cartHash, input.walletAmountMinor),
+    input.couponCode,
+  );
+}
+
+function resolveCompletedRedirectUrl(input: {
+  orderId: string;
+  cartHasStoreItems: boolean;
+  successUrl?: string;
+}): string {
+  const fallbackPath = input.cartHasStoreItems
+    ? `/store/success?orderId=${encodeURIComponent(input.orderId)}`
+    : `/subscription/success?orderId=${encodeURIComponent(input.orderId)}`;
+
+  if (!input.successUrl) {
+    return fallbackPath;
+  }
+
+  try {
+    const url = new URL(input.successUrl);
+    url.searchParams.delete("session_id");
+    url.searchParams.delete("orderId");
+    url.searchParams.set("orderId", input.orderId);
+    const rendered = url.toString().replace("{CHECKOUT_SESSION_ID}", "");
+    return rendered.replace(/[?&]session_id=$/, "");
+  } catch {
+    return fallbackPath;
+  }
+}
+
 function resolveSyntheticCheckoutSuccessUrl(input: {
   template: string;
   checkoutSessionId: string;
@@ -1127,7 +1349,11 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
   });
   if (!eligibleActor) {
     const baseCartHash = computeCartHash(input.lines);
-    const authFailureHash = `AUTH_FAILURE_V1|cartHash=${buildWalletAugmentedCartHash(baseCartHash, input.walletAmountMinor)}|clientCartVersion=${input.clientCartVersion}`;
+    const authFailureHash = `AUTH_FAILURE_V1|cartHash=${buildCartAttemptHash({
+      cartHash: baseCartHash,
+      walletAmountMinor: input.walletAmountMinor,
+      couponCode: input.couponCode,
+    })}|clientCartVersion=${input.clientCartVersion}`;
     return resolveDeterministicFailureWithIdempotency({
       userId: input.userId,
       idempotencyKey: input.idempotencyKey,
@@ -1143,7 +1369,11 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     return resolveDeterministicFailureWithIdempotency({
       userId: input.userId,
       idempotencyKey: input.idempotencyKey,
-      cartHash: buildWalletAugmentedCartHash(baseCartHash, input.walletAmountMinor),
+      cartHash: buildCartAttemptHash({
+        cartHash: baseCartHash,
+        walletAmountMinor: input.walletAmountMinor,
+        couponCode: input.couponCode,
+      }),
       status: 422,
       code: "WALLET_REDEMPTION_EXCEEDS_MAX",
       message: "Wallet redemption cannot exceed 500 EUR per order.",
@@ -1155,7 +1385,11 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     clientId: input.userId,
   });
 
-  const effectiveCartHash = buildWalletAugmentedCartHash(validation.cartHash, input.walletAmountMinor);
+  const effectiveCartHash = buildCartAttemptHash({
+    cartHash: validation.cartHash,
+    walletAmountMinor: input.walletAmountMinor,
+    couponCode: input.couponCode,
+  });
 
   debugLog("start_checkout_attempt", {
     userId: input.userId,
@@ -1165,6 +1399,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     clientCartVersion: input.clientCartVersion,
     validationOk: validation.ok,
     walletAmountMinor: input.walletAmountMinor ?? 0,
+    couponCode: input.couponCode?.trim().toUpperCase() || null,
   });
 
   const acquired = await acquireIdempotencyRecord({
@@ -1325,6 +1560,50 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     return rejectionResponse;
   }
 
+  if (input.couponCode?.trim()) {
+    const couponRateLimit = await checkAndRecordDbRateLimit(
+      "coupon_checkout",
+      input.userId,
+      COUPON_CHECKOUT_RATE_LIMIT,
+    );
+    if (!couponRateLimit.allowed) {
+      return {
+        status: 429,
+        body: {
+          code: "RATE_LIMIT_EXCEEDED",
+          message: "Too many coupon attempts. Please wait.",
+        },
+      };
+    }
+  }
+
+  const couponPricing = await resolveCartCouponPricing({
+    userId: input.userId,
+    couponCode: input.couponCode,
+    repricedLines: validation.repricedLines,
+    pricing: validation.pricing,
+  });
+
+  if (!couponPricing.ok) {
+    const couponFailureResponse = createErrorResponse({
+      status: couponPricing.status,
+      code: couponPricing.code,
+      message: couponPricing.message,
+      idempotency: {
+        key: input.idempotencyKey,
+        state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,
+        replayed: false,
+      },
+    });
+    await persistTerminalResponse({
+      id: idempotencyRecordId,
+      response: couponFailureResponse,
+    });
+    return couponFailureResponse;
+  }
+
+  const checkoutPricing = couponPricing.pricing;
+
   const cartHasStoreItems = validation.repricedLines.some(
     (line) =>
       line.productType === ProductType.GIFT_CARD || line.productType === ProductType.MERCHANDISE,
@@ -1386,7 +1665,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     return redemptionScopeResponse;
   }
 
-  if (isRedemptionRequest && validation.ok && (input.walletAmountMinor ?? 0) > validation.pricing.subtotalAmountMinor) {
+  if (isRedemptionRequest && (input.walletAmountMinor ?? 0) > checkoutPricing.totalAmountMinor) {
     const redemptionExceedsOrderResponse = createErrorResponse({
       status: 422,
       code: "WALLET_REDEMPTION_EXCEEDS_ORDER_TOTAL",
@@ -1409,15 +1688,41 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     orderPayment = await resolveOrCreateOrderPayment({
       userId: input.userId,
       idempotencyRecordId,
+      checkoutAttemptIdempotencyKey: input.idempotencyKey,
       existingOrderId: resumedFailedRecord?.orderId ?? acquired.record.orderId,
       existingPaymentId: resumedFailedRecord?.paymentId ?? acquired.record.paymentId,
       existingRedemptionId: resumedFailedRecord?.redemptionId ?? acquired.record.redemptionId,
       existingGiftCardPaymentId: resumedFailedRecord?.giftCardPaymentId ?? acquired.record.giftCardPaymentId,
       existingStripePaymentId: resumedFailedRecord?.stripePaymentId ?? acquired.record.stripePaymentId,
+      existingZeroPaymentId:
+        resumedFailedRecord && !resumedFailedRecord.giftCardPaymentId && !resumedFailedRecord.stripePaymentId
+          ? resumedFailedRecord.paymentId
+          : acquired.record.giftCardPaymentId || acquired.record.stripePaymentId
+            ? null
+            : acquired.record.paymentId,
       validation,
+      checkoutPricing,
       walletAmountMinor: input.walletAmountMinor ?? 0,
     });
   } catch (error) {
+    if (error instanceof CartCouponCheckoutError) {
+      const couponFailureResponse = createErrorResponse({
+        status: error.status,
+        code: error.code,
+        message: error.message,
+        idempotency: {
+          key: input.idempotencyKey,
+          state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,
+          replayed: false,
+        },
+      });
+      await persistTerminalResponse({
+        id: idempotencyRecordId,
+        response: couponFailureResponse,
+      });
+      return couponFailureResponse;
+    }
+
     if (error instanceof GiftCardError) {
       const code =
         error.code === giftCardErrorCodes.insufficientAvailableBalance
@@ -1443,30 +1748,51 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
   }
 
   if (orderPayment.stripeAmountMinor === 0) {
-    if (!orderPayment.redemptionId || !orderPayment.giftCardPaymentId) {
-      throw new Error("Full wallet checkout is missing gift-card payment references.");
+    if (orderPayment.redemptionId && orderPayment.giftCardPaymentId) {
+      await captureGiftCardRedemption({
+        actor: { type: "USER", userId: input.userId, role: Role.CLIENT },
+        redemptionId: orderPayment.redemptionId,
+        paymentId: orderPayment.giftCardPaymentId,
+        idempotencyKey: `gift-card:capture:redemption:${orderPayment.redemptionId}`,
+        metadata: { source: CART_CHECKOUT_SOURCE, idempotencyRecordId },
+      });
     }
 
-    await captureGiftCardRedemption({
-      actor: { type: "USER", userId: input.userId, role: Role.CLIENT },
-      redemptionId: orderPayment.redemptionId,
-      paymentId: orderPayment.giftCardPaymentId,
-      idempotencyKey: `gift-card:capture:redemption:${orderPayment.redemptionId}`,
-      metadata: { source: CART_CHECKOUT_SOURCE, idempotencyRecordId },
-    });
-
     await prisma.$transaction(async (tx) => {
-      await tx.payment.update({
-        where: { id: orderPayment.giftCardPaymentId! },
-        data: {
-          status: PaymentStatus.SUCCEEDED,
-          capturedAt: new Date(),
-        },
-      });
+      if (orderPayment.giftCardPaymentId) {
+        await tx.payment.update({
+          where: { id: orderPayment.giftCardPaymentId },
+          data: {
+            status: PaymentStatus.SUCCEEDED,
+            capturedAt: new Date(),
+          },
+        });
+      }
+      if (orderPayment.zeroPaymentId) {
+        await tx.payment.update({
+          where: { id: orderPayment.zeroPaymentId },
+          data: {
+            status: PaymentStatus.SUCCEEDED,
+            capturedAt: new Date(),
+          },
+        });
+      }
       await tx.order.update({
         where: { id: orderPayment.orderId },
         data: { status: OrderStatus.PAID },
       });
+
+      if (checkoutPricing.coupon) {
+        await settleCouponRedemptionForCartCheckout({
+          tx,
+          orderId: orderPayment.orderId,
+          paymentId:
+            orderPayment.zeroPaymentId ??
+            orderPayment.giftCardPaymentId ??
+            orderPayment.paymentId,
+          nextStatus: CouponRedemptionStatus.APPLIED,
+        });
+      }
     });
 
     await fulfillPaidCartOrder({
@@ -1479,7 +1805,13 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       key: input.idempotencyKey,
       replayed: false,
       orderId: orderPayment.orderId,
-      giftCardPaymentId: orderPayment.giftCardPaymentId,
+      paymentId: orderPayment.giftCardPaymentId ?? orderPayment.zeroPaymentId ?? orderPayment.paymentId,
+      paymentMethod: orderPayment.giftCardPaymentId ? PaymentMethod.GIFT_CARD : PaymentMethod.MANUAL,
+      redirectUrl: resolveCompletedRedirectUrl({
+        orderId: orderPayment.orderId,
+        cartHasStoreItems,
+        successUrl: input.redirectUrls?.successUrl,
+      }),
     });
 
     await persistTerminalResponse({
@@ -1511,6 +1843,8 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       userId: input.userId,
       redemptionId: orderPayment.redemptionId ?? "",
       giftCardPaymentId: orderPayment.giftCardPaymentId ?? "",
+      couponId: checkoutPricing.coupon?.couponId ?? "",
+      couponCode: checkoutPricing.coupon?.couponCode ?? "",
       ...metadataOverrides,
     };
 
@@ -1521,18 +1855,18 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       );
 
       const stripeLineItems =
-        (input.walletAmountMinor ?? 0) > 0
+        (input.walletAmountMinor ?? 0) > 0 || checkoutPricing.discountAmountMinor > 0
           ? [
               {
                 price_data: {
-                  currency: validation.pricing.currencyCode.toLowerCase(),
+                  currency: checkoutPricing.currencyCode.toLowerCase(),
                   product_data: {
-                    name: "Store checkout remaining balance",
+                    name: "Cart checkout remaining balance",
                   },
                   unit_amount: orderPayment.stripeAmountMinor,
+                },
+                quantity: 1,
               },
-              quantity: 1,
-            },
           ]
           : cartHasStoreItems
             ? validation.repricedLines.map((line) => ({
@@ -1611,6 +1945,17 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
         },
       });
 
+      if (checkoutPricing.coupon) {
+        await updateCouponRedemptionReferencesForCartCheckout({
+          coupon: checkoutPricing.coupon,
+          clientId: input.userId,
+          orderId: orderPayment.orderId,
+          idempotencyKey: input.idempotencyKey,
+          paymentId: orderPayment.stripePaymentId ?? orderPayment.paymentId,
+          stripeCheckoutSessionId: syntheticCheckoutSessionId,
+        });
+      }
+
       const syntheticSuccessResponse = createSuccessResponse({
         key: input.idempotencyKey,
         replayed: false,
@@ -1667,6 +2012,17 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
         stripeCheckoutMode: validation.composition === "RECURRING_ONLY" ? "SUBSCRIPTION" : "PAYMENT",
       },
     });
+
+    if (checkoutPricing.coupon) {
+      await updateCouponRedemptionReferencesForCartCheckout({
+        coupon: checkoutPricing.coupon,
+        clientId: input.userId,
+        orderId: orderPayment.orderId,
+        idempotencyKey: input.idempotencyKey,
+        paymentId: orderPayment.stripePaymentId ?? orderPayment.paymentId,
+        stripeCheckoutSessionId: checkoutSession.id,
+      });
+    }
 
     const successResponse = createSuccessResponse({
       key: input.idempotencyKey,
@@ -1725,6 +2081,18 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       orderId: orderPayment.orderId,
       paymentId: orderPayment.paymentId,
     });
+
+    if (
+      checkoutPricing.coupon &&
+      state === CART_CHECKOUT_IDEMPOTENCY_STATES.FAILED_AFTER_WRITE_PRE_STRIPE
+    ) {
+      await settleCouponRedemptionForCartCheckout({
+        orderId: orderPayment.orderId,
+        paymentId: orderPayment.stripePaymentId ?? orderPayment.paymentId,
+        nextStatus: CouponRedemptionStatus.REVERSED,
+        failureReason: message,
+      });
+    }
 
     if (state === CART_CHECKOUT_IDEMPOTENCY_STATES.FAILED_STRIPE_UNCERTAIN) {
       const repeatedUncertainFailure =
