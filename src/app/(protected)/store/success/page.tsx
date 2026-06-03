@@ -16,6 +16,14 @@ function formatAmount(minor: number, currencyCode: string): string {
   }).format(minor / 100);
 }
 
+function renderAmount(minor: number | null, currencyCode: string | null): string {
+  if (minor === null || !currencyCode) {
+    return "N/A";
+  }
+
+  return formatAmount(minor, currencyCode);
+}
+
 export default async function StoreSuccessPage({
   searchParams,
 }: {
@@ -146,12 +154,42 @@ export default async function StoreSuccessPage({
             <p className="text-sm text-[#7f5a5a]">No order items found.</p>
           )}
 
-          {successState.totalAmountMinor !== null && successState.currencyCode ? (
-            <p className="text-sm text-[#5f4040]">
-              <span className="font-medium">Total:</span>{" "}
-              {formatAmount(successState.totalAmountMinor, successState.currencyCode)}
+          <div className="space-y-1 text-sm text-[#5f4040]">
+            <p>
+              <span className="font-medium">Subtotal:</span>{" "}
+              {renderAmount(successState.subtotalAmountMinor, successState.currencyCode)}
             </p>
-          ) : null}
+            {successState.couponCodeSnapshot ? (
+              <p>
+                <span className="font-medium">Coupon ({successState.couponCodeSnapshot}):</span>{" "}
+                -{renderAmount(successState.discountAmountMinor, successState.currencyCode)}
+              </p>
+            ) : null}
+            {successState.walletAmountMinor > 0 && successState.currencyCode ? (
+              <p>
+                <span className="font-medium">Gift Card Wallet:</span>{" "}
+                -{formatAmount(successState.walletAmountMinor, successState.currencyCode)}
+              </p>
+            ) : null}
+            <p>
+              <span className="font-medium">Order Total:</span>{" "}
+              {renderAmount(successState.totalAmountMinor, successState.currencyCode)}
+            </p>
+            <p>
+              <span className="font-medium">Total Paid:</span>{" "}
+              {renderAmount(successState.totalPaidAmountMinor, successState.currencyCode)}
+            </p>
+            {successState.hasZeroValuePayment ? (
+              <p>
+                <span className="font-medium">Payment Record:</span> Internal zero-value payment recorded
+              </p>
+            ) : null}
+            {successState.stripeCheckoutSessionId ? (
+              <p>
+                <span className="font-medium">Stripe Session:</span> {successState.stripeCheckoutSessionId}
+              </p>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

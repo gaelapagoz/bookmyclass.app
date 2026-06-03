@@ -29,14 +29,50 @@ vi.mock("@/lib/cart/cart-success-state", () => ({
 
 import StoreSuccessPage from "../../src/app/(protected)/store/success/page";
 
+const confirmedCouponMerchandiseState = {
+  paymentStatus: "SUCCEEDED",
+  orderStatus: "PAID",
+  reconciliationState: "CONFIRMED" as const,
+  cartClearEligible: true,
+  subtotalAmountMinor: 4000,
+  discountAmountMinor: 1000,
+  totalAmountMinor: 3000,
+  totalPaidAmountMinor: 3000,
+  currencyCode: "EUR",
+  couponCodeSnapshot: "SAVE25",
+  walletAmountMinor: 500,
+  stripeCheckoutSessionId: "cs_store_coupon",
+  hasZeroValuePayment: false,
+  hasGiftCardItems: false,
+  items: [
+    {
+      productId: "prod-class-pack-1",
+      priceId: "price-class-pack-1",
+      productNameSnapshot: "5 Class Pack",
+      priceNameSnapshot: "5 Class Pack",
+      quantity: 1,
+      unitAmountMinor: 4000,
+      lineTotalAmountMinor: 3000,
+      currencyCode: "EUR",
+      productType: "CLASS_PACK",
+    },
+  ],
+};
+
 const confirmedGiftCardState = {
   paymentStatus: "SUCCEEDED",
   orderStatus: "PAID",
   reconciliationState: "CONFIRMED" as const,
   cartClearEligible: true,
   subtotalAmountMinor: 2500,
+  discountAmountMinor: null,
   totalAmountMinor: 2500,
+  totalPaidAmountMinor: 2500,
   currencyCode: "EUR",
+  couponCodeSnapshot: null,
+  walletAmountMinor: 0,
+  stripeCheckoutSessionId: "cs_store_gift_card",
+  hasZeroValuePayment: false,
   hasGiftCardItems: true,
   items: [
     {
@@ -53,30 +89,6 @@ const confirmedGiftCardState = {
   ],
 };
 
-const confirmedMerchandiseState = {
-  paymentStatus: "SUCCEEDED",
-  orderStatus: "PAID",
-  reconciliationState: "CONFIRMED" as const,
-  cartClearEligible: true,
-  subtotalAmountMinor: 1500,
-  totalAmountMinor: 1500,
-  currencyCode: "EUR",
-  hasGiftCardItems: false,
-  items: [
-    {
-      productId: "prod-merch-1",
-      priceId: "price-merch-1",
-      productNameSnapshot: "Studio T-Shirt",
-      priceNameSnapshot: "Studio T-Shirt",
-      quantity: 1,
-      unitAmountMinor: 1500,
-      lineTotalAmountMinor: 1500,
-      currencyCode: "EUR",
-      productType: "MERCHANDISE",
-    },
-  ],
-};
-
 describe("Store success page", () => {
   beforeEach(() => {
     getCartCheckoutSuccessStateForOrderMock.mockReset();
@@ -84,8 +96,8 @@ describe("Store success page", () => {
     reconcileCatalogCheckoutSessionAfterReturnMock.mockReset();
   });
 
-  it("renders confirmed state for gift card order using orderId (no session_id)", async () => {
-    getCartCheckoutSuccessStateForOrderMock.mockResolvedValue(confirmedGiftCardState);
+  it("renders confirmed coupon state for eligible non-gift-card order using orderId", async () => {
+    getCartCheckoutSuccessStateForOrderMock.mockResolvedValue(confirmedCouponMerchandiseState);
 
     render(
       await StoreSuccessPage({
@@ -94,8 +106,18 @@ describe("Store success page", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Purchase Confirmed" })).toBeInTheDocument();
-    expect(screen.getByText("Gift Card 25 EUR")).toBeInTheDocument();
-    expect(screen.getAllByText("€25.00").length).toBeGreaterThan(0);
+    expect(screen.getByText("5 Class Pack")).toBeInTheDocument();
+    expect(screen.getByText("Subtotal:")).toBeInTheDocument();
+    expect(screen.getByText("€40.00")).toBeInTheDocument();
+    expect(screen.getByText("Coupon (SAVE25):")).toBeInTheDocument();
+    expect(screen.getByText("-€10.00")).toBeInTheDocument();
+    expect(screen.getByText("Gift Card Wallet:")).toBeInTheDocument();
+    expect(screen.getByText("-€5.00")).toBeInTheDocument();
+    expect(screen.getByText("Order Total:")).toBeInTheDocument();
+    expect(screen.getAllByText("€30.00")).toHaveLength(3);
+    expect(screen.getByText("Stripe Session:")).toBeInTheDocument();
+    expect(screen.getByText("cs_store_coupon")).toBeInTheDocument();
+    expect(screen.queryByTestId("gift-card-success-copy")).not.toBeInTheDocument();
     expect(getCartCheckoutSuccessStateForOrderMock).toHaveBeenCalledWith({
       orderId: "order_abc123",
       userId: "user_1",
@@ -105,7 +127,7 @@ describe("Store success page", () => {
   });
 
   it("renders confirmed state for stripe-based checkout using session_id", async () => {
-    getCartCheckoutSuccessStateMock.mockResolvedValue(confirmedGiftCardState);
+    getCartCheckoutSuccessStateMock.mockResolvedValue(confirmedCouponMerchandiseState);
 
     render(
       await StoreSuccessPage({
@@ -144,8 +166,14 @@ describe("Store success page", () => {
       reconciliationState: "FAILED",
       cartClearEligible: false,
       subtotalAmountMinor: null,
+      discountAmountMinor: null,
       totalAmountMinor: null,
+      totalPaidAmountMinor: null,
       currencyCode: null,
+      couponCodeSnapshot: null,
+      walletAmountMinor: 0,
+      stripeCheckoutSessionId: null,
+      hasZeroValuePayment: false,
       hasGiftCardItems: false,
       items: [],
     });
@@ -193,7 +221,7 @@ describe("Store success page", () => {
     });
 
     it("does NOT show gift-card email copy for merchandise-only orders", async () => {
-      getCartCheckoutSuccessStateForOrderMock.mockResolvedValue(confirmedMerchandiseState);
+      getCartCheckoutSuccessStateForOrderMock.mockResolvedValue(confirmedCouponMerchandiseState);
 
       render(
         await StoreSuccessPage({
@@ -222,5 +250,32 @@ describe("Store success page", () => {
       expect(screen.getByRole("heading", { name: "Purchase Processing" })).toBeInTheDocument();
       expect(screen.queryByTestId("gift-card-success-copy")).not.toBeInTheDocument();
     });
+  });
+
+  it("renders internal zero-value payment state without Stripe reference", async () => {
+    getCartCheckoutSuccessStateForOrderMock.mockResolvedValue({
+      ...confirmedCouponMerchandiseState,
+      discountAmountMinor: 4000,
+      totalAmountMinor: 0,
+      totalPaidAmountMinor: 0,
+      couponCodeSnapshot: "FREE100",
+      walletAmountMinor: 0,
+      stripeCheckoutSessionId: null,
+      hasZeroValuePayment: true,
+    });
+
+    render(
+      await StoreSuccessPage({
+        searchParams: Promise.resolve({ orderId: "order_zero" }),
+      }),
+    );
+
+    expect(screen.getByText(/Internal zero-value payment recorded/)).toBeInTheDocument();
+    expect(screen.queryByText(/Stripe Session:/)).not.toBeInTheDocument();
+    expect(screen.getByText("Subtotal:")).toBeInTheDocument();
+    expect(screen.getByText("€40.00")).toBeInTheDocument();
+    expect(screen.getByText("Coupon (FREE100):")).toBeInTheDocument();
+    expect(screen.getByText("-€40.00")).toBeInTheDocument();
+    expect(screen.getAllByText("€0.00")).toHaveLength(2);
   });
 });

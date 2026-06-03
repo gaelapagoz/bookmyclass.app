@@ -649,6 +649,27 @@ export async function verifyPendingRegistrationByEmailForTests(input: {
   });
 }
 
+export async function hasOpenPendingRegistration(input: {
+  email: string;
+  now?: Date;
+}): Promise<boolean> {
+  const email = normalizeEmail(input.email);
+  if (!email) {
+    return false;
+  }
+
+  const now = input.now ?? new Date();
+  const pending = await prisma.pendingUserRegistration.findUnique({
+    where: { email },
+    select: {
+      consumedAt: true,
+      tokenExpiresAt: true,
+    },
+  });
+
+  return Boolean(pending && pending.consumedAt === null && pending.tokenExpiresAt > now);
+}
+
 export async function requestEmailChange(input: {
   userId: string;
   newEmail: string;

@@ -1,4 +1,10 @@
-import { OrderStatus, PaymentProvider, PaymentStatus, ProductType } from "@prisma/client";
+import {
+  OrderStatus,
+  PaymentMethod,
+  PaymentProvider,
+  PaymentStatus,
+  ProductType,
+} from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getCheckoutSessionReconciliationState } from "@/lib/public-booking/stripe-webhook-service";
 
@@ -20,8 +26,14 @@ export type CartSuccessState = {
   reconciliationState: "PENDING" | "CONFIRMED" | "FAILED";
   cartClearEligible: boolean;
   subtotalAmountMinor: number | null;
+  discountAmountMinor: number | null;
   totalAmountMinor: number | null;
+  totalPaidAmountMinor: number | null;
   currencyCode: string | null;
+  couponCodeSnapshot: string | null;
+  walletAmountMinor: number;
+  stripeCheckoutSessionId: string | null;
+  hasZeroValuePayment: boolean;
   items: CartSuccessLineItem[];
   hasGiftCardItems: boolean;
 };
@@ -116,8 +128,21 @@ async function readOrderSuccessState(input: {
     },
     select: {
       subtotalAmountMinor: true,
+      discountAmountMinor: true,
       totalAmountMinor: true,
       currencyCode: true,
+      couponCodeSnapshot: true,
+      payments: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          status: true,
+          method: true,
+          provider: true,
+          amountMinor: true,
+          stripeCheckoutSessionId: true,
+          providerReference: true,
+        },
+      },
       items: {
         orderBy: { createdAt: "asc" },
         select: {
@@ -154,6 +179,32 @@ async function readOrderSuccessState(input: {
     })) ?? [];
 
   const hasGiftCardItems = items.some((item) => item.productType === ProductType.GIFT_CARD);
+  const walletAmountMinor =
+    order?.payments
+      .filter(
+        (payment) =>
+          payment.method === PaymentMethod.GIFT_CARD &&
+          payment.status !== PaymentStatus.FAILED &&
+          payment.status !== PaymentStatus.REFUNDED,
+      )
+      .reduce((sum, payment) => sum + payment.amountMinor, 0) ?? 0;
+  const totalPaidAmountMinor =
+    order?.payments.reduce(
+      (sum, payment) =>
+        payment.status === PaymentStatus.SUCCEEDED ? sum + payment.amountMinor : sum,
+      0,
+    ) ?? null;
+  const stripePayment = order?.payments.find((payment) => payment.provider === PaymentProvider.STRIPE);
+  const stripeCheckoutSessionId =
+    stripePayment?.stripeCheckoutSessionId ?? stripePayment?.providerReference ?? null;
+  const hasZeroValuePayment =
+    order?.payments.some(
+      (payment) =>
+        payment.status === PaymentStatus.SUCCEEDED &&
+        payment.provider === PaymentProvider.INTERNAL &&
+        payment.method === PaymentMethod.MANUAL &&
+        payment.amountMinor === 0,
+    ) ?? false;
 
   return {
     paymentStatus: input.paymentStatus,
@@ -161,8 +212,14 @@ async function readOrderSuccessState(input: {
     reconciliationState: input.reconciliationState,
     cartClearEligible,
     subtotalAmountMinor: order?.subtotalAmountMinor ?? null,
+    discountAmountMinor: order?.discountAmountMinor ?? null,
     totalAmountMinor: order?.totalAmountMinor ?? null,
+    totalPaidAmountMinor,
     currencyCode: order?.currencyCode ?? null,
+    couponCodeSnapshot: order?.couponCodeSnapshot ?? null,
+    walletAmountMinor,
+    stripeCheckoutSessionId,
+    hasZeroValuePayment,
     items,
     hasGiftCardItems,
   };
@@ -183,8 +240,14 @@ export async function getCartCheckoutSuccessStateForOrder(input: {
       reconciliationState: "PENDING",
       cartClearEligible: false,
       subtotalAmountMinor: null,
+      discountAmountMinor: null,
       totalAmountMinor: null,
+      totalPaidAmountMinor: null,
       currencyCode: null,
+      couponCodeSnapshot: null,
+      walletAmountMinor: 0,
+      stripeCheckoutSessionId: null,
+      hasZeroValuePayment: false,
       items: [],
       hasGiftCardItems: false,
     };
@@ -286,8 +349,14 @@ export async function getCartCheckoutSuccessState(input: {
       reconciliationState: reconciliation.reconciliationState,
       cartClearEligible,
       subtotalAmountMinor: null,
+      discountAmountMinor: null,
       totalAmountMinor: null,
+      totalPaidAmountMinor: null,
       currencyCode: null,
+      couponCodeSnapshot: null,
+      walletAmountMinor: 0,
+      stripeCheckoutSessionId: null,
+      hasZeroValuePayment: false,
       items: [],
       hasGiftCardItems: false,
     };

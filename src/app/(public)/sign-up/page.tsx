@@ -6,7 +6,7 @@ import * as Sentry from "@sentry/nextjs";
 import { auth } from "@/auth";
 import { hashPassword } from "@/lib/auth/password-service";
 import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
-import { createPendingPublicRegistration } from "@/lib/auth/user-identity-service";
+import { createPendingPublicRegistration, hasOpenPendingRegistration } from "@/lib/auth/user-identity-service";
 import { assertValidCsrfToken, createCsrfToken, getCsrfFieldName } from "@/lib/security/csrf-token";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
 
@@ -68,6 +68,10 @@ export async function registerAction(formData: FormData) {
         }
       } catch (error: unknown) {
         Sentry.captureException(error);
+        const hasPendingRegistration = await hasOpenPendingRegistration({ email });
+        if (hasPendingRegistration) {
+          redirect(`/verify-email?error=send_failed&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+        }
         redirect(`/sign-up?error=signup_failed&callbackUrl=${encodeURIComponent(callbackUrl)}`);
       }
 

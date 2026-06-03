@@ -62,8 +62,14 @@ describe("Subscription success page", () => {
       reconciliationState: "CONFIRMED",
       cartClearEligible: true,
       subtotalAmountMinor: 11000,
-      totalAmountMinor: 11000,
+      discountAmountMinor: 2000,
+      totalAmountMinor: 9000,
+      totalPaidAmountMinor: 9000,
       currencyCode: "EUR",
+      couponCodeSnapshot: "SAVE20",
+      walletAmountMinor: 3000,
+      stripeCheckoutSessionId: "cs_test_123",
+      hasZeroValuePayment: false,
       items: [
         {
           productId: "prod_1",
@@ -111,7 +117,16 @@ describe("Subscription success page", () => {
     expect(screen.getByText("PAID")).toBeInTheDocument();
     expect(screen.getByText("CONFIRMED")).toBeInTheDocument();
     expect(screen.queryByText("Cart Clear Eligible")).not.toBeInTheDocument();
-    expect(screen.getAllByText(/110\.00/)).toHaveLength(2);
+    expect(screen.getByText("Subtotal:")).toBeInTheDocument();
+    expect(screen.getByText("€110.00")).toBeInTheDocument();
+    expect(screen.getByText("Coupon (SAVE20):")).toBeInTheDocument();
+    expect(screen.getByText("-€20.00")).toBeInTheDocument();
+    expect(screen.getByText("Gift Card Wallet:")).toBeInTheDocument();
+    expect(screen.getByText("-€30.00")).toBeInTheDocument();
+    expect(screen.getByText("Order Total:")).toBeInTheDocument();
+    expect(screen.getAllByText("€90.00")).toHaveLength(2);
+    expect(screen.getByText("Stripe Session:")).toBeInTheDocument();
+    expect(screen.getByText("cs_test_123")).toBeInTheDocument();
 
     await waitFor(() => {
       expect(window.localStorage.getItem(CART_STORAGE_KEY)).toBeNull();
@@ -126,8 +141,14 @@ describe("Subscription success page", () => {
       reconciliationState: "PENDING",
       cartClearEligible: false,
       subtotalAmountMinor: null,
+      discountAmountMinor: null,
       totalAmountMinor: null,
+      totalPaidAmountMinor: null,
       currencyCode: null,
+      couponCodeSnapshot: null,
+      walletAmountMinor: 0,
+      stripeCheckoutSessionId: null,
+      hasZeroValuePayment: false,
       items: [],
     });
 
@@ -152,8 +173,14 @@ describe("Subscription success page", () => {
       reconciliationState: "FAILED",
       cartClearEligible: false,
       subtotalAmountMinor: 11000,
+      discountAmountMinor: null,
       totalAmountMinor: 11000,
+      totalPaidAmountMinor: 0,
       currencyCode: "EUR",
+      couponCodeSnapshot: null,
+      walletAmountMinor: 0,
+      stripeCheckoutSessionId: "cs_test_failed",
+      hasZeroValuePayment: false,
       items: [],
     });
 
@@ -179,8 +206,14 @@ describe("Subscription success page", () => {
       reconciliationState: "CONFIRMED",
       cartClearEligible: false,
       subtotalAmountMinor: 11000,
+      discountAmountMinor: null,
       totalAmountMinor: 11000,
+      totalPaidAmountMinor: 11000,
       currencyCode: "EUR",
+      couponCodeSnapshot: null,
+      walletAmountMinor: 0,
+      stripeCheckoutSessionId: "cs_test_not_paid",
+      hasZeroValuePayment: false,
       items: [],
     });
 
@@ -374,5 +407,40 @@ describe("Subscription success page", () => {
       ]);
     });
     expect(window.localStorage.getItem(`${CART_CLEARED_SESSION_PREFIX}${checkoutSessionId}`)).toBe("1");
+  });
+
+  it("renders zero-value internal payment state without a Stripe reference", async () => {
+    getCartCheckoutSuccessStateMock.mockResolvedValueOnce({
+      paymentStatus: "SUCCEEDED",
+      orderStatus: "PAID",
+      reconciliationState: "CONFIRMED",
+      cartClearEligible: true,
+      subtotalAmountMinor: 2000,
+      discountAmountMinor: 2000,
+      totalAmountMinor: 0,
+      totalPaidAmountMinor: 0,
+      currencyCode: "EUR",
+      couponCodeSnapshot: "FREE100",
+      walletAmountMinor: 0,
+      stripeCheckoutSessionId: null,
+      hasZeroValuePayment: true,
+      items: [],
+    });
+
+    render(
+      await SubscriptionSuccessPage({
+        searchParams: Promise.resolve({
+          session_id: "cs_test_zero",
+        }),
+      }),
+    );
+
+    expect(screen.getByText(/Internal zero-value payment recorded/)).toBeInTheDocument();
+    expect(screen.queryByText(/Stripe Session:/)).not.toBeInTheDocument();
+    expect(screen.getByText("Subtotal:")).toBeInTheDocument();
+    expect(screen.getByText("€20.00")).toBeInTheDocument();
+    expect(screen.getByText("Coupon (FREE100):")).toBeInTheDocument();
+    expect(screen.getByText("-€20.00")).toBeInTheDocument();
+    expect(screen.getAllByText("€0.00")).toHaveLength(2);
   });
 });

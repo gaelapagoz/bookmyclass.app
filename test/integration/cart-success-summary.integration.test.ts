@@ -18,6 +18,9 @@ import { resetDb } from "./helpers/reset-db";
 async function createCartSuccessFixture(input: {
   paymentStatus: PaymentStatus;
   orderStatus: OrderStatus;
+  discountAmountMinor?: number;
+  couponCodeSnapshot?: string | null;
+  walletAmountMinor?: number;
 }) {
   const client = await prisma.user.create({
     data: {
@@ -77,10 +80,11 @@ async function createCartSuccessFixture(input: {
     data: {
       clientId: client.id,
       subtotalAmountMinor: 11000,
-      discountAmountMinor: 0,
-      totalAmountMinor: 11000,
+      discountAmountMinor: input.discountAmountMinor ?? 0,
+      totalAmountMinor: 11000 - (input.discountAmountMinor ?? 0),
       currencyCode: "EUR",
       status: input.orderStatus,
+      couponCodeSnapshot: input.couponCodeSnapshot ?? null,
       notes: "Slice D cart success integration fixture",
       items: {
         create: [
@@ -122,13 +126,27 @@ async function createCartSuccessFixture(input: {
       provider: PaymentProvider.STRIPE,
       providerReference: checkoutSessionId,
       stripeCheckoutSessionId: checkoutSessionId,
-      amountMinor: 11000,
+      amountMinor: 11000 - (input.discountAmountMinor ?? 0) - (input.walletAmountMinor ?? 0),
       currencyCode: "EUR",
       checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
     },
   });
 
-  return { client, checkoutSessionId };
+  if ((input.walletAmountMinor ?? 0) > 0) {
+    await prisma.payment.create({
+      data: {
+        orderId: order.id,
+        status: input.paymentStatus,
+        method: PaymentMethod.GIFT_CARD,
+        provider: PaymentProvider.INTERNAL,
+        amountMinor: input.walletAmountMinor ?? 0,
+        currencyCode: "EUR",
+        checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+      },
+    });
+  }
+
+  return { client, checkoutSessionId, orderId: order.id };
 }
 
 describe("cart success summary read model", () => {
@@ -152,8 +170,14 @@ describe("cart success summary read model", () => {
     expect(state.reconciliationState).toBe("CONFIRMED");
     expect(state.cartClearEligible).toBe(true);
     expect(state.subtotalAmountMinor).toBe(11000);
+    expect(state.discountAmountMinor).toBe(0);
     expect(state.totalAmountMinor).toBe(11000);
+    expect(state.totalPaidAmountMinor).toBe(11000);
     expect(state.currencyCode).toBe("EUR");
+    expect(state.couponCodeSnapshot).toBeNull();
+    expect(state.walletAmountMinor).toBe(0);
+    expect(state.stripeCheckoutSessionId).toBe(fixture.checkoutSessionId);
+    expect(state.hasZeroValuePayment).toBe(false);
     expect(state.items).toEqual([
       expect.objectContaining({
         productNameSnapshot: "Snapshot Product A",
@@ -226,6 +250,57 @@ describe("cart success summary read model", () => {
     expect(state.totalAmountMinor).toBe(11000);
   });
 
+  it("returns coupon, wallet, and Stripe reference fields from the server read model", async () => {
+    const fixture = await createCartSuccessFixture({
+      paymentStatus: PaymentStatus.SUCCEEDED,
+      orderStatus: OrderStatus.PAID,
+      discountAmountMinor: 2000,
+      couponCodeSnapshot: "SAVE20",
+      walletAmountMinor: 3000,
+    });
+
+    const state = await getCartCheckoutSuccessState({
+      checkoutSessionId: fixture.checkoutSessionId,
+      userId: fixture.client.id,
+    });
+
+    expect(state.discountAmountMinor).toBe(2000);
+    expect(state.couponCodeSnapshot).toBe("SAVE20");
+    expect(state.walletAmountMinor).toBe(3000);
+    expect(state.stripeCheckoutSessionId).toBe(fixture.checkoutSessionId);
+    expect(state.totalAmountMinor).toBe(9000);
+    expect(state.totalPaidAmountMinor).toBe(9000);
+  });
+
+  it("uses the latest Stripe payment reference when an order has multiple checkout attempts", async () => {
+    const fixture = await createCartSuccessFixture({
+      paymentStatus: PaymentStatus.SUCCEEDED,
+      orderStatus: OrderStatus.PAID,
+    });
+
+    const latestCheckoutSessionId = `cs_cart_success_retry_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    await prisma.payment.create({
+      data: {
+        orderId: fixture.orderId,
+        status: PaymentStatus.SUCCEEDED,
+        method: PaymentMethod.CARD,
+        provider: PaymentProvider.STRIPE,
+        providerReference: latestCheckoutSessionId,
+        stripeCheckoutSessionId: latestCheckoutSessionId,
+        amountMinor: 11000,
+        currencyCode: "EUR",
+        checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+      },
+    });
+
+    const state = await getCartCheckoutSuccessState({
+      checkoutSessionId: latestCheckoutSessionId,
+      userId: fixture.client.id,
+    });
+
+    expect(state.stripeCheckoutSessionId).toBe(latestCheckoutSessionId);
+  });
+
   it("returns safe empty state for unknown session id", async () => {
     const client = await prisma.user.create({
       data: {
@@ -246,8 +321,14 @@ describe("cart success summary read model", () => {
     expect(state.cartClearEligible).toBe(false);
     expect(state.items).toEqual([]);
     expect(state.subtotalAmountMinor).toBeNull();
+    expect(state.discountAmountMinor).toBeNull();
     expect(state.totalAmountMinor).toBeNull();
+    expect(state.totalPaidAmountMinor).toBeNull();
     expect(state.currencyCode).toBeNull();
+    expect(state.couponCodeSnapshot).toBeNull();
+    expect(state.walletAmountMinor).toBe(0);
+    expect(state.stripeCheckoutSessionId).toBeNull();
+    expect(state.hasZeroValuePayment).toBe(false);
   });
 
   it("does not expose summary when checkout session belongs to another user", async () => {
@@ -275,8 +356,14 @@ describe("cart success summary read model", () => {
     expect(state.cartClearEligible).toBe(false);
     expect(state.items).toEqual([]);
     expect(state.subtotalAmountMinor).toBeNull();
+    expect(state.discountAmountMinor).toBeNull();
     expect(state.totalAmountMinor).toBeNull();
+    expect(state.totalPaidAmountMinor).toBeNull();
     expect(state.currencyCode).toBeNull();
+    expect(state.couponCodeSnapshot).toBeNull();
+    expect(state.walletAmountMinor).toBe(0);
+    expect(state.stripeCheckoutSessionId).toBeNull();
+    expect(state.hasZeroValuePayment).toBe(false);
   });
 });
 
@@ -288,6 +375,11 @@ describe("cart success state — full-wallet orderId path (Phase 2.1)", () => {
   async function createFullWalletOrderFixture(input: {
     orderStatus: OrderStatus;
     paymentStatus: PaymentStatus;
+    discountAmountMinor?: number;
+    couponCodeSnapshot?: string | null;
+    zeroValuePayment?: boolean;
+    productType?: ProductType;
+    productName?: string;
   }) {
     const client = await prisma.user.create({
       data: {
@@ -299,9 +391,9 @@ describe("cart success state — full-wallet orderId path (Phase 2.1)", () => {
 
     const product = await prisma.product.create({
       data: {
-        name: "Gift Card",
-        slug: `gc-orderId-success-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
-        productType: ProductType.GIFT_CARD,
+        name: input.productName ?? "Gift Card",
+        slug: `orderid-success-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+        productType: input.productType ?? ProductType.GIFT_CARD,
         isActive: true,
         isArchived: false,
         sortOrder: 1,
@@ -310,8 +402,8 @@ describe("cart success state — full-wallet orderId path (Phase 2.1)", () => {
     const price = await prisma.price.create({
       data: {
         productId: product.id,
-        lookupKey: `gc-orderId-price-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
-        name: "Gift Card Price",
+        lookupKey: `orderid-price-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+        name: `${input.productName ?? "Gift Card"} Price`,
         priceType: PriceType.ONE_TIME,
         currencyCode: "EUR",
         unitAmountMinor: 2500,
@@ -324,10 +416,11 @@ describe("cart success state — full-wallet orderId path (Phase 2.1)", () => {
       data: {
         clientId: client.id,
         subtotalAmountMinor: 2500,
-        discountAmountMinor: 0,
-        totalAmountMinor: 2500,
+        discountAmountMinor: input.discountAmountMinor ?? 0,
+        totalAmountMinor: 2500 - (input.discountAmountMinor ?? 0),
         currencyCode: "EUR",
         status: input.orderStatus,
+        couponCodeSnapshot: input.couponCodeSnapshot ?? null,
         notes: "Full wallet order test",
         items: {
           create: [
@@ -335,7 +428,7 @@ describe("cart success state — full-wallet orderId path (Phase 2.1)", () => {
               productId: product.id,
               priceId: price.id,
               quantity: 1,
-              productNameSnapshot: "Gift Card Snapshot",
+              productNameSnapshot: input.productName ?? "Gift Card Snapshot",
               priceNameSnapshot: "€25",
               unitAmountMinor: 2500,
               lineSubtotalAmountMinor: 2500,
@@ -352,9 +445,9 @@ describe("cart success state — full-wallet orderId path (Phase 2.1)", () => {
       data: {
         orderId: order.id,
         status: input.paymentStatus,
-        method: PaymentMethod.CARD,
+        method: input.zeroValuePayment ? PaymentMethod.MANUAL : PaymentMethod.GIFT_CARD,
         provider: PaymentProvider.INTERNAL,
-        amountMinor: 2500,
+        amountMinor: input.zeroValuePayment ? 0 : 2500 - (input.discountAmountMinor ?? 0),
         currencyCode: "EUR",
         checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
         ...(input.paymentStatus === PaymentStatus.SUCCEEDED ? { capturedAt: new Date() } : {}),
@@ -379,6 +472,9 @@ describe("cart success state — full-wallet orderId path (Phase 2.1)", () => {
     expect(state.cartClearEligible).toBe(true);
     expect(state.orderStatus).toBe(OrderStatus.PAID);
     expect(state.paymentStatus).toBe(PaymentStatus.SUCCEEDED);
+    expect(state.walletAmountMinor).toBe(2500);
+    expect(state.totalPaidAmountMinor).toBe(2500);
+    expect(state.hasZeroValuePayment).toBe(false);
     expect(state.items).toHaveLength(1);
     expect(state.items[0]).toMatchObject({
       productNameSnapshot: "Gift Card Snapshot",
@@ -402,6 +498,32 @@ describe("cart success state — full-wallet orderId path (Phase 2.1)", () => {
 
     expect(state.reconciliationState).toBe("PENDING");
     expect(state.cartClearEligible).toBe(false);
+  });
+
+  it("returns zero-value internal payment state without Stripe reference for coupon-only orderId success", async () => {
+    const fixture = await createFullWalletOrderFixture({
+      orderStatus: OrderStatus.PAID,
+      paymentStatus: PaymentStatus.SUCCEEDED,
+      discountAmountMinor: 2500,
+      couponCodeSnapshot: "FREE100",
+      zeroValuePayment: true,
+      productType: ProductType.CLASS_PACK,
+      productName: "Class Pack Snapshot",
+    });
+
+    const state = await getCartCheckoutSuccessStateForOrder({
+      orderId: fixture.order.id,
+      userId: fixture.client.id,
+    });
+
+    expect(state.discountAmountMinor).toBe(2500);
+    expect(state.couponCodeSnapshot).toBe("FREE100");
+    expect(state.walletAmountMinor).toBe(0);
+    expect(state.totalAmountMinor).toBe(0);
+    expect(state.totalPaidAmountMinor).toBe(0);
+    expect(state.stripeCheckoutSessionId).toBeNull();
+    expect(state.hasZeroValuePayment).toBe(true);
+    expect(state.hasGiftCardItems).toBe(false);
   });
 
   it("rejects orderId belonging to another user", async () => {

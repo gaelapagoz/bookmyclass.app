@@ -16,6 +16,14 @@ function formatAmount(minor: number, currencyCode: string): string {
   }).format(minor / 100);
 }
 
+function renderAmount(minor: number | null, currencyCode: string | null): string {
+  if (minor === null || !currencyCode) {
+    return "N/A";
+  }
+
+  return formatAmount(minor, currencyCode);
+}
+
 export default async function SubscriptionSuccessPage({
   searchParams,
 }: {
@@ -137,16 +145,38 @@ export default async function SubscriptionSuccessPage({
           <div className="space-y-1 text-sm text-[#5f4040]">
             <p>
               <span className="font-medium">Subtotal:</span>{" "}
-              {successState.subtotalAmountMinor !== null && successState.currencyCode
-                ? formatAmount(successState.subtotalAmountMinor, successState.currencyCode)
-                : "N/A"}
+              {renderAmount(successState.subtotalAmountMinor, successState.currencyCode)}
+            </p>
+            {successState.couponCodeSnapshot ? (
+              <p>
+                <span className="font-medium">Coupon ({successState.couponCodeSnapshot}):</span>{" "}
+                -{renderAmount(successState.discountAmountMinor, successState.currencyCode)}
+              </p>
+            ) : null}
+            {successState.walletAmountMinor > 0 && successState.currencyCode ? (
+              <p>
+                <span className="font-medium">Gift Card Wallet:</span>{" "}
+                -{formatAmount(successState.walletAmountMinor, successState.currencyCode)}
+              </p>
+            ) : null}
+            <p>
+              <span className="font-medium">Order Total:</span>{" "}
+              {renderAmount(successState.totalAmountMinor, successState.currencyCode)}
             </p>
             <p>
-              <span className="font-medium">Total:</span>{" "}
-              {successState.totalAmountMinor !== null && successState.currencyCode
-                ? formatAmount(successState.totalAmountMinor, successState.currencyCode)
-                : "N/A"}
+              <span className="font-medium">Total Paid:</span>{" "}
+              {renderAmount(successState.totalPaidAmountMinor, successState.currencyCode)}
             </p>
+            {successState.hasZeroValuePayment ? (
+              <p>
+                <span className="font-medium">Payment Record:</span> Internal zero-value payment recorded
+              </p>
+            ) : null}
+            {successState.stripeCheckoutSessionId ? (
+              <p>
+                <span className="font-medium">Stripe Session:</span> {successState.stripeCheckoutSessionId}
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}

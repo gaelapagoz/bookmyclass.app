@@ -140,6 +140,27 @@ describe("auth actions integration", () => {
     expect(getCapturedTestEmails()).toHaveLength(1);
   });
 
+  it("signup preserves pending verification flow when email send fails after pending registration is stored", async () => {
+    const email = `pending-send-failed.${Date.now()}@example.test`;
+    const emailTemplateUpsertSpy = vi.spyOn(prisma.emailTemplate, "upsert").mockRejectedValueOnce(new Error("EMAIL_TEMPLATE_WRITE_FAILED"));
+
+    try {
+      await expect(registerAction(makeSignUpForm({ email }))).rejects.toThrow(
+        `NEXT_REDIRECT:/verify-email?error=send_failed&email=${encodeURIComponent(email)}`,
+      );
+    } finally {
+      emailTemplateUpsertSpy.mockRestore();
+    }
+
+    const createdUser = await prisma.user.findUnique({ where: { email } });
+    expect(createdUser).toBeNull();
+
+    const pending = await prisma.pendingUserRegistration.findUnique({ where: { email } });
+    expect(pending).not.toBeNull();
+    expect(pending?.consumedAt).toBeNull();
+    expect(getCapturedTestEmails()).toHaveLength(0);
+  });
+
   it("signup never allows public role escalation", async () => {
     const email = `role-escalation.${Date.now()}@example.test`;
 
