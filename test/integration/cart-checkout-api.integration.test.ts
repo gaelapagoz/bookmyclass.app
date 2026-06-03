@@ -1,10 +1,15 @@
 import "./helpers/setup-env";
 
 import {
+  BookingPaymentSelection,
+  BookingStatus,
   BillingInterval,
+  CreditLedgerEntryType,
   CouponDiscountType,
   CouponRedemptionStatus,
   CouponStatus,
+  EntitlementScope,
+  EntitlementType,
   GiftCardReconciliationStatus,
   GiftCardRedemptionStatus,
   OrderStatus,
@@ -46,10 +51,12 @@ import { GET as cartSuccessValidateRoute } from "../../src/app/api/cart/success/
 import { startCartCheckout } from "../../src/lib/cart/cart-checkout-service";
 import { reserveCouponRedemptionForCartCheckout } from "../../src/lib/coupons/coupon-validation-service";
 import { computeCartHash as computeHash } from "../../src/lib/cart/cart-hash";
+import { validateCart } from "../../src/lib/cart/cart-service";
 import { hashRateLimitKey } from "../../src/lib/security/db-rate-limit";
 import { processStripeWebhookEvent } from "../../src/lib/public-booking/stripe-webhook-service";
 import { captureGiftCardRedemption } from "../../src/lib/gift-cards/gift-card-wallet-service";
 import { prisma } from "./helpers/db";
+import { createClassCategory, createClassType } from "./helpers/factories";
 import { resetDb } from "./helpers/reset-db";
 
 const sameOriginHeaders = {
@@ -210,6 +217,121 @@ async function seedCoupon(input?: {
           : undefined,
     },
   });
+}
+
+async function createBookingOriginCheckoutFixture(input: {
+  clientId: string;
+  paymentSelection: BookingPaymentSelection;
+  unitAmountMinor?: number;
+}) {
+  const unique = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+  const category = await createClassCategory(prisma, {
+    name: "Zero Pay Category",
+    slug: `zero-pay-category-${unique}`,
+    sortOrder: 1,
+    isActive: true,
+  });
+  const classType = await createClassType(prisma, {
+    categoryId: category.id,
+    name: "Zero Pay Flow",
+    slug: `zero-pay-flow-${unique}`,
+    sortOrder: 1,
+    isActive: true,
+    isVisible: true,
+  });
+  const teacher = await prisma.user.create({
+    data: {
+      name: "Zero Pay Teacher",
+      email: `teacher.zero-pay.${unique}@example.test`,
+      role: Role.TEACHER,
+    },
+  });
+  const template = await prisma.classTemplate.create({
+    data: {
+      classTypeId: classType.id,
+      defaultTeacherId: teacher.id,
+      title: "Zero Pay Template",
+      slug: `zero-pay-template-${unique}`,
+      defaultCapacity: 12,
+      defaultDurationMinutes: 60,
+      isActive: true,
+      isPublished: true,
+    },
+  });
+  const startsAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  const session = await prisma.studioSession.create({
+    data: {
+      classTemplateId: template.id,
+      classTypeId: classType.id,
+      teacherId: teacher.id,
+      title: "Zero Pay Session",
+      startsAt,
+      endsAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
+      capacity: 12,
+      status: "SCHEDULED",
+      isPublished: true,
+    },
+  });
+
+  const productType =
+    input.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE
+      ? ProductType.CLASS_PACK
+      : ProductType.DROP_IN_CLASS;
+  const product = await prisma.product.create({
+    data: {
+      name: productType === ProductType.CLASS_PACK ? "Zero Pay Class Pack" : "Zero Pay Drop-In",
+      slug: `zero-pay-product-${unique}`,
+      productType,
+      isActive: true,
+      isArchived: false,
+      sortOrder: 1,
+    },
+  });
+  const price = await prisma.price.create({
+    data: {
+      productId: product.id,
+      lookupKey: `zero-pay-price-${unique}`,
+      stripePriceId: `price_zero_pay_${unique}`,
+      stripeSyncStatus: StripeSyncStatus.SYNCED,
+      name: "Zero Pay Price",
+      priceType: PriceType.ONE_TIME,
+      currencyCode: "EUR",
+      unitAmountMinor: input.unitAmountMinor ?? 2500,
+      isActive: true,
+      isArchived: false,
+    },
+  });
+  await prisma.entitlementRule.create({
+    data: {
+      productId: product.id,
+      entitlementType:
+        input.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE
+          ? EntitlementType.CREDIT_PACK
+          : EntitlementType.SINGLE_USE,
+      entitlementScope: EntitlementScope.COLLECTIVE_CLASSES,
+      quantity: input.paymentSelection === BookingPaymentSelection.NEW_PLAN_PURCHASE ? 10 : 1,
+      isActive: true,
+    },
+  });
+  const booking = await prisma.booking.create({
+    data: {
+      studioSessionId: session.id,
+      clientId: input.clientId,
+      status: BookingStatus.PENDING,
+      paymentSelection: input.paymentSelection,
+      selectedPriceId: price.id,
+      draftAmountMinor: price.unitAmountMinor,
+      draftCurrencyCode: "EUR",
+      customerName: "Zero Pay Client",
+      customerEmail: "zero-pay@example.test",
+      customerPhone: "+32000000000",
+      consentTermsAccepted: true,
+      consentPrivacyAccepted: true,
+      consentAcceptedAt: new Date(),
+    },
+  });
+
+  return { booking, product, price, serviceSlug: classType.slug };
 }
 
 describe("POST /api/cart/checkout", () => {
@@ -679,6 +801,8 @@ describe("POST /api/cart/checkout", () => {
     const client = await seedClient({ verified: true });
     const { product, price } = await seedCheckoutReadyCatalog();
     const lines = [{ productId: product.id, priceId: price.id, quantity: 1 }];
+    const validation = await validateCart({ lines, clientId: client.id });
+    expect(validation.ok).toBe(true);
 
     vi.mocked(auth).mockResolvedValue({
       user: { id: client.id, name: client.name, email: client.email },
@@ -689,7 +813,7 @@ describe("POST /api/cart/checkout", () => {
       data: {
         userId: client.id,
         idempotencyKey: "cartchk_123e4567-e89b-12d3-a456-426614174106",
-        cartHash: computeHash(lines),
+        cartHash: validation.ok ? validation.cartHash : computeHash(lines),
         state: "IN_PROGRESS",
       },
     });
@@ -2777,6 +2901,273 @@ describe("POST /api/cart/checkout — Slice 1D coupon checkout", () => {
       },
     });
     expect(createStripeCheckoutSessionWithIdempotencyMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("booking-origin zero-payable checkout confirms booking and does not duplicate ownership on replay", async () => {
+    const client = await seedClient({ verified: true });
+    const fixture = await createBookingOriginCheckoutFixture({
+      clientId: client.id,
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+      unitAmountMinor: 2500,
+    });
+    await seedCoupon({
+      code: "FREEBOOK",
+      discountPercentBps: 10_000,
+      eligiblePriceId: fixture.price.id,
+    });
+
+    const checkoutInput = {
+      userId: client.id,
+      idempotencyKey: `bookcart_${fixture.booking.id}`,
+      lines: [{ productId: fixture.product.id, priceId: fixture.price.id, quantity: 1 }],
+      clientCartVersion: `booking:${fixture.booking.id}`,
+      couponCode: "FREEBOOK",
+      redirectUrls: {
+        successUrl: `http://localhost:3000/book-a-class/${fixture.serviceSlug}/payment/success?bookingId=${fixture.booking.id}&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `http://localhost:3000/book-a-class/${fixture.serviceSlug}/payment/cancel?bookingId=${fixture.booking.id}`,
+      },
+      metadataOverrides: {
+        bookingId: fixture.booking.id,
+        serviceSlug: fixture.serviceSlug,
+        paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+        selectedPriceId: fixture.price.id,
+        productId: fixture.product.id,
+      },
+    } as const;
+
+    const first = await startCartCheckout(checkoutInput);
+    const second = await startCartCheckout(checkoutInput);
+
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({
+      type: "completed",
+      paymentMethod: PaymentMethod.MANUAL,
+      redirectUrl: expect.stringContaining(`/book-a-class/${fixture.serviceSlug}/payment/success?bookingId=${fixture.booking.id}`),
+    });
+    expect(second.status).toBe(200);
+    expect(second.body).toMatchObject({
+      idempotency: {
+        replayed: true,
+      },
+    });
+    expect(createStripeCheckoutSessionWithIdempotencyMock).not.toHaveBeenCalled();
+
+    const booking = await prisma.booking.findUniqueOrThrow({
+      where: { id: fixture.booking.id },
+      select: {
+        status: true,
+        selectedEntitlementId: true,
+        orderId: true,
+      },
+    });
+    expect(booking.status).toBe(BookingStatus.CONFIRMED);
+    expect(booking.selectedEntitlementId).toBeTruthy();
+    expect(booking.orderId).toBeTruthy();
+
+    await expect(
+      prisma.payment.findFirst({
+        where: {
+          orderId: booking.orderId!,
+          provider: PaymentProvider.INTERNAL,
+          method: PaymentMethod.MANUAL,
+          amountMinor: 0,
+        },
+      }),
+    ).resolves.toMatchObject({
+      status: PaymentStatus.SUCCEEDED,
+      checkoutSource: "CART_CHECKOUT_V1",
+    });
+
+    const [entitlementCount, grantCount, consumeCount, bookingEmailCount] = await Promise.all([
+      prisma.clientEntitlement.count({
+        where: {
+          clientId: client.id,
+          orderId: booking.orderId!,
+        },
+      }),
+      prisma.creditLedgerEntry.count({
+        where: {
+          clientId: client.id,
+          orderId: booking.orderId!,
+          entryType: CreditLedgerEntryType.GRANT,
+        },
+      }),
+      prisma.creditLedgerEntry.count({
+        where: {
+          clientId: client.id,
+          bookingId: fixture.booking.id,
+          entryType: CreditLedgerEntryType.CONSUME,
+        },
+      }),
+      prisma.emailAutomationEvent.count({
+        where: {
+          payloadJson: {
+            path: ["bookingId"],
+            equals: fixture.booking.id,
+          },
+        },
+      }),
+    ]);
+
+    expect(entitlementCount).toBe(1);
+    expect(grantCount).toBe(1);
+    expect(consumeCount).toBe(1);
+    expect(bookingEmailCount).toBe(1);
+  });
+
+  it("booking-origin paid Stripe checkout confirms booking and does not duplicate ownership on webhook replay", async () => {
+    const client = await seedClient({ verified: true });
+    const fixture = await createBookingOriginCheckoutFixture({
+      clientId: client.id,
+      paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+      unitAmountMinor: 2500,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const checkoutInput = {
+      userId: client.id,
+      idempotencyKey: `bookcart_paid_${fixture.booking.id}`,
+      lines: [{ productId: fixture.product.id, priceId: fixture.price.id, quantity: 1 }],
+      clientCartVersion: `booking-paid:${fixture.booking.id}`,
+      redirectUrls: {
+        successUrl: `http://localhost:3000/book-a-class/${fixture.serviceSlug}/payment/success?bookingId=${fixture.booking.id}&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `http://localhost:3000/book-a-class/${fixture.serviceSlug}/payment/cancel?bookingId=${fixture.booking.id}`,
+      },
+      metadataOverrides: {
+        bookingId: fixture.booking.id,
+        serviceSlug: fixture.serviceSlug,
+        paymentSelection: BookingPaymentSelection.SINGLE_SESSION,
+        selectedPriceId: fixture.price.id,
+        productId: fixture.product.id,
+      },
+    } as const;
+
+    const checkout = await startCartCheckout(checkoutInput);
+
+    expect(checkout.status).toBe(200);
+    expect(checkout.body).toMatchObject({
+      type: "stripe_redirect",
+      checkoutSessionId: "cs_test_coupon_checkout_123",
+      checkoutUrl: "https://checkout.stripe.com/pay/cs_test_coupon_checkout_123",
+    });
+
+    const order = await prisma.order.findFirstOrThrow({
+      where: { clientId: client.id },
+      include: { payments: true },
+    });
+    const stripePayment = order.payments.find(
+      (payment) => payment.provider === PaymentProvider.STRIPE,
+    );
+    expect(stripePayment).toMatchObject({
+      status: PaymentStatus.PENDING,
+      amountMinor: 2500,
+      checkoutSource: "CART_CHECKOUT_V1",
+    });
+
+    await processStripeWebhookEvent({
+      id: `evt_booking_paid_success_${Date.now()}`,
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_test_coupon_checkout_123",
+          mode: "payment",
+          payment_status: "paid",
+          payment_intent: "pi_booking_paid_success",
+          metadata: {
+            source: "CART_CHECKOUT_V1",
+            orderId: order.id,
+            paymentId: stripePayment!.id,
+            userId: client.id,
+            bookingId: fixture.booking.id,
+            selectedPriceId: fixture.price.id,
+            productId: fixture.product.id,
+          },
+        },
+      },
+    } as never);
+
+    await processStripeWebhookEvent({
+      id: `evt_booking_paid_replay_${Date.now()}`,
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_test_coupon_checkout_123",
+          mode: "payment",
+          payment_status: "paid",
+          payment_intent: "pi_booking_paid_replay",
+          metadata: {
+            source: "CART_CHECKOUT_V1",
+            orderId: order.id,
+            paymentId: stripePayment!.id,
+            userId: client.id,
+            bookingId: fixture.booking.id,
+            selectedPriceId: fixture.price.id,
+            productId: fixture.product.id,
+          },
+        },
+      },
+    } as never);
+
+    const booking = await prisma.booking.findUniqueOrThrow({
+      where: { id: fixture.booking.id },
+      select: {
+        status: true,
+        selectedEntitlementId: true,
+        orderId: true,
+      },
+    });
+    expect(booking.status).toBe(BookingStatus.CONFIRMED);
+    expect(booking.selectedEntitlementId).toBeTruthy();
+    expect(booking.orderId).toBe(order.id);
+
+    await expect(
+      prisma.payment.findUnique({
+        where: { id: stripePayment!.id },
+      }),
+    ).resolves.toMatchObject({
+      status: PaymentStatus.SUCCEEDED,
+      stripeCheckoutSessionId: "cs_test_coupon_checkout_123",
+    });
+
+    const [entitlementCount, grantCount, consumeCount, bookingEmailCount] = await Promise.all([
+      prisma.clientEntitlement.count({
+        where: {
+          clientId: client.id,
+          orderId: order.id,
+        },
+      }),
+      prisma.creditLedgerEntry.count({
+        where: {
+          clientId: client.id,
+          orderId: order.id,
+          entryType: CreditLedgerEntryType.GRANT,
+        },
+      }),
+      prisma.creditLedgerEntry.count({
+        where: {
+          clientId: client.id,
+          bookingId: fixture.booking.id,
+          entryType: CreditLedgerEntryType.CONSUME,
+        },
+      }),
+      prisma.emailAutomationEvent.count({
+        where: {
+          payloadJson: {
+            path: ["bookingId"],
+            equals: fixture.booking.id,
+          },
+        },
+      }),
+    ]);
+
+    expect(entitlementCount).toBe(1);
+    expect(grantCount).toBe(1);
+    expect(consumeCount).toBe(1);
+    expect(bookingEmailCount).toBe(1);
   });
 });
 

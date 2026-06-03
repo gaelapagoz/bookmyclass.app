@@ -29,12 +29,10 @@ import {
 import { isCatalogPriceCheckoutReady } from "@/lib/catalog/checkout-readiness";
 import { checkAndRecordDbRateLimit } from "@/lib/security/db-rate-limit";
 import {
-  captureGiftCardRedemption,
   reserveGiftCardValue,
 } from "@/lib/gift-cards/gift-card-wallet-service";
 import { GIFT_CARD_CURRENCY_CODE } from "@/lib/gift-cards/gift-card-types";
 import { GiftCardError, giftCardErrorCodes } from "@/lib/gift-cards/gift-card-errors";
-import { fulfillPaidCartOrder } from "@/lib/fulfillment/order-fulfillment-service";
 import { isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
 import {
   type CartCheckoutPricing,
@@ -44,6 +42,10 @@ import {
   updateCouponRedemptionReferencesForCartCheckout,
 } from "@/lib/coupons/coupon-validation-service";
 import { buildZeroPaymentContract } from "@/lib/coupons/coupon-primitives";
+import {
+  finalizeCartOrderCompletion,
+  settleSuccessfulCheckoutOrder,
+} from "@/lib/public-booking/checkout-finalization-service";
 
 const GIFT_CARD_CHECKOUT_RATE_LIMIT = {
   maxAttempts: 10,
@@ -869,7 +871,6 @@ async function resolveOrCreateOrderPayment(input: {
     });
 
     const walletAmountMinor = input.walletAmountMinor;
-    const subtotalAmountMinor = input.checkoutPricing.subtotalAmountMinor;
     const totalAmountMinor = input.checkoutPricing.totalAmountMinor;
     const stripeAmountMinor = totalAmountMinor - walletAmountMinor;
 
@@ -1748,57 +1749,41 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
   }
 
   if (orderPayment.stripeAmountMinor === 0) {
-    if (orderPayment.redemptionId && orderPayment.giftCardPaymentId) {
-      await captureGiftCardRedemption({
-        actor: { type: "USER", userId: input.userId, role: Role.CLIENT },
-        redemptionId: orderPayment.redemptionId,
-        paymentId: orderPayment.giftCardPaymentId,
-        idempotencyKey: `gift-card:capture:redemption:${orderPayment.redemptionId}`,
-        metadata: { source: CART_CHECKOUT_SOURCE, idempotencyRecordId },
-      });
-    }
-
-    await prisma.$transaction(async (tx) => {
-      if (orderPayment.giftCardPaymentId) {
-        await tx.payment.update({
-          where: { id: orderPayment.giftCardPaymentId },
-          data: {
-            status: PaymentStatus.SUCCEEDED,
-            capturedAt: new Date(),
-          },
-        });
-      }
-      if (orderPayment.zeroPaymentId) {
-        await tx.payment.update({
-          where: { id: orderPayment.zeroPaymentId },
-          data: {
-            status: PaymentStatus.SUCCEEDED,
-            capturedAt: new Date(),
-          },
-        });
-      }
-      await tx.order.update({
-        where: { id: orderPayment.orderId },
-        data: { status: OrderStatus.PAID },
-      });
-
-      if (checkoutPricing.coupon) {
-        await settleCouponRedemptionForCartCheckout({
-          tx,
-          orderId: orderPayment.orderId,
-          paymentId:
-            orderPayment.zeroPaymentId ??
-            orderPayment.giftCardPaymentId ??
-            orderPayment.paymentId,
-          nextStatus: CouponRedemptionStatus.APPLIED,
-        });
-      }
+    await settleSuccessfulCheckoutOrder({
+      orderId: orderPayment.orderId,
+      paymentId:
+        orderPayment.zeroPaymentId ??
+        orderPayment.giftCardPaymentId ??
+        orderPayment.paymentId,
+      internalPaymentIds: [orderPayment.giftCardPaymentId, orderPayment.zeroPaymentId],
+      giftCardCapture:
+        orderPayment.redemptionId && orderPayment.giftCardPaymentId
+          ? {
+              actor: { type: "USER", userId: input.userId, role: Role.CLIENT },
+              redemptionId: orderPayment.redemptionId,
+              paymentId: orderPayment.giftCardPaymentId,
+              idempotencyKey: `gift-card:capture:redemption:${orderPayment.redemptionId}`,
+              metadata: { source: CART_CHECKOUT_SOURCE, idempotencyRecordId },
+            }
+          : undefined,
     });
 
-    await fulfillPaidCartOrder({
+    await finalizeCartOrderCompletion({
       orderId: orderPayment.orderId,
       clientId: input.userId,
-      giftCardPaymentId: orderPayment.giftCardPaymentId ?? undefined,
+      giftCardPaymentId: orderPayment.giftCardPaymentId,
+      booking: input.metadataOverrides?.bookingId
+        ? {
+            id: input.metadataOverrides.bookingId,
+            paymentSelection:
+              (input.metadataOverrides.paymentSelection as
+                | "EXISTING_PLAN"
+                | "NEW_PLAN_PURCHASE"
+                | "SINGLE_SESSION"
+                | undefined) ?? null,
+            selectedPriceId: input.metadataOverrides.selectedPriceId ?? null,
+          }
+        : null,
     });
 
     const completedResponse = createCompletedResponse({
