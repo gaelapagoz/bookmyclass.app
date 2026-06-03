@@ -15,6 +15,9 @@
 #   TARGET_ENV=staging BASE_URL=https://demo.bookmyclass.app bash scripts/cron-server-verify-services.sh
 #
 # Verify the production root crontab entries required for BookMyClass.
+# The managed maintenance cron targets the canonical /api/cron/maintenance
+# route, including expired coupon reservation cleanup with the existing
+# booking/webhook/cart maintenance responsibilities.
 #
 # Usage:
 #   sudo bash scripts/cron-server-verify-services.sh
@@ -40,7 +43,7 @@ MAINTENANCE_LOG="/var/log/bookmyclass-maintenance.log"
 BACKUP_LOG="/var/log/bookmyclass-db-backup.log"
 HEALTHCHECK_LOG="/var/log/bookmyclass-healthcheck.log"
 
-MAINTENANCE_CRON="*/5 * * * * cd $APP_DIR && set -a && . ./.env && set +a && curl -fsS -H \"Authorization: Bearer \$CRON_SECRET\" $BASE_URL/api/cron/maintenance >> $MAINTENANCE_LOG 2>&1"
+MAINTENANCE_CRON="*/5 * * * * cd $APP_DIR && set -a && . ./.env && set +a && response=\$(curl -fsS -H \"Authorization: Bearer \$CRON_SECRET\" $BASE_URL/api/cron/maintenance) && printf '%s\n' \"\$response\" >> $MAINTENANCE_LOG && printf '%s' \"\$response\" | grep -q '\"ok\":true'"
 BACKUP_CRON="30 2 * * * $BACKUP_SCRIPT >> $BACKUP_LOG 2>&1"
 HEALTHCHECK_CRON="*/5 * * * * $HEALTHCHECK_SCRIPT >> $HEALTHCHECK_LOG 2>&1"
 
@@ -211,12 +214,14 @@ check_logs() {
 }
 
 check_endpoints() {
-  if (
-    cd "$APP_DIR" && set -a && . ./.env && set +a && curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BASE_URL/api/cron/maintenance" >/dev/null
-  ); then
+  local maintenance_response
+
+  if maintenance_response="$(
+    cd "$APP_DIR" && set -a && . ./.env && set +a && curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BASE_URL/api/cron/maintenance"
+  )" && printf '%s' "$maintenance_response" | grep -q '"ok":true'; then
     pass "Maintenance endpoint returned success"
   else
-    fail "Maintenance endpoint check failed: $BASE_URL/api/cron/maintenance"
+    fail "Maintenance endpoint check failed: $BASE_URL/api/cron/maintenance${maintenance_response:+ response=$maintenance_response}"
   fi
 
   if curl -fsS "$BASE_URL/api/health" >/dev/null; then

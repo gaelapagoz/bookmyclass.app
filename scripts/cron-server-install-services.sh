@@ -15,6 +15,9 @@
 #   TARGET_ENV=staging BASE_URL=https://demo.bookmyclass.app bash scripts/cron-server-install-services.sh
 #
 # Install the production root crontab entries required for BookMyClass.
+# The managed maintenance cron calls the canonical /api/cron/maintenance route,
+# which clears expired booking drafts, webhook receipts, cart idempotency,
+# expired coupon reservations, and runs other maintenance-safe tasks.
 #
 # Usage:
 #   sudo bash scripts/cron-server-install-services.sh
@@ -40,7 +43,7 @@ MAINTENANCE_LOG="/var/log/bookmyclass-maintenance.log"
 BACKUP_LOG="/var/log/bookmyclass-db-backup.log"
 HEALTHCHECK_LOG="/var/log/bookmyclass-healthcheck.log"
 
-MAINTENANCE_CRON="*/5 * * * * cd $APP_DIR && set -a && . ./.env && set +a && curl -fsS -H \"Authorization: Bearer \$CRON_SECRET\" $BASE_URL/api/cron/maintenance >> $MAINTENANCE_LOG 2>&1"
+MAINTENANCE_CRON="*/5 * * * * cd $APP_DIR && set -a && . ./.env && set +a && response=\$(curl -fsS -H \"Authorization: Bearer \$CRON_SECRET\" $BASE_URL/api/cron/maintenance) && printf '%s\n' \"\$response\" >> $MAINTENANCE_LOG && printf '%s' \"\$response\" | grep -q '\"ok\":true'"
 BACKUP_CRON="30 2 * * * $BACKUP_SCRIPT >> $BACKUP_LOG 2>&1"
 HEALTHCHECK_CRON="*/5 * * * * $HEALTHCHECK_SCRIPT >> $HEALTHCHECK_LOG 2>&1"
 

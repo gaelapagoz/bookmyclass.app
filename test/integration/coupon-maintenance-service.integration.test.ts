@@ -86,5 +86,59 @@ describe("coupon maintenance service", () => {
     expect(expiredRow.status).toBe(CouponRedemptionStatus.EXPIRED);
     expect(freshRow.status).toBe(CouponRedemptionStatus.RESERVED);
   });
-});
 
+  it("clears stale RESERVED rows so limited coupons no longer hold maintenance-only capacity", async () => {
+    const now = new Date("2026-06-01T12:00:00.000Z");
+    const { client, coupon } = await seedCoupon();
+
+    await prisma.coupon.update({
+      where: { id: coupon.id },
+      data: { maxTotalRedemptions: 1 },
+    });
+
+    await prisma.couponRedemption.create({
+      data: {
+        couponId: coupon.id,
+        clientId: client.id,
+        status: CouponRedemptionStatus.RESERVED,
+        couponCodeSnapshot: coupon.code,
+        subtotalBeforeMinor: 1000,
+        discountAmountMinor: 100,
+        totalAfterMinor: 900,
+        currencyCode: "EUR",
+        idempotencyKey: `idem-capacity-${Date.now()}`,
+        payloadHash: "hash-capacity",
+        expiresAt: new Date("2026-05-31T12:00:00.000Z"),
+      },
+    });
+
+    expect(
+      await prisma.couponRedemption.count({
+        where: {
+          couponId: coupon.id,
+          status: CouponRedemptionStatus.RESERVED,
+        },
+      }),
+    ).toBe(1);
+
+    const result = await cleanupExpiredCouponReservations({ now, batchSize: 10 });
+
+    expect(result.expiredCount).toBe(1);
+    expect(
+      await prisma.couponRedemption.count({
+        where: {
+          couponId: coupon.id,
+          status: CouponRedemptionStatus.RESERVED,
+        },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.couponRedemption.count({
+        where: {
+          couponId: coupon.id,
+          status: CouponRedemptionStatus.EXPIRED,
+        },
+      }),
+    ).toBe(1);
+  });
+});

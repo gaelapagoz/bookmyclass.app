@@ -6,12 +6,14 @@ import {
   dispatchEmailAutomationBatch,
 } from "@/lib/email/email-automation-dispatcher-service";
 import { reconcileMissingBookingConfirmationEvents } from "@/lib/public-booking/booking-confirmation-transition-service";
+import { cleanupExpiredCouponReservations } from "@/lib/coupons/coupon-maintenance-service";
 
 const CART_IDEMPOTENCY_TERMINAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const CART_IDEMPOTENCY_IN_PROGRESS_RETENTION_MS = 60 * 60 * 1000; // 1 hour
 
 const CLEANUP_ERROR_CODE = "WEBHOOK_RECEIPT_CLEANUP_FAILED";
 const CART_IDEMPOTENCY_ERROR_CODE = "CART_CHECKOUT_IDEMPOTENCY_CLEANUP_FAILED";
+const COUPON_RESERVATION_ERROR_CODE = "COUPON_RESERVATION_CLEANUP_FAILED";
 const DISPATCH_ERROR_CODE = "EMAIL_AUTOMATION_DISPATCH_FAILED";
 const BOOKING_CONFIRMATION_RECONCILE_ERROR_CODE = "BOOKING_CONFIRMATION_RECONCILE_FAILED";
 
@@ -53,12 +55,14 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [draftsResult, cleanupResult, cartIdempotencyResult, bookingConfirmationResult] = await Promise.allSettled([
+  const [draftsResult, cleanupResult, cartIdempotencyResult, couponReservationResult, bookingConfirmationResult] =
+    await Promise.allSettled([
     expireStaleBookingDrafts(),
     cleanupStaleWebhookReceipts(),
     cleanupStaleCartCheckoutIdempotency(),
+    cleanupExpiredCouponReservations(),
     reconcileMissingBookingConfirmationEvents({ limit: 100 }),
-  ]);
+    ]);
   const dispatcherResult = await Promise.allSettled([
     dispatchEmailAutomationBatch({
       workerId: "cron-maintenance",
@@ -72,6 +76,10 @@ export async function GET(request: Request) {
   const cleanupError = cleanupResult.status === "rejected" ? CLEANUP_ERROR_CODE : null;
   const deletedCartIdempotency = cartIdempotencyResult.status === "fulfilled" ? cartIdempotencyResult.value.deletedCount : null;
   const cartIdempotencyError = cartIdempotencyResult.status === "rejected" ? CART_IDEMPOTENCY_ERROR_CODE : null;
+  const expiredCouponReservations =
+    couponReservationResult.status === "fulfilled" ? couponReservationResult.value.expiredCount : null;
+  const couponReservationError =
+    couponReservationResult.status === "rejected" ? COUPON_RESERVATION_ERROR_CODE : null;
   const dispatchResult = dispatcherResult.status === "fulfilled" ? dispatcherResult.value : null;
   const dispatchError = dispatcherResult.status === "rejected" ? DISPATCH_ERROR_CODE : null;
   const bookingConfirmationReconcile =
@@ -81,6 +89,8 @@ export async function GET(request: Request) {
   const cleanupErrorDetail = cleanupResult.status === "rejected" ? String(cleanupResult.reason) : null;
   const cartIdempotencyErrorDetail =
     cartIdempotencyResult.status === "rejected" ? String(cartIdempotencyResult.reason) : null;
+  const couponReservationErrorDetail =
+    couponReservationResult.status === "rejected" ? String(couponReservationResult.reason) : null;
   const dispatchErrorDetail = dispatcherResult.status === "rejected" ? String(dispatcherResult.reason) : null;
   const bookingConfirmationErrorDetail =
     bookingConfirmationResult.status === "rejected" ? String(bookingConfirmationResult.reason) : null;
@@ -97,6 +107,12 @@ export async function GET(request: Request) {
       error: cartIdempotencyErrorDetail,
     });
   }
+  if (couponReservationError) {
+    console.error("[cron/maintenance] coupon reservation cleanup failed", {
+      code: COUPON_RESERVATION_ERROR_CODE,
+      error: couponReservationErrorDetail,
+    });
+  }
   if (dispatchError) {
     console.error("[cron/maintenance] email automation dispatch failed", {
       code: DISPATCH_ERROR_CODE,
@@ -111,14 +127,19 @@ export async function GET(request: Request) {
   }
 
   return Response.json({
-    ok: cleanupResult.status === "fulfilled" && cartIdempotencyResult.status === "fulfilled",
+    ok:
+      cleanupResult.status === "fulfilled" &&
+      cartIdempotencyResult.status === "fulfilled" &&
+      couponReservationResult.status === "fulfilled",
     expiredBookingDrafts: expiredDrafts,
     cleanedWebhookReceipts: cleanedWebhooks,
     deletedCartCheckoutIdempotency: deletedCartIdempotency,
+    expiredCouponReservations,
     emailAutomationDispatch: dispatchResult,
     bookingConfirmationReconcile,
     ...(cleanupError ? { cleanupError } : {}),
     ...(cartIdempotencyError ? { cartIdempotencyError } : {}),
+    ...(couponReservationError ? { couponReservationError } : {}),
     ...(dispatchError ? { dispatchError } : {}),
     ...(bookingConfirmationError ? { bookingConfirmationError } : {}),
   });
