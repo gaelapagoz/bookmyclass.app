@@ -95,6 +95,18 @@ export function CartPageClient() {
   const [walletBalance, setWalletBalance] = useState<WalletBalance | null>(null);
   const [walletAmountMinor, setWalletAmountMinor] = useState<number>(0);
   const [walletInputValue, setWalletInputValue] = useState<string>("");
+  const [couponInput, setCouponInput] = useState<string>("");
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<
+    | null
+    | {
+        couponCode: string;
+        discountAmountMinor: number;
+        totalAmountMinor: number;
+        currencyCode: string;
+      }
+    >(null);
 
   useEffect(() => {
     const sync = () => {
@@ -188,6 +200,10 @@ export function CartPageClient() {
   const validation = useMemo(() => validateClientCart({ lines }), [lines]);
   const fingerprint = useMemo(() => getCheckoutSubmissionFingerprint(lines), [lines]);
 
+  const fingerprintWithCoupon = useMemo(() => {
+    return appliedCoupon ? `${fingerprint}|coupon=${appliedCoupon.couponCode}` : fingerprint;
+  }, [fingerprint, appliedCoupon]);
+
   const showWalletControls =
     isHydrated &&
     walletBalance !== null &&
@@ -270,19 +286,19 @@ export function CartPageClient() {
     }
 
     const key =
-      submissionState && submissionState.fingerprint === fingerprint
+      submissionState && submissionState.fingerprint === fingerprintWithCoupon
         ? submissionState.key
         : generateCartCheckoutIdempotencyKey();
     debugLog("checkout_click", {
       keySource: submissionState && submissionState.fingerprint === fingerprint ? "reused" : "generated",
       idempotencyKey: key,
-      fingerprint,
+      fingerprint: fingerprintWithCoupon,
       lineCount: lines.length,
       clientCartVersion,
       walletAmountMinor,
     });
 
-    setSubmissionState({ key, fingerprint });
+    setSubmissionState({ key, fingerprint: fingerprintWithCoupon });
     setFeedback(null);
     setShowVerifyEmailAction(false);
 
@@ -296,6 +312,7 @@ export function CartPageClient() {
         })),
         clientCartVersion: `v${clientCartVersion}`,
         ...(walletAmountMinor > 0 ? { walletAmountMinor } : {}),
+        ...(appliedCoupon ? { couponCode: appliedCoupon.couponCode } : {}),
       });
 
       for (let attempt = 0; attempt < MAX_IN_PROGRESS_ATTEMPTS; attempt += 1) {
@@ -331,23 +348,23 @@ export function CartPageClient() {
           retryAfterMs: payload.retryAfterMs ?? null,
         });
 
-        if (response.status === 200 && payload.type === "completed" && payload.redirectUrl) {
+          if (response.status === 200 && payload.type === "completed" && payload.redirectUrl) {
           const completedOrderId = typeof payload.orderId === "string" ? payload.orderId : null;
           if (completedOrderId) {
             rememberClientCartSnapshotForCheckoutSession({
-              checkoutSessionId: completedOrderId,
-              fingerprint,
+                checkoutSessionId: completedOrderId,
+                fingerprint: fingerprintWithCoupon,
             });
           }
           window.location.assign(payload.redirectUrl);
           return;
         }
 
-        if (response.status === 200 && payload.checkoutUrl) {
+          if (response.status === 200 && payload.checkoutUrl) {
           if (typeof payload.checkoutSessionId === "string" && payload.checkoutSessionId.trim()) {
             rememberClientCartSnapshotForCheckoutSession({
-              checkoutSessionId: payload.checkoutSessionId,
-              fingerprint,
+                checkoutSessionId: payload.checkoutSessionId,
+                fingerprint: fingerprintWithCoupon,
             });
           }
           window.location.assign(payload.checkoutUrl);
@@ -445,6 +462,96 @@ export function CartPageClient() {
           </Link>
         </p>
       ) : null}
+
+      <div className="mt-4 rounded-xl border border-[#d8cec6] bg-white p-4" data-testid="coupon-block">
+        <h2 className="text-sm font-semibold text-[#6f2b2b]">Coupon</h2>
+        {appliedCoupon ? (
+          <div className="mt-3 flex items-center justify-between">
+            <div>
+              <p className="text-sm text-[#5f4040]">Applied: <span className="font-medium">{appliedCoupon.couponCode}</span></p>
+              <p className="text-xs text-[#7f5a5a]">Discount: {formatAmount(appliedCoupon.discountAmountMinor, appliedCoupon.currencyCode)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setAppliedCoupon(null);
+                setCouponInput("");
+                setCouponError(null);
+                try {
+                  window.localStorage.removeItem("studio_cart_applied_coupon_v1");
+                } catch {
+                  // ignore
+                }
+              }}
+              className="text-xs text-[#7b2d2d] underline underline-offset-2"
+              data-testid="coupon-remove"
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <div className="mt-3 flex items-end gap-2">
+            <div>
+              <label htmlFor="coupon-code" className="block text-xs text-[#7f5a5a]">Code</label>
+              <input
+                id="coupon-code"
+                type="text"
+                value={couponInput}
+                onChange={(e) => setCouponInput(e.target.value)}
+                placeholder="Enter coupon code"
+                className="mt-1 w-48 rounded border border-[#d8cec6] px-2 py-1 text-sm text-[#5f4040]"
+                data-testid="coupon-input"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                setCouponLoading(true);
+                setCouponError(null);
+                try {
+                  const resp = await fetch("/api/cart/coupon/validate", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ lines: lines.map((l) => ({ productId: l.productId, priceId: l.priceId, quantity: l.quantity })), couponCode: couponInput }),
+                  });
+                  if (resp.status === 401) {
+                    setShowSignInModal(true);
+                    return;
+                  }
+                  if (resp.status === 403) {
+                    setShowVerifyEmailAction(true);
+                    setCouponError("Please verify your email before applying a coupon.");
+                    return;
+                  }
+                  const payload = await resp.json();
+                  if (!resp.ok) {
+                    setCouponError(payload.message ?? "Could not validate coupon.");
+                    return;
+                  }
+                  const normalized = payload.couponCode ?? couponInput.trim().toUpperCase();
+                  setAppliedCoupon({ couponCode: normalized, discountAmountMinor: payload.discountAmountMinor ?? 0, totalAmountMinor: payload.totalAmountMinor ?? payload.subtotalAmountMinor ?? 0, currencyCode: payload.currencyCode ?? subtotalCurrency });
+                  setCouponError(null);
+                  try {
+                    window.localStorage.setItem("studio_cart_applied_coupon_v1", JSON.stringify({ couponCode: normalized }));
+                  } catch {
+                    // ignore localStorage failures
+                  }
+                } catch (e) {
+                  setCouponError("Could not validate coupon.");
+                } finally {
+                  setCouponLoading(false);
+                }
+              }}
+              disabled={!couponInput || couponLoading}
+              className="rounded-md border border-[#7b2d2d] px-3 py-1 text-sm text-[#7b2d2d] hover:bg-[#f2ede7]"
+              data-testid="coupon-apply"
+            >
+              {couponLoading ? "Applying..." : "Apply"}
+            </button>
+          </div>
+        )}
+        {couponError ? <p className="mt-2 text-xs text-[#7b2d2d]" data-testid="coupon-error">{couponError}</p> : null}
+      </div>
 
       {lines.length === 0 ? (
         <div className="mt-6 rounded-xl border border-[#d8cec6] bg-white p-5 text-sm text-[#5f4040]">
@@ -583,6 +690,12 @@ export function CartPageClient() {
           <span>Subtotal</span>
           <span className="font-medium text-[#6f2b2b]">{formatAmount(subtotalMinor, subtotalCurrency)}</span>
         </div>
+        {appliedCoupon ? (
+          <div className="mt-1 flex items-center justify-between text-sm text-[#5f4040]">
+            <span>Coupon ({appliedCoupon.couponCode})</span>
+            <span className="text-[#6f2b2b]">- {formatAmount(appliedCoupon.discountAmountMinor, appliedCoupon.currencyCode)}</span>
+          </div>
+        ) : null}
         {walletAmountMinor > 0 ? (
           <>
             <div className="mt-1 flex items-center justify-between text-sm text-[#5f4040]">

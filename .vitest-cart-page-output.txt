@@ -1,0 +1,506 @@
+
+> studio.saas.platform@0.1.0 test:ui
+> npx vitest --config vitest.ui.config.ts --run test/ui/cart-page.ui.test.tsx
+
+
+[1m[46m RUN [49m[22m [36mv4.1.0 [39m[90mC:/Dev/studio.saas.platform[39m
+
+[90mstdout[2m | test/ui/cart-page.ui.test.tsx
+[22m[39m[dotenv@17.3.1] injecting env (1) from .env.test -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+
+[90mstderr[2m | test/ui/cart-page.ui.test.tsx[2m > [22m[2mCart page[2m > [22m[2msupports quantity controls for one-time products, remove action, subtotal, and disabled checkout when invalid
+[22m[39mAn update to CartPageClient inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to CartPageClient inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+[90mstderr[2m | test/ui/cart-page.ui.test.tsx[2m > [22m[2mCart page[2m > [22m[2msupports quantity controls for one-time products, remove action, subtotal, and disabled checkout when invalid
+[22m[39mAn update to CartPageClient inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to CartPageClient inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+Not implemented: navigation to another Document
+ [31m❯[39m test/ui/cart-page.ui.test.tsx [2m([22m[2m14 tests[22m[2m | [22m[31m4 failed[39m[2m)[22m[33m 3396[2mms[22m[39m
+     [32m✓[39m removes stale server-rejected cart lines and shows the empty cart[32m 62[2mms[22m[39m
+     [33m[2m✓[22m[39m supports quantity controls for one-time products, remove action, subtotal, and disabled checkout when invalid [33m 363[2mms[22m[39m
+     [32m✓[39m opens sign-in modal when checkout is unauthenticated[32m 61[2mms[22m[39m
+     [32m✓[39m shows verify-email action on EMAIL_VERIFICATION_REQUIRED[32m 74[2mms[22m[39m
+     [32m✓[39m retries in-progress checkout and redirects when session becomes available[32m 220[2mms[22m[39m
+     [32m✓[39m generates unique fallback idempotency keys and uses distinct keys for distinct submissions[32m 170[2mms[22m[39m
+[31m     [31m×[31m applies a coupon preview and includes coupon code in checkout request[39m[33m 1205[2mms[22m[39m
+[31m     [31m×[31m clears client cart after confirmed checkout when coupon applied and lines match[39m[32m 2[2mms[22m[39m
+[31m     [31m×[31m clears client cart after confirmed checkout when coupon key missing but lines match[39m[32m 1[2mms[22m[39m
+     [32m✓[39m does not clear cart when cart lines changed after checkout started[32m 1[2mms[22m[39m
+[31m     [31m×[31m supports legacy string snapshot format and clears accordingly[39m[32m 1[2mms[22m[39m
+     [33m[2m✓[22m[39m shows state-aware message for long unresolved FAILED_STRIPE_UNCERTAIN responses [33m 364[2mms[22m[39m
+     [33m[2m✓[22m[39m uses a fresh idempotency key on a new explicit click after exhausted FAILED_STRIPE_UNCERTAIN retries [33m 760[2mms[22m[39m
+     [32m✓[39m uses a fresh idempotency key after terminal checkout failure on a new click[32m 109[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 4 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m test/ui/cart-page.ui.test.tsx[2m > [22mCart page[2m > [22mapplies a coupon preview and includes coupon code in checkout request
+[31m[1mTestingLibraryElementError[22m[39m: Found multiple elements with the text: /SAVE10/
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<span[39m
+  [33mclass[39m=[32m"font-medium"[39m
+[36m>[39m
+  [0mSAVE10[0m
+[36m</span>[39m
+
+Ignored nodes: comments, script, style
+[36m<span>[39m
+  [0mCoupon ([0m
+  [0mSAVE10[0m
+  [0m)[0m
+[36m</span>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<section[39m
+      [33mclass[39m=[32m"mx-auto w-full max-w-5xl px-6 py-12"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"flex items-center justify-between gap-4"[39m
+      [36m>[39m
+        [36m<h1[39m
+          [33mclass[39m=[32m"text-3xl font-semibold text-[#6f2b2b]"[39m
+        [36m>[39m
+          [0mYour Cart[0m
+        [36m</h1>[39m
+        [36m<a[39m
+          [33mclass[39m=[32m"text-sm font-medium text-[#7b2d2d] underline underline-offset-4 hover:opacity-80"[39m
+          [33mhref[39m=[32m"/subscription"[39m
+        [36m>[39m
+          [0mContinue shopping[0m
+        [36m</a>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"mt-4 rounded-xl border border-[#d8cec6] bg-white p-4"[39m
+        [33mdata-testid[39m=[32m"coupon-block"[39m
+      [36m>[39m
+        [36m<h2[39m
+          [33mclass[39m=[32m"text-sm font-semibold text-[#6f2b2b]"[39m
+        [36m>[39m
+          [0mCoupon[0m
+        [36m</h2>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"mt-3 flex items-center justify-between"[39m
+        [36m>[39m
+          [36m<div>[39m
+            [36m<p[39m
+              [33mclass[39m=[32m"text-sm text-[#5f4040]"[39m
+            [36m>[39m
+              [0mApplied: [0m
+              [36m<span[39m
+                [33mclass[39m=[32m"font-medium"[39m
+              [36m>[39m
+                [0mSAVE10[0m
+              [36m</span>[39m
+            [36m</p>[39m
+            [36m<p[39m
+              [33mclass[39m=[32m"text-xs text-[#7f5a5a]"[39m
+            [36m>[39m
+              [0mDiscount: [0m
+              [0m€2.50[0m
+            [36m</p>[39m
+          [36m</div>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"text-xs text-[#7b2d2d] underline underline-offset-2"[39m
+            [33mdata-testid[39m=[32m"coupon-remove"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0mRemove[0m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"mt-6 space-y-3"[39m
+      [36m>[39m
+        [36m<article[39m
+          [33mclass[39m=[32m"rounded-xl border border-[#d8cec6] bg-white p-4"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex flex-wrap items-start justify-between gap-3"[39m
+          [36m>[39m
+            [36m<div>[39m
+              [36m<h2[39m
+                [33mclass[39m=[32m"text-base font-semibold text-[#6f2b2b]"[39m
+              [36m>[39m
+                [0mOne-time Pack[0m
+              [36m</h2>[39m
+              [36m<p[39m
+                [33mclass[39m=[32m"text-sm text-[#5f4040]"[39m
+              [36m>[39m
+                [0mPack Price[0m
+              [36m</p>[39m
+              [36m<p[39m
+                [33mclass[39m=[32m"mt-1 text-xs text-[#7f5a5a]"[39m
+              [36m>[39m
+                [0mOne-time product[0m
+              [36m</p>[39m
+            [36m</div>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"text-sm text-[#7b2d2d] underline underline-offset-4"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0mRemove[0m
+            [36m</button>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"mt-3 flex flex-wrap items-center justify-between gap-4"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"flex items-center gap-2"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33maria-label[39m=[32m"Decrease quantity for One-time Pack"[39m
+                [33mclass[39m=[32m"h-8 w-8 rounded border border-[#d8cec6] text-sm text-[#6f2b2b] disabled:opacity-50"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m-[0m
+              [36m</button>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"min-w-8 text-center text-sm text-[#5f4040]"[39m
+              [36m>[39m
+                [0m1[0m
+              [36m</span>[39m
+              [36m<button[39m
+                [33maria-label[39m=[32m"Increase quantity for One-time Pack"[39m
+                [33mclass[39m=[32m"h-8 w-8 rounded border border-[#d8cec6] text-sm text-[#6f2b2b] disabled:opacity-50"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m+[0m
+              [36m</button>[39m
+            [36m</div>[39m
+            [36m<p[39m
+              [33mclass[39m=[32m"text-sm font-medium text-[#6f2b2b]"[39m
+            [36m>[39m
+              [0m€25.00[0m
+            [36m</p>[39m
+          [36m</div>[39m
+        [36m</article>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"mt-6 rounded-xl border border-[#d8cec6] bg-white p-4"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex items-center justify-between text-sm text-[#5f4040]"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mSubtotal[0m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"font-medium text-[#6f2b2b]"[39m
+          [36m>[39m
+            [0m€25.00[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"mt-1 flex items-center justify-between text-sm text-[#5f4040]"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mCoupon ([0m
+            [0mSAVE10[0m
+            [0m)[0m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"text-[#6f2b2b]"[39m
+          [36m>[39m
+            [0m- [0m
+            [0m€2.50[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"mt-4 w-full rounded-md bg-[#7b2d2d] px-4 py-2 text-sm text-[#f4eee8] disabled:opacity-60"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0mCheckout[0m
+        [36m</button>[39m
+      [36m</div>[39m
+    [36m</section>[39m
+  [36m</div>[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div>[39m
+      [36m<section[39m
+        [33mclass[39m=[32m"mx-auto w-full max-w-5xl px-6 py-12"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex items-center justify-between gap-4"[39m
+        [36m>[39m
+          [36m<h1[39m
+            [33mclass[39m=[32m"text-3xl font-semibold text-[#6f2b2b]"[39m
+          [36m>[39m
+            [0mYour Cart[0m
+          [36m</h1>[39m
+          [36m<a[39m
+            [33mclass[39m=[32m"text-sm font-medium text-[#7b2d2d] underline underline-offset-4 hover:opacity-80"[39m
+            [33mhref[39m=[32m"/subscription"[39m
+          [36m>[39m
+            [0mContinue shopping[0m
+          [36m</a>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"mt-4 rounded-xl border border-[#d8cec6] bg-white p-4"[39m
+          [33mdata-testid[39m=[32m"coupon-block"[39m
+        [36m>[39m
+          [36m<h2[39m
+            [33mclass[39m=[32m"text-sm font-semibold text-[#6f2b2b]"[39m
+          [36m>[39m
+            [0mCoupon[0m
+          [36m</h2>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"mt-3 flex items-center justify-between"[39m
+          [36m>[39m
+            [36m<div>[39m
+              [36m<p[39m
+                [33mclass[39m=[32m"text-sm text-[#5f4040]"[39m
+              [36m>[39m
+                [0mApplied: [0m
+                [36m<span[39m
+                  [33mclass[39m=[32m"font-medium"[39m
+                [36m>[39m
+                  [0mSAVE10[0m
+                [36m</span>[39m
+              [36m</p>[39m
+              [36m<p[39m
+                [33mclass[39m=[32m"text-xs text-[#7f5a5a]"[39m
+              [36m>[39m
+                [0mDiscount: [0m
+                [0m€2.50[0m
+              [36m</p>[39m
+            [36m</div>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"text-xs text-[#7b2d2d] underline underline-offset-2"[39m
+              [33mdata-testid[39m=[32m"coupon-remove"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0mRemove[0m
+            [36m</button>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"mt-6 space-y-3"[39m
+        [36m>[39m
+          [36m<article[39m
+            [33mclass[39m=[32m"rounded-xl border border-[#d8cec6] bg-white p-4"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"flex flex-wrap items-start justify-between gap-3"[39m
+            [36m>[39m
+              [36m<div>[39m
+                [36m<h2[39m
+                  [33mclass[39m=[32m"text-base font-semibold text-[#6f2b2b]"[39m
+                [36m>[39m
+                  [0mOne-time Pack[0m
+                [36m</h2>[39m
+                [36m<p[39m
+                  [33mclass[39m=[32m"text-sm text-[#5f4040]"[39m
+                [36m>[39m
+                  [0mPack Price[0m
+                [36m</p>[39m
+                [36m<p[39m
+                  [33mclass[39m=[32m"mt-1 text-xs text-[#7f5a5a]"[39m
+                [36m>[39m
+                  [0mOne-time product[0m
+                [36m</p>[39m
+              [36m</div>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"text-sm text-[#7b2d2d] underline underline-offset-4"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0mRemove[0m
+              [36m</button>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"mt-3 flex flex-wrap items-center justify-between gap-4"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"flex items-center gap-2"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33maria-label[39m=[32m"Decrease quantity for One-time Pack"[39m
+                  [33mclass[39m=[32m"h-8 w-8 rounded border border-[#d8cec6] text-sm text-[#6f2b2b] disabled:opacity-50"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0m-[0m
+                [36m</button>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"min-w-8 text-center text-sm text-[#5f4040]"[39m
+                [36m>[39m
+                  [0m1[0m
+                [36m</span>[39m
+                [36m<button[39m
+                  [33maria-label[39m=[32m"Increase quantity for One-time Pack"[39m
+                  [33mclass[39m=[32m"h-8 w-8 rounded border border-[#d8cec6] text-sm text-[#6f2b2b] disabled:opacity-50"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0m+[0m
+                [36m</button>[39m
+              [36m</div>[39m
+              [36m<p[39m
+                [33mclass[39m=[32m"text-sm font-medium text-[#6f2b2b]"[39m
+              [36m>[39m
+                [0m€25.00[0m
+              [36m</p>[39m
+            [36m</div>[39m
+          [36m</article>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"mt-6 rounded-xl border border-[#d8cec6] bg-white p-4"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center justify-between text-sm text-[#5f4040]"[39m
+          [36m>[39m
+            [36m<span>[39m
+              [0mSubtotal[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"font-medium text-[#6f2b2b]"[39m
+            [36m>[39m
+              [0m€25.00[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"mt-1 flex items-center justify-between text-sm text-[#5f4040]"[39m
+          [36m>[39m
+            [36m<span>[39m
+              [0mCoupon ([0m
+              [0mSAVE10[0m
+              [0m)[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"text-[#6f2b2b]"[39m
+            [36m>[39m
+              [0m- [0m
+              [0m€2.50[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"mt-4 w-full rounded-md bg-[#7b2d2d] px-4 py-2 text-sm text-[#f4eee8] disabled:opacity-60"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0mCheckout[0m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</section>[39m
+    [36m</div>[39m
+  [36m</body>[39m
+[36m</html>[39m
+[90m [2m❯[22m Proxy.waitForWrapper node_modules/@testing-library/dom/dist/wait-for.js:[2m163:27[22m[39m
+[36m [2m❯[22m test/ui/cart-page.ui.test.tsx:[2m449:11[22m[39m
+    [90m447|[39m     [35mawait[39m userEvent[33m.[39m[34mclick[39m(screen[33m.[39m[34mgetByTestId[39m([32m"coupon-apply"[39m))[33m;[39m
+    [90m448|[39m
+    [90m449|[39m     [35mawait[39m [34mwaitFor[39m(() [33m=>[39m {
+    [90m   |[39m           [31m^[39m
+    [90m450|[39m       [34mexpect[39m(screen[33m.[39m[34mgetByText[39m([36m/Applied:/[39m))[33m.[39m[34mtoBeInTheDocument[39m()[33m;[39m
+    [90m451|[39m       [34mexpect[39m(screen[33m.[39m[34mgetByText[39m([36m/SAVE10/[39m))[33m.[39m[34mtoBeInTheDocument[39m()[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/ui/cart-page.ui.test.tsx[2m > [22mCart page[2m > [22mclears client cart after confirmed checkout when coupon applied and lines match
+[31m[1mAssertionError[22m: expected undefined to deeply equal [][39m
+
+[32m- Expected:[39m
+[]
+
+[31m+ Received:[39m
+undefined
+
+[36m [2m❯[22m test/ui/cart-page.ui.test.tsx:[2m497:25[22m[39m
+    [90m495|[39m     [90m// cart storage should be reset to empty lines[39m
+    [90m496|[39m     const after = JSON.parse(window.localStorage.getItem(CART_STORAGE_…
+    [90m497|[39m     [34mexpect[39m(after[33m.[39mlines)[33m.[39m[34mtoEqual[39m([])[33m;[39m
+    [90m   |[39m                         [31m^[39m
+    [90m498|[39m     expect(window.localStorage.getItem("studio_cart_applied_coupon_v1"…
+    [90m499|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/ui/cart-page.ui.test.tsx[2m > [22mCart page[2m > [22mclears client cart after confirmed checkout when coupon key missing but lines match
+[31m[1mAssertionError[22m: expected undefined to deeply equal [][39m
+
+[32m- Expected:[39m
+[]
+
+[31m+ Received:[39m
+undefined
+
+[36m [2m❯[22m test/ui/cart-page.ui.test.tsx:[2m527:25[22m[39m
+    [90m525|[39m     [34mexpect[39m(result)[33m.[39m[34mtoBe[39m([35mtrue[39m)[33m;[39m
+    [90m526|[39m     const after = JSON.parse(window.localStorage.getItem(CART_STORAGE_…
+    [90m527|[39m     [34mexpect[39m(after[33m.[39mlines)[33m.[39m[34mtoEqual[39m([])[33m;[39m
+    [90m   |[39m                         [31m^[39m
+    [90m528|[39m     expect(window.localStorage.getItem("studio_cart_applied_coupon_v1"…
+    [90m529|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/ui/cart-page.ui.test.tsx[2m > [22mCart page[2m > [22msupports legacy string snapshot format and clears accordingly
+[31m[1mAssertionError[22m: expected undefined to deeply equal [][39m
+
+[32m- Expected:[39m
+[]
+
+[31m+ Received:[39m
+undefined
+
+[36m [2m❯[22m test/ui/cart-page.ui.test.tsx:[2m596:25[22m[39m
+    [90m594|[39m     [34mexpect[39m(result)[33m.[39m[34mtoBe[39m([35mtrue[39m)[33m;[39m
+    [90m595|[39m     const after = JSON.parse(window.localStorage.getItem(CART_STORAGE_…
+    [90m596|[39m     [34mexpect[39m(after[33m.[39mlines)[33m.[39m[34mtoEqual[39m([])[33m;[39m
+    [90m   |[39m                         [31m^[39m
+    [90m597|[39m   })[33m;[39m
+    [90m598|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m10 passed[39m[22m[90m (14)[39m
+[2m   Start at [22m 23:25:15
+[2m   Duration [22m 5.32s[2m (transform 108ms, setup 49ms, import 420ms, tests 3.40s, environment 1.16s)[22m
+

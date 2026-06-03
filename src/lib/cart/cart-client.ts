@@ -198,7 +198,29 @@ export function rememberClientCartSnapshotForCheckoutSession(input: {
     return;
   }
 
-  window.localStorage.setItem(getCartSnapshotStorageKey(checkoutSessionId), fingerprint);
+  // Store a structured snapshot for future coupon/wallet-aware clearing.
+  // Backwards compatibility: older code may have written a bare fingerprint string.
+  // We always write a JSON object here so maybeClear can parse needed pieces.
+  const linesFingerprint = fingerprint.split("|")[0] ?? fingerprint;
+  // extract coupon if present in fingerprint suffix like '|coupon=CODE'
+  let couponCode: string | null = null;
+  const couponMatch = fingerprint.match(/\|coupon=([^|]+)/);
+  if (couponMatch) {
+    couponCode = couponMatch[1];
+  }
+
+  const payload = {
+    fingerprint,
+    linesFingerprint,
+    couponCode,
+  } as const;
+
+  try {
+    window.localStorage.setItem(getCartSnapshotStorageKey(checkoutSessionId), JSON.stringify(payload));
+  } catch {
+    // Fallback to legacy string storage if JSON fails for any reason.
+    window.localStorage.setItem(getCartSnapshotStorageKey(checkoutSessionId), fingerprint);
+  }
 }
 
 export function maybeClearClientCartAfterConfirmedCheckout(input: {
@@ -221,13 +243,48 @@ export function maybeClearClientCartAfterConfirmedCheckout(input: {
   }
 
   const current = readRawCartState();
-  const expectedFingerprint = window.localStorage.getItem(
-    getCartSnapshotStorageKey(checkoutSessionId),
-  );
-  if (!expectedFingerprint || getCheckoutSubmissionFingerprint(current.lines) !== expectedFingerprint) {
+  const expectedRaw = window.localStorage.getItem(getCartSnapshotStorageKey(checkoutSessionId));
+  if (!expectedRaw) {
     window.localStorage.setItem(markerKey, "1");
     return false;
   }
+
+  let expectedFingerprint: string | null = null;
+  let expectedLinesFingerprint: string | null = null;
+  let expectedCouponCode: string | null = null;
+
+  try {
+    const parsed = JSON.parse(expectedRaw);
+    if (parsed && typeof parsed === "object" && typeof parsed.fingerprint === "string") {
+      expectedFingerprint = parsed.fingerprint;
+      expectedLinesFingerprint = parsed.linesFingerprint ?? null;
+      expectedCouponCode = parsed.couponCode ?? null;
+    } else {
+      expectedFingerprint = String(expectedRaw);
+    }
+  } catch {
+    expectedFingerprint = String(expectedRaw);
+  }
+
+  const currentLinesFingerprint = getCheckoutSubmissionFingerprint(current.lines);
+
+  // If the stored snapshot contains a parsed lines fingerprint, require that the current
+  // cart lines fingerprint matches it. Otherwise, fall back to comparing the full legacy fingerprint.
+  if (expectedLinesFingerprint) {
+    if (currentLinesFingerprint !== expectedLinesFingerprint) {
+      window.localStorage.setItem(markerKey, "1");
+      return false;
+    }
+  } else if (currentLinesFingerprint !== expectedFingerprint) {
+    window.localStorage.setItem(markerKey, "1");
+    return false;
+  }
+
+  // Note: the snapshot itself contains coupon metadata when present. Do NOT require
+  // the presence of a separate `studio_cart_applied_coupon_v1` localStorage key
+  // for the clear to proceed — the snapshot is considered authoritative for which
+  // lines were part of the checkout. We will, however, remove the applied coupon
+  // key after a successful clear if present.
   const pendingByLineKey = new Map<string, number>();
   for (const line of input.purchasedLines) {
     if (
@@ -270,6 +327,11 @@ export function maybeClearClientCartAfterConfirmedCheckout(input: {
       clearClientCart();
     } else {
       writeClientCart(nextLines);
+    }
+    try {
+      window.localStorage.removeItem("studio_cart_applied_coupon_v1");
+    } catch {
+      // ignore localStorage removal failures
     }
   }
 

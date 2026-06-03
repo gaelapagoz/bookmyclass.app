@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PriceType, ProductType } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,9 @@ import { CartPageClient } from "../../src/components/cart/CartPageClient";
 import {
   CART_STORAGE_KEY,
   generateCartCheckoutIdempotencyKey,
+  rememberClientCartSnapshotForCheckoutSession,
+  getCheckoutSubmissionFingerprint,
+  maybeClearClientCartAfterConfirmedCheckout,
 } from "../../src/lib/cart/cart-client";
 import { CART_CHECKOUT_IDEMPOTENCY_KEY_REGEX } from "../../src/lib/cart/cart-contract";
 
@@ -400,6 +403,195 @@ describe("Cart page", () => {
         value: originalCrypto,
       });
     }
+  });
+
+  it("applies a coupon preview and includes coupon code in checkout request", async () => {
+    seedCart([
+      {
+        productId: "prod_one_coupon",
+        priceId: "price_one_coupon",
+        productName: "One-time Pack",
+        priceName: "Pack Price",
+        priceType: PriceType.ONE_TIME,
+        quantity: 1,
+        unitAmountMinor: 2500,
+      },
+    ]);
+
+    const fetchMock = vi.spyOn(global, "fetch").mockImplementation(async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
+      if (url.includes("/api/cart/reconcile")) {
+        return createNoopReconcileResponse();
+      }
+      if (url.includes("/api/cart/coupon/validate")) {
+        return new Response(
+          JSON.stringify({ couponCode: "SAVE10", subtotalAmountMinor: 2500, discountAmountMinor: 250, totalAmountMinor: 2250, currencyCode: "EUR" }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/api/cart/checkout")) {
+        // echo back the body for inspection
+        const bodyText = init?.body as string | undefined;
+        return new Response(JSON.stringify({ code: "CHECKOUT_SESSION_CREATED", checkoutUrl: "https://checkout.test/session", bodyEcho: bodyText }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify({}), { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    render(<CartPageClient />);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Checkout" })).toBeEnabled();
+    });
+
+    const input = screen.getByTestId("coupon-input");
+    await userEvent.type(input, "save10");
+    await userEvent.click(screen.getByTestId("coupon-apply"));
+
+    await waitFor(() => {
+      const couponBlock = within(screen.getByTestId("coupon-block"));
+      expect(couponBlock.getByText(/Applied:/)).toBeInTheDocument();
+      expect(couponBlock.getByText("SAVE10")).toBeInTheDocument();
+      expect(couponBlock.getByText(/€2\.50/)).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Checkout" }));
+
+    await waitFor(() => {
+      const calls = fetchMock.mock.calls.filter((c) => String(c[0]).includes("/api/cart/checkout"));
+      expect(calls.length).toBeGreaterThanOrEqual(1);
+      const body = calls[0]?.[1]?.body as string;
+      expect(body).toContain('"couponCode":"SAVE10"');
+    });
+
+    fetchMock.mockRestore();
+  });
+
+  it("clears client cart after confirmed checkout when coupon applied and lines match", async () => {
+    seedCart([
+      {
+        productId: "prod_one_coupon_clear",
+        priceId: "price_one_coupon_clear",
+        productName: "One-time Pack",
+        priceName: "Pack Price",
+        priceType: PriceType.ONE_TIME,
+        quantity: 1,
+        unitAmountMinor: 2500,
+      },
+    ]);
+
+    // simulate applied coupon
+    window.localStorage.setItem("studio_cart_applied_coupon_v1", JSON.stringify({ couponCode: "SAVE10" }));
+
+    // create a fingerprint and remember it for a fake checkout session id
+    const raw = window.localStorage.getItem(CART_STORAGE_KEY) as string;
+    const parsed = JSON.parse(raw);
+    const lines = parsed.lines ?? [];
+    const linesFingerprint = getCheckoutSubmissionFingerprint(lines);
+    const fingerprintWithCoupon = `${linesFingerprint}|coupon=SAVE10`;
+    const checkoutSessionId = "fake_checkout_123";
+    rememberClientCartSnapshotForCheckoutSession({ checkoutSessionId, fingerprint: fingerprintWithCoupon });
+
+    // current cart matches lines; call maybeClear and expect it to clear
+    const result = maybeClearClientCartAfterConfirmedCheckout({ checkoutSessionId, cartClearEligible: true, purchasedLines: [{ productId: "prod_one_coupon_clear", priceId: "price_one_coupon_clear", quantity: 1 }] });
+    expect(result).toBe(true);
+    // cart storage should be cleared after successful checkout
+    expect(window.localStorage.getItem(CART_STORAGE_KEY)).toBeNull();
+    expect(window.localStorage.getItem("studio_cart_applied_coupon_v1")).toBeNull();
+  });
+
+  it("clears client cart after confirmed checkout when coupon key missing but lines match", async () => {
+    seedCart([
+      {
+        productId: "prod_one_coupon_clear2",
+        priceId: "price_one_coupon_clear2",
+        productName: "One-time Pack",
+        priceName: "Pack Price",
+        priceType: PriceType.ONE_TIME,
+        quantity: 1,
+        unitAmountMinor: 2500,
+      },
+    ]);
+
+    // do NOT set applied coupon key
+
+    const raw = window.localStorage.getItem(CART_STORAGE_KEY) as string;
+    const parsed = JSON.parse(raw);
+    const lines = parsed.lines ?? [];
+    const linesFingerprint = getCheckoutSubmissionFingerprint(lines);
+    const fingerprintWithCoupon = `${linesFingerprint}|coupon=SAVE10`;
+    const checkoutSessionId = "fake_checkout_456";
+    rememberClientCartSnapshotForCheckoutSession({ checkoutSessionId, fingerprint: fingerprintWithCoupon });
+
+    const result = maybeClearClientCartAfterConfirmedCheckout({ checkoutSessionId, cartClearEligible: true, purchasedLines: [{ productId: "prod_one_coupon_clear2", priceId: "price_one_coupon_clear2", quantity: 1 }] });
+    expect(result).toBe(true);
+    expect(window.localStorage.getItem(CART_STORAGE_KEY)).toBeNull();
+    expect(window.localStorage.getItem("studio_cart_applied_coupon_v1")).toBeNull();
+  });
+
+  it("does not clear cart when cart lines changed after checkout started", async () => {
+    seedCart([
+      {
+        productId: "prod_changed",
+        priceId: "price_changed",
+        productName: "One-time Pack",
+        priceName: "Pack Price",
+        priceType: PriceType.ONE_TIME,
+        quantity: 1,
+        unitAmountMinor: 2500,
+      },
+    ]);
+
+    const raw = window.localStorage.getItem(CART_STORAGE_KEY) as string;
+    const parsed = JSON.parse(raw);
+    const lines = parsed.lines ?? [];
+    const linesFingerprint = getCheckoutSubmissionFingerprint(lines);
+    const fingerprintWithCoupon = `${linesFingerprint}|coupon=SAVE10`;
+    const checkoutSessionId = "fake_checkout_changed";
+    rememberClientCartSnapshotForCheckoutSession({ checkoutSessionId, fingerprint: fingerprintWithCoupon });
+
+    // mutate current cart to a different state
+    seedCart([
+      {
+        productId: "prod_changed",
+        priceId: "price_changed",
+        productName: "One-time Pack",
+        priceName: "Pack Price",
+        priceType: PriceType.ONE_TIME,
+        quantity: 2,
+        unitAmountMinor: 2500,
+      },
+    ]);
+
+    const result = maybeClearClientCartAfterConfirmedCheckout({ checkoutSessionId, cartClearEligible: true, purchasedLines: [{ productId: "prod_changed", priceId: "price_changed", quantity: 1 }] });
+    expect(result).toBe(false);
+    const after = JSON.parse(window.localStorage.getItem(CART_STORAGE_KEY) ?? "{}");
+    // cart should remain with the changed quantity
+    expect(after.lines[0].quantity).toBe(2);
+  });
+
+  it("supports legacy string snapshot format and clears accordingly", async () => {
+    seedCart([
+      {
+        productId: "prod_legacy",
+        priceId: "price_legacy",
+        productName: "One-time Pack",
+        priceName: "Pack Price",
+        priceType: PriceType.ONE_TIME,
+        quantity: 1,
+        unitAmountMinor: 2500,
+      },
+    ]);
+
+    const raw = window.localStorage.getItem(CART_STORAGE_KEY) as string;
+    const parsed = JSON.parse(raw);
+    const lines = parsed.lines ?? [];
+    const linesFingerprint = getCheckoutSubmissionFingerprint(lines);
+    const checkoutSessionId = "fake_checkout_legacy";
+    // write legacy string snapshot directly
+    window.localStorage.setItem("studio_cart_checkout_snapshot_v1:" + checkoutSessionId, linesFingerprint);
+
+    const result = maybeClearClientCartAfterConfirmedCheckout({ checkoutSessionId, cartClearEligible: true, purchasedLines: [{ productId: "prod_legacy", priceId: "price_legacy", quantity: 1 }] });
+    expect(result).toBe(true);
+    expect(window.localStorage.getItem(CART_STORAGE_KEY)).toBeNull();
   });
 
   it("shows state-aware message for long unresolved FAILED_STRIPE_UNCERTAIN responses", async () => {
