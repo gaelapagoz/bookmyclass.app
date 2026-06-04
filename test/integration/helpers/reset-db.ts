@@ -18,6 +18,16 @@ function isRetryableResetError(error: unknown): boolean {
   );
 }
 
+async function refreshPrismaConnection() {
+  try {
+    await prisma.$disconnect();
+  } catch {
+    // Ignore disconnect failures when the underlying connection is already closed.
+  }
+
+  await prisma.$connect();
+}
+
 export async function resetDb() {
   const startedAt = Date.now();
   logReset("start");
@@ -79,6 +89,7 @@ export async function resetDb() {
         throw error;
       }
       logReset("retry", { attempt, reason: error instanceof Error ? error.message : String(error) });
+      await refreshPrismaConnection();
       await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
     }
   }
