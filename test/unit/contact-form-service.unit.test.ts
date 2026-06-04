@@ -7,6 +7,7 @@ const contactRateLimitCreateMock = vi.fn();
 const contactRateLimitUpdateManyMock = vi.fn();
 
 vi.mock("@/lib/email/resend-delivery", () => ({
+  isRealEmailDeliveryEnabled: vi.fn(() => true),
   sendEmailViaResend: (...args: unknown[]) => sendEmailViaResendMock(...args),
 }));
 
@@ -26,6 +27,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import { ContactFormServiceError, submitHomesiteContactForm } from "@/lib/contact-form/contact-form-service";
+import { isRealEmailDeliveryEnabled } from "@/lib/email/resend-delivery";
 
 describe("contact-form-service", () => {
   beforeEach(() => {
@@ -83,6 +85,8 @@ describe("contact-form-service", () => {
         return { count: 1 };
       }
     );
+
+    vi.mocked(isRealEmailDeliveryEnabled).mockReturnValue(true);
   });
 
   afterEach(() => {
@@ -159,5 +163,24 @@ describe("contact-form-service", () => {
     ).rejects.toMatchObject<ContactFormServiceError>({ code: "RATE_LIMITED" });
 
     expect(sendEmailViaResendMock).toHaveBeenCalledTimes(5);
+  });
+
+  it("does not require RESEND_API_KEY when non-production delivery is suppressed", async () => {
+    vi.stubEnv("CONTACT_FORM_TO_EMAIL", "gaelapagoz@gmail.com");
+    vi.stubEnv("RESEND_API_KEY", "");
+    vi.stubEnv("EMAIL_FROM", "BookMyClass <no-reply@bookmyclass.app>");
+    vi.mocked(isRealEmailDeliveryEnabled).mockReturnValue(false);
+    sendEmailViaResendMock.mockResolvedValue({ sent: true, provider: "suppressed", messageId: null, bypassed: true });
+
+    await expect(
+      submitHomesiteContactForm({
+        name: "Studio Owner",
+        email: "owner@example.test",
+        message: "Please contact me about onboarding for a second studio location.",
+        honeypot: "",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(sendEmailViaResendMock).toHaveBeenCalledOnce();
   });
 });

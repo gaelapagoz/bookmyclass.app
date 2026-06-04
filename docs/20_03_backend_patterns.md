@@ -22,6 +22,7 @@ Purpose: capture backend implementation patterns currently used in this reposito
 - Stripe integration wrapper: `src/lib/payments/stripe.ts`.
 - Webhook verification + reconciliation in booking/subscription services.
 - Resend email delivery centralized in `src/lib/email/resend-delivery.ts`.
+- Real provider email delivery is production-only by default; non-production requires `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1`.
 
 ## Reliability Patterns
 - Financial/entitlement flows use idempotency and unique constraints in schema/service logic.

@@ -9,7 +9,7 @@ type SendEmailInput = {
 
 export type EmailDeliveryResult = {
   sent: boolean;
-  provider: "resend" | "test-bypass";
+  provider: "resend" | "test-bypass" | "suppressed";
   messageId: string | null;
   bypassed: boolean;
 };
@@ -42,6 +42,18 @@ function parseSenderEmail(from: string): string {
 
 export function isDeterministicEmailDeliveryMode(): boolean {
   return process.env.NODE_ENV === "test" || isE2ETestModeEnabled();
+}
+
+export function isRealEmailDeliveryEnabled(): boolean {
+  if (isDeterministicEmailDeliveryMode()) {
+    return false;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    return true;
+  }
+
+  return process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION === "1";
 }
 
 function assertProductionSenderPolicy(from: string): void {
@@ -77,7 +89,8 @@ export async function sendEmailViaResend(input: SendEmailInput): Promise<EmailDe
     throw new Error("At least one recipient is required.");
   }
 
-  if (isDeterministicEmailDeliveryMode()) {
+  const isDeterministicMode = isDeterministicEmailDeliveryMode();
+  if (!isRealEmailDeliveryEnabled()) {
     getTestOutbox().push({
       to,
       subject: input.subject,
@@ -87,9 +100,18 @@ export async function sendEmailViaResend(input: SendEmailInput): Promise<EmailDe
       context: input.context,
       createdAt: new Date().toISOString(),
     });
+
+    if (!isDeterministicMode) {
+      console.info("[email] suppressed non-production provider delivery", {
+        context: input.context,
+        to,
+        subject: input.subject,
+      });
+    }
+
     return {
       sent: true,
-      provider: "test-bypass",
+      provider: isDeterministicMode ? "test-bypass" : "suppressed",
       messageId: null,
       bypassed: true,
     };

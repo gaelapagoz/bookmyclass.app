@@ -24,6 +24,9 @@ Purpose: define environment-variable expectations by runtime context using repos
   - `RESEND_API_KEY`
   - `EMAIL_FROM`
   - `MARKETING_TRACKING_SECRET`
+- Real provider delivery is enabled by default only in production.
+- Non-production runtime defaults to suppressed/captured email delivery unless:
+  - `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1`
 - Homesite contact form send path also requires:
   - `CONTACT_FORM_TO_EMAIL`
   - Expected configured value: `gaelapagoz@gmail.com`

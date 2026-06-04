@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearCapturedTestEmails,
   getCapturedTestEmails,
+  isRealEmailDeliveryEnabled,
   sendEmailViaResend,
 } from "@/lib/email/resend-delivery";
 
@@ -50,8 +51,40 @@ describe("resend-delivery", () => {
     ).rejects.toThrow("@bookmyclass.app");
   });
 
-  it("calls resend provider when not in deterministic mode", async () => {
+  it("suppresses provider delivery by default outside production", async () => {
     vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("ALLOW_REAL_EMAILS_IN_NON_PRODUCTION", "");
+
+    const fetchMock = vi.fn();
+    const consoleInfoMock = vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await sendEmailViaResend({
+      context: "unit-test",
+      from: "Book My Class <no-reply@example.test>",
+      to: "client@example.test",
+      subject: "Test",
+      html: "<p>Hello</p>",
+    });
+
+    expect(isRealEmailDeliveryEnabled()).toBe(false);
+    expect(result.sent).toBe(true);
+    expect(result.bypassed).toBe(true);
+    expect(result.provider).toBe("suppressed");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(consoleInfoMock).toHaveBeenCalledWith(
+      "[email] suppressed non-production provider delivery",
+      expect.objectContaining({
+        context: "unit-test",
+        subject: "Test",
+        to: ["client@example.test"],
+      }),
+    );
+  });
+
+  it("calls resend provider when explicitly opted in outside production", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("ALLOW_REAL_EMAILS_IN_NON_PRODUCTION", "1");
     vi.stubEnv("RESEND_API_KEY", "test-key");
 
     const fetchMock = vi.fn().mockResolvedValue({
@@ -70,6 +103,7 @@ describe("resend-delivery", () => {
     });
 
     expect(result.sent).toBe(true);
+    expect(result.bypassed).toBe(false);
     expect(result.provider).toBe("resend");
     expect(result.messageId).toBe("email_123");
     expect(fetchMock).toHaveBeenCalledOnce();

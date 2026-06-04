@@ -76,9 +76,11 @@ for (const key of ["AUTH_URL", "NEXTAUTH_URL"]) {
 }
 
 const nextBin = resolve(process.cwd(), "node_modules", "next", "dist", "bin", "next");
-// E2E deterministic mode is intentionally blocked in production runtime.
-// Run Next in dev mode so E2E_TEST_MODE can be used safely for test-only flows.
-const child = spawn(process.execPath, [nextBin, "dev", "-p", process.env.PORT], {
+// The Playwright suite already builds the app before starting the server.
+// Run the built app to avoid next dev recompilation churn during long CI E2E runs.
+process.env.E2E_ALLOW_PRODUCTION_RUNTIME = "1";
+
+const child = spawn(process.execPath, [nextBin, "start", "-p", process.env.PORT], {
   cwd: process.cwd(),
   env: process.env,
   stdio: "inherit",

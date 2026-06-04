@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { assertE2ETestRequest, isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
+import {
+  assertE2ETestRequest,
+  isE2EProductionRuntimeAllowed,
+  isE2ETestModeEnabled,
+} from "@/lib/e2e/e2e-test-guard";
 
 const E2E_SECRET_HEADER = "x-e2e-test-secret";
 
@@ -25,6 +29,14 @@ describe("isE2ETestModeEnabled", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("E2E_TEST_MODE", "1");
     expect(isE2ETestModeEnabled()).toBe(false);
+  });
+
+  it("returns true when production runtime override is enabled", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("E2E_TEST_MODE", "1");
+    vi.stubEnv("E2E_ALLOW_PRODUCTION_RUNTIME", "1");
+    expect(isE2EProductionRuntimeAllowed()).toBe(true);
+    expect(isE2ETestModeEnabled()).toBe(true);
   });
 });
 
@@ -92,6 +104,17 @@ describe("assertE2ETestRequest", () => {
     vi.stubEnv("E2E_TEST_SECRET", "  my-secret  ");
 
     const result = assertE2ETestRequest(makeRequest({ [E2E_SECRET_HEADER]: "  my-secret  " }));
+
+    expect(result).toBeNull();
+  });
+
+  it("allows the guarded request in production when the E2E runtime override is enabled", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("E2E_TEST_MODE", "1");
+    vi.stubEnv("E2E_ALLOW_PRODUCTION_RUNTIME", "1");
+    vi.stubEnv("E2E_TEST_SECRET", "my-secret");
+
+    const result = assertE2ETestRequest(makeRequest({ [E2E_SECRET_HEADER]: "my-secret" }));
 
     expect(result).toBeNull();
   });

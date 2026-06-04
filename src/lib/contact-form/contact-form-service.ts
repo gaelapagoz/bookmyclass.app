@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { sendEmailViaResend } from "@/lib/email/resend-delivery";
+import { isRealEmailDeliveryEnabled, sendEmailViaResend } from "@/lib/email/resend-delivery";
 import { prisma } from "@/lib/db";
 
 const DEFAULT_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
@@ -62,7 +62,7 @@ function getRequiredConfig() {
   if (!toEmail) {
     throw new ContactFormServiceError("MISSING_CONTACT_FORM_TO_EMAIL", "Missing CONTACT_FORM_TO_EMAIL.");
   }
-  if (!resendApiKey) {
+  if (isRealEmailDeliveryEnabled() && !resendApiKey) {
     throw new ContactFormServiceError("MISSING_RESEND_API_KEY", "Missing RESEND_API_KEY.");
   }
   if (!from) {

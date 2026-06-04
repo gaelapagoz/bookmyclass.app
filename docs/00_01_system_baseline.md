@@ -486,7 +486,8 @@ Evidence label legend used in this file:
   - Required for app boot: `DATABASE_URL`.
   - Practically required for auth sessions: `AUTH_SECRET`.
   - Required for Stripe flows: `APP_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
-- Required for live provider email delivery (non-test runtimes): `RESEND_API_KEY`, `EMAIL_FROM`.
+- Required for live provider email delivery in production: `RESEND_API_KEY`, `EMAIL_FROM`.
+- Non-production runtimes suppress real provider email delivery by default unless `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1`.
 - Required for homesite contact-form email delivery: `CONTACT_FORM_TO_EMAIL`.
   - Test/e2e runtimes can use deterministic provider bypass (`NODE_ENV=test` or `E2E_TEST_MODE=1`) and do not require real Resend delivery configuration.
   - Optional feature envs: Sentry + seed extras.

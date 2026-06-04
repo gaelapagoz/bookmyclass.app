@@ -14,6 +14,9 @@ Purpose: document current email delivery integration and test/e2e behavior.
 ## Production Safety Behavior
 - Provider send path requires `RESEND_API_KEY`.
 - In production provider-send path, `EMAIL_FROM` must use verified `@bookmyclass.app` sender domain.
+- Outside production, provider delivery is suppressed by default even when `RESEND_API_KEY` is configured.
+- Real non-production email delivery requires `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1`.
+- This default-safe behavior applies to staging/UAT/performance/k6 runtimes as well as local non-test runs.
 
 ## Main Callers
 - Signup/email verification identity flows.

@@ -49,6 +49,13 @@ describe("validateRuntimeEnv", () => {
     expect(() => validateRuntimeEnv()).toThrow(/E2E_TEST_MODE/);
   });
 
+  it("allows production E2E runtime only when the explicit override is set", () => {
+    setProductionEnv();
+    process.env.E2E_TEST_MODE = "1";
+    process.env.E2E_ALLOW_PRODUCTION_RUNTIME = "1";
+    expect(() => validateRuntimeEnv()).not.toThrow();
+  });
+
   it("passes when all required production vars are present", () => {
     setProductionEnv();
     expect(() => validateRuntimeEnv()).not.toThrow();
