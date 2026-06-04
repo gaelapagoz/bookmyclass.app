@@ -14,15 +14,22 @@ Purpose: document current email delivery integration and test/e2e behavior.
 ## Production Safety Behavior
 - Provider send path requires `RESEND_API_KEY`.
 - In production provider-send path, `EMAIL_FROM` must use verified `@bookmyclass.app` sender domain.
-- Outside production, provider delivery is suppressed by default even when `RESEND_API_KEY` is configured.
-- Real non-production email delivery requires `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1`.
-- This default-safe behavior applies to staging/UAT/performance/k6 runtimes as well as local non-test runs.
+- Primary operator control for automation-backed email is Admin -> Automations, backed by `EmailTemplate.isActive`.
+- Staging/UAT seed modes create the canonical automation templates in `Paused` state by default.
+- Paused automation templates are not enqueued for delivery, and already-leased paused events do not call Resend.
+- Outside production, provider delivery is still suppressed by default even when `RESEND_API_KEY` is configured.
+- `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1` remains a secondary safety-net override for direct email paths that are outside Automations.
+- This secondary default-safe behavior applies to staging/UAT/performance/k6 runtimes as well as local non-test runs.
 
 ## Main Callers
-- Signup/email verification identity flows.
-- Password reset flows.
-- Marketing campaign sends/tests.
-- Homesite contact form API flow (`POST /api/contact-form`) sends to `CONTACT_FORM_TO_EMAIL`.
+- Automation-backed and controlled from Admin -> Automations:
+  - Signup/email verification identity flows.
+  - Password reset flows.
+  - Waitlist/booking lifecycle notifications.
+  - Payment/store/gift-card confirmation flows.
+- Direct send paths outside Automations:
+  - Marketing campaign sends/tests.
+  - Homesite contact form API flow (`POST /api/contact-form`) sends to `CONTACT_FORM_TO_EMAIL`.
 
 ## Canonical References
 - `src/lib/email/resend-delivery.ts`

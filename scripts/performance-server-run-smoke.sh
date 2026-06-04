@@ -36,9 +36,13 @@ fi
 (
   set -euo pipefail
   cd "$REPO_ROOT"
-  BASE_URL="$BASE_URL" K6_DISCOVER_SKIP_DB_USERS="$K6_DISCOVER_SKIP_DB_USERS" npm run k6:discover:server 2>&1 | tee "$run_dir/k6-discover.log"
-  cp k6/data/services.json "$run_dir/discovered-services.json"
-  cp k6/data/products.json "$run_dir/discovered-products.json"
+  BASE_URL="$BASE_URL" K6_SCENARIO_SET="$K6_SCENARIO_SET" K6_DISCOVER_SKIP_DB_USERS="$K6_DISCOVER_SKIP_DB_USERS" npm run k6:discover:server 2>&1 | tee "$run_dir/k6-discover.log"
+  if [[ -f k6/data/services.json ]]; then
+    cp k6/data/services.json "$run_dir/discovered-services.json"
+  fi
+  if [[ -f k6/data/products.json ]]; then
+    cp k6/data/products.json "$run_dir/discovered-products.json"
+  fi
 )
 
 start_epoch="$(date +%s)"

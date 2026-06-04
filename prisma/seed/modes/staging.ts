@@ -28,6 +28,7 @@ import {
 import { hash } from "bcryptjs";
 import { assertLearningImagePath } from "../../../src/lib/learning/image-paths";
 import prisma from "../../../src/lib/db";
+import { ensureAllExpectedAutomationTemplatesHaveStatus } from "../../../src/lib/email/email-automation-admin-service";
 import {
   FITNESS_COURSES,
   FITNESS_PROGRAM,
@@ -849,6 +850,7 @@ export async function runStagingSeed(): Promise<void> {
   console.info(`[seed:perf] Seed media sync: copied=${mediaSyncSummary.copiedCount}, existing=${mediaSyncSummary.existingCount}.`);
   const seededMediaPathCount = await verifySeededMediaReferences(prisma);
   console.info(`[seed:perf] Seeded media verified: ${seededMediaPathCount} canonical /uploads paths.`);
+  await ensureAllExpectedAutomationTemplatesHaveStatus(false);
   await verifyPerfSeed({
     ...summary,
     learningProgramCount: learningSummary.programCount,

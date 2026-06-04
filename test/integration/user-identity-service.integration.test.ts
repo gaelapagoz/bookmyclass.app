@@ -92,7 +92,9 @@ describe("user identity hardening", () => {
     const email = `verify.queue.${Date.now()}@example.test`;
     const originalNodeEnv = process.env.NODE_ENV;
     const originalApiKey = process.env.RESEND_API_KEY;
+    const originalAllowRealEmails = process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION;
     process.env.NODE_ENV = "development";
+    process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION = "1";
     delete process.env.RESEND_API_KEY;
     process.env.EMAIL_FROM = "Book My Class <no-reply@bookmyclass.app>";
 
@@ -128,6 +130,11 @@ describe("user identity hardening", () => {
         delete process.env.RESEND_API_KEY;
       } else {
         process.env.RESEND_API_KEY = originalApiKey;
+      }
+      if (originalAllowRealEmails === undefined) {
+        delete process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION;
+      } else {
+        process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION = originalAllowRealEmails;
       }
     }
   });

@@ -44,6 +44,14 @@ const requiredEnvVars = [
   "PORT",
   "E2E_TEST_MODE",
   "E2E_TEST_SECRET",
+  "AUTH_SECRET",
+  "STRIPE_SECRET_KEY",
+  "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+  "STRIPE_WEBHOOK_SECRET",
+  "RESEND_API_KEY",
+  "EMAIL_FROM",
+  "MARKETING_TRACKING_SECRET",
+  "CRON_SECRET",
 ];
 
 const missing = requiredEnvVars.filter((key) => !process.env[key]?.trim());
@@ -75,12 +83,25 @@ for (const key of ["AUTH_URL", "NEXTAUTH_URL"]) {
   }
 }
 
+const host = "127.0.0.1";
 const nextBin = resolve(process.cwd(), "node_modules", "next", "dist", "bin", "next");
 // The Playwright suite already builds the app before starting the server.
 // Run the built app to avoid next dev recompilation churn during long CI E2E runs.
 process.env.E2E_ALLOW_PRODUCTION_RUNTIME = "1";
+process.env.NODE_ENV = "production";
 
-const child = spawn(process.execPath, [nextBin, "start", "-p", process.env.PORT], {
+const childArgs = [nextBin, "start", "-p", process.env.PORT, "-H", host];
+
+console.log(
+  `[start:e2e] Launching Next.js production server at http://${host}:${port} (health: http://${host}:${port}/api/health)`,
+);
+console.log(
+  `[start:e2e] Command: ${process.execPath} ${childArgs
+    .map((value) => (/\s/.test(value) ? `"${value}"` : value))
+    .join(" ")}`,
+);
+
+const child = spawn(process.execPath, childArgs, {
   cwd: process.cwd(),
   env: process.env,
   stdio: "inherit",
@@ -110,6 +131,14 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   process.on(signal, () => shutdown(signal));
 }
 
+child.on("error", (error) => {
+  console.error(`[start:e2e] Failed to start Next.js server: ${error.message}`);
+  process.exit(1);
+});
+
 child.on("exit", (code) => {
+  if (!shuttingDown && code !== 0) {
+    console.error(`[start:e2e] Next.js server exited before readiness with code ${code ?? "unknown"}.`);
+  }
   process.exit(code ?? 0);
 });

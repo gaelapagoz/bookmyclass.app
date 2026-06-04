@@ -536,7 +536,7 @@ export function CartPageClient() {
                   } catch {
                     // ignore localStorage failures
                   }
-                } catch (e) {
+                } catch {
                   setCouponError("Could not validate coupon.");
                 } finally {
                   setCouponLoading(false);

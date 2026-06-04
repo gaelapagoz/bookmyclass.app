@@ -251,14 +251,11 @@ export function maybeClearClientCartAfterConfirmedCheckout(input: {
 
   let expectedFingerprint: string | null = null;
   let expectedLinesFingerprint: string | null = null;
-  let expectedCouponCode: string | null = null;
-
   try {
     const parsed = JSON.parse(expectedRaw);
     if (parsed && typeof parsed === "object" && typeof parsed.fingerprint === "string") {
       expectedFingerprint = parsed.fingerprint;
       expectedLinesFingerprint = parsed.linesFingerprint ?? null;
-      expectedCouponCode = parsed.couponCode ?? null;
     } else {
       expectedFingerprint = String(expectedRaw);
     }

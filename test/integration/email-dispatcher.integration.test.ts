@@ -103,7 +103,9 @@ describe("email automation dispatcher", () => {
     const originalNodeEnv = process.env.NODE_ENV;
     const originalKey = process.env.RESEND_API_KEY;
     const originalFrom = process.env.EMAIL_FROM;
+    const originalAllowRealEmails = process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION;
     process.env.NODE_ENV = "development";
+    process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION = "1";
     delete process.env.RESEND_API_KEY;
     process.env.EMAIL_FROM = "Book My Class <no-reply@bookmyclass.app>";
 
@@ -153,6 +155,11 @@ describe("email automation dispatcher", () => {
         delete process.env.EMAIL_FROM;
       } else {
         process.env.EMAIL_FROM = originalFrom;
+      }
+      if (originalAllowRealEmails === undefined) {
+        delete process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION;
+      } else {
+        process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION = originalAllowRealEmails;
       }
     }
   });

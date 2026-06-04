@@ -31,7 +31,7 @@ If a setup/runbook file conflicts with this file, treat this file as authoritati
 | Canonical auth secret env var | `AUTH_SECRET` | Confirmed from code/runtime | `NEXTAUTH_SECRET` is non-canonical and should not be required in new env examples. |
 | Canonical Stripe env vars | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Confirmed from code/runtime | Seed/test-only Stripe price IDs are separate from core runtime Stripe keys. |
 | Production email sender policy | `EMAIL_FROM` must use verified `@bookmyclass.app` sender domain when provider delivery is enabled | Confirmed from code/runtime | Test/e2e deterministic bypass does not require provider send. |
-| Non-production email delivery policy | Real provider email delivery is suppressed by default outside production; opt in with `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1` only for intentional staging/UAT verification | Required | Prevents staging/UAT/k6 from consuming Resend quota by default. |
+| Non-production email delivery policy | Admin -> Automations is the primary control for automation-backed email; staging/UAT seed modes pause all canonical automation templates by default. Real provider email delivery is still suppressed by default outside production, with `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1` available only as a secondary safety-net override for direct send paths outside Automations. | Required | Prevents staging/UAT/k6 from consuming Resend quota by default while keeping direct-path safety coverage. |
 | Email architecture env controls | none | Required | Canonical email platform is unconditional; no ENABLED/PAUSED/DISABLED email architecture or email-family variables are supported. |
 
 ## Last Verified

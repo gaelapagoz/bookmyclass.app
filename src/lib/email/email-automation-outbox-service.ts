@@ -37,13 +37,23 @@ const heartbeatInputSchema = z.object({
 
 export async function enqueueEmailAutomationEvent(input: z.input<typeof enqueueInputSchema>) {
   const parsed = enqueueInputSchema.parse(input);
+  const template = await prisma.emailTemplate.findUnique({
+    where: { templateKey: parsed.templateKey },
+    select: { id: true, isActive: true },
+  });
+
+  if (!template) {
+    throw new Error(`Unknown email template key: ${parsed.templateKey}`);
+  }
+
+  if (!template.isActive) {
+    return null;
+  }
 
   try {
     return await prisma.emailAutomationEvent.create({
       data: {
-        template: {
-          connect: { templateKey: parsed.templateKey },
-        },
+        templateId: template.id,
         recipientEmail: parsed.recipientEmail.toLowerCase(),
         payloadJson: parsed.payloadJson as Prisma.InputJsonValue,
         idempotencyKey: parsed.idempotencyKey,

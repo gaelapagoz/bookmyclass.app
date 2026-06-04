@@ -76,14 +76,14 @@ Evidence label legend used in this file:
   - Server actions for classes/sessions/plans/users/subscriptions/learning/marketing/inbox/agenda.
   - Admin calendar session cards show active waitlist counts for operational visibility (read-only).
   - Admin session detail supports manual attendee add/remove with server-side eligibility enforcement (eligible credit or qualifying subscription required).
-  - Admin sidebar includes an `Automations` placeholder page at `/admin/automations`; operational automations are not yet configurable from UI.
+- Admin sidebar includes an `Automations` page at `/admin/automations`; operational email automations are configurable from UI and controlled by `EmailTemplate.isActive` (`Active` vs `Paused`).
   - Evidence status: Confirmed from repo (`src/app/admin/(private)/actions.ts`, `src/lib/admin/admin-catalog-service.ts`, `src/lib/navigation/admin-nav.ts`, `src/app/admin/(private)/automations/page.tsx`, `src/lib/marketing/*`).
 - Authentication/account flows:
   - Credentials auth, pending registration + verification, verification resend, password reset, profile update, password change, email change verification.
   - Evidence status: Confirmed from repo (`src/auth.ts`, `src/lib/auth/*`, `src/app/(public)/sign-*.tsx`, `src/app/(public)/verify-email/page.tsx`, `src/app/(public)/forgot-password/page.tsx`, `src/app/(public)/reset-password/page.tsx`).
 - Contact/support/public flows:
   - Public contact form persists unified client messages with spam/rate-limit checks; admin inbox supports review/status updates.
-  - Homesite static contact form posts to `/api/contact-form` and sends email through Resend without writing to admin inbox.
+  - Homesite static contact form posts to `/api/contact-form` and sends email through the central Resend delivery module without writing to admin inbox; this path remains outside Admin -> Automations.
   - Evidence status: Confirmed from repo (`src/app/(public)/page.tsx`, `src/lib/client-messages/client-message-service.ts`, `src/app/admin/(private)/inbox/page.tsx`, `homesite/index.html`, `src/app/api/contact-form/route.ts`, `src/lib/contact-form/contact-form-service.ts`).
 - Capability status summary:
   - Confirmed: booking draft/payment/checkout, subscription checkout, admin operations, auth flows, contact/inbox, attendance self check-in (dashboard + kiosk), staff attendance finalization.
@@ -487,7 +487,8 @@ Evidence label legend used in this file:
   - Practically required for auth sessions: `AUTH_SECRET`.
   - Required for Stripe flows: `APP_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
 - Required for live provider email delivery in production: `RESEND_API_KEY`, `EMAIL_FROM`.
-- Non-production runtimes suppress real provider email delivery by default unless `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1`.
+- Primary staging/UAT automation control is Admin -> Automations status (`EmailTemplate.isActive`), with staging/UAT seed modes paused by default.
+- Non-production runtimes also suppress real provider email delivery by default unless `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1`; this remains a secondary safety-net for direct send paths outside Automations.
 - Required for homesite contact-form email delivery: `CONTACT_FORM_TO_EMAIL`.
   - Test/e2e runtimes can use deterministic provider bypass (`NODE_ENV=test` or `E2E_TEST_MODE=1`) and do not require real Resend delivery configuration.
   - Optional feature envs: Sentry + seed extras.
@@ -504,7 +505,9 @@ Evidence label legend used in this file:
   - Domain logic concentrated in `src/lib/*` modules consumed by routes/actions.
   - Evidence status: Confirmed from repo.
 - Canonical email architecture only:
-  - Outbox + dispatcher/cron + shared renderer/shared marketing builder are the only runtime email paths; no ENABLED/PAUSED/DISABLED architecture toggles are supported.
+  - Automation-backed email uses the outbox + dispatcher/cron path, controlled by `EmailTemplate.isActive`.
+  - Marketing and the homesite contact form still use direct send paths through the shared Resend delivery module.
+  - No ENABLED/PAUSED/DISABLED architecture toggles are supported.
   - Evidence status: Confirmed from repo.
 - Idempotent financial-like patterns:
   - Ledger idempotency keys and webhook-safe upsert/skipDuplicate patterns.

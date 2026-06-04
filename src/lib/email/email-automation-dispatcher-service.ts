@@ -129,6 +129,7 @@ export async function dispatchEmailAutomationBatch(
     const template = await prisma.emailTemplate.findUnique({
       where: { id: event.templateId },
       select: {
+        isActive: true,
         contentSchemaVersion: true,
         subjectTemplate: true,
         bodyTemplateJson: true,
@@ -149,6 +150,16 @@ export async function dispatchEmailAutomationBatch(
     }
 
     try {
+      if (!template.isActive) {
+        await finalizeEmailAutomationLease({
+          eventId: event.id,
+          leaseOwner: parsed.workerId,
+          sent: true,
+          now,
+        });
+        continue;
+      }
+
       if (template.contentSchemaVersion !== 1) {
         throw new Error(`Unsupported email template content schema version: ${template.contentSchemaVersion}`);
       }

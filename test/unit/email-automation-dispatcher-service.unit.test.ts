@@ -39,6 +39,7 @@ describe("email automation dispatcher service", () => {
     mocks.recordEmailDispatcherHeartbeat.mockResolvedValue({});
     mocks.sendEmailViaResend.mockResolvedValue({ sent: true });
     mocks.findTemplate.mockResolvedValue({
+      isActive: true,
       contentSchemaVersion: 1,
       subjectTemplate: "Welcome",
       bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello" }] },
@@ -120,6 +121,48 @@ describe("email automation dispatcher service", () => {
       leasedCount: 1,
       sentCount: 0,
       failedCount: 1,
+      deadLetterCount: 0,
+    });
+  });
+
+  it("does not call resend when the automation template is paused", async () => {
+    mocks.findTemplate.mockResolvedValue({
+      isActive: false,
+      contentSchemaVersion: 1,
+      subjectTemplate: "Welcome",
+      bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello" }] },
+    });
+    mocks.acquireEmailAutomationLease.mockResolvedValue([
+      {
+        id: "evt_paused",
+        templateId: "tpl_paused",
+        recipientEmail: "client@example.test",
+        payloadJson: { name: "Client" },
+        attempts: 0,
+      },
+    ]);
+    mocks.finalizeEmailAutomationLease.mockResolvedValue({
+      status: "SENT",
+    });
+
+    const result = await dispatchEmailAutomationBatch({
+      workerId: "worker-paused-template",
+      maxEvents: 1,
+      leaseMs: 30_000,
+      now: new Date("2026-05-17T14:20:00.000Z"),
+    });
+
+    expect(mocks.sendEmailViaResend).not.toHaveBeenCalled();
+    expect(mocks.finalizeEmailAutomationLease).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: "evt_paused",
+        sent: true,
+      }),
+    );
+    expect(result).toMatchObject({
+      leasedCount: 1,
+      sentCount: 0,
+      failedCount: 0,
       deadLetterCount: 0,
     });
   });

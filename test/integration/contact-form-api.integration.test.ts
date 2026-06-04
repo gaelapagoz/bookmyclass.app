@@ -5,6 +5,7 @@ import { resetDb } from "./helpers/reset-db";
 const sendEmailViaResendMock = vi.fn();
 
 vi.mock("@/lib/email/resend-delivery", () => ({
+  isRealEmailDeliveryEnabled: () => true,
   sendEmailViaResend: (...args: unknown[]) => sendEmailViaResendMock(...args),
 }));
 

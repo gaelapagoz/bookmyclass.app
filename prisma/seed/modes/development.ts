@@ -35,6 +35,7 @@ import { hash } from "bcryptjs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import prisma from "../../../src/lib/db";
+import { ensureAllExpectedAutomationTemplatesHaveStatus } from "../../../src/lib/email/email-automation-admin-service";
 import { assertLearningImagePath } from "../../../src/lib/learning/image-paths";
 import { AGENDA_SCHEDULE } from "../data/schedule";
 import { STORE_CATALOG_PRODUCT_COUNT, STORE_CATALOG_PRODUCTS } from "../data/store-catalog";
@@ -1267,6 +1268,7 @@ export async function runDevelopmentSeed(): Promise<void> {
   );
   const seededMediaPathCount = await verifySeededMediaReferences(prisma);
   console.info(`[seed:dev] Seeded media verified: ${seededMediaPathCount} canonical /uploads paths.`);
+  await ensureAllExpectedAutomationTemplatesHaveStatus(false);
   await verifyCleanSeed(users.client.email, schedulingSummary);
 
   console.info(

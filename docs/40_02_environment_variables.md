@@ -24,6 +24,8 @@ Purpose: define environment-variable expectations by runtime context using repos
   - `RESEND_API_KEY`
   - `EMAIL_FROM`
   - `MARKETING_TRACKING_SECRET`
+- Primary operator control for automation-backed email is Admin -> Automations status (`EmailTemplate.isActive`).
+- Staging/UAT seed modes pause all canonical automation templates by default.
 - Real provider delivery is enabled by default only in production.
 - Non-production runtime defaults to suppressed/captured email delivery unless:
   - `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1`
@@ -31,6 +33,7 @@ Purpose: define environment-variable expectations by runtime context using repos
   - `CONTACT_FORM_TO_EMAIL`
   - Expected configured value: `gaelapagoz@gmail.com`
 - In production, sender policy is enforced in code: sender must use verified `@bookmyclass.app` domain when provider delivery is used.
+- `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION` is a secondary safety-net override for direct send paths outside Automations, not the primary staging/UAT control.
 - Canonical email architecture is unconditional: there are no `ENABLED`, `PAUSED`, or `DISABLED` environment variables for email architecture or email families.
 
 ## Contact Form Abuse Guard

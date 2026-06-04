@@ -318,7 +318,7 @@ run_with_timeout "$BUILD_TIMEOUT_SECONDS" "build next application" npm run build
 
 if [[ "$RESET_STAGING_DB" == "1" ]]; then
   guard_destructive_staging_seed
-  run_with_timeout "$PRISMA_RESET_TIMEOUT_SECONDS" "destructive staging database reset" npx prisma migrate reset --force --skip-seed
+  run_with_timeout "$PRISMA_RESET_TIMEOUT_SECONDS" "destructive staging database reset" npx prisma migrate reset --force
   run_with_timeout "$SEED_PROD_TIMEOUT_SECONDS" "seed prod baseline data for staging validation" env CONFIRM_PRODUCTION_SEED="$CONFIRM_PRODUCTION_SEED" npm run db:seed:prod
   run_with_timeout "$SEED_STAGING_TIMEOUT_SECONDS" "seed staging baseline data for staging validation" npm run db:seed:staging
   run_with_timeout "$SEED_UAT_K6_TIMEOUT_SECONDS" "seed uat k6 cohort data for staging validation" env UAT_K6_SEED=1 npm run db:seed:uat:k6

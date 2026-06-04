@@ -36,6 +36,7 @@ import {
 } from "@prisma/client";
 import { hash } from "bcryptjs";
 import prisma from "../src/lib/db";
+import { ensureAllExpectedAutomationTemplatesHaveStatus } from "../src/lib/email/email-automation-admin-service";
 import { runDevelopmentSeed } from "../prisma/seed/modes/development";
 import {
   SEEDED_CANONICAL_EMAILS,
@@ -136,6 +137,7 @@ async function main() {
   ensureDevelopmentBaselineSeedEnv();
   await resetE2EDatabase();
   await runDevelopmentSeed();
+  await ensureAllExpectedAutomationTemplatesHaveStatus(true);
 
   const passwordHash = await hash(SEEDED_USER_PASSWORD, 12);
   const now = new Date();

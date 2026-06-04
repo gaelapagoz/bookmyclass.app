@@ -18,7 +18,6 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { compare } from "bcryptjs";
 import { UserActivationStatus } from "@prisma/client";
-import prisma from "../src/lib/db";
 import { SEEDED_EMAIL_DOMAIN, SEEDED_USER_PASSWORD } from "../prisma/seed/seed-credentials";
 
 const DEFAULT_BASE_URL = "https://demo.bookmyclass.app";
@@ -101,6 +100,23 @@ const REQUIRED_COHORTS: K6CohortName[] = [
 ];
 const COHORT_TARGET_COUNT = 400;
 
+type PrismaClientLike = {
+  user: {
+    findMany: (...args: unknown[]) => Promise<Array<{
+      email: string;
+      name: string | null;
+      passwordHash: string;
+      isActive: boolean;
+      isInactive: boolean;
+      activationStatus: UserActivationStatus;
+      emailVerified: Date | null;
+      emailVerifiedAt: Date | null;
+      clientProfile: { phone: string | null } | null;
+    }>>;
+  };
+  $disconnect: () => Promise<void>;
+};
+
 function isObject(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -166,6 +182,25 @@ function assertDatabaseBaseUrlAlignment(baseUrl: string): void {
 
 function shouldSkipDbUserDiscovery(): boolean {
   return (process.env.K6_DISCOVER_SKIP_DB_USERS || "").trim() === "1";
+}
+
+function resolveScenarioSet(): string {
+  return (process.env.K6_SCENARIO_SET || "full_smoke").trim().toLowerCase();
+}
+
+function requiresBookingFixtureDiscovery(scenarioSet: string): boolean {
+  return scenarioSet !== "non_booking_smoke";
+}
+
+function requiresProductFixtureDiscovery(): boolean {
+  return true;
+}
+
+let prismaClientPromise: Promise<PrismaClientLike> | null = null;
+
+async function getPrismaClient(): Promise<PrismaClientLike> {
+  prismaClientPromise ??= import("../src/lib/db").then((module) => module.default as PrismaClientLike);
+  return prismaClientPromise;
 }
 
 function toDateKey(date: Date): string {
@@ -537,6 +572,7 @@ function csvEscape(value: string): string {
 }
 
 async function discoverK6UsersCsv(usersPath: string): Promise<{ rows: number; cohorts: Record<K6CohortName, number> }> {
+  const prisma = await getPrismaClient();
   const users = await prisma.user.findMany({
     where: {
       email: {
@@ -636,6 +672,7 @@ async function discoverK6UsersCsv(usersPath: string): Promise<{ rows: number; co
 
 async function main() {
   const baseUrl = normalizeBaseUrl(process.env.BASE_URL);
+  const scenarioSet = resolveScenarioSet();
   const skipDbUsers = shouldSkipDbUserDiscovery();
   if (!skipDbUsers) {
     assertDatabaseBaseUrlAlignment(baseUrl);
@@ -645,37 +682,56 @@ async function main() {
   const usersPath = resolve(process.cwd(), USERS_SEED_PATH);
 
   const userSeed = skipDbUsers ? null : await discoverK6UsersCsv(usersPath);
-  const bookingSeed = await discoverCollectiveBookingSeed(baseUrl);
-  const productSeed = await discoverProductSeed(baseUrl);
+  const bookingSeed = requiresBookingFixtureDiscovery(scenarioSet)
+    ? await discoverCollectiveBookingSeed(baseUrl)
+    : null;
+  const productSeed = requiresProductFixtureDiscovery()
+    ? await discoverProductSeed(baseUrl)
+    : null;
 
-  const servicesData = await readJsonArray(servicesPath);
-  const productsData = await readJsonArray(productsPath);
+  const servicesData = bookingSeed ? await readJsonArray(servicesPath) : null;
+  const productsData = productSeed ? await readJsonArray(productsPath) : null;
 
-  const nextServicesData = upsertArrayEntry(servicesData, ["serviceSlug", "sessionId", "sessionIds"], {
-    serviceSlug: bookingSeed.serviceSlug,
-    sessionId: bookingSeed.sessionId,
-    sessionIds: bookingSeed.sessionIds,
-  });
+  const nextServicesData = bookingSeed && servicesData
+    ? upsertArrayEntry(servicesData, ["serviceSlug", "sessionId", "sessionIds"], {
+        serviceSlug: bookingSeed.serviceSlug,
+        sessionId: bookingSeed.sessionId,
+        sessionIds: bookingSeed.sessionIds,
+      })
+    : null;
 
-  const nextProductsData = upsertArrayEntry(productsData, ["productId", "priceId"], {
-    productId: productSeed.productId,
-    priceId: productSeed.priceId,
-  });
+  const nextProductsData = productSeed && productsData
+    ? upsertArrayEntry(productsData, ["productId", "priceId"], {
+        productId: productSeed.productId,
+        priceId: productSeed.priceId,
+      })
+    : null;
 
-  await writePrettyJson(servicesPath, nextServicesData);
-  await writePrettyJson(productsPath, nextProductsData);
+  if (nextServicesData) {
+    await writePrettyJson(servicesPath, nextServicesData);
+  }
+  if (nextProductsData) {
+    await writePrettyJson(productsPath, nextProductsData);
+  }
 
   console.info(`BASE_URL=${baseUrl}`);
-  console.info(`CATEGORY_SLUG=${bookingSeed.categorySlug}`);
-  console.info(`SERVICE_SLUG=${bookingSeed.serviceSlug}`);
-  console.info(`SESSION_POOL_SIZE=${bookingSeed.sessionPoolSize}`);
-  console.info(`SESSION_ID_SAMPLE=${bookingSeed.sessionIds.slice(0, 5).join(",")}`);
-  console.info(`SESSION_AVAILABLE_SPOTS_TOP=${bookingSeed.topSessionAvailableSpots}`);
-  console.info(`SESSION_CAPACITY_TOP=${bookingSeed.topSessionCapacity}`);
-  console.info(`PRODUCT_ID=${productSeed.productId}`);
-  console.info(`PRICE_ID=${productSeed.priceId}`);
-  console.info(`UPDATED_SERVICES_FILE=${servicesPath}`);
-  console.info(`UPDATED_PRODUCTS_FILE=${productsPath}`);
+  console.info(`K6_SCENARIO_SET=${scenarioSet}`);
+  if (bookingSeed) {
+    console.info(`CATEGORY_SLUG=${bookingSeed.categorySlug}`);
+    console.info(`SERVICE_SLUG=${bookingSeed.serviceSlug}`);
+    console.info(`SESSION_POOL_SIZE=${bookingSeed.sessionPoolSize}`);
+    console.info(`SESSION_ID_SAMPLE=${bookingSeed.sessionIds.slice(0, 5).join(",")}`);
+    console.info(`SESSION_AVAILABLE_SPOTS_TOP=${bookingSeed.topSessionAvailableSpots}`);
+    console.info(`SESSION_CAPACITY_TOP=${bookingSeed.topSessionCapacity}`);
+    console.info(`UPDATED_SERVICES_FILE=${servicesPath}`);
+  } else {
+    console.info("K6_BOOKING_DISCOVERY=skipped (scenario set does not include booking flows)");
+  }
+  if (productSeed) {
+    console.info(`PRODUCT_ID=${productSeed.productId}`);
+    console.info(`PRICE_ID=${productSeed.priceId}`);
+    console.info(`UPDATED_PRODUCTS_FILE=${productsPath}`);
+  }
   if (userSeed) {
     console.info(`K6_USER_ROWS=${userSeed.rows}`);
     console.info(
@@ -689,11 +745,17 @@ async function main() {
 
 main()
   .then(async () => {
-    await prisma.$disconnect();
+    if (prismaClientPromise) {
+      const prisma = await prismaClientPromise;
+      await prisma.$disconnect();
+    }
   })
   .catch(async (error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[performance-server-discover-fixtures] failed: ${message}`);
-    await prisma.$disconnect();
+    if (prismaClientPromise) {
+      const prisma = await prismaClientPromise;
+      await prisma.$disconnect();
+    }
     process.exit(1);
   });

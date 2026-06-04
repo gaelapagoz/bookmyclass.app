@@ -23,7 +23,6 @@ export async function ensureLifecycleEmailTemplate(input: LifecycleTemplateInput
       subjectTemplate: input.subjectTemplate,
       bodyTemplateJson: input.bodyTemplateJson as object,
       contentSchemaVersion: 1,
-      isActive: true,
     },
     create: {
       templateKey: input.templateKey,

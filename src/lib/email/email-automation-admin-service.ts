@@ -476,6 +476,20 @@ export async function ensureAllExpectedAutomationTemplatesExist(): Promise<void>
   await Promise.all(EXPECTED_AUTOMATION_TEMPLATES.map((template) => ensureExpectedAutomationTemplateExists(template.templateKey)));
 }
 
+export async function ensureAllExpectedAutomationTemplatesHaveStatus(isActive: boolean): Promise<void> {
+  await ensureAllExpectedAutomationTemplatesExist();
+  await prisma.emailTemplate.updateMany({
+    where: {
+      templateKey: {
+        in: EXPECTED_AUTOMATION_TEMPLATES.map((template) => template.templateKey),
+      },
+    },
+    data: {
+      isActive,
+    },
+  });
+}
+
 const setAutomationTemplateStatusSchema = z.object({
   templateKey: z.string().trim().min(1),
   isActive: z.boolean(),

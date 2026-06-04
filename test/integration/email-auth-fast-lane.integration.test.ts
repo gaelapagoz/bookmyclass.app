@@ -87,7 +87,9 @@ describe("auth email fast lane", () => {
     const originalNodeEnv = process.env.NODE_ENV;
     const originalResendApiKey = process.env.RESEND_API_KEY;
     const originalEmailFrom = process.env.EMAIL_FROM;
+    const originalAllowRealEmails = process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION;
     process.env.NODE_ENV = "development";
+    process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION = "1";
     delete process.env.RESEND_API_KEY;
     process.env.EMAIL_FROM = "Book My Class <no-reply@bookmyclass.app>";
 
@@ -158,6 +160,11 @@ describe("auth email fast lane", () => {
         delete process.env.EMAIL_FROM;
       } else {
         process.env.EMAIL_FROM = originalEmailFrom;
+      }
+      if (originalAllowRealEmails === undefined) {
+        delete process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION;
+      } else {
+        process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION = originalAllowRealEmails;
       }
     }
   });
