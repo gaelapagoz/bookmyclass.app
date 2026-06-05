@@ -5,6 +5,8 @@ import { verifyE2EConfig } from "../../scripts/e2e-verify-config";
 const completeEnv = {
   AUTH_SECRET: "auth-secret",
   E2E_TEST_SECRET: "e2e-secret",
+  MARKETING_TRACKING_SECRET: "marketing-secret",
+  CRON_SECRET: "cron-secret",
   STRIPE_PRICE_ID_STORE_GIFT_CARD_25_EUR: "price_test_gift_25",
   STRIPE_PRICE_ID_STORE_GIFT_CARD_50_EUR: "price_test_gift_50",
   STRIPE_PRICE_ID_STORE_GIFT_CARD_100_EUR: "price_test_gift_100",
@@ -33,6 +35,16 @@ describe("verifyE2EConfig", () => {
 
     expect(result.ok).toBe(false);
     expect(result.missing.join("\n")).toContain("AUTH_SECRET");
+  });
+
+  it("fails when MARKETING_TRACKING_SECRET is missing", () => {
+    const result = verifyE2EConfig({
+      ...completeEnv,
+      MARKETING_TRACKING_SECRET: "",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.missing.join("\n")).toContain("MARKETING_TRACKING_SECRET");
   });
 
   it("does not require historical Store feature flags", () => {

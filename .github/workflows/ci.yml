@@ -119,6 +119,7 @@ jobs:
       EMAIL_FROM: CI <ci@example.test>
       E2E_TEST_MODE: "1"
       E2E_TEST_SECRET: ${{ secrets.E2E_TEST_SECRET }}
+      MARKETING_TRACKING_SECRET: ci-marketing-tracking-secret
       CRON_SECRET: ci-e2e-cron-secret
 
     steps:
@@ -156,6 +157,7 @@ jobs:
           EMAIL_FROM=${EMAIL_FROM}
           E2E_TEST_MODE=${E2E_TEST_MODE}
           E2E_TEST_SECRET=${E2E_TEST_SECRET}
+          MARKETING_TRACKING_SECRET=${MARKETING_TRACKING_SECRET}
           CRON_SECRET=${CRON_SECRET}
           STRIPE_PRICE_ID_STORE_GIFT_CARD_25_EUR=price_ci_store_gift_card_25_eur
           STRIPE_PRICE_ID_STORE_GIFT_CARD_50_EUR=price_ci_store_gift_card_50_eur

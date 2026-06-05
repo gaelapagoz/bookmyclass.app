@@ -17,17 +17,15 @@ Required values:
 - `STRIPE_WEBHOOK_SECRET`
 - `E2E_TEST_MODE=1`
 - `E2E_TEST_SECRET`
+- `MARKETING_TRACKING_SECRET`
+- `CRON_SECRET`
 - all `STRIPE_PRICE_ID_STORE_*` values from `.env.e2e.example`
-
-Optional in deterministic e2e mode (`E2E_TEST_MODE=1`):
-
-- `RESEND_API_KEY`
-- `EMAIL_FROM`
 
 Notes:
 
 - In e2e mode, email delivery is provider-bypassed deterministically in the centralized email integration layer.
 - The Playwright runner starts the built app (`next start`) with an internal E2E-only runtime override so helper routes stay available without `next dev` recompilation churn.
+- Because the app boots in production mode during Playwright startup, keep `RESEND_API_KEY` and `EMAIL_FROM` populated in `.env.e2e` even though the email layer bypasses provider delivery deterministically in E2E mode.
 - Production still requires valid Resend delivery configuration and sender domain policy.
 - Store and Gift Card flows are part of the canonical E2E runtime and are not gated by Store rollout feature flags.
 
