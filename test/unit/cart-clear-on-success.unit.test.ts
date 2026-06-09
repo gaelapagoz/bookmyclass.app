@@ -36,6 +36,25 @@ function readStoredLines(): ClientCartLine[] {
   return parsed.lines ?? [];
 }
 
+function makeClassPackLine(
+  overrides: Partial<Pick<ClientCartLine, "productId" | "priceId" | "quantity">> = {},
+): ClientCartLine {
+  return {
+    productId: overrides.productId ?? "prod_pack_1",
+    priceId: overrides.priceId ?? "price_pack_1",
+    productName: "5 Class Pack",
+    productDescription: null,
+    productType: ProductType.CLASS_PACK,
+    priceName: "5 Pack",
+    priceType: PriceType.ONE_TIME,
+    quantity: overrides.quantity ?? 1,
+    unitAmountMinor: 5000,
+    currencyCode: "EUR",
+    billingInterval: null,
+    billingIntervalCount: null,
+  };
+}
+
 describe("cart clear after successful checkout", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -90,5 +109,28 @@ describe("cart clear after successful checkout", () => {
 
     expect(cleared).toBe(false);
     expect(readStoredLines()).toHaveLength(1);
+  });
+
+  it("clears a multi-line cart after confirmed checkout", () => {
+    const firstLine = makeGiftCardLine();
+    const secondLine = makeClassPackLine();
+    const lines = [firstLine, secondLine];
+    writeClientCart(lines);
+    const fingerprint = getCheckoutSubmissionFingerprint(lines);
+    const sessionId = "cs_test_multi_line_success";
+    rememberClientCartSnapshotForCheckoutSession({ checkoutSessionId: sessionId, fingerprint });
+
+    const cleared = maybeClearClientCartAfterConfirmedCheckout({
+      checkoutSessionId: sessionId,
+      cartClearEligible: true,
+      purchasedLines: lines.map((line) => ({
+        productId: line.productId,
+        priceId: line.priceId,
+        quantity: line.quantity,
+      })),
+    });
+
+    expect(cleared).toBe(true);
+    expect(readStoredLines()).toHaveLength(0);
   });
 });

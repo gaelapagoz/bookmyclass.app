@@ -28,6 +28,9 @@ vi.mock("@/app/teacher/actions", () => ({
   updateTeacherSessionAttendanceAction: vi.fn(),
   changeTeacherPasswordAction: vi.fn(),
 }));
+vi.mock("@/lib/site-settings/site-settings-service", () => ({
+  getSiteTimeZone: vi.fn(),
+}));
 
 vi.mock("next/navigation", async () => {
   const actual = await vi.importActual<typeof import("next/navigation")>("next/navigation");
@@ -40,6 +43,7 @@ vi.mock("next/navigation", async () => {
 import TeacherSessionsPage from "../../src/app/teacher/sessions/page";
 import TeacherProfilePage from "../../src/app/teacher/profile/page";
 import TeacherSessionRosterPage from "../../src/app/teacher/sessions/[id]/page";
+import { getSiteTimeZone } from "@/lib/site-settings/site-settings-service";
 
 describe("teacher pages", () => {
   beforeEach(() => {
@@ -48,6 +52,7 @@ describe("teacher pages", () => {
     getTeacherSelfProfileMock.mockReset();
     getTeacherSessionRosterDataMock.mockReset();
     redirectMock.mockReset();
+    vi.mocked(getSiteTimeZone).mockResolvedValue("Europe/Brussels");
 
     requireTeacherSessionMock.mockResolvedValue({
       user: { id: "teacher-1", role: "TEACHER" },

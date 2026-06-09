@@ -1,4 +1,5 @@
 import {
+  CheckoutSource,
   OrderStatus,
   PaymentMethod,
   PaymentProvider,
@@ -136,6 +137,7 @@ async function readOrderSuccessState(input: {
         orderBy: { createdAt: "desc" },
         select: {
           status: true,
+          checkoutSource: true,
           method: true,
           provider: true,
           amountMinor: true,
@@ -160,7 +162,10 @@ async function readOrderSuccessState(input: {
     },
   });
 
+  const hasCartCheckoutSource =
+    order?.payments.some((payment) => payment.checkoutSource === CheckoutSource.CART_CHECKOUT_V1) ?? false;
   const cartClearEligible =
+    hasCartCheckoutSource &&
     input.reconciliationState === "CONFIRMED" &&
     input.orderStatus === OrderStatus.PAID &&
     (input.paymentStatus === PaymentStatus.SUCCEEDED || input.paymentStatus === null);
@@ -337,17 +342,12 @@ export async function getCartCheckoutSuccessState(input: {
     },
   });
 
-  const cartClearEligible =
-    reconciliation.reconciliationState === "CONFIRMED" &&
-    reconciliation.paymentStatus === PaymentStatus.SUCCEEDED &&
-    reconciliation.orderStatus === OrderStatus.PAID;
-
   if (!payment?.order) {
     return {
       paymentStatus: reconciliation.paymentStatus,
       orderStatus: reconciliation.orderStatus,
       reconciliationState: reconciliation.reconciliationState,
-      cartClearEligible,
+      cartClearEligible: false,
       subtotalAmountMinor: null,
       discountAmountMinor: null,
       totalAmountMinor: null,

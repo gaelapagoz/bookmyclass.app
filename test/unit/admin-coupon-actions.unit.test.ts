@@ -69,8 +69,8 @@ describe("admin coupon actions", () => {
           code: "SAVE10",
           status: "ACTIVE",
           discountType: "PERCENTAGE",
-          discountPercentBps: "1000",
-          expiresAt: "2099-01-01",
+          discountValue: "10",
+          validUntil: "2099-01-01",
         }),
       ),
     ).rejects.toThrow("CSRF_INVALID_ORIGIN");
@@ -89,8 +89,8 @@ describe("admin coupon actions", () => {
           code: "SAVE10",
           status: "ACTIVE",
           discountType: "PERCENTAGE",
-          discountPercentBps: "1000",
-          expiresAt: "2099-01-01",
+          discountValue: "10",
+          validUntil: "2099-01-01",
         }),
       ),
     ).rejects.toThrow("NEXT_REDIRECT:/admin/coupons?error=A%20coupon%20with%20this%20normalized%20code%20already%20exists.");

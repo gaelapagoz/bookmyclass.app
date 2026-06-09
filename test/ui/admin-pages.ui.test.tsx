@@ -35,6 +35,10 @@ vi.mock("@/lib/email/email-automation-admin-service", () => ({
   getAutomationScaffoldRows: vi.fn(),
   ensureAllExpectedAutomationTemplatesExist: vi.fn(async () => undefined),
 }));
+vi.mock("@/lib/site-settings/site-settings-service", () => ({
+  getSiteTimeZone: vi.fn(),
+  getSiteTimeZoneOptions: vi.fn(),
+}));
 
 vi.mock("@/auth", () => ({
   auth: vi.fn(async () => null),
@@ -96,6 +100,7 @@ import {
 } from "@/lib/admin/admin-user-service";
 import { listMarketingSegments } from "@/lib/marketing/marketing-service";
 import { getAutomationScaffoldRows } from "@/lib/email/email-automation-admin-service";
+import { getSiteTimeZone, getSiteTimeZoneOptions } from "@/lib/site-settings/site-settings-service";
 import { listClientMessages } from "@/lib/client-messages/client-message-service";
 import { getActiveAgendaPdfDocument } from "@/lib/public-documents/agenda-document-service";
 
@@ -117,6 +122,11 @@ import AdminMarketingSegmentsPage from "../../src/app/admin/(private)/marketing/
 describe("Admin pages branching", () => {
   beforeEach(() => {
     vi.clearAllMocks();    vi.mocked(getDashboardTrendData).mockResolvedValue([]);
+    vi.mocked(getSiteTimeZone).mockResolvedValue("Europe/Brussels");
+    vi.mocked(getSiteTimeZoneOptions).mockReturnValue([
+      { value: "Europe/Brussels", label: "(UTC+01:00) Brussels" },
+      { value: "America/New_York", label: "(UTC-05:00) New York" },
+    ]);
     vi.mocked(getAdminClassCategoriesData).mockResolvedValue([]);
     vi.mocked(listAdminMarketingSegmentOptions).mockResolvedValue([]);
     vi.mocked(listMarketingSegments).mockResolvedValue([]);

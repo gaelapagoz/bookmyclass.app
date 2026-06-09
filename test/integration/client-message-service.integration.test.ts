@@ -1,12 +1,97 @@
 import "./helpers/setup-env";
-import { ClientMessageContactStatus, ClientMessageType, Role } from "@prisma/client";
+import { BookingIntent, BookingStatus, ClientMessageContactStatus, ClientMessageType, Role, StudioSessionStatus } from "@prisma/client";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   createContactMessage,
   listClientMessages,
 } from "../../src/lib/client-messages/client-message-service";
 import { prisma } from "./helpers/db";
+import { createClassCategory, createClassType } from "./helpers/factories";
 import { resetDb } from "./helpers/reset-db";
+
+async function createBookingNoteFixture() {
+  const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const category = await createClassCategory(prisma, {
+    name: "Inbox Yoga",
+    slug: `inbox-yoga-${unique}`,
+    sortOrder: 1,
+    isActive: true,
+  });
+  const classType = await createClassType(prisma, {
+    categoryId: category.id,
+    name: "Inbox Flow",
+    slug: `inbox-flow-${unique}`,
+    sortOrder: 1,
+    isActive: true,
+    isVisible: true,
+  });
+  const teacher = await prisma.user.create({
+    data: {
+      name: "Inbox Teacher",
+      email: `teacher.${unique}@example.test`,
+      role: Role.TEACHER,
+    },
+  });
+  const template = await prisma.classTemplate.create({
+    data: {
+      classTypeId: classType.id,
+      defaultTeacherId: teacher.id,
+      title: "Inbox Template",
+      slug: `inbox-template-${unique}`,
+      defaultCapacity: 8,
+      defaultDurationMinutes: 60,
+      isActive: true,
+      isPublished: true,
+    },
+  });
+  const startsAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  const session = await prisma.studioSession.create({
+    data: {
+      classTemplateId: template.id,
+      classTypeId: classType.id,
+      teacherId: teacher.id,
+      title: "Inbox Session",
+      startsAt,
+      endsAt: new Date(startsAt.getTime() + 60 * 60 * 1000),
+      capacity: 8,
+      status: StudioSessionStatus.SCHEDULED,
+      isPublished: true,
+    },
+  });
+  const client = await prisma.user.create({
+    data: {
+      name: "Booking Client",
+      email: `booking.${unique}@example.test`,
+      role: Role.CLIENT,
+    },
+  });
+  const booking = await prisma.booking.create({
+    data: {
+      clientId: client.id,
+      studioSessionId: session.id,
+      status: BookingStatus.PENDING,
+      bookingIntent: BookingIntent.SINGLE_BOOKING,
+      customerName: client.name,
+      customerEmail: client.email,
+      customerPhone: "+32000000001",
+      consentTermsAccepted: true,
+      consentPrivacyAccepted: true,
+      consentAcceptedAt: new Date(),
+    },
+  });
+
+  return prisma.clientMessage.create({
+    data: {
+      type: ClientMessageType.BOOKING_NOTE,
+      userId: client.id,
+      bookingId: booking.id,
+      name: client.name,
+      email: client.email,
+      message: "Please adjust my booking to next Tuesday afternoon.",
+    },
+  });
+}
 
 describe("client-message-service contact anti-spam", () => {
   beforeEach(async () => {
@@ -54,24 +139,7 @@ describe("client-message-service contact anti-spam", () => {
   });
 
   it("keeps spam out of default admin inbox view", async () => {
-    const client = await prisma.user.create({
-      data: {
-        name: "Booking Client",
-        email: `booking.${Date.now()}@example.test`,
-        role: Role.CLIENT,
-      },
-    });
-
-    const bookingNote = await prisma.clientMessage.create({
-      data: {
-        type: ClientMessageType.BOOKING_NOTE,
-        userId: client.id,
-        bookingId: null,
-        name: "Booking Client",
-        email: client.email,
-        message: "Please adjust my booking to next Tuesday afternoon.",
-      },
-    });
+    const bookingNote = await createBookingNoteFixture();
 
     const inboxContact = await createContactMessage({
       name: "Inbox Contact",

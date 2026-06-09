@@ -1,21 +1,57 @@
+import Link from "next/link";
 import { CouponDiscountType, CouponStatus } from "@prisma/client";
 
 import { requireAdminSession } from "@/lib/auth/require-auth";
 import { listAdminCoupons } from "@/lib/coupons/coupon-admin-service";
-import {
-  createAdminCouponAction,
-  setAdminCouponStatusAction,
-  updateAdminCouponAction,
-} from "@/app/admin/(private)/coupons/actions";
 
 type SearchParams = Promise<{
   success?: string;
   error?: string;
 }>;
 
-function toDateInputValue(value: Date | null): string {
-  if (!value) return "";
-  return value.toISOString().slice(0, 10);
+function formatDate(value: Date | null): string {
+  if (!value) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("en-BE", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(value);
+}
+
+function formatDiscountValue(coupon: {
+  discountType: CouponDiscountType;
+  discountPercentBps: number | null;
+  discountAmountMinor: number | null;
+}): string {
+  if (coupon.discountType === CouponDiscountType.PERCENTAGE) {
+    return coupon.discountPercentBps ? `${coupon.discountPercentBps / 100}%` : "-";
+  }
+
+  if (!coupon.discountAmountMinor) {
+    return "-";
+  }
+
+  return new Intl.NumberFormat("en-BE", {
+    style: "currency",
+    currency: "EUR",
+  }).format(coupon.discountAmountMinor / 100);
+}
+
+function formatCouponType(discountType: CouponDiscountType): string {
+  return discountType === CouponDiscountType.PERCENTAGE ? "Percentage" : "Amount";
+}
+
+function formatCouponStatus(status: CouponStatus): string {
+  if (status === CouponStatus.ACTIVE) {
+    return "Active";
+  }
+  if (status === CouponStatus.INACTIVE) {
+    return "Inactive";
+  }
+  return "Archived";
 }
 
 export default async function AdminCouponsPage({
@@ -28,12 +64,12 @@ export default async function AdminCouponsPage({
   const coupons = await listAdminCoupons();
 
   return (
-    <section className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold text-[#1f2735]">Catalog: Coupons</h1>
-        <p className="mt-1 text-sm text-[#4b5a72]">
-          Create, edit, activate, deactivate, and archive in-app coupons.
-        </p>
+    <section className="space-y-4">
+      <header className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold text-[#1f2735]">Coupons</h1>
+        <Link href="/admin/coupons/new" className="rounded-md bg-[#1d3652] px-3 py-2 text-sm text-white">
+          Create coupon
+        </Link>
       </header>
 
       {sp.success ? (
@@ -47,77 +83,44 @@ export default async function AdminCouponsPage({
         </p>
       ) : null}
 
-      <div className="rounded-xl border border-[#d3dbe5] bg-white p-4">
-        <h2 className="text-lg font-semibold text-[#1f2735]">Create Coupon</h2>
-        <form action={createAdminCouponAction} className="mt-3 grid gap-3 md:grid-cols-3">
-          <input name="code" placeholder="Code" className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" required />
-          <input name="name" placeholder="Name (optional)" className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-          <input name="expiresAt" type="date" className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" required />
-          <select name="status" defaultValue={CouponStatus.ACTIVE} className="rounded border border-[#d3dbe5] px-3 py-2 text-sm">
-            <option value={CouponStatus.ACTIVE}>Active</option>
-            <option value={CouponStatus.INACTIVE}>Inactive</option>
-          </select>
-          <select name="discountType" defaultValue={CouponDiscountType.PERCENTAGE} className="rounded border border-[#d3dbe5] px-3 py-2 text-sm">
-            <option value={CouponDiscountType.PERCENTAGE}>Percentage (bps)</option>
-            <option value={CouponDiscountType.FIXED_AMOUNT}>Fixed amount (minor units)</option>
-          </select>
-          <input name="discountPercentBps" type="number" placeholder="Percent bps (e.g. 1500)" className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-          <input name="discountAmountMinor" type="number" placeholder="Fixed amount minor" className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-          <input name="currencyCode" placeholder="Currency (EUR)" className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-          <input name="startsAt" type="date" className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-          <input name="minOrderAmountMinor" type="number" placeholder="Min order minor" className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-          <input name="maxTotalRedemptions" type="number" placeholder="Max total redemptions" className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-          <input name="maxRedemptionsPerClient" type="number" placeholder="Max per client redemptions" className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-          <textarea name="description" placeholder="Description (optional)" className="rounded border border-[#d3dbe5] px-3 py-2 text-sm md:col-span-3" />
-          <div className="md:col-span-3">
-            <button type="submit" className="rounded-md bg-[#1d3652] px-3 py-2 text-sm text-white">Create coupon</button>
-          </div>
-        </form>
-      </div>
-
       {coupons.length === 0 ? (
         <div className="rounded-xl border border-[#d3dbe5] bg-white p-5 text-sm text-[#4b5a72]">
-          No coupons found.
+          No coupons created yet.
         </div>
       ) : (
-        <div className="space-y-4">
-          {coupons.map((coupon) => (
-            <article key={coupon.id} className="rounded-xl border border-[#d3dbe5] bg-white p-4">
-              <h3 className="text-base font-semibold text-[#1f2735]">{coupon.code}</h3>
-              <form action={updateAdminCouponAction} className="mt-3 grid gap-3 md:grid-cols-3">
-                <input type="hidden" name="couponId" value={coupon.id} />
-                <input name="code" defaultValue={coupon.code} className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" required />
-                <input name="name" defaultValue={coupon.name ?? ""} className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-                <input name="expiresAt" type="date" defaultValue={toDateInputValue(coupon.expiresAt)} className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" required />
-                <select name="status" defaultValue={coupon.status} className="rounded border border-[#d3dbe5] px-3 py-2 text-sm">
-                  <option value={CouponStatus.ACTIVE}>Active</option>
-                  <option value={CouponStatus.INACTIVE}>Inactive</option>
-                  <option value={CouponStatus.ARCHIVED}>Archived</option>
-                </select>
-                <select name="discountType" defaultValue={coupon.discountType} className="rounded border border-[#d3dbe5] px-3 py-2 text-sm">
-                  <option value={CouponDiscountType.PERCENTAGE}>Percentage (bps)</option>
-                  <option value={CouponDiscountType.FIXED_AMOUNT}>Fixed amount (minor units)</option>
-                </select>
-                <input name="discountPercentBps" type="number" defaultValue={coupon.discountPercentBps ?? ""} className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-                <input name="discountAmountMinor" type="number" defaultValue={coupon.discountAmountMinor ?? ""} className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-                <input name="currencyCode" defaultValue={coupon.currencyCode ?? ""} className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-                <input name="startsAt" type="date" defaultValue={toDateInputValue(coupon.startsAt)} className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-                <input name="minOrderAmountMinor" type="number" defaultValue={coupon.minOrderAmountMinor ?? ""} className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-                <input name="maxTotalRedemptions" type="number" defaultValue={coupon.maxTotalRedemptions ?? ""} className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-                <input name="maxRedemptionsPerClient" type="number" defaultValue={coupon.maxRedemptionsPerClient ?? ""} className="rounded border border-[#d3dbe5] px-3 py-2 text-sm" />
-                <textarea name="description" defaultValue={coupon.description ?? ""} placeholder="Description (optional)" className="rounded border border-[#d3dbe5] px-3 py-2 text-sm md:col-span-3" />
-                <div className="flex gap-2 md:col-span-3">
-                  <button type="submit" className="rounded-md bg-[#1d3652] px-3 py-2 text-sm text-white">Save</button>
-                </div>
-              </form>
-              <form action={setAdminCouponStatusAction} className="mt-3 flex gap-2">
-                <input type="hidden" name="couponId" value={coupon.id} />
-                <button type="submit" name="status" value={CouponStatus.ACTIVE} className="rounded border border-[#d3dbe5] px-3 py-1 text-xs">Activate</button>
-                <button type="submit" name="status" value={CouponStatus.INACTIVE} className="rounded border border-[#d3dbe5] px-3 py-1 text-xs">Deactivate</button>
-                <button type="submit" name="status" value={CouponStatus.ARCHIVED} className="rounded border border-[#e9b4b4] px-3 py-1 text-xs text-[#8a1c1c]">Archive</button>
-              </form>
-            </article>
-          ))}
+        <div className="overflow-x-auto rounded-xl border border-[#d3dbe5] bg-white">
+          <table className="min-w-full text-sm">
+            <thead className="bg-[#f3f6fb] text-left text-xs uppercase tracking-wide text-[#5a6d86]">
+              <tr>
+                <th className="px-3 py-2">Coupon name</th>
+                <th className="px-3 py-2">Coupon code</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Type</th>
+                <th className="px-3 py-2">Discount value</th>
+                <th className="px-3 py-2">Valid from</th>
+                <th className="px-3 py-2">Valid until</th>
+                <th className="px-3 py-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {coupons.map((coupon) => (
+                <tr key={coupon.id} className="border-t border-[#e2e8f0] text-[#334155]">
+                  <td className="px-3 py-2 font-medium">{coupon.name?.trim() || "-"}</td>
+                  <td className="px-3 py-2">{coupon.code}</td>
+                  <td className="px-3 py-2">{formatCouponStatus(coupon.status)}</td>
+                  <td className="px-3 py-2">{formatCouponType(coupon.discountType)}</td>
+                  <td className="px-3 py-2">{formatDiscountValue(coupon)}</td>
+                  <td className="px-3 py-2">{formatDate(coupon.startsAt)}</td>
+                  <td className="px-3 py-2">{formatDate(coupon.expiresAt)}</td>
+                  <td className="px-3 py-2">
+                    <Link href={`/admin/coupons/${coupon.id}/edit`} className="text-[#2a4f78] underline underline-offset-4">
+                      Edit
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </section>

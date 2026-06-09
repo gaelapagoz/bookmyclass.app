@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   cleanupStaleWebhookReceipts: vi.fn(),
   dispatchEmailAutomationBatch: vi.fn(),
   reconcileMissingBookingConfirmationEvents: vi.fn(),
+  enqueueWaitlistNotPromotedNotifications: vi.fn(),
 }));
 
 vi.mock("@/lib/public-booking/booking-draft-service", () => ({
@@ -24,6 +25,10 @@ vi.mock("@/lib/email/email-automation-dispatcher-service", () => ({
 
 vi.mock("@/lib/public-booking/booking-confirmation-transition-service", () => ({
   reconcileMissingBookingConfirmationEvents: mocks.reconcileMissingBookingConfirmationEvents,
+}));
+
+vi.mock("@/lib/public-booking/waitlist-notification-service", () => ({
+  enqueueWaitlistNotPromotedNotifications: mocks.enqueueWaitlistNotPromotedNotifications,
 }));
 
 import { GET } from "../../src/app/api/cron/maintenance/route";
@@ -46,6 +51,11 @@ describe("cron maintenance route integration", () => {
     mocks.reconcileMissingBookingConfirmationEvents.mockResolvedValue({
       scannedCount: 0,
       reconciledCount: 0,
+    });
+    mocks.enqueueWaitlistNotPromotedNotifications.mockResolvedValue({
+      scanned: 0,
+      enqueued: 0,
+      failed: 0,
     });
   });
 
@@ -108,6 +118,11 @@ describe("cron maintenance route integration", () => {
       expect(payload).toMatchObject({
         ok: true,
         expiredCouponReservations: 1,
+        waitlistNotPromoted: {
+          scanned: 0,
+          enqueued: 0,
+          failed: 0,
+        },
       });
       expect(
         await prisma.couponRedemption.count({

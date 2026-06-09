@@ -35,6 +35,10 @@ const heartbeatInputSchema = z.object({
   now: z.coerce.date().optional(),
 });
 
+function shouldLogEmailOutboxActivity(): boolean {
+  return process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test";
+}
+
 export async function enqueueEmailAutomationEvent(input: z.input<typeof enqueueInputSchema>) {
   const parsed = enqueueInputSchema.parse(input);
   const template = await prisma.emailTemplate.findUnique({
@@ -47,11 +51,18 @@ export async function enqueueEmailAutomationEvent(input: z.input<typeof enqueueI
   }
 
   if (!template.isActive) {
+    if (shouldLogEmailOutboxActivity()) {
+      console.info("[email-outbox] skipped enqueue for inactive template", {
+        idempotencyKey: parsed.idempotencyKey,
+        recipientEmail: parsed.recipientEmail.toLowerCase(),
+        templateKey: parsed.templateKey,
+      });
+    }
     return null;
   }
 
   try {
-    return await prisma.emailAutomationEvent.create({
+    const created = await prisma.emailAutomationEvent.create({
       data: {
         templateId: template.id,
         recipientEmail: parsed.recipientEmail.toLowerCase(),
@@ -62,6 +73,15 @@ export async function enqueueEmailAutomationEvent(input: z.input<typeof enqueueI
         status: EmailAutomationEventStatus.PENDING,
       },
     });
+    if (shouldLogEmailOutboxActivity()) {
+      console.info("[email-outbox] enqueued event", {
+        eventId: created.id,
+        idempotencyKey: created.idempotencyKey,
+        recipientEmail: created.recipientEmail,
+        templateKey: parsed.templateKey,
+      });
+    }
+    return created;
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -71,6 +91,14 @@ export async function enqueueEmailAutomationEvent(input: z.input<typeof enqueueI
         where: { idempotencyKey: parsed.idempotencyKey },
       });
       if (existing) {
+        if (shouldLogEmailOutboxActivity()) {
+          console.info("[email-outbox] reused existing event", {
+            eventId: existing.id,
+            idempotencyKey: existing.idempotencyKey,
+            recipientEmail: existing.recipientEmail,
+            templateKey: parsed.templateKey,
+          });
+        }
         return existing;
       }
     }

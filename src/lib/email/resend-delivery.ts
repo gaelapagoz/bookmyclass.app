@@ -124,6 +124,13 @@ export async function sendEmailViaResend(input: SendEmailInput): Promise<EmailDe
 
   assertProductionSenderPolicy(input.from);
 
+  console.info("[email] sending via resend", {
+    context: input.context,
+    from: input.from,
+    subject: input.subject,
+    to,
+  });
+
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -142,6 +149,12 @@ export async function sendEmailViaResend(input: SendEmailInput): Promise<EmailDe
 
   const responseBody = await response.json().catch(async () => ({ raw: await response.text() }));
   if (!response.ok) {
+    console.error("[email] resend delivery failed", {
+      context: input.context,
+      status: response.status,
+      statusText: response.statusText,
+      to,
+    });
     const error = new Error("Resend delivery failed.");
     (error as Error & { details?: unknown }).details = {
       status: response.status,
@@ -160,6 +173,12 @@ export async function sendEmailViaResend(input: SendEmailInput): Promise<EmailDe
     typeof (responseBody as { id?: unknown }).id === "string"
       ? (responseBody as { id: string }).id
       : null;
+
+  console.info("[email] delivered via resend", {
+    context: input.context,
+    messageId,
+    to,
+  });
 
   return {
     sent: true,

@@ -67,7 +67,8 @@
         "demo:screenshots": "playwright test -c playwright.demo.config.ts",
         "stripe:catalog:sync": "tsx scripts/catalog-server-sync-stripe.ts",
         "test:staging:smoke": "npm run test:uat:smoke",
-        "test:e2e:staging": "npm run test:e2e:uat"
+        "test:e2e:staging": "npm run test:e2e:uat",
+        "email:dispatch:local": "tsx scripts/email-dispatch-local.ts"
     },
     "dependencies": {
         "@auth/prisma-adapter": "^2.11.1",

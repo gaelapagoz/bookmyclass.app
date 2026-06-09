@@ -22,8 +22,11 @@ vi.mock("@/lib/public-booking/stripe-webhook-service", () => ({
 }));
 
 const getCartCheckoutSuccessStateMock = vi.fn();
+const getCartCheckoutSuccessStateForOrderMock = vi.fn();
 
 vi.mock("@/lib/cart/cart-success-state", () => ({
+  getCartCheckoutSuccessStateForOrder: (...args: unknown[]) =>
+    getCartCheckoutSuccessStateForOrderMock(...args),
   getCartCheckoutSuccessState: (...args: unknown[]) => getCartCheckoutSuccessStateMock(...args),
 }));
 
@@ -56,6 +59,7 @@ describe("Subscription success page", () => {
     );
 
     getCartCheckoutSuccessStateMock.mockReset();
+    getCartCheckoutSuccessStateForOrderMock.mockReset();
     getCartCheckoutSuccessStateMock.mockResolvedValue({
       paymentStatus: "SUCCEEDED",
       orderStatus: "PAID",
@@ -164,6 +168,53 @@ describe("Subscription success page", () => {
     expect(screen.queryByText("Cart Clear Eligible")).not.toBeInTheDocument();
     expect(screen.getByText("No order items found for this checkout session.")).toBeInTheDocument();
     expect(window.localStorage.getItem(CART_STORAGE_KEY)).not.toBeNull();
+  });
+
+  it("does not clear cart for confirmed non-cart success state", async () => {
+    const checkoutSessionId = "cs_test_non_cart";
+    window.localStorage.setItem(
+      `${CART_CHECKOUT_SNAPSHOT_PREFIX}${checkoutSessionId}`,
+      "prod_1:price_1:1",
+    );
+    getCartCheckoutSuccessStateMock.mockResolvedValueOnce({
+      paymentStatus: "SUCCEEDED",
+      orderStatus: "PAID",
+      reconciliationState: "CONFIRMED",
+      cartClearEligible: false,
+      subtotalAmountMinor: 5000,
+      discountAmountMinor: null,
+      totalAmountMinor: 5000,
+      totalPaidAmountMinor: 5000,
+      currencyCode: "EUR",
+      couponCodeSnapshot: null,
+      walletAmountMinor: 0,
+      stripeCheckoutSessionId: checkoutSessionId,
+      hasZeroValuePayment: false,
+      items: [
+        {
+          productId: "prod_1",
+          priceId: "price_1",
+          productNameSnapshot: "Cart Pack A",
+          priceNameSnapshot: "Pack A",
+          quantity: 1,
+          unitAmountMinor: 5000,
+          lineTotalAmountMinor: 5000,
+          currencyCode: "EUR",
+        },
+      ],
+    });
+
+    render(
+      await SubscriptionSuccessPage({
+        searchParams: Promise.resolve({
+          session_id: checkoutSessionId,
+        }),
+      }),
+    );
+
+    expect(screen.getByRole("heading", { name: "Payment Confirmed" })).toBeInTheDocument();
+    expect(window.localStorage.getItem(CART_STORAGE_KEY)).not.toBeNull();
+    expect(window.localStorage.getItem(`${CART_CLEARED_SESSION_PREFIX}${checkoutSessionId}`)).toBeNull();
   });
 
   it("renders failed state with non-eligible clear flag", async () => {
@@ -442,5 +493,56 @@ describe("Subscription success page", () => {
     expect(screen.getByText("Coupon (FREE100):")).toBeInTheDocument();
     expect(screen.getByText("-€20.00")).toBeInTheDocument();
     expect(screen.getAllByText("€0.00")).toHaveLength(2);
+  });
+  it("clears confirmed orderId-based cart success state", async () => {
+    const orderId = "order_cart_complete_123";
+    window.localStorage.setItem(
+      `${CART_CHECKOUT_SNAPSHOT_PREFIX}${orderId}`,
+      "prod_1:price_1:1",
+    );
+    getCartCheckoutSuccessStateForOrderMock.mockResolvedValueOnce({
+      paymentStatus: "SUCCEEDED",
+      orderStatus: "PAID",
+      reconciliationState: "CONFIRMED",
+      cartClearEligible: true,
+      subtotalAmountMinor: 5000,
+      discountAmountMinor: null,
+      totalAmountMinor: 5000,
+      totalPaidAmountMinor: 5000,
+      currencyCode: "EUR",
+      couponCodeSnapshot: null,
+      walletAmountMinor: 0,
+      stripeCheckoutSessionId: null,
+      hasZeroValuePayment: false,
+      items: [
+        {
+          productId: "prod_1",
+          priceId: "price_1",
+          productNameSnapshot: "Cart Pack A",
+          priceNameSnapshot: "Pack A",
+          quantity: 1,
+          unitAmountMinor: 5000,
+          lineTotalAmountMinor: 5000,
+          currencyCode: "EUR",
+        },
+      ],
+    });
+
+    render(
+      await SubscriptionSuccessPage({
+        searchParams: Promise.resolve({
+          orderId,
+        }),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem(CART_STORAGE_KEY)).toBeNull();
+    });
+    expect(getCartCheckoutSuccessStateForOrderMock).toHaveBeenCalledWith({
+      orderId,
+      userId: "user_1",
+    });
+    expect(window.localStorage.getItem(`${CART_CLEARED_SESSION_PREFIX}${orderId}`)).toBe("1");
   });
 });

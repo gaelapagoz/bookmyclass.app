@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   cleanupExpiredCouponReservations: vi.fn(),
   dispatchEmailAutomationBatch: vi.fn(),
   reconcileMissingBookingConfirmationEvents: vi.fn(),
+  enqueueWaitlistNotPromotedNotifications: vi.fn(),
 }));
 
 vi.mock("@/lib/public-booking/booking-draft-service", () => ({
@@ -26,6 +27,10 @@ vi.mock("@/lib/email/email-automation-dispatcher-service", () => ({
 
 vi.mock("@/lib/public-booking/booking-confirmation-transition-service", () => ({
   reconcileMissingBookingConfirmationEvents: mocks.reconcileMissingBookingConfirmationEvents,
+}));
+
+vi.mock("@/lib/public-booking/waitlist-notification-service", () => ({
+  enqueueWaitlistNotPromotedNotifications: mocks.enqueueWaitlistNotPromotedNotifications,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -54,6 +59,11 @@ describe("cron maintenance route", () => {
     mocks.reconcileMissingBookingConfirmationEvents.mockResolvedValue({
       scannedCount: 0,
       reconciledCount: 0,
+    });
+    mocks.enqueueWaitlistNotPromotedNotifications.mockResolvedValue({
+      scanned: 0,
+      enqueued: 0,
+      failed: 0,
     });
   });
 
@@ -97,7 +107,15 @@ describe("cron maintenance route", () => {
         leasedCount: 1,
         sentCount: 1,
       });
+      expect(payload.waitlistNotPromoted).toEqual({
+        scanned: 0,
+        enqueued: 0,
+        failed: 0,
+      });
       expect(mocks.cleanupExpiredCouponReservations).toHaveBeenCalledTimes(1);
+      expect(mocks.enqueueWaitlistNotPromotedNotifications).toHaveBeenCalledWith({
+        limit: 100,
+      });
       expect(mocks.dispatchEmailAutomationBatch).toHaveBeenCalledWith({
         workerId: "cron-maintenance",
         maxEvents: 25,

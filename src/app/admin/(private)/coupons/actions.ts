@@ -30,6 +30,8 @@ const couponSchema = z.object({
   maxRedemptionsPerClient: z.coerce.number().int().nullable(),
 });
 
+const DEFAULT_FIXED_AMOUNT_CURRENCY = "EUR";
+
 function toNullableInt(raw: FormDataEntryValue | null): number | null {
   const value = String(raw ?? "").trim();
   if (!value) return null;
@@ -37,11 +39,40 @@ function toNullableInt(raw: FormDataEntryValue | null): number | null {
   return Number.isInteger(parsed) ? parsed : null;
 }
 
+function toNullableDecimal(raw: FormDataEntryValue | null): number | null {
+  const value = String(raw ?? "").trim().replace(",", ".");
+  if (!value) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function toNullableDate(raw: FormDataEntryValue | null): Date | null {
   const value = String(raw ?? "").trim();
   if (!value) return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function resolveDiscountFields(formData: FormData, discountType: CouponDiscountType) {
+  const discountValue = formData.get("discountValue");
+
+  if (discountType === CouponDiscountType.PERCENTAGE) {
+    const percentValue = toNullableDecimal(discountValue);
+    return {
+      discountPercentBps:
+        percentValue !== null ? Math.round(percentValue * 100) : toNullableInt(formData.get("discountPercentBps")),
+      discountAmountMinor: null,
+      currencyCode: undefined,
+    };
+  }
+
+  const amountValue = toNullableDecimal(discountValue);
+  return {
+    discountPercentBps: null,
+    discountAmountMinor:
+      amountValue !== null ? Math.round(amountValue * 100) : toNullableInt(formData.get("discountAmountMinor")),
+    currencyCode: String(formData.get("currencyCode") ?? DEFAULT_FIXED_AMOUNT_CURRENCY).trim() || DEFAULT_FIXED_AMOUNT_CURRENCY,
+  };
 }
 
 function redirectWithError(message: string): never {
@@ -81,18 +112,20 @@ async function assertAdminAccess() {
 
 export async function createAdminCouponAction(formData: FormData) {
   const session = await assertAdminAccess();
+  const discountType = String(formData.get("discountType") ?? CouponDiscountType.PERCENTAGE) as CouponDiscountType;
+  const discountFields = resolveDiscountFields(formData, discountType);
 
   const parsed = couponSchema.safeParse({
     code: formData.get("code"),
     name: String(formData.get("name") ?? "").trim() || undefined,
     description: String(formData.get("description") ?? "").trim() || undefined,
     status: String(formData.get("status") ?? CouponStatus.ACTIVE),
-    discountType: String(formData.get("discountType") ?? CouponDiscountType.PERCENTAGE),
-    discountPercentBps: toNullableInt(formData.get("discountPercentBps")),
-    discountAmountMinor: toNullableInt(formData.get("discountAmountMinor")),
-    currencyCode: String(formData.get("currencyCode") ?? "").trim() || undefined,
-    startsAt: toNullableDate(formData.get("startsAt")),
-    expiresAt: toNullableDate(formData.get("expiresAt")),
+    discountType,
+    discountPercentBps: discountFields.discountPercentBps,
+    discountAmountMinor: discountFields.discountAmountMinor,
+    currencyCode: discountFields.currencyCode,
+    startsAt: toNullableDate(formData.get("validFrom") ?? formData.get("startsAt")),
+    expiresAt: toNullableDate(formData.get("validUntil") ?? formData.get("expiresAt")),
     minOrderAmountMinor: toNullableInt(formData.get("minOrderAmountMinor")),
     maxTotalRedemptions: toNullableInt(formData.get("maxTotalRedemptions")),
     maxRedemptionsPerClient: toNullableInt(formData.get("maxRedemptionsPerClient")),
@@ -122,18 +155,20 @@ export async function updateAdminCouponAction(formData: FormData) {
   if (!couponId) {
     redirectWithError("Coupon ID is required.");
   }
+  const discountType = String(formData.get("discountType") ?? CouponDiscountType.PERCENTAGE) as CouponDiscountType;
+  const discountFields = resolveDiscountFields(formData, discountType);
 
   const parsed = couponSchema.safeParse({
     code: formData.get("code"),
     name: String(formData.get("name") ?? "").trim() || undefined,
     description: String(formData.get("description") ?? "").trim() || undefined,
     status: String(formData.get("status") ?? CouponStatus.ACTIVE),
-    discountType: String(formData.get("discountType") ?? CouponDiscountType.PERCENTAGE),
-    discountPercentBps: toNullableInt(formData.get("discountPercentBps")),
-    discountAmountMinor: toNullableInt(formData.get("discountAmountMinor")),
-    currencyCode: String(formData.get("currencyCode") ?? "").trim() || undefined,
-    startsAt: toNullableDate(formData.get("startsAt")),
-    expiresAt: toNullableDate(formData.get("expiresAt")),
+    discountType,
+    discountPercentBps: discountFields.discountPercentBps,
+    discountAmountMinor: discountFields.discountAmountMinor,
+    currencyCode: discountFields.currencyCode,
+    startsAt: toNullableDate(formData.get("validFrom") ?? formData.get("startsAt")),
+    expiresAt: toNullableDate(formData.get("validUntil") ?? formData.get("expiresAt")),
     minOrderAmountMinor: toNullableInt(formData.get("minOrderAmountMinor")),
     maxTotalRedemptions: toNullableInt(formData.get("maxTotalRedemptions")),
     maxRedemptionsPerClient: toNullableInt(formData.get("maxRedemptionsPerClient")),

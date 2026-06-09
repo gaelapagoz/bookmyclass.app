@@ -34,6 +34,16 @@ Purpose: define environment-variable expectations by runtime context using repos
   - Expected configured value: `gaelapagoz@gmail.com`
 - In production, sender policy is enforced in code: sender must use verified `@bookmyclass.app` domain when provider delivery is used.
 - `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION` is a secondary safety-net override for direct send paths outside Automations, not the primary staging/UAT control.
+- Localhost real-delivery checklist:
+  - `APP_URL=http://localhost:3000`
+  - `EMAIL_FROM` set to a sender accepted by the configured Resend account
+  - `RESEND_API_KEY`
+  - `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1`
+  - `CRON_SECRET` if you want to drive dispatch through `GET /api/cron/maintenance`
+- Localhost dispatch options:
+  - `npm run email:dispatch:local`
+  - `curl -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron/maintenance`
+- Without `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1`, non-production runs still enqueue and mark events through the canonical email layer, but provider delivery is suppressed and captured locally for safety.
 - Canonical email architecture is unconditional: there are no `ENABLED`, `PAUSED`, or `DISABLED` environment variables for email architecture or email families.
 
 ## Contact Form Abuse Guard

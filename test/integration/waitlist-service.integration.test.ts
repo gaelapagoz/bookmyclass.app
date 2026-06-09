@@ -22,6 +22,7 @@ import {
   joinSessionWaitlist,
   WaitlistServiceError,
 } from "../../src/lib/public-booking/waitlist-service";
+import { enqueueWaitlistNotPromotedNotifications } from "../../src/lib/public-booking/waitlist-notification-service";
 import { cancelClientBooking } from "../../src/lib/dashboard/dashboard-service";
 
 async function createClient(label: string) {
@@ -254,6 +255,60 @@ async function seedWaitlistPromotionTemplate() {
   });
 }
 
+async function seedWaitlistOnListTemplate() {
+  await prisma.emailTemplate.upsert({
+    where: { templateKey: "waitlist.on-list" },
+    update: {
+      name: "Waitlist On List",
+      category: "WAITLIST",
+      subjectTemplate: "You're on the waitlist for {{waitlist.classTitle}}",
+      bodyTemplateJson: {
+        blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }],
+      },
+      contentSchemaVersion: 1,
+      isActive: true,
+    },
+    create: {
+      templateKey: "waitlist.on-list",
+      name: "Waitlist On List",
+      category: "WAITLIST",
+      subjectTemplate: "You're on the waitlist for {{waitlist.classTitle}}",
+      bodyTemplateJson: {
+        blocks: [{ type: "paragraph", text: "Hello {{clientName}}," }],
+      },
+      contentSchemaVersion: 1,
+      isActive: true,
+    },
+  });
+}
+
+async function seedWaitlistNotPromotedTemplate() {
+  await prisma.emailTemplate.upsert({
+    where: { templateKey: "waitlist.not-promoted" },
+    update: {
+      name: "Waitlist Not Promoted",
+      category: "WAITLIST",
+      subjectTemplate: "Waitlist update for {{waitlist.classTitle}}",
+      bodyTemplateJson: {
+        blocks: [{ type: "paragraph", text: "No spot opened for {{waitlist.classTitle}}." }],
+      },
+      contentSchemaVersion: 1,
+      isActive: true,
+    },
+    create: {
+      templateKey: "waitlist.not-promoted",
+      name: "Waitlist Not Promoted",
+      category: "WAITLIST",
+      subjectTemplate: "Waitlist update for {{waitlist.classTitle}}",
+      bodyTemplateJson: {
+        blocks: [{ type: "paragraph", text: "No spot opened for {{waitlist.classTitle}}." }],
+      },
+      contentSchemaVersion: 1,
+      isActive: true,
+    },
+  });
+}
+
 async function seedBookingConfirmationTemplate() {
   await prisma.emailTemplate.upsert({
     where: { templateKey: "booking.class-booked" },
@@ -289,6 +344,8 @@ describe("waitlist runtime integration", () => {
   });
 
   it("joins and cancels waitlist for a full collective class without consuming credit", async () => {
+    await seedWaitlistOnListTemplate();
+
     const { session } = await createSessionFixture({
       capacity: 4,
       categorySlug: "collective",
@@ -320,6 +377,26 @@ describe("waitlist runtime integration", () => {
     });
     expect(waitlistEntry?.status).toBe(WaitlistStatus.ACTIVE);
     expect(waitlistEntry?.position).toBe(1);
+
+    const onListEvent = await prisma.emailAutomationEvent.findFirst({
+      where: {
+        recipientEmail: client.email.toLowerCase(),
+        idempotencyKey: `waitlist-on-list:${joined.waitlistEntryId}:joined-v1`,
+      },
+      select: {
+        payloadJson: true,
+        template: { select: { templateKey: true } },
+      },
+    });
+    expect(onListEvent?.template.templateKey).toBe("waitlist.on-list");
+    expect(onListEvent?.payloadJson).toMatchObject({
+      clientName: client.name,
+      sessionTitle: session.title,
+      waitlistEntryId: joined.waitlistEntryId,
+      "waitlist.classTitle": session.title,
+      "waitlist.position": "1",
+    });
+    expect((onListEvent?.payloadJson as { "waitlist.manageUrl"?: unknown } | null)?.["waitlist.manageUrl"]).toEqual(expect.any(String));
 
     const afterJoinLedger = await prisma.creditLedgerEntry.count({
       where: {
@@ -944,5 +1021,68 @@ describe("waitlist runtime integration", () => {
     expect(promotedEntry?.status).toBe(WaitlistStatus.PROMOTED);
 
     auditSpy.mockRestore();
+  });
+
+  it("enqueues a single not-promoted waitlist email once the session has started", async () => {
+    await seedWaitlistOnListTemplate();
+    await seedWaitlistNotPromotedTemplate();
+
+    const { session } = await createSessionFixture({
+      capacity: 2,
+      categorySlug: "collective",
+      categoryName: "Collective",
+      classSlug: "collective-not-promoted",
+      className: "Collective Not Promoted",
+    });
+    await fillSessionToCapacity(session.id, 2);
+
+    const client = await createClient("not-promoted");
+    await grantCollectiveCredits({ clientId: client.id, amount: 1 });
+    const joined = await joinSessionWaitlist({
+      clientId: client.id,
+      studioSessionId: session.id,
+    });
+
+    const startedAt = new Date(Date.now() - 5 * 60 * 1000);
+    await prisma.studioSession.update({
+      where: { id: session.id },
+      data: {
+        startsAt: startedAt,
+        endsAt: new Date(startedAt.getTime() + 60 * 60 * 1000),
+      },
+    });
+
+    const firstRun = await enqueueWaitlistNotPromotedNotifications({
+      now: new Date(),
+      limit: 100,
+    });
+    const secondRun = await enqueueWaitlistNotPromotedNotifications({
+      now: new Date(),
+      limit: 100,
+    });
+
+    expect(firstRun.scanned).toBeGreaterThanOrEqual(1);
+    expect(firstRun.failed).toBe(0);
+    expect(firstRun.enqueued).toBeGreaterThanOrEqual(1);
+    expect(secondRun.failed).toBe(0);
+
+    const notPromotedEvents = await prisma.emailAutomationEvent.findMany({
+      where: {
+        recipientEmail: client.email.toLowerCase(),
+        idempotencyKey: `waitlist-not-promoted:${joined.waitlistEntryId}:session-start-v1`,
+      },
+      select: {
+        payloadJson: true,
+        template: { select: { templateKey: true } },
+      },
+    });
+    expect(notPromotedEvents).toHaveLength(1);
+    expect(notPromotedEvents[0]?.template.templateKey).toBe("waitlist.not-promoted");
+    expect(notPromotedEvents[0]?.payloadJson).toMatchObject({
+      clientName: client.name,
+      sessionTitle: session.title,
+      waitlistEntryId: joined.waitlistEntryId,
+      "waitlist.classTitle": session.title,
+    });
   });
 });

@@ -173,7 +173,7 @@ export async function dispatchEmailAutomationBatch(
         typeof payloadJson.deliveryContext === "string" && payloadJson.deliveryContext.trim().length > 0
           ? payloadJson.deliveryContext.trim()
           : `email-automation:${event.id}`;
-      await sendEmailViaResend({
+      const deliveryResult = await sendEmailViaResend({
         to: event.recipientEmail,
         from: resolveFromAddress(),
         subject: renderSubjectTemplate(
@@ -196,6 +196,15 @@ export async function dispatchEmailAutomationBatch(
         deadLetterCount += 1;
         continue;
       }
+      console.info("[email-dispatcher] event delivered", {
+        bypassed: deliveryResult.bypassed,
+        eventId: event.id,
+        messageId: deliveryResult.messageId,
+        provider: deliveryResult.provider,
+        recipientEmail: event.recipientEmail,
+        templateId: event.templateId,
+        workerId: parsed.workerId,
+      });
       sentCount += 1;
     } catch (error) {
       const finalized = await finalizeEmailAutomationLease({
@@ -205,6 +214,14 @@ export async function dispatchEmailAutomationBatch(
         errorMessage: error instanceof Error ? error.message : "Email delivery failed",
         retryBackoffMs: computeRetryBackoffMs(event.attempts),
         now,
+      });
+      console.error("[email-dispatcher] event delivery failed", {
+        error: error instanceof Error ? error.message : String(error),
+        eventId: event.id,
+        finalizedStatus: finalized?.status ?? null,
+        recipientEmail: event.recipientEmail,
+        templateId: event.templateId,
+        workerId: parsed.workerId,
       });
       failedCount += 1;
       if (finalized?.status === "DEAD_LETTER") {

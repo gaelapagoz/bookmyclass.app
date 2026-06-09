@@ -3,7 +3,16 @@
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import { CouponDiscountType, CouponStatus, Role } from "@prisma/client";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, className }: { href: string; children: ReactNode; className?: string }) => (
+    <a href={href} className={className}>
+      {children}
+    </a>
+  ),
+}));
 
 const mocks = vi.hoisted(() => ({
   requireAdminSession: vi.fn(),
@@ -28,16 +37,17 @@ describe("admin coupons page", () => {
     mocks.listAdminCoupons.mockResolvedValue([]);
   });
 
-  it("renders create form and heading", async () => {
+  it("renders list-first heading and empty state", async () => {
     render(await AdminCouponsPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByRole("heading", { name: "Catalog: Coupons" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Create Coupon" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Create coupon" })).toBeVisible();
-    expect(screen.getByText("No coupons found.")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Coupons" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Create coupon" })).toHaveAttribute("href", "/admin/coupons/new");
+    expect(screen.queryByText("Catalog: Coupons")).not.toBeInTheDocument();
+    expect(screen.queryByText("Create, edit, activate, deactivate, and archive in-app coupons.")).not.toBeInTheDocument();
+    expect(screen.getByText("No coupons created yet.")).toBeVisible();
   });
 
-  it("renders existing coupon rows with status actions", async () => {
+  it("renders existing coupon rows in a catalog-style table", async () => {
     mocks.listAdminCoupons.mockResolvedValue([
       {
         id: "cp_1",
@@ -62,11 +72,14 @@ describe("admin coupons page", () => {
 
     render(await AdminCouponsPage({ searchParams: Promise.resolve({}) }));
 
+    expect(screen.getByText("Coupon name")).toBeVisible();
+    expect(screen.getByText("Coupon code")).toBeVisible();
+    expect(screen.getByText("Discount value")).toBeVisible();
     expect(screen.getByText("SAVE10")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Save" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Activate" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Deactivate" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Archive" })).toBeVisible();
+    expect(screen.getByText("Save 10")).toBeVisible();
+    expect(screen.getByText("Percentage")).toBeVisible();
+    expect(screen.getByText("10%")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/admin/coupons/cp_1/edit");
   });
 
   it("renders success and error banners from search params", async () => {

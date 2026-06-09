@@ -221,6 +221,36 @@ npm run prisma:seed
 npm run dev
 ```
 
+## Local Email Dispatch
+
+Canonical email delivery remains outbox/dispatcher based in local development.
+Activating an automation template in Admin only allows new events to enqueue; it does not send mail by itself.
+
+For real localhost delivery, set these variables in `.env.local`:
+
+```bash
+APP_URL=http://localhost:3000
+EMAIL_FROM="BookMyClass <no-reply@bookmyclass.app>"
+RESEND_API_KEY=...
+ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1
+CRON_SECRET=local-dev-secret
+```
+
+Then use:
+
+```bash
+npm run email:verify
+npm run email:dispatch:local
+```
+
+Or hit the canonical maintenance route:
+
+```bash
+curl -H "Authorization: Bearer local-dev-secret" http://127.0.0.1:3000/api/cron/maintenance
+```
+
+Without `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1`, local email events still move through the outbox but provider delivery is intentionally suppressed.
+
 ## Testing And Validation
 
 **E2E setup:** E2E tests require a dedicated `.env.e2e` file (see `.env.e2e.example` and [docs/30_04_e2e_setup.md](docs/30_04_e2e_setup.md)). Required values include `E2E_TEST_MODE=1`, `E2E_TEST_SECRET`, a dedicated `DATABASE_URL`, and all `STRIPE_PRICE_ID_STORE_*` vars. Run `npm run db:e2e:setup` before the first run.

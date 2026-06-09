@@ -51,6 +51,26 @@ export type AdminCouponUsageHistoryRow = {
   createdAt: Date;
 };
 
+const adminCouponSelect = {
+  id: true,
+  code: true,
+  name: true,
+  description: true,
+  status: true,
+  discountType: true,
+  discountPercentBps: true,
+  discountAmountMinor: true,
+  currencyCode: true,
+  startsAt: true,
+  expiresAt: true,
+  minOrderAmountMinor: true,
+  maxTotalRedemptions: true,
+  maxRedemptionsPerClient: true,
+  archivedAt: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.CouponSelect;
+
 const DEFAULT_COUPON_USAGE_PAGE_SIZE = 20;
 const MAX_COUPON_USAGE_PAGE_SIZE = 100;
 const MAX_COUPON_USAGE_QUERY_LENGTH = 120;
@@ -186,25 +206,14 @@ async function writeCouponAuditLog(
 export async function listAdminCoupons(): Promise<AdminCouponRow[]> {
   return prisma.coupon.findMany({
     orderBy: [{ createdAt: "desc" }],
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      description: true,
-      status: true,
-      discountType: true,
-      discountPercentBps: true,
-      discountAmountMinor: true,
-      currencyCode: true,
-      startsAt: true,
-      expiresAt: true,
-      minOrderAmountMinor: true,
-      maxTotalRedemptions: true,
-      maxRedemptionsPerClient: true,
-      archivedAt: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+    select: adminCouponSelect,
+  });
+}
+
+export async function getAdminCouponById(couponId: string): Promise<AdminCouponRow | null> {
+  return prisma.coupon.findUnique({
+    where: { id: couponId },
+    select: adminCouponSelect,
   });
 }
 

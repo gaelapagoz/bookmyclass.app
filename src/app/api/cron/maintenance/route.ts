@@ -7,6 +7,7 @@ import {
 } from "@/lib/email/email-automation-dispatcher-service";
 import { reconcileMissingBookingConfirmationEvents } from "@/lib/public-booking/booking-confirmation-transition-service";
 import { cleanupExpiredCouponReservations } from "@/lib/coupons/coupon-maintenance-service";
+import { enqueueWaitlistNotPromotedNotifications } from "@/lib/public-booking/waitlist-notification-service";
 
 const CART_IDEMPOTENCY_TERMINAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const CART_IDEMPOTENCY_IN_PROGRESS_RETENTION_MS = 60 * 60 * 1000; // 1 hour
@@ -16,6 +17,7 @@ const CART_IDEMPOTENCY_ERROR_CODE = "CART_CHECKOUT_IDEMPOTENCY_CLEANUP_FAILED";
 const COUPON_RESERVATION_ERROR_CODE = "COUPON_RESERVATION_CLEANUP_FAILED";
 const DISPATCH_ERROR_CODE = "EMAIL_AUTOMATION_DISPATCH_FAILED";
 const BOOKING_CONFIRMATION_RECONCILE_ERROR_CODE = "BOOKING_CONFIRMATION_RECONCILE_FAILED";
+const WAITLIST_NOT_PROMOTED_ERROR_CODE = "WAITLIST_NOT_PROMOTED_ENQUEUE_FAILED";
 
 async function cleanupStaleCartCheckoutIdempotency(): Promise<{ deletedCount: number }> {
   const now = new Date();
@@ -55,13 +57,21 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [draftsResult, cleanupResult, cartIdempotencyResult, couponReservationResult, bookingConfirmationResult] =
+  const [
+    draftsResult,
+    cleanupResult,
+    cartIdempotencyResult,
+    couponReservationResult,
+    bookingConfirmationResult,
+    waitlistNotPromotedResult,
+  ] =
     await Promise.allSettled([
-    expireStaleBookingDrafts(),
-    cleanupStaleWebhookReceipts(),
-    cleanupStaleCartCheckoutIdempotency(),
-    cleanupExpiredCouponReservations(),
-    reconcileMissingBookingConfirmationEvents({ limit: 100 }),
+      expireStaleBookingDrafts(),
+      cleanupStaleWebhookReceipts(),
+      cleanupStaleCartCheckoutIdempotency(),
+      cleanupExpiredCouponReservations(),
+      reconcileMissingBookingConfirmationEvents({ limit: 100 }),
+      enqueueWaitlistNotPromotedNotifications({ limit: 100 }),
     ]);
   const dispatcherResult = await Promise.allSettled([
     dispatchEmailAutomationBatch({
@@ -86,6 +96,10 @@ export async function GET(request: Request) {
     bookingConfirmationResult.status === "fulfilled" ? bookingConfirmationResult.value : null;
   const bookingConfirmationError =
     bookingConfirmationResult.status === "rejected" ? BOOKING_CONFIRMATION_RECONCILE_ERROR_CODE : null;
+  const waitlistNotPromoted =
+    waitlistNotPromotedResult.status === "fulfilled" ? waitlistNotPromotedResult.value : null;
+  const waitlistNotPromotedError =
+    waitlistNotPromotedResult.status === "rejected" ? WAITLIST_NOT_PROMOTED_ERROR_CODE : null;
   const cleanupErrorDetail = cleanupResult.status === "rejected" ? String(cleanupResult.reason) : null;
   const cartIdempotencyErrorDetail =
     cartIdempotencyResult.status === "rejected" ? String(cartIdempotencyResult.reason) : null;
@@ -94,6 +108,8 @@ export async function GET(request: Request) {
   const dispatchErrorDetail = dispatcherResult.status === "rejected" ? String(dispatcherResult.reason) : null;
   const bookingConfirmationErrorDetail =
     bookingConfirmationResult.status === "rejected" ? String(bookingConfirmationResult.reason) : null;
+  const waitlistNotPromotedErrorDetail =
+    waitlistNotPromotedResult.status === "rejected" ? String(waitlistNotPromotedResult.reason) : null;
 
   if (cleanupError) {
     console.error("[cron/maintenance] webhook receipt cleanup failed", {
@@ -125,6 +141,12 @@ export async function GET(request: Request) {
       error: bookingConfirmationErrorDetail,
     });
   }
+  if (waitlistNotPromotedError) {
+    console.error("[cron/maintenance] waitlist not-promoted enqueue failed", {
+      code: WAITLIST_NOT_PROMOTED_ERROR_CODE,
+      error: waitlistNotPromotedErrorDetail,
+    });
+  }
 
   return Response.json({
     ok:
@@ -137,10 +159,12 @@ export async function GET(request: Request) {
     expiredCouponReservations,
     emailAutomationDispatch: dispatchResult,
     bookingConfirmationReconcile,
+    waitlistNotPromoted,
     ...(cleanupError ? { cleanupError } : {}),
     ...(cartIdempotencyError ? { cartIdempotencyError } : {}),
     ...(couponReservationError ? { couponReservationError } : {}),
     ...(dispatchError ? { dispatchError } : {}),
     ...(bookingConfirmationError ? { bookingConfirmationError } : {}),
+    ...(waitlistNotPromotedError ? { waitlistNotPromotedError } : {}),
   });
 }

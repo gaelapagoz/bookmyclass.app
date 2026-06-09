@@ -17,6 +17,7 @@ import {
   bookingDraftActiveBookingFilter,
   expireStaleBookingDraftsForSessionWithinTx,
 } from "@/lib/public-booking/booking-draft-service";
+import { enqueueWaitlistJoinNotification } from "@/lib/public-booking/waitlist-notification-service";
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -60,7 +61,6 @@ export type WaitlistJoinResult = {
 type PromotionResult = {
   notifications: WaitlistPromotionNotification[];
 };
-
 
 function computeWaitlistLimit(capacity: number): number {
   return Math.max(0, Math.floor(capacity / 2));
@@ -550,15 +550,18 @@ export async function joinSessionWaitlist(input: {
 }): Promise<WaitlistJoinResult> {
   const now = new Date();
 
-  return prisma.$transaction(
+  const result = await prisma.$transaction(
     async (tx) => {
       const session = await tx.studioSession.findUnique({
         where: { id: input.studioSessionId },
         select: {
           id: true,
           capacity: true,
+          endsAt: true,
+          location: true,
           startsAt: true,
           status: true,
+          title: true,
           isPublished: true,
           classType: {
             select: {
@@ -572,9 +575,19 @@ export async function joinSessionWaitlist(input: {
           },
         },
       });
+      const client = await tx.user.findUnique({
+        where: { id: input.clientId },
+        select: {
+          email: true,
+          name: true,
+        },
+      });
 
       if (!session) {
         throw new WaitlistServiceError("SESSION_NOT_FOUND", "Session not found.");
+      }
+      if (!client) {
+        throw new Error("WAITLIST_CLIENT_NOT_FOUND");
       }
 
       if (
@@ -677,6 +690,16 @@ export async function joinSessionWaitlist(input: {
         return {
           waitlistEntryId: reactivated.id,
           joined: false,
+          notification: {
+            clientEmail: client.email,
+            clientName: client.name,
+            location: session.location,
+            position,
+            sessionEndsAt: session.endsAt,
+            sessionStartsAt: session.startsAt,
+            sessionTitle: session.title,
+            waitlistEntryId: reactivated.id,
+          },
         };
       }
 
@@ -709,12 +732,37 @@ export async function joinSessionWaitlist(input: {
       return {
         waitlistEntryId: created.id,
         joined: true,
+        notification: {
+          clientEmail: client.email,
+          clientName: client.name,
+          location: session.location,
+          position,
+          sessionEndsAt: session.endsAt,
+          sessionStartsAt: session.startsAt,
+          sessionTitle: session.title,
+          waitlistEntryId: created.id,
+        },
       };
     },
     {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     },
   );
+
+  try {
+    await enqueueWaitlistJoinNotification(result.notification);
+  } catch (error) {
+    console.error("[waitlist-service] waitlist join email enqueue failed", {
+      alertCode: "WAITLIST_ON_LIST_EMAIL_ENQUEUE_FAILED",
+      error: error instanceof Error ? error.message : String(error),
+      waitlistEntryId: result.waitlistEntryId,
+    });
+  }
+
+  return {
+    waitlistEntryId: result.waitlistEntryId,
+    joined: result.joined,
+  };
 }
 
 export async function cancelSessionWaitlistEntry(input: {

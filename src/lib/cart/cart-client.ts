@@ -201,12 +201,14 @@ export function rememberClientCartSnapshotForCheckoutSession(input: {
   // Store a structured snapshot for future coupon/wallet-aware clearing.
   // Backwards compatibility: older code may have written a bare fingerprint string.
   // We always write a JSON object here so maybeClear can parse needed pieces.
-  const linesFingerprint = fingerprint.split("|")[0] ?? fingerprint;
-  // extract coupon if present in fingerprint suffix like '|coupon=CODE'
+  let linesFingerprint = fingerprint;
+  // Extract coupon only when it is the explicit suffix appended by checkout submission.
+  // Fingerprints themselves also use "|" as the line separator for multi-line carts.
   let couponCode: string | null = null;
-  const couponMatch = fingerprint.match(/\|coupon=([^|]+)/);
+  const couponMatch = fingerprint.match(/\|coupon=([^|]+)$/);
   if (couponMatch) {
     couponCode = couponMatch[1];
+    linesFingerprint = fingerprint.slice(0, couponMatch.index);
   }
 
   const payload = {

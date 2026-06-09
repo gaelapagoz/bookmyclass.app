@@ -77,13 +77,14 @@ export default async function SubscriptionSuccessPage({
       : successState?.reconciliationState === "FAILED"
         ? "Your checkout did not complete successfully. Please retry from your cart."
         : "We are still reconciling your payment. Refresh in a few seconds.";
+  const clearKey = checkoutSessionId ?? successOrderId ?? null;
 
   return (
     <section className="mx-auto w-full max-w-3xl px-6 py-14">
       <h1 className="text-3xl font-semibold text-[#6f2b2b]">{heading}</h1>
       <p className="mt-3 text-sm text-[#7f5a5a]">{statusMessage}</p>
       <CartClearOnSuccess
-        checkoutSessionId={checkoutSessionId}
+        checkoutSessionId={clearKey}
         cartClearEligible={Boolean(successState?.cartClearEligible)}
         purchasedLines={
           successState?.items.map((item) => ({
