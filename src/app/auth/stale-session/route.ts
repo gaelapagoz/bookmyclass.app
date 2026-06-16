@@ -28,11 +28,13 @@ const STALE_SESSION_COOKIE_NAMES = [
 
 export async function GET(request: NextRequest) {
   const callbackPath = getSafeCallbackPath(request.nextUrl.searchParams.get("callbackUrl"));
-  const destination = new URL(
-    `/sign-in?callbackUrl=${encodeURIComponent(callbackPath)}`,
-    request.url,
-  );
-  const response = NextResponse.redirect(destination);
+  const destination = `/sign-in?callbackUrl=${encodeURIComponent(callbackPath)}`;
+  const response = new NextResponse(null, {
+    status: 307,
+    headers: {
+      location: destination,
+    },
+  });
 
   for (const cookieName of STALE_SESSION_COOKIE_NAMES) {
     response.cookies.set({

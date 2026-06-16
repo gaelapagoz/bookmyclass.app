@@ -23,9 +23,7 @@ describe("GET /auth/stale-session", () => {
     const response = await handleStaleSession(request);
 
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe(
-      "http://localhost:3000/sign-in?callbackUrl=%2Fdashboard%2Fbookings",
-    );
+    expect(response.headers.get("location")).toBe("/sign-in?callbackUrl=%2Fdashboard%2Fbookings");
 
     const setCookieHeaders = getSetCookieHeaders(response);
     const setCookieText = setCookieHeaders.join("\n");
@@ -45,8 +43,6 @@ describe("GET /auth/stale-session", () => {
     const response = await handleStaleSession(request);
 
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe(
-      "http://localhost:3000/sign-in?callbackUrl=%2Fdashboard",
-    );
+    expect(response.headers.get("location")).toBe("/sign-in?callbackUrl=%2Fdashboard");
   });
 });

@@ -1,0 +1,47 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { AppUrlConfigError, resolveAppUrl, validateProductionAppUrl } from "@/lib/config/app-url";
+
+describe("app url validation", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("rejects invalid url text", () => {
+    expect(() => resolveAppUrl("not-a-url")).toThrow(AppUrlConfigError);
+    expect(() => resolveAppUrl("not-a-url")).toThrow("APP_URL must be an absolute URL.");
+  });
+
+  it("rejects unsupported schemes", () => {
+    expect(() => resolveAppUrl("ftp://bookmyclass.app")).toThrow(AppUrlConfigError);
+    expect(() => resolveAppUrl("ftp://bookmyclass.app")).toThrow("APP_URL must use http or https.");
+  });
+
+  it("rejects internal hostnames in production", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    expect(() => resolveAppUrl("https://studio.internal")).toThrow(AppUrlConfigError);
+    expect(() => resolveAppUrl("https://studio.internal")).toThrow(
+      "APP_URL must use a public hostname in production.",
+    );
+  });
+
+  it("rejects private ipv6 hosts in production", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    expect(() => resolveAppUrl("https://[fd00::1]")).toThrow(AppUrlConfigError);
+    expect(() => resolveAppUrl("https://[fd00::1]")).toThrow(
+      "APP_URL must not use a private-network host in production.",
+    );
+  });
+
+  it("does not let e2e mode bypass production app url validation", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("E2E_TEST_MODE", "1");
+    vi.stubEnv("E2E_ALLOW_PRODUCTION_RUNTIME", "1");
+    vi.stubEnv("APP_URL", "http://localhost:3000");
+
+    expect(() => validateProductionAppUrl()).toThrow(AppUrlConfigError);
+    expect(() => validateProductionAppUrl()).toThrow(
+      "APP_URL must be configured to a non-localhost URL in production.",
+    );
+  });
+});

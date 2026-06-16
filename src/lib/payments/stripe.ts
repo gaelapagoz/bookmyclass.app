@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { resolveAppUrl } from "@/lib/config/app-url";
 
 type StripeServerEnv = {
   appUrl: string;
@@ -20,7 +21,7 @@ function assertEnv(name: string, value: string | undefined): string {
 
 export function getStripeServerEnv(): StripeServerEnv {
   return {
-    appUrl: assertEnv("appUrl", process.env.APP_URL),
+    appUrl: resolveAppUrl(),
     secretKey: assertEnv("secretKey", process.env.STRIPE_SECRET_KEY),
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
   };

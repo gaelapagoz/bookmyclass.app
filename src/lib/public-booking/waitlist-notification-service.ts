@@ -2,6 +2,7 @@ import { enqueueEmailAutomationEvent } from "@/lib/email/email-automation-outbox
 import { ensureExpectedAutomationTemplateExists } from "@/lib/email/email-automation-admin-service";
 import { prisma } from "@/lib/db";
 import { WaitlistStatus } from "@prisma/client";
+import { resolveAppUrl } from "@/lib/config/app-url";
 import { formatSessionDateTime } from "@/lib/public-booking/format-session-date-time";
 import { bookingDraftActiveBookingFilter } from "@/lib/public-booking/booking-draft-service";
 import { type WaitlistPromotionNotification } from "@/lib/public-booking/waitlist-service";
@@ -34,7 +35,7 @@ type WaitlistTemplatePayloadInput = {
 };
 
 function resolveWaitlistManageUrl(): string {
-  const appUrl = process.env.APP_URL?.trim() || "http://localhost:3000";
+  const appUrl = resolveAppUrl();
   return `${appUrl}/dashboard/bookings`;
 }
 

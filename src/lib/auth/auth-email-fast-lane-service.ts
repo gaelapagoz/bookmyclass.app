@@ -1,32 +1,11 @@
 import { prisma } from "@/lib/db";
 import { dispatchEmailAutomationBatch } from "@/lib/email/email-automation-dispatcher-service";
 import { enqueueEmailAutomationEvent } from "@/lib/email/email-automation-outbox-service";
-import { isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
+import { resolveAppUrl } from "@/lib/config/app-url";
 
 const AUTH_VERIFY_EMAIL_TEMPLATE_KEY = "auth.verify-email";
 const AUTH_EMAIL_CHANGE_TEMPLATE_KEY = "auth.verify-email-change";
 const AUTH_PASSWORD_RESET_TEMPLATE_KEY = "auth.password-reset";
-
-function resolveAppUrl(inputAppUrl?: string): string {
-  const resolved = inputAppUrl ?? process.env.APP_URL ?? "http://localhost:3000";
-  const allowLoopbackForE2E = isE2ETestModeEnabled();
-  if (process.env.NODE_ENV === "production" && !allowLoopbackForE2E) {
-    const parsed = new URL(resolved);
-    const host = parsed.hostname.toLowerCase();
-    const isLoopback =
-      host === "localhost" ||
-      host === "127.0.0.1" ||
-      host === "::1" ||
-      host === "[::1]" ||
-      host === "0:0:0:0:0:0:0:1" ||
-      host === "[0:0:0:0:0:0:0:1]" ||
-      host === "::ffff:127.0.0.1";
-    if (isLoopback) {
-      throw new Error("APP_URL must be configured to a non-localhost URL in production.");
-    }
-  }
-  return resolved;
-}
 
 async function ensureAuthTemplate(input: {
   templateKey: string;

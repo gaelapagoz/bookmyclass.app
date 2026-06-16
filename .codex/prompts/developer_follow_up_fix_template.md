@@ -26,3 +26,4 @@ Return:
 3. Exact fixes applied
 4. Exact tests added/updated
 5. Exact test commands run
+6. The answer must be described in simple terms that a non-technical PM could understand

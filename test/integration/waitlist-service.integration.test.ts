@@ -13,7 +13,7 @@ import {
   SubscriptionStatus,
   WaitlistStatus,
 } from "@prisma/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "./helpers/db";
 import { createClassCategory, createClassType } from "./helpers/factories";
 import { resetDb } from "./helpers/reset-db";
@@ -337,10 +337,22 @@ async function seedBookingConfirmationTemplate() {
 }
 
 describe("waitlist runtime integration", () => {
+  const originalAppUrl = process.env.APP_URL;
+
   beforeEach(async () => {
     await resetDb();
     process.env.EMAIL_FROM = process.env.EMAIL_FROM || "Test <test@example.test>";
+    process.env.APP_URL = "https://studio.example.test";
     await Promise.all([seedWaitlistPromotionTemplate(), seedBookingConfirmationTemplate()]);
+  });
+
+  afterEach(() => {
+    if (originalAppUrl === undefined) {
+      delete process.env.APP_URL;
+      return;
+    }
+
+    process.env.APP_URL = originalAppUrl;
   });
 
   it("joins and cancels waitlist for a full collective class without consuming credit", async () => {
@@ -396,7 +408,9 @@ describe("waitlist runtime integration", () => {
       "waitlist.classTitle": session.title,
       "waitlist.position": "1",
     });
-    expect((onListEvent?.payloadJson as { "waitlist.manageUrl"?: unknown } | null)?.["waitlist.manageUrl"]).toEqual(expect.any(String));
+    expect((onListEvent?.payloadJson as { "waitlist.manageUrl"?: unknown } | null)?.["waitlist.manageUrl"]).toBe(
+      "https://studio.example.test/dashboard/bookings",
+    );
 
     const afterJoinLedger = await prisma.creditLedgerEntry.count({
       where: {

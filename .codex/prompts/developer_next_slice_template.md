@@ -21,4 +21,4 @@ Return:
 2. Exact files changed
 3. Exact tests added/updated
 4. Exact test commands run
-5. Short implementation summary
+5. The answer must be described in simple terms that a non-technical PM could understand

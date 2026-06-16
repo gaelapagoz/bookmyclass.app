@@ -1,4 +1,5 @@
 import { UploadsConfigError, resolveUploadsConfig } from "@/lib/media/upload-config";
+import { AppUrlConfigError, validateProductionAppUrl } from "@/lib/config/app-url";
 import {
   RuntimeEnvError,
   validateRuntimeEnvForEdge,
@@ -17,6 +18,7 @@ export function validateRuntimeEnvForServer(): void {
   const missing: string[] = [];
 
   if (!process.env.AUTH_SECRET?.trim()) missing.push("AUTH_SECRET");
+  if (!process.env.APP_URL?.trim()) missing.push("APP_URL");
   if (!process.env.STRIPE_SECRET_KEY?.trim()) missing.push("STRIPE_SECRET_KEY");
   if (!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim()) missing.push("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY");
   if (!process.env.STRIPE_WEBHOOK_SECRET?.trim()) missing.push("STRIPE_WEBHOOK_SECRET");
@@ -33,9 +35,10 @@ export function validateRuntimeEnvForServer(): void {
   }
 
   try {
+    validateProductionAppUrl();
     resolveUploadsConfig();
   } catch (error) {
-    if (error instanceof UploadsConfigError) {
+    if (error instanceof UploadsConfigError || error instanceof AppUrlConfigError) {
       throw new RuntimeEnvError(error.message);
     }
 

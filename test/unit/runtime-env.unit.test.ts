@@ -3,6 +3,7 @@ import { validateRuntimeEnv, RuntimeEnvError } from "@/lib/config/runtime-env";
 
 const REQUIRED_PROD_VARS: Record<string, string> = {
   AUTH_SECRET: "secret",
+  APP_URL: "https://bookmyclass.app",
   STRIPE_SECRET_KEY: "sk_live_xxx",
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_live_xxx",
   STRIPE_WEBHOOK_SECRET: "whsec_xxx",
@@ -59,6 +60,36 @@ describe("validateRuntimeEnv", () => {
   it("passes when all required production vars are present", () => {
     setProductionEnv();
     expect(() => validateRuntimeEnv()).not.toThrow();
+  });
+
+  it("rejects localhost APP_URL in production", () => {
+    setProductionEnv({ APP_URL: "http://localhost:3000" });
+
+    expect(() => validateRuntimeEnv()).toThrow(RuntimeEnvError);
+    expect(() => validateRuntimeEnv()).toThrow(/non-localhost URL/);
+  });
+
+  it("rejects private-network APP_URL in production", () => {
+    setProductionEnv({ APP_URL: "http://192.168.1.10:3000" });
+
+    expect(() => validateRuntimeEnv()).toThrow(RuntimeEnvError);
+    expect(() => validateRuntimeEnv()).toThrow(/private-network host/);
+  });
+
+  it("rejects internal hostnames in production", () => {
+    setProductionEnv({ APP_URL: "https://studio.internal" });
+
+    expect(() => validateRuntimeEnv()).toThrow(RuntimeEnvError);
+    expect(() => validateRuntimeEnv()).toThrow(/public hostname/);
+  });
+
+  it("does not let e2e overrides bypass production APP_URL validation", () => {
+    setProductionEnv({ APP_URL: "http://localhost:3000" });
+    process.env.E2E_TEST_MODE = "1";
+    process.env.E2E_ALLOW_PRODUCTION_RUNTIME = "1";
+
+    expect(() => validateRuntimeEnv()).toThrow(RuntimeEnvError);
+    expect(() => validateRuntimeEnv()).toThrow(/non-localhost URL/);
   });
 
   it("rejects production uploads stored in the release public folder", () => {
