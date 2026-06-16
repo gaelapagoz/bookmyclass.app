@@ -15,6 +15,19 @@ describe("email automation seed wiring", () => {
     expect(developmentSeed).toContain("ensureAllExpectedAutomationTemplatesHaveStatus(false)");
   });
 
+  it("clears persisted automation templates before reseeding", () => {
+    const stagingSeed = readRepoFile("prisma/seed/modes/staging.ts");
+    const developmentSeed = readRepoFile("prisma/seed/modes/development.ts");
+    const e2eSeed = readRepoFile("scripts/e2e-server-seed.ts");
+
+    expect(stagingSeed).toContain("await prisma.emailTemplate.deleteMany();");
+    expect(stagingSeed).toContain("await prisma.emailAutomationEvent.deleteMany();");
+    expect(developmentSeed).toContain("await prisma.emailTemplate.deleteMany();");
+    expect(developmentSeed).toContain("await prisma.emailAutomationEvent.deleteMany();");
+    expect(e2eSeed).toContain("await prisma.emailTemplate.deleteMany();");
+    expect(e2eSeed).toContain("await prisma.emailAutomationEvent.deleteMany();");
+  });
+
   it("reactivates expected automations for deterministic e2e seed flows", () => {
     const e2eSeed = readRepoFile("scripts/e2e-server-seed.ts");
 

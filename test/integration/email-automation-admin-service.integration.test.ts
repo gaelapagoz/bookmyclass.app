@@ -5,11 +5,16 @@ import { EmailAutomationEventStatus, EmailTemplateAuditAction } from "@prisma/cl
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  AUTOMATION_TEMPLATE_RECONCILIATION_CONFLICT,
+  bulkSetAutomationTemplateStatus,
+  ensureExpectedAutomationTemplateExists,
+  getAutomationScaffoldRows,
+  getAutomationAuditLogPage,
   getAutomationTemplateList,
   getAutomationTemplateDetail,
   getAutomationDeadLetterPage,
-  getAutomationAuditLogPage,
   replayAutomationDeadLetterEvent,
+  setAutomationTemplateStatus,
   sendAutomationTemplateTestEmail,
   updateAutomationTemplate,
 } from "@/lib/email/email-automation-admin-service";
@@ -119,6 +124,167 @@ describe("email-automation-admin-service", () => {
 
       const [item] = await getAutomationTemplateList();
       expect(item.pendingCount).toBe(1);
+    });
+
+    it("migrates the legacy payment template key onto the canonical key", async () => {
+      await createTemplate({
+        templateKey: "purchase.product.confirmation",
+        name: "Buy Product",
+        category: "Payment",
+        subjectTemplate: "Legacy payment subject",
+      });
+
+      await ensureExpectedAutomationTemplateExists("payment.purchase.confirmation");
+
+      const canonical = await prisma.emailTemplate.findUnique({
+        where: { templateKey: "payment.purchase.confirmation" },
+      });
+      const legacy = await prisma.emailTemplate.findUnique({
+        where: { templateKey: "purchase.product.confirmation" },
+      });
+
+      expect(canonical).not.toBeNull();
+      expect(canonical?.name).toBe("Payment Purchase Confirmation");
+      expect(canonical?.subjectTemplate).toBe("Legacy payment subject");
+      expect(legacy).toBeNull();
+    });
+
+    it("promotes legacy content into the canonical payment template during an explicit legacy-key mutation", async () => {
+      const canonical = await createTemplate({
+        templateKey: "payment.purchase.confirmation",
+        name: "Payment Purchase Confirmation",
+        category: "Payment",
+        subjectTemplate: "Your Studio Purchase Confirmation",
+      });
+      await prisma.emailTemplate.update({
+        where: { id: canonical.id },
+        data: {
+          bodyTemplateJson: {
+            previewText: "",
+            blocks: [
+              { type: "paragraph", contentHtml: "<p>Purchase Confirmed</p>" },
+              { type: "paragraph", contentHtml: "<p>Hi {{contact.fullName}},</p>" },
+              { type: "paragraph", contentHtml: "<p>Your purchase is confirmed. Your credits and entitlements are now active in your account.</p>" },
+              { type: "paragraph", contentHtml: "<p>Order: {{order.number}}</p>" },
+              { type: "paragraph", contentHtml: "<p>Total: {{order.total}}</p>" },
+              { type: "paragraph", contentHtml: "<p>View your credits and active plans in Dashboard &gt; Membership &amp; Credits.</p>" },
+            ],
+          },
+        },
+      });
+      const legacy = await createTemplate({
+        templateKey: "purchase.product.confirmation",
+        name: "Buy Product",
+        category: "Payment",
+        subjectTemplate: "Custom legacy payment subject",
+      });
+      await prisma.emailTemplate.update({
+        where: { id: legacy.id },
+        data: {
+          bodyTemplateJson: {
+            previewText: "Custom legacy preview",
+            blocks: [{ type: "paragraph", contentHtml: "<p>Legacy custom payment copy.</p>" }],
+          },
+          isActive: false,
+        },
+      });
+      await createEvent(legacy.id, EmailAutomationEventStatus.DEAD_LETTER, { lastError: "legacy-template-error" });
+
+      await setAutomationTemplateStatus({
+        templateKey: "purchase.product.confirmation",
+        isActive: false,
+      });
+
+      const rows = await getAutomationScaffoldRows();
+      const paymentRow = rows.find((row) => row.templateKey === "payment.purchase.confirmation");
+      const detail = await getAutomationTemplateDetail("payment.purchase.confirmation");
+      const deadLetters = await getAutomationDeadLetterPage("payment.purchase.confirmation", 1, 20);
+
+      expect(rows.some((row) => row.templateKey === "purchase.product.confirmation")).toBe(false);
+      expect(paymentRow?.previewText).toBe("Custom legacy preview");
+      expect(detail?.subjectTemplate).toBe("Custom legacy payment subject");
+      expect(detail?.isActive).toBe(false);
+      expect(deadLetters.items).toHaveLength(1);
+      expect(deadLetters.items[0].lastError).toBe("legacy-template-error");
+    });
+
+    it("does not reconcile or throw on read when both legacy and canonical payment templates are customized", async () => {
+      await createTemplate({
+        templateKey: "payment.purchase.confirmation",
+        name: "Payment Purchase Confirmation",
+        category: "Payment",
+        subjectTemplate: "Canonical custom subject",
+      });
+      await createTemplate({
+        templateKey: "purchase.product.confirmation",
+        name: "Buy Product",
+        category: "Payment",
+        subjectTemplate: "Legacy custom subject",
+      });
+
+      const rows = await getAutomationScaffoldRows();
+      const paymentRow = rows.find((row) => row.templateKey === "payment.purchase.confirmation");
+
+      const canonical = await prisma.emailTemplate.findUnique({
+        where: { templateKey: "payment.purchase.confirmation" },
+      });
+      const legacy = await prisma.emailTemplate.findUnique({
+        where: { templateKey: "purchase.product.confirmation" },
+      });
+      expect(canonical).not.toBeNull();
+      expect(legacy).not.toBeNull();
+      expect(paymentRow?.subject).toBe("Canonical custom subject");
+    });
+
+    it("fails closed on legacy-key mutation when both legacy and canonical payment templates are customized", async () => {
+      await createTemplate({
+        templateKey: "payment.purchase.confirmation",
+        name: "Payment Purchase Confirmation",
+        category: "Payment",
+        subjectTemplate: "Canonical custom subject",
+      });
+      await createTemplate({
+        templateKey: "purchase.product.confirmation",
+        name: "Buy Product",
+        category: "Payment",
+        subjectTemplate: "Legacy custom subject",
+      });
+
+      await expect(
+        setAutomationTemplateStatus({
+          templateKey: "purchase.product.confirmation",
+          isActive: false,
+        }),
+      ).rejects.toThrow(AUTOMATION_TEMPLATE_RECONCILIATION_CONFLICT);
+    });
+
+    it("writes an audit log entry for automatic reconciliation", async () => {
+      await createTemplate({
+        templateKey: "purchase.product.confirmation",
+        name: "Buy Product",
+        category: "Payment",
+        subjectTemplate: "Legacy payment subject",
+      });
+
+      await ensureExpectedAutomationTemplateExists("payment.purchase.confirmation");
+
+      const canonical = await prisma.emailTemplate.findUniqueOrThrow({
+        where: { templateKey: "payment.purchase.confirmation" },
+      });
+      const logs = await prisma.emailTemplateAuditLog.findMany({
+        where: { templateId: canonical.id },
+        orderBy: { createdAt: "asc" },
+      });
+
+      expect(logs).toHaveLength(1);
+      expect(logs[0].action).toBe(EmailTemplateAuditAction.UPDATED);
+      expect(logs[0].beforeJson).toMatchObject({
+        reconciliation: {
+          legacyTemplateKey: "purchase.product.confirmation",
+          canonicalTemplateKey: "payment.purchase.confirmation",
+          strategy: "rename-legacy-to-canonical",
+        },
+      });
     });
   });
 
@@ -244,6 +410,105 @@ describe("email-automation-admin-service", () => {
 
       const result = await getAutomationAuditLogPage(t1.templateKey, 1, 20);
       expect(result.totalItems).toBe(0);
+    });
+
+    it("returns canonical audit logs when queried with the legacy payment template key", async () => {
+      await createTemplate({
+        templateKey: "purchase.product.confirmation",
+        name: "Buy Product",
+        category: "Payment",
+        subjectTemplate: "Legacy payment subject",
+      });
+
+      await ensureExpectedAutomationTemplateExists("payment.purchase.confirmation");
+
+      const result = await getAutomationAuditLogPage("purchase.product.confirmation", 1, 20);
+      expect(result.totalItems).toBe(1);
+      expect(result.items[0].action).toBe(EmailTemplateAuditAction.UPDATED);
+    });
+  });
+
+  describe("legacy payment alias admin mutations", () => {
+    it("updates template status through the legacy payment key", async () => {
+      await createTemplate({
+        templateKey: "purchase.product.confirmation",
+        name: "Buy Product",
+        category: "Payment",
+        isActive: true,
+      });
+
+      await setAutomationTemplateStatus({
+        templateKey: "purchase.product.confirmation",
+        isActive: false,
+      });
+
+      const canonical = await prisma.emailTemplate.findUniqueOrThrow({
+        where: { templateKey: "payment.purchase.confirmation" },
+      });
+      expect(canonical.isActive).toBe(false);
+    });
+
+    it("bulk-updates template status through the legacy payment key", async () => {
+      await createTemplate({
+        templateKey: "purchase.product.confirmation",
+        name: "Buy Product",
+        category: "Payment",
+        isActive: false,
+      });
+
+      const updatedCount = await bulkSetAutomationTemplateStatus({
+        templateKeys: ["purchase.product.confirmation"],
+        isActive: true,
+      });
+
+      const canonical = await prisma.emailTemplate.findUniqueOrThrow({
+        where: { templateKey: "payment.purchase.confirmation" },
+      });
+      expect(updatedCount).toBe(1);
+      expect(canonical.isActive).toBe(true);
+    });
+
+    it("updates template content through the legacy payment key", async () => {
+      await createTemplate({
+        templateKey: "purchase.product.confirmation",
+        name: "Buy Product",
+        category: "Payment",
+      });
+
+      await updateAutomationTemplate({
+        templateKey: "purchase.product.confirmation",
+        name: "Payment Purchase Confirmation",
+        subjectTemplate: "Updated subject {{name}}",
+        bodyTemplateJson: {
+          blocks: [{ type: "paragraph", text: "Updated payment body." }],
+        },
+      });
+
+      const canonical = await prisma.emailTemplate.findUniqueOrThrow({
+        where: { templateKey: "payment.purchase.confirmation" },
+      });
+      expect(canonical.subjectTemplate).toBe("Updated subject {{name}}");
+    });
+
+    it("replays dead-letter events through the legacy payment key", async () => {
+      const legacy = await createTemplate({
+        templateKey: "purchase.product.confirmation",
+        name: "Buy Product",
+        category: "Payment",
+      });
+      const event = await createEvent(legacy.id, EmailAutomationEventStatus.DEAD_LETTER, {
+        attempts: 3,
+        lastError: "legacy dead letter",
+      });
+
+      const result = await replayAutomationDeadLetterEvent({
+        eventId: event.id,
+        templateKey: "purchase.product.confirmation",
+      });
+
+      const updated = await prisma.emailAutomationEvent.findUniqueOrThrow({ where: { id: event.id } });
+      expect(result.replayed).toBe(true);
+      expect(updated.status).toBe(EmailAutomationEventStatus.PENDING);
     });
   });
 

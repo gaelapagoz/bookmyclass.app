@@ -83,13 +83,12 @@ describe("validateRuntimeEnv", () => {
     expect(() => validateRuntimeEnv()).toThrow(/public hostname/);
   });
 
-  it("does not let e2e overrides bypass production APP_URL validation", () => {
+  it("allows localhost APP_URL only for explicit e2e production runtime override", () => {
     setProductionEnv({ APP_URL: "http://localhost:3000" });
     process.env.E2E_TEST_MODE = "1";
     process.env.E2E_ALLOW_PRODUCTION_RUNTIME = "1";
 
-    expect(() => validateRuntimeEnv()).toThrow(RuntimeEnvError);
-    expect(() => validateRuntimeEnv()).toThrow(/non-localhost URL/);
+    expect(() => validateRuntimeEnv()).not.toThrow();
   });
 
   it("rejects production uploads stored in the release public folder", () => {

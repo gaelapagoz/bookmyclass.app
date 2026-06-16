@@ -49,9 +49,14 @@ type DefaultTemplateContent = {
   blocks: Prisma.InputJsonValue[];
 };
 
+const LEGACY_AUTOMATION_TEMPLATE_KEYS: Record<string, string> = {
+  "purchase.product.confirmation": "payment.purchase.confirmation",
+};
+
+const AUTOMATION_TEMPLATE_RECONCILIATION_CONFLICT = "AUTOMATION_TEMPLATE_RECONCILIATION_CONFLICT";
+
 const EXPECTED_AUTOMATION_TEMPLATES: readonly ExpectedAutomationTemplate[] = [
   { templateKey: "booking.welcome", triggerLabel: "Welcome", category: "Lifecycle", whenDescription: "Immediately", defaultSubject: "Welcome to {{website.name}}" },
-  { templateKey: "purchase.product.confirmation", triggerLabel: "Buy Product", category: "Payment", whenDescription: "Immediately on purchase success", defaultSubject: "Your purchase is confirmed" },
   { templateKey: "subscription.cancelled", triggerLabel: "Cancel Subscription", category: "Subscription", whenDescription: "Immediately on cancellation", defaultSubject: "Your subscription has been cancelled" },
   { templateKey: "subscription.renewal", triggerLabel: "Renewal Subscription", category: "Subscription", whenDescription: "Immediately on charge success", defaultSubject: "Your subscription has renewed" },
   { templateKey: "booking.class-booked", triggerLabel: "Booked Class", category: "Booking", whenDescription: "Immediately", defaultSubject: "You're booked for {{booking.classTitle}}" },
@@ -67,6 +72,21 @@ const EXPECTED_AUTOMATION_TEMPLATES: readonly ExpectedAutomationTemplate[] = [
   { templateKey: "store.purchase.confirmation", triggerLabel: "Store Purchase Confirmation", category: "Store", whenDescription: "Immediately on checkout success", defaultSubject: "Store purchase confirmation" },
   { templateKey: "gift-card.issuance", triggerLabel: "Gift Card Issuance", category: "Gift card", whenDescription: "Immediately after gift card purchase", defaultSubject: "Your gift card is ready" },
 ] as const;
+
+function getCanonicalAutomationTemplateKey(templateKey: string): string {
+  return LEGACY_AUTOMATION_TEMPLATE_KEYS[templateKey] ?? templateKey;
+}
+
+function getTemplateLookupKeys(templateKey: string): string[] {
+  const canonicalTemplateKey = getCanonicalAutomationTemplateKey(templateKey);
+  const lookupKeys = [canonicalTemplateKey];
+  for (const [legacyTemplateKey, mappedCanonicalTemplateKey] of Object.entries(LEGACY_AUTOMATION_TEMPLATE_KEYS)) {
+    if (mappedCanonicalTemplateKey === canonicalTemplateKey) {
+      lookupKeys.push(legacyTemplateKey);
+    }
+  }
+  return [...new Set(lookupKeys)];
+}
 
 function getDefaultTemplateContent(templateKey: string, triggerLabel: string): DefaultTemplateContent {
   const generic = (body: string): DefaultTemplateContent => ({
@@ -162,8 +182,6 @@ function getDefaultTemplateContent(templateKey: string, triggerLabel: string): D
       return generic("Good news. A spot opened for {{waitlist.classTitle}}.");
     case "waitlist.not-promoted":
       return generic("No spot opened for {{waitlist.classTitle}} this time.");
-    case "purchase.product.confirmation":
-      return generic("Your order {{order.number}} is confirmed.");
     case "subscription.cancelled":
       return generic("Your subscription has been cancelled.");
     case "subscription.renewal":
@@ -198,7 +216,253 @@ function isBootstrapPlaceholderBody(bodyTemplateJson: unknown): boolean {
 }
 
 function getExpectedTemplateDefinition(templateKey: string): ExpectedAutomationTemplate | null {
-  return EXPECTED_AUTOMATION_TEMPLATES.find((item) => item.templateKey === templateKey) ?? null;
+  const canonicalTemplateKey = getCanonicalAutomationTemplateKey(templateKey);
+  return EXPECTED_AUTOMATION_TEMPLATES.find((item) => item.templateKey === canonicalTemplateKey) ?? null;
+}
+
+function buildDefaultTemplateJson(templateKey: string, triggerLabel: string): {
+  subjectTemplate: string;
+  bodyTemplateJson: Prisma.InputJsonValue;
+} {
+  const defaultContent = getDefaultTemplateContent(templateKey, triggerLabel);
+  return {
+    subjectTemplate: defaultContent.subjectTemplate ?? getExpectedTemplateDefinition(templateKey)?.defaultSubject ?? "Template ready.",
+    bodyTemplateJson: {
+      previewText: defaultContent.previewText ?? "",
+      blocks: defaultContent.blocks,
+    } as Prisma.InputJsonValue,
+  };
+}
+
+function toPrismaInputJsonValue(value: Prisma.JsonValue): Prisma.InputJsonValue | typeof Prisma.JsonNull {
+  return value === null ? Prisma.JsonNull : (value as Prisma.InputJsonValue);
+}
+
+function matchesDefaultTemplateContent(input: {
+  templateKey: string;
+  subjectTemplate: string;
+  bodyTemplateJson: unknown;
+}): boolean {
+  const expected = getExpectedTemplateDefinition(input.templateKey);
+  if (!expected) return false;
+  const defaults = buildDefaultTemplateJson(expected.templateKey, expected.triggerLabel);
+
+  try {
+    const normalizedActual = normalizeMarketingContentJson(input.bodyTemplateJson);
+    const normalizedDefault = normalizeMarketingContentJson(defaults.bodyTemplateJson);
+    return (
+      input.subjectTemplate.trim() === defaults.subjectTemplate.trim() &&
+      JSON.stringify(normalizedActual) === JSON.stringify(normalizedDefault)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function reconcileLegacyAutomationTemplateKey(templateKey: string): Promise<void> {
+  const canonicalTemplateKey = getCanonicalAutomationTemplateKey(templateKey);
+  const legacyTemplateKey = Object.entries(LEGACY_AUTOMATION_TEMPLATE_KEYS).find(([, canonical]) => canonical === canonicalTemplateKey)?.[0];
+  if (!legacyTemplateKey) return;
+
+  const expected = getExpectedTemplateDefinition(canonicalTemplateKey);
+  if (!expected) return;
+
+  await prisma.$transaction(async (tx) => {
+    const [canonical, legacy] = await Promise.all([
+      tx.emailTemplate.findUnique({
+        where: { templateKey: canonicalTemplateKey },
+        select: {
+          id: true,
+          templateKey: true,
+          name: true,
+          category: true,
+          description: true,
+          subjectTemplate: true,
+          bodyTemplateJson: true,
+          isActive: true,
+        },
+      }),
+      tx.emailTemplate.findUnique({
+        where: { templateKey: legacyTemplateKey },
+        select: {
+          id: true,
+          templateKey: true,
+          name: true,
+          category: true,
+          description: true,
+          subjectTemplate: true,
+          bodyTemplateJson: true,
+          isActive: true,
+        },
+      }),
+    ]);
+
+    if (!legacy) return;
+
+    const legacyUsesDefaultContent = matchesDefaultTemplateContent({
+      templateKey: legacy.templateKey,
+      subjectTemplate: legacy.subjectTemplate,
+      bodyTemplateJson: legacy.bodyTemplateJson,
+    });
+    const canonicalUsesDefaultContent =
+      canonical == null
+        ? true
+        : matchesDefaultTemplateContent({
+            templateKey: canonical.templateKey,
+            subjectTemplate: canonical.subjectTemplate,
+            bodyTemplateJson: canonical.bodyTemplateJson,
+          });
+    const canonicalDefaults = buildDefaultTemplateJson(canonicalTemplateKey, expected.triggerLabel);
+
+    if (!canonical) {
+      const migrated = await tx.emailTemplate.update({
+        where: { id: legacy.id },
+        data: {
+          templateKey: canonicalTemplateKey,
+          name: expected.triggerLabel,
+          category: expected.category,
+          description: expected.whenDescription,
+          subjectTemplate: legacyUsesDefaultContent ? canonicalDefaults.subjectTemplate : legacy.subjectTemplate,
+          bodyTemplateJson: legacyUsesDefaultContent
+            ? canonicalDefaults.bodyTemplateJson
+            : toPrismaInputJsonValue(legacy.bodyTemplateJson),
+        },
+      });
+      await tx.emailTemplateAuditLog.create({
+        data: {
+          templateId: migrated.id,
+          action: EmailTemplateAuditAction.UPDATED,
+          beforeJson: {
+            reconciliation: {
+              legacyTemplateKey,
+              canonicalTemplateKey,
+              strategy: "rename-legacy-to-canonical",
+            },
+            legacyTemplate: {
+              subjectTemplate: legacy.subjectTemplate,
+              bodyTemplateJson: legacy.bodyTemplateJson,
+              isActive: legacy.isActive,
+            },
+          } as Prisma.InputJsonValue,
+          afterJson: {
+            reconciliation: {
+              legacyTemplateKey,
+              canonicalTemplateKey,
+              strategy: "rename-legacy-to-canonical",
+            },
+            canonicalTemplate: {
+              subjectTemplate: migrated.subjectTemplate,
+              bodyTemplateJson: migrated.bodyTemplateJson,
+              isActive: migrated.isActive,
+            },
+          } as Prisma.InputJsonValue,
+        },
+      });
+      return;
+    }
+
+    if (!legacyUsesDefaultContent && !canonicalUsesDefaultContent) {
+      throw new Error(AUTOMATION_TEMPLATE_RECONCILIATION_CONFLICT);
+    }
+
+    const shouldPromoteLegacyContent = !legacyUsesDefaultContent && canonicalUsesDefaultContent;
+    const canonicalBefore = {
+      subjectTemplate: canonical.subjectTemplate,
+      bodyTemplateJson: canonical.bodyTemplateJson,
+      isActive: canonical.isActive,
+    };
+    const mergedCanonical = shouldPromoteLegacyContent
+      ? await tx.emailTemplate.update({
+          where: { id: canonical.id },
+          data: {
+            name: expected.triggerLabel,
+            category: expected.category,
+            description: expected.whenDescription,
+            subjectTemplate: legacy.subjectTemplate,
+            bodyTemplateJson: toPrismaInputJsonValue(legacy.bodyTemplateJson),
+            isActive: legacy.isActive,
+          },
+        })
+      : await tx.emailTemplate.update({
+          where: { id: canonical.id },
+          data: {
+            name: expected.triggerLabel,
+            category: expected.category,
+            description: expected.whenDescription,
+          },
+        });
+
+    await tx.emailAutomationEvent.updateMany({
+      where: { templateId: legacy.id },
+      data: { templateId: canonical.id },
+    });
+    await tx.emailTemplateAuditLog.updateMany({
+      where: { templateId: legacy.id },
+      data: { templateId: canonical.id },
+    });
+    await tx.emailTemplateAuditLog.create({
+      data: {
+        templateId: canonical.id,
+        action: EmailTemplateAuditAction.UPDATED,
+        beforeJson: {
+          reconciliation: {
+            legacyTemplateKey,
+            canonicalTemplateKey,
+            strategy: shouldPromoteLegacyContent ? "promote-legacy-content" : "preserve-canonical-content",
+          },
+          canonicalTemplate: canonicalBefore,
+          legacyTemplate: {
+            subjectTemplate: legacy.subjectTemplate,
+            bodyTemplateJson: legacy.bodyTemplateJson,
+            isActive: legacy.isActive,
+          },
+        } as Prisma.InputJsonValue,
+        afterJson: {
+          reconciliation: {
+            legacyTemplateKey,
+            canonicalTemplateKey,
+            strategy: shouldPromoteLegacyContent ? "promote-legacy-content" : "preserve-canonical-content",
+            deletedLegacyTemplateKey: legacyTemplateKey,
+          },
+          canonicalTemplate: {
+            subjectTemplate: mergedCanonical.subjectTemplate,
+            bodyTemplateJson: mergedCanonical.bodyTemplateJson,
+            isActive: mergedCanonical.isActive,
+          },
+        } as Prisma.InputJsonValue,
+      },
+    });
+    await tx.emailTemplate.delete({
+      where: { id: legacy.id },
+    });
+  });
+}
+
+async function findAutomationTemplateRecord<T extends Prisma.EmailTemplateFindUniqueArgs["select"]>(input: {
+  templateKey: string;
+  select: T;
+}): Promise<Prisma.EmailTemplateGetPayload<{ select: NonNullable<T> }> | null> {
+  const canonicalTemplateKey = getCanonicalAutomationTemplateKey(input.templateKey);
+  const canonicalTemplate = await prisma.emailTemplate.findUnique({
+    where: { templateKey: canonicalTemplateKey },
+    select: input.select,
+  });
+  if (canonicalTemplate) {
+    return canonicalTemplate as unknown as Prisma.EmailTemplateGetPayload<{ select: NonNullable<T> }>;
+  }
+
+  for (const lookupKey of getTemplateLookupKeys(input.templateKey)) {
+    if (lookupKey === canonicalTemplateKey) continue;
+    const template = await prisma.emailTemplate.findUnique({
+      where: { templateKey: lookupKey },
+      select: input.select,
+    });
+    if (template) {
+      return template as unknown as Prisma.EmailTemplateGetPayload<{ select: NonNullable<T> }>;
+    }
+  }
+
+  return null;
 }
 
 export type AutomationTemplateDetail = {
@@ -326,7 +590,20 @@ export function buildAutomationScaffoldRows(input: {
   eventCounts: Array<{ templateId: string; status: EmailAutomationEventStatus; count: number }>;
   sentLast30: Array<{ templateId: string; count: number }>;
 }): AutomationScaffoldRow[] {
-  const templateByKey = new Map(input.templates.map((row) => [row.templateKey, row]));
+  const templateByKey = new Map<string, (typeof input.templates)[number]>();
+  for (const row of input.templates) {
+    const canonicalTemplateKey = getCanonicalAutomationTemplateKey(row.templateKey);
+    const existing = templateByKey.get(canonicalTemplateKey);
+    if (!existing) {
+      templateByKey.set(canonicalTemplateKey, { ...row, templateKey: canonicalTemplateKey });
+      continue;
+    }
+    const rowIsCanonical = row.templateKey === canonicalTemplateKey;
+    const existingIsCanonical = existing.templateKey === canonicalTemplateKey;
+    if (rowIsCanonical && !existingIsCanonical) {
+      templateByKey.set(canonicalTemplateKey, { ...row, templateKey: canonicalTemplateKey });
+    }
+  }
   const countsByTemplate = new Map<string, { pending: number; deadLetter: number }>();
   for (const row of input.eventCounts) {
     const existing = countsByTemplate.get(row.templateId) ?? { pending: 0, deadLetter: 0 };
@@ -427,18 +704,18 @@ export async function getAutomationScaffoldRows(): Promise<AutomationScaffoldRow
 }
 
 export async function ensureExpectedAutomationTemplateExists(templateKey: string): Promise<void> {
-  const expected = getExpectedTemplateDefinition(templateKey);
+  const canonicalTemplateKey = getCanonicalAutomationTemplateKey(templateKey);
+  await reconcileLegacyAutomationTemplateKey(canonicalTemplateKey);
+
+  const expected = getExpectedTemplateDefinition(canonicalTemplateKey);
   if (!expected) return;
   const existing = await prisma.emailTemplate.findUnique({
     where: { templateKey: expected.templateKey },
     select: { id: true, bodyTemplateJson: true, subjectTemplate: true },
   });
-  const defaultContent = getDefaultTemplateContent(expected.templateKey, expected.triggerLabel);
-  const defaultSubject = defaultContent.subjectTemplate ?? expected.defaultSubject;
-  const defaultBody = {
-    previewText: defaultContent.previewText ?? "",
-    blocks: defaultContent.blocks,
-  } as Prisma.InputJsonValue;
+  const defaults = buildDefaultTemplateJson(expected.templateKey, expected.triggerLabel);
+  const defaultSubject = defaults.subjectTemplate;
+  const defaultBody = defaults.bodyTemplateJson;
 
   if (existing) {
     if (!isBootstrapPlaceholderBody(existing.bodyTemplateJson)) {
@@ -498,8 +775,12 @@ const setAutomationTemplateStatusSchema = z.object({
 
 export async function setAutomationTemplateStatus(input: z.input<typeof setAutomationTemplateStatusSchema>): Promise<void> {
   const parsed = setAutomationTemplateStatusSchema.parse(input);
-  const template = await prisma.emailTemplate.findUnique({
-    where: { templateKey: parsed.templateKey },
+  const templateKey = getCanonicalAutomationTemplateKey(parsed.templateKey);
+  if (parsed.templateKey !== templateKey) {
+    await reconcileLegacyAutomationTemplateKey(templateKey);
+  }
+  const template = await findAutomationTemplateRecord({
+    templateKey,
     select: { id: true, isActive: true },
   });
   if (!template) {
@@ -536,10 +817,20 @@ const bulkSetAutomationTemplateStatusSchema = z.object({
 
 export async function bulkSetAutomationTemplateStatus(input: z.input<typeof bulkSetAutomationTemplateStatusSchema>): Promise<number> {
   const parsed = bulkSetAutomationTemplateStatusSchema.parse(input);
-  const templates = await prisma.emailTemplate.findMany({
-    where: { templateKey: { in: parsed.templateKeys } },
-    select: { id: true, templateKey: true, isActive: true },
-  });
+  const templateKeys = [...new Set(parsed.templateKeys.map((templateKey) => getCanonicalAutomationTemplateKey(templateKey)))];
+  const includesLegacyAlias = parsed.templateKeys.some((templateKey) => getCanonicalAutomationTemplateKey(templateKey) !== templateKey);
+  if (includesLegacyAlias) {
+    await Promise.all(templateKeys.map((templateKey) => reconcileLegacyAutomationTemplateKey(templateKey)));
+  }
+  const resolvedTemplates = await Promise.all(
+    templateKeys.map((templateKey) =>
+      findAutomationTemplateRecord({
+        templateKey,
+        select: { id: true, templateKey: true, isActive: true },
+      }),
+    ),
+  );
+  const templates = resolvedTemplates.filter((template): template is NonNullable<typeof template> => template != null);
   if (templates.length === 0) return 0;
   const toUpdate = templates.filter((template) => template.isActive !== parsed.isActive);
   if (toUpdate.length === 0) return 0;
@@ -563,8 +854,8 @@ export async function bulkSetAutomationTemplateStatus(input: z.input<typeof bulk
 }
 
 export async function getAutomationTemplateDetail(templateKey: string): Promise<AutomationTemplateDetail | null> {
-  const template = await prisma.emailTemplate.findUnique({
-    where: { templateKey },
+  const template = await findAutomationTemplateRecord({
+    templateKey,
     select: {
       id: true,
       templateKey: true,
@@ -626,8 +917,8 @@ export async function getAutomationDeadLetterPage(
   page: number,
   pageSize: number,
 ): Promise<AutomationDeadLetterPage> {
-  const template = await prisma.emailTemplate.findUnique({
-    where: { templateKey },
+  const template = await findAutomationTemplateRecord({
+    templateKey,
     select: { id: true },
   });
 
@@ -670,8 +961,8 @@ export async function getAutomationAuditLogPage(
   page: number,
   pageSize: number,
 ): Promise<AutomationAuditLogPage> {
-  const template = await prisma.emailTemplate.findUnique({
-    where: { templateKey },
+  const template = await findAutomationTemplateRecord({
+    templateKey,
     select: { id: true },
   });
 
@@ -720,9 +1011,12 @@ export async function replayAutomationDeadLetterEvent(
   input: z.input<typeof replaySchema>,
 ): Promise<{ replayed: boolean }> {
   const parsed = replaySchema.parse(input);
-
-  const template = await prisma.emailTemplate.findUnique({
-    where: { templateKey: parsed.templateKey },
+  const templateKey = getCanonicalAutomationTemplateKey(parsed.templateKey);
+  if (parsed.templateKey !== templateKey) {
+    await reconcileLegacyAutomationTemplateKey(templateKey);
+  }
+  const template = await findAutomationTemplateRecord({
+    templateKey,
     select: { id: true },
   });
 
@@ -778,9 +1072,12 @@ const updateTemplateSchema = z.object({
 
 export async function updateAutomationTemplate(input: z.input<typeof updateTemplateSchema>): Promise<void> {
   const parsed = updateTemplateSchema.parse(input);
-
-  const template = await prisma.emailTemplate.findUnique({
-    where: { templateKey: parsed.templateKey },
+  const templateKey = getCanonicalAutomationTemplateKey(parsed.templateKey);
+  if (parsed.templateKey !== templateKey) {
+    await reconcileLegacyAutomationTemplateKey(templateKey);
+  }
+  const template = await findAutomationTemplateRecord({
+    templateKey,
     select: { id: true, name: true, subjectTemplate: true, bodyTemplateJson: true },
   });
 
@@ -790,7 +1087,7 @@ export async function updateAutomationTemplate(input: z.input<typeof updateTempl
 
   const normalizedBody = normalizeMarketingContentJson(parsed.bodyTemplateJson);
   const tokenValidation = validateTemplateTokenUsage({
-    templateKey: parsed.templateKey,
+    templateKey,
     subjectTemplate: parsed.subjectTemplate,
     bodyTemplateJson: normalizedBody,
   });
@@ -835,9 +1132,12 @@ function renderSubjectWithEmptyTokens(subjectTemplate: string): string {
 
 export async function sendAutomationTemplateTestEmail(input: z.input<typeof testSendSchema>): Promise<void> {
   const parsed = testSendSchema.parse(input);
-
-  const template = await prisma.emailTemplate.findUnique({
-    where: { templateKey: parsed.templateKey },
+  const templateKey = getCanonicalAutomationTemplateKey(parsed.templateKey);
+  if (parsed.templateKey !== templateKey) {
+    await reconcileLegacyAutomationTemplateKey(templateKey);
+  }
+  const template = await findAutomationTemplateRecord({
+    templateKey,
     select: {
       isActive: true,
       subjectTemplate: true,
@@ -855,6 +1155,7 @@ export async function sendAutomationTemplateTestEmail(input: z.input<typeof test
   }
 
   const samplePayload = buildTemplateSamplePayload(parsed.templateKey);
+  const samplePayloadTemplateKey = templateKey;
   const subject = replaceSubjectTokens(template.subjectTemplate, samplePayload) || renderSubjectWithEmptyTokens(template.subjectTemplate);
   const normalizedContent = normalizeMarketingContentJson(template.bodyTemplateJson);
   const html = replaceTemplateTokensInHtml(renderMarketingPreviewHtml(normalizedContent), samplePayload);
@@ -864,7 +1165,7 @@ export async function sendAutomationTemplateTestEmail(input: z.input<typeof test
     from: resolveTestFromAddress(),
     subject: `[TEST] ${subject}`,
     html,
-    context: `automation-test:${parsed.templateKey}`,
+    context: `automation-test:${samplePayloadTemplateKey}`,
   });
 }
 
@@ -897,13 +1198,15 @@ function replaceTemplateTokensInHtml(input: string, payload: Record<string, stri
 }
 
 export function validateTemplateTokenUsage(input: { templateKey: string; subjectTemplate: string; bodyTemplateJson: unknown }) {
-  const allowed = getAllowedTokensForTemplate(input.templateKey);
+  const allowed = getAllowedTokensForTemplate(getCanonicalAutomationTemplateKey(input.templateKey));
   const normalized = normalizeMarketingContentJson(input.bodyTemplateJson);
   const collected = [input.subjectTemplate, JSON.stringify(normalized)].flatMap((chunk) => extractTemplateTokens(chunk));
   const invalidTokens = [...new Set(collected.filter((token) => !allowed.has(token)))];
   return {
     ok: invalidTokens.length === 0,
     invalidTokens,
-    tokenGroups: getTokenGroupsForTemplate(input.templateKey),
+    tokenGroups: getTokenGroupsForTemplate(getCanonicalAutomationTemplateKey(input.templateKey)),
   };
 }
+
+export { AUTOMATION_TEMPLATE_RECONCILIATION_CONFLICT };

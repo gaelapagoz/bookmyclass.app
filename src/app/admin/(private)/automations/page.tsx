@@ -1,13 +1,12 @@
 import Link from "next/link";
 
 import { setAutomationTemplateStatusAction } from "@/app/admin/(private)/automations/actions";
-import { ensureAllExpectedAutomationTemplatesExist, getAutomationScaffoldRows } from "@/lib/email/email-automation-admin-service";
+import { getAutomationScaffoldRows } from "@/lib/email/email-automation-admin-service";
 
 export default async function AdminAutomationsPage() {
   let rows = [] as Awaited<ReturnType<typeof getAutomationScaffoldRows>>;
   let loadError = false;
   try {
-    await ensureAllExpectedAutomationTemplatesExist();
     rows = await getAutomationScaffoldRows();
   } catch (error) {
     loadError = true;

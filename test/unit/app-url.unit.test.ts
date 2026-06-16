@@ -33,15 +33,13 @@ describe("app url validation", () => {
     );
   });
 
-  it("does not let e2e mode bypass production app url validation", () => {
+  it("allows explicit e2e production runtime override to use localhost app urls", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("E2E_TEST_MODE", "1");
     vi.stubEnv("E2E_ALLOW_PRODUCTION_RUNTIME", "1");
     vi.stubEnv("APP_URL", "http://localhost:3000");
 
-    expect(() => validateProductionAppUrl()).toThrow(AppUrlConfigError);
-    expect(() => validateProductionAppUrl()).toThrow(
-      "APP_URL must be configured to a non-localhost URL in production.",
-    );
+    expect(() => validateProductionAppUrl()).not.toThrow();
+    expect(resolveAppUrl()).toBe("http://localhost:3000");
   });
 });

@@ -118,6 +118,10 @@ const FAMILY_GROUPS: Record<TokenFamily, readonly TokenGroup[]> = {
   marketing: ["Common", "Marketing"],
 };
 
+const TEMPLATE_KEY_ALIASES: Record<string, string> = {
+  "purchase.product.confirmation": "payment.purchase.confirmation",
+};
+
 const TEMPLATE_KEY_FAMILY: Record<string, TokenFamily> = {
   "auth.verify-email": "auth",
   "auth.password-reset": "auth",
@@ -134,20 +138,20 @@ const TEMPLATE_KEY_FAMILY: Record<string, TokenFamily> = {
   "gift-card.issuance": "gift-card",
   "subscription.cancelled": "subscription",
   "subscription.renewal": "subscription",
-  "purchase.product.confirmation": "payment",
 };
 
 export function inferTokenFamilyForTemplateKey(templateKey: string): TokenFamily {
-  const exact = TEMPLATE_KEY_FAMILY[templateKey];
+  const canonicalTemplateKey = TEMPLATE_KEY_ALIASES[templateKey] ?? templateKey;
+  const exact = TEMPLATE_KEY_FAMILY[canonicalTemplateKey];
   if (exact) return exact;
-  if (templateKey.startsWith("auth.")) return "auth";
-  if (templateKey.startsWith("booking.")) return "booking";
-  if (templateKey.startsWith("waitlist.")) return "waitlist";
-  if (templateKey.startsWith("payment.")) return "payment";
-  if (templateKey.startsWith("store.")) return "store";
-  if (templateKey.startsWith("gift-card.")) return "gift-card";
-  if (templateKey.startsWith("subscription.")) return "subscription";
-  if (templateKey.startsWith("marketing.")) return "marketing";
+  if (canonicalTemplateKey.startsWith("auth.")) return "auth";
+  if (canonicalTemplateKey.startsWith("booking.")) return "booking";
+  if (canonicalTemplateKey.startsWith("waitlist.")) return "waitlist";
+  if (canonicalTemplateKey.startsWith("payment.")) return "payment";
+  if (canonicalTemplateKey.startsWith("store.")) return "store";
+  if (canonicalTemplateKey.startsWith("gift-card.")) return "gift-card";
+  if (canonicalTemplateKey.startsWith("subscription.")) return "subscription";
+  if (canonicalTemplateKey.startsWith("marketing.")) return "marketing";
   return "common";
 }
 

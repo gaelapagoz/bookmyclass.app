@@ -6,10 +6,11 @@ import { buildAutomationScaffoldRows } from "@/lib/email/email-automation-admin-
 describe("email-automation-admin-service scaffold rows", () => {
   it("returns all expected trigger rows even when templates are empty", () => {
     const rows = buildAutomationScaffoldRows({ templates: [], eventCounts: [], sentLast30: [] });
-    expect(rows.length).toBe(16);
+    expect(rows.length).toBe(15);
     expect(rows.some((row) => row.triggerLabel === "Welcome")).toBe(true);
     expect(rows.some((row) => row.triggerLabel === "Auth Verification Email")).toBe(true);
     expect(rows.some((row) => row.triggerLabel === "Gift Card Issuance")).toBe(true);
+    expect(rows.some((row) => row.templateKey === "purchase.product.confirmation")).toBe(false);
     expect(rows.every((row) => row.status === "Draft")).toBe(true);
   });
 
@@ -36,5 +37,26 @@ describe("email-automation-admin-service scaffold rows", () => {
     expect(missingRow?.exists).toBe(false);
     expect(missingRow?.status).toBe("Draft");
   });
-});
 
+  it("shows a legacy-only payment template row under the canonical payment key", () => {
+    const rows = buildAutomationScaffoldRows({
+      templates: [
+        {
+          id: "tpl-payment-legacy",
+          templateKey: "purchase.product.confirmation",
+          subjectTemplate: "Legacy payment subject",
+          bodyTemplateJson: { previewText: "Legacy preview", blocks: [{ type: "paragraph", contentHtml: "<p>Legacy body</p>" }] },
+          isActive: true,
+        },
+      ],
+      eventCounts: [],
+      sentLast30: [],
+    });
+
+    const paymentRow = rows.find((row) => row.templateKey === "payment.purchase.confirmation");
+    expect(paymentRow).toBeDefined();
+    expect(paymentRow?.exists).toBe(true);
+    expect(paymentRow?.subject).toBe("Legacy payment subject");
+    expect(paymentRow?.previewText).toBe("Legacy preview");
+  });
+});

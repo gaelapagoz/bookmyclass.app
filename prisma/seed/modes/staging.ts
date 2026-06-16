@@ -166,6 +166,12 @@ async function purgeForCleanSeed() {
   await prisma.marketingCategory.deleteMany();
   await prisma.marketingUnsubscribe.deleteMany();
 
+  await prisma.emailAutomationAttempt.deleteMany();
+  await prisma.emailAutomationEvent.deleteMany();
+  await prisma.emailDispatcherHeartbeat.deleteMany();
+  await prisma.emailTemplateAuditLog.deleteMany();
+  await prisma.emailTemplate.deleteMany();
+
   await prisma.attendanceRecord.deleteMany();
   await prisma.waitlistEntry.deleteMany();
   await prisma.booking.deleteMany();

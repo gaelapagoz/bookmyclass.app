@@ -85,6 +85,11 @@ async function resetE2EDatabase() {
   await prisma.marketingUserSegment.deleteMany();
   await prisma.marketingSegment.deleteMany();
   await prisma.marketingCategory.deleteMany();
+  await prisma.emailAutomationAttempt.deleteMany();
+  await prisma.emailAutomationEvent.deleteMany();
+  await prisma.emailDispatcherHeartbeat.deleteMany();
+  await prisma.emailTemplateAuditLog.deleteMany();
+  await prisma.emailTemplate.deleteMany();
   await prisma.attendanceRecord.deleteMany();
   await prisma.waitlistEntry.deleteMany();
   await prisma.booking.deleteMany();

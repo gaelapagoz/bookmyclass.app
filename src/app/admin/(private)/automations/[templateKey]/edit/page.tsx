@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { updateAutomationTemplateAction } from "@/app/admin/(private)/automations/actions";
 import AutomationTemplateEditor from "@/components/admin/automations/AutomationTemplateEditor";
-import { ensureExpectedAutomationTemplateExists, getAutomationTemplateDetail } from "@/lib/email/email-automation-admin-service";
+import { getAutomationTemplateDetail } from "@/lib/email/email-automation-admin-service";
 import { getTokenGroupsForTemplate } from "@/lib/email/email-template-token-registry";
 import { normalizeMarketingContentJson } from "@/lib/marketing/marketing-renderer";
 
@@ -14,7 +14,6 @@ export default async function AdminAutomationTemplateEditPage({ params, searchPa
   const { templateKey } = await params;
   const sp = await searchParams;
 
-  await ensureExpectedAutomationTemplateExists(templateKey);
   const detail = await getAutomationTemplateDetail(templateKey);
   if (!detail) redirect("/admin/automations");
 

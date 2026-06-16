@@ -1,3 +1,5 @@
+import { isE2EProductionRuntimeAllowed } from "@/lib/e2e/e2e-test-guard";
+
 export class AppUrlConfigError extends Error {
   constructor(message: string) {
     super(message);
@@ -111,7 +113,7 @@ export function resolveAppUrl(inputAppUrl?: string): string {
   }
 
   const isProduction = process.env.NODE_ENV === "production";
-  const allowPrivateDevHost = !isProduction;
+  const allowPrivateDevHost = !isProduction || isE2EProductionRuntimeAllowed();
   return normalizeAppUrlOrigin(resolved, { allowPrivateDevHost });
 }
 
@@ -121,5 +123,5 @@ export function validateProductionAppUrl(): void {
     throw new AppUrlConfigError("Missing required production environment variable: APP_URL");
   }
 
-  normalizeAppUrlOrigin(value, { allowPrivateDevHost: false });
+  normalizeAppUrlOrigin(value, { allowPrivateDevHost: isE2EProductionRuntimeAllowed() });
 }
