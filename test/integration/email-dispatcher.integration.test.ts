@@ -246,4 +246,114 @@ describe("email automation dispatcher", () => {
     expect(event.lastError?.includes("blocks")).toBe(true);
     expect(getCapturedTestEmails()).toHaveLength(0);
   });
+
+  it("dead-letters incomplete booking payloads without sending a broken email", async () => {
+    const idemKey = uniqueKey("idem-booking-required-fields");
+    await prisma.emailTemplate.upsert({
+      where: { templateKey: "booking.class-booked" },
+      update: {
+        name: "Booking Confirmation",
+        category: "BOOKING",
+        subjectTemplate: "You're booked for {{booking.classTitle}}",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}" }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+      create: {
+        templateKey: "booking.class-booked",
+        name: "Booking Confirmation",
+        category: "BOOKING",
+        subjectTemplate: "You're booked for {{booking.classTitle}}",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}" }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+    });
+    await enqueueEmailAutomationEvent({
+      templateKey: "booking.class-booked",
+      recipientEmail: "client@example.test",
+      payloadJson: {
+        clientName: "Client",
+        "booking.classTitle": "Morning Flow",
+        "booking.startAt": "",
+        "booking.manageUrl": "",
+        "booking.cancelUrl": "",
+      },
+      idempotencyKey: idemKey,
+      maxAttempts: 1,
+      availableAt: new Date("2026-05-17T15:19:00.000Z"),
+    });
+
+    const result = await dispatchEmailAutomationBatch({
+      workerId: "dispatcher-booking-required-fields",
+      maxEvents: 1,
+      leaseMs: 30_000,
+      now: new Date("2026-05-17T15:20:00.000Z"),
+    });
+    const event = await prisma.emailAutomationEvent.findUniqueOrThrow({
+      where: { idempotencyKey: idemKey },
+    });
+
+    expect(result).toMatchObject({ leasedCount: 1, sentCount: 0, failedCount: 1, deadLetterCount: 1 });
+    expect(event.status).toBe(EmailAutomationEventStatus.DEAD_LETTER);
+    expect(event.lastError).toBe(
+      "EMAIL_AUTOMATION_MISSING_REQUIRED_PAYLOAD_FIELDS:booking.startAt,booking.manageUrl,booking.cancelUrl",
+    );
+    expect(getCapturedTestEmails()).toHaveLength(0);
+  });
+
+  it("dead-letters incomplete waitlist payloads without sending a broken email", async () => {
+    const idemKey = uniqueKey("idem-waitlist-required-fields");
+    await prisma.emailTemplate.upsert({
+      where: { templateKey: "waitlist.on-list" },
+      update: {
+        name: "Waitlist On List",
+        category: "WAITLIST",
+        subjectTemplate: "You're on the waitlist for {{waitlist.classTitle}}",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}" }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+      create: {
+        templateKey: "waitlist.on-list",
+        name: "Waitlist On List",
+        category: "WAITLIST",
+        subjectTemplate: "You're on the waitlist for {{waitlist.classTitle}}",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}" }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+    });
+    await enqueueEmailAutomationEvent({
+      templateKey: "waitlist.on-list",
+      recipientEmail: "client@example.test",
+      payloadJson: {
+        clientName: "Client",
+        "waitlist.classTitle": "Morning Flow",
+        dateTimeLabel: "",
+        "waitlist.manageUrl": "",
+        waitlistEntryId: "",
+      },
+      idempotencyKey: idemKey,
+      maxAttempts: 1,
+      availableAt: new Date("2026-05-17T15:24:00.000Z"),
+    });
+
+    const result = await dispatchEmailAutomationBatch({
+      workerId: "dispatcher-waitlist-required-fields",
+      maxEvents: 1,
+      leaseMs: 30_000,
+      now: new Date("2026-05-17T15:25:00.000Z"),
+    });
+    const event = await prisma.emailAutomationEvent.findUniqueOrThrow({
+      where: { idempotencyKey: idemKey },
+    });
+
+    expect(result).toMatchObject({ leasedCount: 1, sentCount: 0, failedCount: 1, deadLetterCount: 1 });
+    expect(event.status).toBe(EmailAutomationEventStatus.DEAD_LETTER);
+    expect(event.lastError).toBe(
+      "EMAIL_AUTOMATION_MISSING_REQUIRED_PAYLOAD_FIELDS:dateTimeLabel,waitlist.manageUrl,waitlistEntryId",
+    );
+    expect(getCapturedTestEmails()).toHaveLength(0);
+  });
 });

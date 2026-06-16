@@ -593,6 +593,29 @@ describe("waitlist runtime integration", () => {
     });
     expect((outboxEvent?.payloadJson as { dateTimeLabel?: unknown } | null)?.dateTimeLabel).toEqual(expect.any(String));
 
+    const bookingConfirmationEvent = await prisma.emailAutomationEvent.findFirst({
+      where: {
+        recipientEmail: waitlistFirst.email.toLowerCase(),
+        idempotencyKey: `booking-confirmation:${promotedBooking?.id}:confirmed-v1`,
+      },
+      select: {
+        payloadJson: true,
+        template: { select: { templateKey: true } },
+      },
+    });
+    expect(bookingConfirmationEvent?.template.templateKey).toBe("booking.class-booked");
+    expect(bookingConfirmationEvent?.payloadJson).toMatchObject({
+      bookingId: promotedBooking?.id,
+      clientName: waitlistFirst.name,
+      sessionTitle: session.title,
+      "booking.classTitle": session.title,
+      "booking.manageUrl": "https://studio.example.test/dashboard/bookings",
+      "booking.cancelUrl": "https://studio.example.test/dashboard/bookings",
+    });
+    expect(
+      (bookingConfirmationEvent?.payloadJson as { "booking.startAt"?: unknown } | null)?.["booking.startAt"],
+    ).toEqual(expect.any(String));
+
     const templateAfter = await prisma.emailTemplate.findUnique({
       where: { templateKey: "waitlist.promoted" },
       

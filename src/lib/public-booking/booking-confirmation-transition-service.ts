@@ -2,6 +2,7 @@ import { BookingStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { ensureExpectedAutomationTemplateExists } from "@/lib/email/email-automation-admin-service";
 import { buildBookingConfirmationEmailIdempotencyKey } from "@/lib/public-booking/booking-confirmation-notification-service";
+import { buildBookingTemplatePayload } from "@/lib/public-booking/email-template-payloads";
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -9,7 +10,22 @@ const BOOKING_CLASS_BOOKED_TEMPLATE_KEY = "booking.class-booked";
 const BOOKING_CLASS_CANCELLED_TEMPLATE_KEY = "booking.class-cancelled";
 
 async function enqueueBookingConfirmationOutboxEvent(input: {
-  bookingId: string;
+  booking: {
+    customerName: string | null;
+    id: string;
+    studioSession: {
+      endsAt: Date;
+      location: string | null;
+      startsAt: Date;
+      teacher: {
+        name: string | null;
+      } | null;
+      title: string;
+    };
+    client: {
+      name: string | null;
+    } | null;
+  };
   recipientEmail: string;
   db: DbClient;
 }): Promise<void> {
@@ -26,8 +42,16 @@ async function enqueueBookingConfirmationOutboxEvent(input: {
       data: {
         templateId: template.id,
         recipientEmail: input.recipientEmail.toLowerCase(),
-        payloadJson: { bookingId: input.bookingId },
-        idempotencyKey: buildBookingConfirmationEmailIdempotencyKey(input.bookingId),
+        payloadJson: buildBookingTemplatePayload({
+          bookingId: input.booking.id,
+          clientName: input.booking.client?.name ?? input.booking.customerName ?? "",
+          location: input.booking.studioSession.location,
+          sessionEndsAt: input.booking.studioSession.endsAt,
+          sessionStartsAt: input.booking.studioSession.startsAt,
+          sessionTitle: input.booking.studioSession.title,
+          teacherName: input.booking.studioSession.teacher?.name ?? null,
+        }),
+        idempotencyKey: buildBookingConfirmationEmailIdempotencyKey(input.booking.id),
       },
     });
   } catch (error) {
@@ -46,7 +70,22 @@ function buildBookingCancellationEmailIdempotencyKey(bookingId: string): string 
 }
 
 async function enqueueBookingCancellationOutboxEvent(input: {
-  bookingId: string;
+  booking: {
+    customerName: string | null;
+    id: string;
+    studioSession: {
+      endsAt: Date;
+      location: string | null;
+      startsAt: Date;
+      teacher: {
+        name: string | null;
+      } | null;
+      title: string;
+    };
+    client: {
+      name: string | null;
+    } | null;
+  };
   recipientEmail: string;
   db: DbClient;
 }): Promise<void> {
@@ -65,8 +104,16 @@ async function enqueueBookingCancellationOutboxEvent(input: {
       data: {
         templateId: template.id,
         recipientEmail: input.recipientEmail.toLowerCase(),
-        payloadJson: { bookingId: input.bookingId },
-        idempotencyKey: buildBookingCancellationEmailIdempotencyKey(input.bookingId),
+        payloadJson: buildBookingTemplatePayload({
+          bookingId: input.booking.id,
+          clientName: input.booking.client?.name ?? input.booking.customerName ?? "",
+          location: input.booking.studioSession.location,
+          sessionEndsAt: input.booking.studioSession.endsAt,
+          sessionStartsAt: input.booking.studioSession.startsAt,
+          sessionTitle: input.booking.studioSession.title,
+          teacherName: input.booking.studioSession.teacher?.name ?? null,
+        }),
+        idempotencyKey: buildBookingCancellationEmailIdempotencyKey(input.booking.id),
       },
     });
   } catch (error) {
@@ -94,8 +141,20 @@ export async function transitionBookingToConfirmedAndQueueEmail(input: {
       id: true,
       status: true,
       customerEmail: true,
+      customerName: true,
       client: {
-        select: { email: true },
+        select: { email: true, name: true },
+      },
+      studioSession: {
+        select: {
+          title: true,
+          startsAt: true,
+          endsAt: true,
+          location: true,
+          teacher: {
+            select: { name: true },
+          },
+        },
       },
     },
   });
@@ -122,7 +181,7 @@ export async function transitionBookingToConfirmedAndQueueEmail(input: {
 
   try {
     await enqueueBookingConfirmationOutboxEvent({
-      bookingId: booking.id,
+      booking,
       recipientEmail,
       db,
     });
@@ -151,7 +210,19 @@ export async function ensureBookingConfirmationEventForConfirmedBooking(input: {
       id: true,
       status: true,
       customerEmail: true,
-      client: { select: { email: true } },
+      customerName: true,
+      client: { select: { email: true, name: true } },
+      studioSession: {
+        select: {
+          title: true,
+          startsAt: true,
+          endsAt: true,
+          location: true,
+          teacher: {
+            select: { name: true },
+          },
+        },
+      },
     },
   });
   if (!booking || booking.status !== BookingStatus.CONFIRMED) {
@@ -164,7 +235,7 @@ export async function ensureBookingConfirmationEventForConfirmedBooking(input: {
   }
 
   await enqueueBookingConfirmationOutboxEvent({
-    bookingId: booking.id,
+    booking,
     recipientEmail,
     db,
   });
@@ -182,7 +253,19 @@ export async function queueBookingCancellationEvent(input: {
       id: true,
       status: true,
       customerEmail: true,
-      client: { select: { email: true } },
+      customerName: true,
+      client: { select: { email: true, name: true } },
+      studioSession: {
+        select: {
+          title: true,
+          startsAt: true,
+          endsAt: true,
+          location: true,
+          teacher: {
+            select: { name: true },
+          },
+        },
+      },
     },
   });
 
@@ -196,7 +279,7 @@ export async function queueBookingCancellationEvent(input: {
   }
 
   await enqueueBookingCancellationOutboxEvent({
-    bookingId: booking.id,
+    booking,
     recipientEmail,
     db,
   });

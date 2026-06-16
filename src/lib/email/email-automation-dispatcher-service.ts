@@ -85,6 +85,67 @@ function computeRetryBackoffMs(attemptsSoFar: number): number {
   return Math.min(computed, 30 * 60 * 1_000);
 }
 
+function getRequiredPayloadFieldsForTemplate(templateKey: string): string[] {
+  switch (templateKey) {
+    case "booking.class-booked":
+      return [
+        "clientName",
+        "booking.classTitle",
+        "booking.startAt",
+        "booking.manageUrl",
+        "booking.cancelUrl",
+      ];
+    case "booking.class-cancelled":
+      return [
+        "clientName",
+        "booking.classTitle",
+        "booking.startAt",
+      ];
+    case "waitlist.on-list":
+    case "waitlist.not-promoted":
+      return [
+        "clientName",
+        "waitlist.classTitle",
+        "dateTimeLabel",
+        "waitlist.manageUrl",
+        "waitlistEntryId",
+      ];
+    case "waitlist.promoted":
+      return [
+        "clientName",
+        "waitlist.classTitle",
+        "dateTimeLabel",
+        "waitlist.manageUrl",
+        "waitlistEntryId",
+        "bookingId",
+      ];
+    default:
+      return [];
+  }
+}
+
+function isPresentPayloadValue(value: unknown): boolean {
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return true;
+  }
+  return value !== null && value !== undefined;
+}
+
+function assertRequiredPayloadFields(templateKey: string, payloadJson: Record<string, unknown>): void {
+  const requiredFields = getRequiredPayloadFieldsForTemplate(templateKey);
+  if (requiredFields.length < 1) {
+    return;
+  }
+
+  const missingFields = requiredFields.filter((field) => !isPresentPayloadValue(payloadJson[field]));
+  if (missingFields.length > 0) {
+    throw new Error(`EMAIL_AUTOMATION_MISSING_REQUIRED_PAYLOAD_FIELDS:${missingFields.join(",")}`);
+  }
+}
+
 async function preventResendAfterFinalizeConflict(input: {
   eventId: string;
   now: Date;
@@ -131,6 +192,7 @@ export async function dispatchEmailAutomationBatch(
       select: {
         isActive: true,
         contentSchemaVersion: true,
+        templateKey: true,
         subjectTemplate: true,
         bodyTemplateJson: true,
       },
@@ -169,6 +231,7 @@ export async function dispatchEmailAutomationBatch(
         throw new Error("EMAIL_AUTOMATION_INVALID_PAYLOAD_JSON");
       }
       const payloadJson = payloadParsed.data;
+      assertRequiredPayloadFields(template.templateKey, payloadJson);
       const deliveryContext =
         typeof payloadJson.deliveryContext === "string" && payloadJson.deliveryContext.trim().length > 0
           ? payloadJson.deliveryContext.trim()

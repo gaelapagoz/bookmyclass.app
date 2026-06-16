@@ -41,6 +41,7 @@ describe("email automation dispatcher service", () => {
     mocks.findTemplate.mockResolvedValue({
       isActive: true,
       contentSchemaVersion: 1,
+      templateKey: "auth.verify-email",
       subjectTemplate: "Welcome",
       bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello" }] },
     });
@@ -129,6 +130,7 @@ describe("email automation dispatcher service", () => {
     mocks.findTemplate.mockResolvedValue({
       isActive: false,
       contentSchemaVersion: 1,
+      templateKey: "auth.verify-email",
       subjectTemplate: "Welcome",
       bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello" }] },
     });
@@ -164,6 +166,57 @@ describe("email automation dispatcher service", () => {
       sentCount: 0,
       failedCount: 0,
       deadLetterCount: 0,
+    });
+  });
+
+  it("rejects incomplete booking payloads before send", async () => {
+    mocks.findTemplate.mockResolvedValue({
+      isActive: true,
+      contentSchemaVersion: 1,
+      templateKey: "booking.class-booked",
+      subjectTemplate: "You're booked for {{booking.classTitle}}",
+      bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}" }] },
+    });
+    mocks.acquireEmailAutomationLease.mockResolvedValue([
+      {
+        id: "evt_missing_booking_fields",
+        templateId: "tpl_booking",
+        recipientEmail: "client@example.test",
+        payloadJson: {
+          clientName: "Client",
+          "booking.classTitle": "Morning Flow",
+          "booking.startAt": "",
+          "booking.manageUrl": "",
+          "booking.cancelUrl": "",
+        },
+        attempts: 0,
+      },
+    ]);
+    mocks.finalizeEmailAutomationLease.mockResolvedValue({
+      status: "DEAD_LETTER",
+    });
+
+    const result = await dispatchEmailAutomationBatch({
+      workerId: "worker-missing-booking-fields",
+      maxEvents: 1,
+      leaseMs: 30_000,
+      now: new Date("2026-05-17T14:30:00.000Z"),
+    });
+
+    expect(mocks.sendEmailViaResend).not.toHaveBeenCalled();
+    expect(mocks.finalizeEmailAutomationLease).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: "evt_missing_booking_fields",
+        sent: false,
+        errorMessage:
+          "EMAIL_AUTOMATION_MISSING_REQUIRED_PAYLOAD_FIELDS:booking.startAt,booking.manageUrl,booking.cancelUrl",
+      }),
+    );
+    expect(result).toMatchObject({
+      leasedCount: 1,
+      sentCount: 0,
+      failedCount: 1,
+      deadLetterCount: 1,
     });
   });
 });

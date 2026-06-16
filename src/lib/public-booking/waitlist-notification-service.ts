@@ -2,9 +2,8 @@ import { enqueueEmailAutomationEvent } from "@/lib/email/email-automation-outbox
 import { ensureExpectedAutomationTemplateExists } from "@/lib/email/email-automation-admin-service";
 import { prisma } from "@/lib/db";
 import { WaitlistStatus } from "@prisma/client";
-import { resolveAppUrl } from "@/lib/config/app-url";
-import { formatSessionDateTime } from "@/lib/public-booking/format-session-date-time";
 import { bookingDraftActiveBookingFilter } from "@/lib/public-booking/booking-draft-service";
+import { buildWaitlistTemplatePayload } from "@/lib/public-booking/email-template-payloads";
 import { type WaitlistPromotionNotification } from "@/lib/public-booking/waitlist-service";
 
 const WAITLIST_ON_LIST_TEMPLATE_KEY = "waitlist.on-list";
@@ -21,44 +20,6 @@ type WaitlistJoinNotification = {
   sessionTitle: string;
   waitlistEntryId: string;
 };
-
-type WaitlistTemplatePayloadInput = {
-  clientName: string;
-  deliveryContext: string;
-  location: string | null;
-  position: number | null;
-  sessionEndsAt: Date;
-  sessionStartsAt: Date;
-  sessionTitle: string;
-  waitlistEntryId: string;
-  bookingId?: string;
-};
-
-function resolveWaitlistManageUrl(): string {
-  const appUrl = resolveAppUrl();
-  return `${appUrl}/dashboard/bookings`;
-}
-
-function buildWaitlistTemplatePayload(input: WaitlistTemplatePayloadInput) {
-  const dateTimeLabel = formatSessionDateTime({
-    startsAt: input.sessionStartsAt,
-    endsAt: input.sessionEndsAt,
-  });
-
-  return {
-    clientName: input.clientName,
-    sessionTitle: input.sessionTitle,
-    dateTimeLabel,
-    locationLabel: input.location?.trim() || "To be confirmed",
-    waitlistEntryId: input.waitlistEntryId,
-    ...(input.bookingId ? { bookingId: input.bookingId } : {}),
-    deliveryContext: input.deliveryContext,
-    "waitlist.classTitle": input.sessionTitle,
-    "waitlist.position": input.position === null ? "" : String(input.position),
-    "waitlist.promotionExpiresAt": input.sessionStartsAt.toISOString(),
-    "waitlist.manageUrl": resolveWaitlistManageUrl(),
-  };
-}
 
 function buildWaitlistPromotionEmailIdempotencyKey(input: {
   bookingId: string;

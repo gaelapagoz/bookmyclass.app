@@ -12,7 +12,7 @@ import {
   Role,
   StudioSessionStatus,
 } from "@prisma/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "./helpers/db";
 import { createClassCategory, createClassType } from "./helpers/factories";
 import { resetDb } from "./helpers/reset-db";
@@ -220,6 +220,7 @@ async function createFixture(input: {
 
 describe("booking payment options api", () => {
   let adminActor: { actorId: string; actorRole: Role };
+  const originalAppUrl = process.env.APP_URL;
 
   async function seedBookingConfirmationTemplate() {
     await prisma.emailTemplate.upsert({
@@ -256,6 +257,7 @@ describe("booking payment options api", () => {
   beforeEach(async () => {
     vi.mocked(auth).mockResolvedValue(null);
     await resetDb();
+    process.env.APP_URL = "https://studio.example.test";
     await seedBookingConfirmationTemplate();
     const admin = await prisma.user.create({
       data: {
@@ -273,6 +275,15 @@ describe("booking payment options api", () => {
       actorId: admin.id,
       actorRole: admin.role,
     };
+  });
+
+  afterEach(() => {
+    if (originalAppUrl === undefined) {
+      delete process.env.APP_URL;
+      return;
+    }
+
+    process.env.APP_URL = originalAppUrl;
   });
 
   it("single-booking intent still resolves to a payable default path when no plan exists", async () => {
@@ -718,6 +729,7 @@ describe("booking payment options api", () => {
       },
       select: {
         idempotencyKey: true,
+        payloadJson: true,
         recipientEmail: true,
         template: { select: { templateKey: true } },
       },
@@ -733,6 +745,17 @@ describe("booking payment options api", () => {
     );
     expect(confirmationOutboxEvents[0]?.recipientEmail).toBe(fixture.bookingUser.email.toLowerCase());
     expect(confirmationOutboxEvents[0]?.template.templateKey).toBe("booking.class-booked");
+    expect(confirmationOutboxEvents[0]?.payloadJson).toMatchObject({
+      bookingId: fixture.booking.id,
+      clientName: fixture.bookingUser.name,
+      sessionTitle: "Vinyasa Session",
+      "booking.classTitle": "Vinyasa Session",
+      "booking.manageUrl": "https://studio.example.test/dashboard/bookings",
+      "booking.cancelUrl": "https://studio.example.test/dashboard/bookings",
+    });
+    expect((confirmationOutboxEvents[0]?.payloadJson as { "booking.startAt"?: unknown } | null)?.["booking.startAt"]).toEqual(
+      expect.any(String),
+    );
   });
 
   it("confirms existing-credit booking even when booking confirmation template is missing", async () => {
