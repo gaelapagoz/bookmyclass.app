@@ -24,6 +24,10 @@ function getDateTimeFormatter(timeZone: string): Intl.DateTimeFormat {
   });
 }
 
+function getDateTimeLocalValue(parts: DateParts): string {
+  return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}T${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`;
+}
+
 function getTimeFormatter(timeZone: string): Intl.DateTimeFormat {
   return new Intl.DateTimeFormat("en-GB", {
     timeZone,
@@ -108,6 +112,56 @@ export function siteDateTimeToUtcDate(params: {
   year: number;
 }): Date {
   return zonedDateTimeToUtcDate(params);
+}
+
+export function formatDateTimeLocalInTimeZone(date: Date, timeZone: string): string {
+  return getDateTimeLocalValue(toParts(getDateTimeFormatter(timeZone), date));
+}
+
+export function parseDateTimeLocalInTimeZone(value: string, timeZone: string): Date | null {
+  const trimmedValue = value.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(trimmedValue);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, yearRaw, monthRaw, dayRaw, hourRaw, minuteRaw] = match;
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  const hour = Number(hourRaw);
+  const minute = Number(minuteRaw);
+
+  if (
+    !Number.isInteger(year)
+    || !Number.isInteger(month)
+    || !Number.isInteger(day)
+    || !Number.isInteger(hour)
+    || !Number.isInteger(minute)
+    || month < 1
+    || month > 12
+    || day < 1
+    || day > 31
+    || hour < 0
+    || hour > 23
+    || minute < 0
+    || minute > 59
+  ) {
+    return null;
+  }
+
+  const candidate = siteDateTimeToUtcDate({
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    timeZone,
+  });
+  const roundTripValue = formatDateTimeLocalInTimeZone(candidate, timeZone);
+
+  return roundTripValue === trimmedValue ? candidate : null;
 }
 
 export function getStudioDateKey(date: Date): string {

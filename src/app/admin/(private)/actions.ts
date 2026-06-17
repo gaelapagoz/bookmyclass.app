@@ -77,7 +77,9 @@ import {
 } from "@/lib/media";
 import { normalizeMarketingContentJson } from "@/lib/marketing/marketing-renderer";
 import { clearPublicCatalogueCaches } from "@/lib/public-catalogue/catalogue-service";
+import { parseDateTimeLocalInTimeZone } from "@/lib/public-catalogue/timezone";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
+import { getSiteTimeZone } from "@/lib/site-settings/site-settings-service";
 import { revalidatePath } from "next/cache";
 
 const classSchema = z.object({
@@ -1260,6 +1262,9 @@ export async function updateClassAction(id: string, formData: FormData) {
 
 export async function createSessionAction(formData: FormData) {
   await assertAdminAccess();
+  const timeZone = await getSiteTimeZone();
+  const startsAt = parseDateTimeLocalInTimeZone(String(formData.get("startsAt") ?? ""), timeZone);
+  const endsAt = parseDateTimeLocalInTimeZone(String(formData.get("endsAt") ?? ""), timeZone);
 
   const baseParsed = sessionBaseSchema.safeParse({
     classTemplateId: formData.get("classTemplateId"),
@@ -1273,6 +1278,10 @@ export async function createSessionAction(formData: FormData) {
   });
 
   if (!baseParsed.success) {
+    redirectWithError("/admin/sessions/new", "Please complete all required session fields.");
+  }
+
+  if (String(formData.get("scheduleMode") ?? "one_off").trim() !== "recurring" && (!startsAt || !endsAt)) {
     redirectWithError("/admin/sessions/new", "Please complete all required session fields.");
   }
 
@@ -1313,8 +1322,8 @@ export async function createSessionAction(formData: FormData) {
     } else {
       const parsed = sessionSchema.safeParse({
         ...baseParsed.data,
-        startsAt: formData.get("startsAt"),
-        endsAt: formData.get("endsAt"),
+        startsAt,
+        endsAt,
       });
 
       if (!parsed.success) {
@@ -1334,6 +1343,13 @@ export async function createSessionAction(formData: FormData) {
 export async function updateSessionAction(id: string, formData: FormData) {
   await assertAdminAccess();
   const returnTo = `/admin/sessions/${id}/edit`;
+  const timeZone = await getSiteTimeZone();
+  const startsAt = parseDateTimeLocalInTimeZone(String(formData.get("startsAt") ?? ""), timeZone);
+  const endsAt = parseDateTimeLocalInTimeZone(String(formData.get("endsAt") ?? ""), timeZone);
+
+  if (!startsAt || !endsAt) {
+    redirectWithError(returnTo, "Please complete all required session fields.");
+  }
 
   const parsed = sessionSchema.safeParse({
     classTemplateId: formData.get("classTemplateId"),
@@ -1341,8 +1357,8 @@ export async function updateSessionAction(id: string, formData: FormData) {
     title: formData.get("title"),
     description: formData.get("description") ?? undefined,
     location: formData.get("location") ?? undefined,
-    startsAt: formData.get("startsAt"),
-    endsAt: formData.get("endsAt"),
+    startsAt,
+    endsAt,
     capacity: formData.get("capacity"),
     status: formData.get("status"),
     isPublished: isChecked(formData, "isPublished"),

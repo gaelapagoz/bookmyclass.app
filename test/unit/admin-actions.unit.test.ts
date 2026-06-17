@@ -114,6 +114,10 @@ vi.mock("@/lib/admin/admin-session-service", () => ({
   upsertAdminClassScheduleConfig: vi.fn(),
 }));
 
+vi.mock("@/lib/site-settings/site-settings-service", () => ({
+  getSiteTimeZone: vi.fn(async () => "Europe/Brussels"),
+}));
+
 vi.mock("@/lib/admin/admin-booking-service", () => ({
   addSessionAttendeeByManager: vi.fn(),
   removeSessionAttendeeByManager: vi.fn(),
@@ -181,10 +185,11 @@ import {
   updateAdminPlan,
 } from "@/lib/admin/admin-catalog-core-service";
 import {
-  createAdminSession,
+  createAdminSession as createAdminSessionService,
   updateAdminSession,
   upsertAdminClassScheduleConfig,
 } from "@/lib/admin/admin-session-service";
+import { getSiteTimeZone } from "@/lib/site-settings/site-settings-service";
 import {
   addSessionAttendeeByManager,
   removeSessionAttendeeByManager,
@@ -204,6 +209,7 @@ import {
   cancelClientMembershipAction,
   createClassAction,
   createClassCategoryAction,
+  createSessionAction,
   createLearningProgramAction,
   createLearningVideoAction,
   createPlanAction,
@@ -973,6 +979,7 @@ describe("admin actions", () => {
   it("updates session and redirects back to edit page with success", async () => {
     vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
     vi.mocked(updateAdminSession).mockResolvedValue({ id: "session-1" });
+    vi.mocked(getSiteTimeZone).mockResolvedValue("Europe/Brussels");
 
     const formData = new FormData();
     formData.set("classTemplateId", "template-1");
@@ -988,7 +995,78 @@ describe("admin actions", () => {
       "NEXT_REDIRECT:/admin/sessions/session-1/edit?success=Session%20updated.",
     );
     expect(updateAdminSession).toHaveBeenCalledTimes(1);
+    expect(updateAdminSession).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        startsAt: new Date("2026-06-10T16:00:00.000Z"),
+        endsAt: new Date("2026-06-10T17:00:00.000Z"),
+      }),
+    );
     expect(revalidatePathMock).toHaveBeenCalledWith("/admin/sessions/session-1/edit");
+  });
+
+  it("creates session using the configured site timezone for datetime-local parsing", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(getSiteTimeZone).mockResolvedValue("Europe/Brussels");
+    vi.mocked(createAdminSessionService).mockResolvedValue({ id: "session-2" });
+
+    const formData = new FormData();
+    formData.set("classTemplateId", "template-1");
+    formData.set("teacherId", "teacher-1");
+    formData.set("title", "Morning Flow");
+    formData.set("startsAt", "2026-03-29T03:30");
+    formData.set("endsAt", "2026-03-29T04:30");
+    formData.set("capacity", "10");
+    formData.set("status", "SCHEDULED");
+    formData.set("isPublished", "on");
+
+    await expect(createSessionAction(formData)).rejects.toThrow("NEXT_REDIRECT:/admin/sessions");
+    expect(createAdminSessionService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        startsAt: new Date("2026-03-29T01:30:00.000Z"),
+        endsAt: new Date("2026-03-29T02:30:00.000Z"),
+      }),
+    );
+  });
+
+  it("rejects session creation when datetime-local input falls in the DST gap", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(getSiteTimeZone).mockResolvedValue("Europe/Brussels");
+
+    const formData = new FormData();
+    formData.set("classTemplateId", "template-1");
+    formData.set("teacherId", "teacher-1");
+    formData.set("title", "DST Gap");
+    formData.set("startsAt", "2026-03-29T02:30");
+    formData.set("endsAt", "2026-03-29T03:30");
+    formData.set("capacity", "10");
+    formData.set("status", "SCHEDULED");
+    formData.set("isPublished", "on");
+
+    await expect(createSessionAction(formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/sessions/new?error=Please%20complete%20all%20required%20session%20fields.",
+    );
+    expect(createAdminSessionService).not.toHaveBeenCalled();
+  });
+
+  it("rejects session updates when datetime-local input is malformed", async () => {
+    vi.mocked(auth).mockResolvedValue(createAdminSession("ADMIN"));
+    vi.mocked(getSiteTimeZone).mockResolvedValue("Europe/Brussels");
+
+    const formData = new FormData();
+    formData.set("classTemplateId", "template-1");
+    formData.set("teacherId", "teacher-1");
+    formData.set("title", "Bad Input");
+    formData.set("startsAt", "not-a-datetime");
+    formData.set("endsAt", "2026-06-10T19:00");
+    formData.set("capacity", "12");
+    formData.set("status", "SCHEDULED");
+    formData.set("isPublished", "on");
+
+    await expect(updateSessionAction("session-1", formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/sessions/session-1/edit?error=Please%20complete%20all%20required%20session%20fields.",
+    );
+    expect(updateAdminSession).not.toHaveBeenCalled();
   });
 
   it("adds attendee through service and redirects with success", async () => {

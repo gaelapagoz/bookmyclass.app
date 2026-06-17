@@ -34,13 +34,19 @@ vi.mock("@/lib/auth/require-auth", () => ({
   requireStaffSession: vi.fn(),
 }));
 
+vi.mock("@/lib/site-settings/site-settings-service", () => ({
+  getSiteTimeZone: vi.fn(),
+}));
+
 import { getAdminSessionById, getAdminSessionOptions } from "@/lib/admin/admin-session-service";
 import { requireStaffSession } from "@/lib/auth/require-auth";
+import { getSiteTimeZone } from "@/lib/site-settings/site-settings-service";
 
 import AdminSessionEditPage from "../../src/app/admin/(private)/sessions/[id]/edit/page";
 
 describe("admin session edit page", () => {
   function mockSessionPageData() {
+    vi.mocked(getSiteTimeZone).mockResolvedValue("Europe/Brussels");
     vi.mocked(getAdminSessionById).mockResolvedValue({
       id: "session-1",
       classTemplateId: "template-1",
@@ -48,8 +54,8 @@ describe("admin session edit page", () => {
       title: "Morning Flow",
       description: "desc",
       location: "Studio",
-      startsAt: new Date("2026-06-10T09:00:00.000Z"),
-      endsAt: new Date("2026-06-10T10:00:00.000Z"),
+      startsAt: new Date("2026-03-29T01:30:00.000Z"),
+      endsAt: new Date("2026-03-29T02:30:00.000Z"),
       capacity: 12,
       status: "SCHEDULED",
       isPublished: true,
@@ -120,6 +126,8 @@ describe("admin session edit page", () => {
 
     expect(vi.mocked(getAdminSessionOptions)).toHaveBeenCalledWith("session-1");
     expect(screen.getByText("Saved.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Starts At")).toHaveValue("2026-03-29T03:30");
+    expect(screen.getByLabelText("Ends At")).toHaveValue("2026-03-29T04:30");
     expect(screen.getByText("Client One")).toBeInTheDocument();
     expect(screen.getByText("client1@example.test")).toBeInTheDocument();
     expect(screen.getByText("Manual override — no credit used")).toBeInTheDocument();

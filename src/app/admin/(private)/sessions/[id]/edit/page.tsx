@@ -13,14 +13,11 @@ import AdminFormFooter from "@/components/admin/AdminFormFooter";
 import { isAdminRole } from "@/lib/auth/admin-access";
 import { requireStaffSession } from "@/lib/auth/require-auth";
 import { getAdminSessionById, getAdminSessionOptions } from "@/lib/admin/admin-session-service";
+import { formatDateTimeLocalInTimeZone } from "@/lib/public-catalogue/timezone";
+import { getSiteTimeZone } from "@/lib/site-settings/site-settings-service";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ error?: string; success?: string }>;
-
-function toDateTimeLocal(value: Date): string {
-  const iso = new Date(value).toISOString();
-  return iso.slice(0, 16);
-}
 
 export default async function AdminSessionEditPage({
   params,
@@ -32,10 +29,11 @@ export default async function AdminSessionEditPage({
   noStore();
 
   const { id } = await params;
-  const [managerSession, record, options] = await Promise.all([
+  const [managerSession, record, options, timeZone] = await Promise.all([
     requireStaffSession({ callbackUrl: `/admin/sessions/${id}/edit` }),
     getAdminSessionById(id),
     getAdminSessionOptions(id),
+    getSiteTimeZone(),
   ]);
 
   if (!record) {
@@ -128,7 +126,7 @@ export default async function AdminSessionEditPage({
               name="startsAt"
               type="datetime-local"
               required
-              defaultValue={toDateTimeLocal(record.startsAt)}
+              defaultValue={formatDateTimeLocalInTimeZone(record.startsAt, timeZone)}
               className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
             />
           </label>
@@ -138,7 +136,7 @@ export default async function AdminSessionEditPage({
               name="endsAt"
               type="datetime-local"
               required
-              defaultValue={toDateTimeLocal(record.endsAt)}
+              defaultValue={formatDateTimeLocalInTimeZone(record.endsAt, timeZone)}
               className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
             />
           </label>
