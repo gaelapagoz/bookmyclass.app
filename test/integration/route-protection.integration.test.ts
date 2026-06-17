@@ -78,6 +78,32 @@ describe("route protection", () => {
     );
   });
 
+  it("inactive authenticated user is redirected to stale-session cleanup route", async () => {
+    const user = await prisma.user.create({
+      data: {
+        name: "Inactive Client",
+        firstName: "Inactive",
+        lastName: "Client",
+        email: `inactive.route.${Date.now()}@example.test`,
+        emailVerified: new Date(),
+        isActive: false,
+      },
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    await expect(requireAuth()).rejects.toThrow(
+      "NEXT_REDIRECT:/auth/stale-session?callbackUrl=%2Fdashboard",
+    );
+  });
+
   it("verified authenticated user can access /dashboard", async () => {
     const user = await prisma.user.create({
       data: {

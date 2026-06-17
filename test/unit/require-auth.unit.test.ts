@@ -26,7 +26,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { requireAdminSession, requireTeacherSession } from "@/lib/auth/require-auth";
+import { requireAdminSession, requireTeacherSession, requireVerifiedUser } from "@/lib/auth/require-auth";
 
 describe("requireAdminSession", () => {
   beforeEach(() => {
@@ -157,5 +157,59 @@ describe("requireTeacherSession", () => {
 
     expect(session.user.role).toBe("TEACHER");
     expect(session.user.id).toBe("teacher-1");
+  });
+});
+
+describe("requireVerifiedUser", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("redirects to stale-session when the DB user is inactive even if the JWT is present", async () => {
+    authMock.mockResolvedValue({
+      user: { id: "client-1", role: "CLIENT", email: "client@example.test" },
+      expires: "2099-01-01T00:00:00.000Z",
+    });
+    findUniqueMock.mockResolvedValue({
+      role: "CLIENT",
+      email: "client@example.test",
+      emailVerified: new Date("2099-01-01T00:00:00.000Z"),
+      activationStatus: "ACTIVE",
+      isActive: false,
+    });
+
+    await expect(requireVerifiedUser()).rejects.toThrow(
+      "NEXT_REDIRECT:/auth/stale-session?callbackUrl=%2Fdashboard",
+    );
+  });
+
+  it("redirects to stale-session when the DB lookup throws", async () => {
+    authMock.mockResolvedValue({
+      user: { id: "client-1", role: "CLIENT", email: "client@example.test" },
+      expires: "2099-01-01T00:00:00.000Z",
+    });
+    findUniqueMock.mockRejectedValue(new Error("db unavailable"));
+
+    await expect(requireVerifiedUser()).rejects.toThrow(
+      "NEXT_REDIRECT:/auth/stale-session?callbackUrl=%2Fdashboard",
+    );
+  });
+
+  it("returns the session with the DB-validated role on success", async () => {
+    authMock.mockResolvedValue({
+      user: { id: "admin-1", role: "CLIENT", email: "admin@example.test" },
+      expires: "2099-01-01T00:00:00.000Z",
+    });
+    findUniqueMock.mockResolvedValue({
+      role: "ADMIN",
+      email: "admin@example.test",
+      emailVerified: null,
+      activationStatus: "ACTIVE",
+      isActive: true,
+    });
+
+    const session = await requireVerifiedUser();
+
+    expect(session.user.role).toBe("ADMIN");
   });
 });

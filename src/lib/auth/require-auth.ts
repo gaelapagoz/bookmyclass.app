@@ -1,9 +1,13 @@
 import { UserActivationStatus } from "@prisma/client";
 import { redirect } from "next/navigation";
-import type { Role } from "@prisma/client";
-import type { Session } from "next-auth";
 
 import { isAdminRole } from "@/lib/auth/admin-access";
+import {
+  getVerifiedCustomerState,
+  type AuthenticatedSession,
+  toAuthenticatedSession,
+  VERIFIED_CUSTOMER_STALE_SESSION_PATH,
+} from "@/lib/auth/verified-customer-state";
 
 async function getAuth() {
   const { auth } = await import("@/auth");
@@ -13,16 +17,9 @@ async function getAuth() {
 const DEFAULT_CUSTOMER_CALLBACK_URL = "/dashboard";
 const DEFAULT_CUSTOMER_SIGN_IN_PATH = "/sign-in";
 const DEFAULT_VERIFY_EMAIL_PATH = "/verify-email";
-const DEFAULT_STALE_SESSION_PATH = "/auth/stale-session";
+const DEFAULT_STALE_SESSION_PATH = VERIFIED_CUSTOMER_STALE_SESSION_PATH;
 const DEFAULT_ADMIN_SIGN_IN_PATH = "/admin";
 const DEFAULT_ADMIN_UNAUTHORIZED_PATH = "/admin?error=unauthorized";
-
-type AuthenticatedSession = Session & {
-  user: NonNullable<Session["user"]> & {
-    id: string;
-    role?: Role;
-  };
-};
 
 type AdminSession = AuthenticatedSession & {
   user: AuthenticatedSession["user"] & {
@@ -44,21 +41,6 @@ type StaffSession = AuthenticatedSession & {
 
 function withCallback(path: string, callbackUrl: string): string {
   return `${path}?callbackUrl=${encodeURIComponent(callbackUrl)}`;
-}
-
-function toAuthenticatedSession(session: Session | null): AuthenticatedSession | null {
-  if (!session?.user?.id) {
-    return null;
-  }
-
-  return {
-    ...session,
-    user: {
-      ...session.user,
-      id: session.user.id,
-      role: session.user.role,
-    },
-  };
 }
 
 function failAuth(shouldThrow: boolean, code: "UNAUTHENTICATED" | "FORBIDDEN", redirectTo: string): never {
@@ -90,7 +72,7 @@ export async function requireVerifiedUser(options?: {
   signInPath?: string;
   staleSessionPath?: string;
   verifyEmailPath?: string;
-}) {
+}): Promise<AuthenticatedSession> {
   const callbackUrl = options?.callbackUrl ?? DEFAULT_CUSTOMER_CALLBACK_URL;
   const staleSessionPath = options?.staleSessionPath ?? DEFAULT_STALE_SESSION_PATH;
   const verifyEmailPath = options?.verifyEmailPath ?? DEFAULT_VERIFY_EMAIL_PATH;
@@ -98,27 +80,21 @@ export async function requireVerifiedUser(options?: {
     callbackUrl,
     signInPath: options?.signInPath ?? DEFAULT_CUSTOMER_SIGN_IN_PATH,
   });
+  const customerState = await getVerifiedCustomerState(session);
 
-  const { prisma } = await import("@/lib/db");
-
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { email: true, emailVerified: true, activationStatus: true, role: true },
-  });
-
-  if (!user) {
+  if (customerState.kind === "stale-session") {
     redirect(withCallback(staleSessionPath, callbackUrl));
   }
 
-  if (user.activationStatus !== UserActivationStatus.ACTIVE) {
-    redirect(withCallback(staleSessionPath, callbackUrl));
+  if (customerState.kind === "email-verification-required") {
+    redirect(`${verifyEmailPath}?blocked=1&email=${encodeURIComponent(customerState.email)}`);
   }
 
-  if (user.role === "CLIENT" && !user.emailVerified) {
-    redirect(`${verifyEmailPath}?blocked=1&email=${encodeURIComponent(user.email)}`);
+  if (customerState.kind !== "verified") {
+    redirect(withCallback(options?.signInPath ?? DEFAULT_CUSTOMER_SIGN_IN_PATH, callbackUrl));
   }
 
-  return session;
+  return customerState.session;
 }
 
 export async function requireAdminSession(options?: {
