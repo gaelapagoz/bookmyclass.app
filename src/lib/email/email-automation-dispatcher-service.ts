@@ -101,6 +101,14 @@ function getRequiredPayloadFieldsForTemplate(templateKey: string): string[] {
         "booking.classTitle",
         "booking.startAt",
       ];
+    case "booking.class-reminder":
+      return [
+        "clientName",
+        "booking.classTitle",
+        "booking.startAt",
+        "booking.manageUrl",
+        "booking.cancelUrl",
+      ];
     case "waitlist.on-list":
     case "waitlist.not-promoted":
       return [

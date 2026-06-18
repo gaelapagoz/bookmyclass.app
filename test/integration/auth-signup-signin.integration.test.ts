@@ -317,6 +317,7 @@ describe("auth actions integration", () => {
         id: user.id,
         email,
         name: "Access User",
+        role: "CLIENT",
       },
       expires: new Date(Date.now() + 60_000).toISOString(),
     };

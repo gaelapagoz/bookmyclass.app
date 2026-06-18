@@ -302,6 +302,61 @@ describe("email automation dispatcher", () => {
     expect(getCapturedTestEmails()).toHaveLength(0);
   });
 
+  it("dead-letters incomplete reminder payloads without sending a broken email", async () => {
+    const idemKey = uniqueKey("idem-reminder-required-fields");
+    await prisma.emailTemplate.upsert({
+      where: { templateKey: "booking.class-reminder" },
+      update: {
+        name: "Booking Reminder",
+        category: "BOOKING",
+        subjectTemplate: "Reminder: {{booking.classTitle}}",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}" }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+      create: {
+        templateKey: "booking.class-reminder",
+        name: "Booking Reminder",
+        category: "BOOKING",
+        subjectTemplate: "Reminder: {{booking.classTitle}}",
+        bodyTemplateJson: { blocks: [{ type: "paragraph", text: "Hello {{clientName}}" }] },
+        contentSchemaVersion: 1,
+        isActive: true,
+      },
+    });
+    await enqueueEmailAutomationEvent({
+      templateKey: "booking.class-reminder",
+      recipientEmail: "client@example.test",
+      payloadJson: {
+        clientName: "Client",
+        "booking.classTitle": "Morning Flow",
+        "booking.startAt": "",
+        "booking.manageUrl": "",
+        "booking.cancelUrl": "",
+      },
+      idempotencyKey: idemKey,
+      maxAttempts: 1,
+      availableAt: new Date("2026-05-17T15:21:00.000Z"),
+    });
+
+    const result = await dispatchEmailAutomationBatch({
+      workerId: "dispatcher-reminder-required-fields",
+      maxEvents: 1,
+      leaseMs: 30_000,
+      now: new Date("2026-05-17T15:22:00.000Z"),
+    });
+    const event = await prisma.emailAutomationEvent.findUniqueOrThrow({
+      where: { idempotencyKey: idemKey },
+    });
+
+    expect(result).toMatchObject({ leasedCount: 1, sentCount: 0, failedCount: 1, deadLetterCount: 1 });
+    expect(event.status).toBe(EmailAutomationEventStatus.DEAD_LETTER);
+    expect(event.lastError).toBe(
+      "EMAIL_AUTOMATION_MISSING_REQUIRED_PAYLOAD_FIELDS:booking.startAt,booking.manageUrl,booking.cancelUrl",
+    );
+    expect(getCapturedTestEmails()).toHaveLength(0);
+  });
+
   it("dead-letters incomplete waitlist payloads without sending a broken email", async () => {
     const idemKey = uniqueKey("idem-waitlist-required-fields");
     await prisma.emailTemplate.upsert({

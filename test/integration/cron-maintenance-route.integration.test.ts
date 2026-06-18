@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   cleanupStaleWebhookReceipts: vi.fn(),
   dispatchEmailAutomationBatch: vi.fn(),
   reconcileMissingBookingConfirmationEvents: vi.fn(),
+  enqueueBookingReminderNotifications: vi.fn(),
   enqueueWaitlistNotPromotedNotifications: vi.fn(),
 }));
 
@@ -25,6 +26,10 @@ vi.mock("@/lib/email/email-automation-dispatcher-service", () => ({
 
 vi.mock("@/lib/public-booking/booking-confirmation-transition-service", () => ({
   reconcileMissingBookingConfirmationEvents: mocks.reconcileMissingBookingConfirmationEvents,
+}));
+
+vi.mock("@/lib/public-booking/booking-reminder-notification-service", () => ({
+  enqueueBookingReminderNotifications: mocks.enqueueBookingReminderNotifications,
 }));
 
 vi.mock("@/lib/public-booking/waitlist-notification-service", () => ({
@@ -51,6 +56,11 @@ describe("cron maintenance route integration", () => {
     mocks.reconcileMissingBookingConfirmationEvents.mockResolvedValue({
       scannedCount: 0,
       reconciledCount: 0,
+    });
+    mocks.enqueueBookingReminderNotifications.mockResolvedValue({
+      scanned: 0,
+      enqueued: 0,
+      failed: 0,
     });
     mocks.enqueueWaitlistNotPromotedNotifications.mockResolvedValue({
       scanned: 0,
@@ -118,6 +128,11 @@ describe("cron maintenance route integration", () => {
       expect(payload).toMatchObject({
         ok: true,
         expiredCouponReservations: 1,
+        bookingReminder: {
+          scanned: 0,
+          enqueued: 0,
+          failed: 0,
+        },
         waitlistNotPromoted: {
           scanned: 0,
           enqueued: 0,

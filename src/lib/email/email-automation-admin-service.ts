@@ -61,7 +61,7 @@ const EXPECTED_AUTOMATION_TEMPLATES: readonly ExpectedAutomationTemplate[] = [
   { templateKey: "subscription.renewal", triggerLabel: "Renewal Subscription", category: "Subscription", whenDescription: "Immediately on charge success", defaultSubject: "Your subscription has renewed" },
   { templateKey: "booking.class-booked", triggerLabel: "Booked Class", category: "Booking", whenDescription: "Immediately", defaultSubject: "You're booked for {{booking.classTitle}}" },
   { templateKey: "booking.class-cancelled", triggerLabel: "Class Cancelled", category: "Booking", whenDescription: "Immediately on session cancel", defaultSubject: "Class cancelled: {{booking.classTitle}}" },
-  { templateKey: "booking.class-reminder", triggerLabel: "Class Reminder", category: "Booking", whenDescription: "2x cancellation policy before start", defaultSubject: "Reminder: {{booking.classTitle}}" },
+  { templateKey: "booking.class-reminder", triggerLabel: "Class Reminder", category: "Booking", whenDescription: "24 hours before class start", defaultSubject: "Reminder: {{booking.classTitle}}" },
   { templateKey: "waitlist.on-list", triggerLabel: "On Waiting List", category: "Waitlist", whenDescription: "Immediately", defaultSubject: "You're on the waitlist for {{waitlist.classTitle}}" },
   { templateKey: "waitlist.promoted", triggerLabel: "Promoted Waiting List", category: "Waitlist", whenDescription: "Immediately on promotion", defaultSubject: "Spot available: {{waitlist.classTitle}}" },
   { templateKey: "waitlist.not-promoted", triggerLabel: "Not Promoted Waiting List", category: "Waitlist", whenDescription: "At class start", defaultSubject: "Waitlist update for {{waitlist.classTitle}}" },

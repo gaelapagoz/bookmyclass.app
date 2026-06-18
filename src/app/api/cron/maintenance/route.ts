@@ -6,6 +6,7 @@ import {
   dispatchEmailAutomationBatch,
 } from "@/lib/email/email-automation-dispatcher-service";
 import { reconcileMissingBookingConfirmationEvents } from "@/lib/public-booking/booking-confirmation-transition-service";
+import { enqueueBookingReminderNotifications } from "@/lib/public-booking/booking-reminder-notification-service";
 import { cleanupExpiredCouponReservations } from "@/lib/coupons/coupon-maintenance-service";
 import { enqueueWaitlistNotPromotedNotifications } from "@/lib/public-booking/waitlist-notification-service";
 
@@ -17,6 +18,7 @@ const CART_IDEMPOTENCY_ERROR_CODE = "CART_CHECKOUT_IDEMPOTENCY_CLEANUP_FAILED";
 const COUPON_RESERVATION_ERROR_CODE = "COUPON_RESERVATION_CLEANUP_FAILED";
 const DISPATCH_ERROR_CODE = "EMAIL_AUTOMATION_DISPATCH_FAILED";
 const BOOKING_CONFIRMATION_RECONCILE_ERROR_CODE = "BOOKING_CONFIRMATION_RECONCILE_FAILED";
+const BOOKING_REMINDER_ERROR_CODE = "BOOKING_REMINDER_ENQUEUE_FAILED";
 const WAITLIST_NOT_PROMOTED_ERROR_CODE = "WAITLIST_NOT_PROMOTED_ENQUEUE_FAILED";
 
 async function cleanupStaleCartCheckoutIdempotency(): Promise<{ deletedCount: number }> {
@@ -63,6 +65,7 @@ export async function GET(request: Request) {
     cartIdempotencyResult,
     couponReservationResult,
     bookingConfirmationResult,
+    bookingReminderResult,
     waitlistNotPromotedResult,
   ] =
     await Promise.allSettled([
@@ -71,6 +74,7 @@ export async function GET(request: Request) {
       cleanupStaleCartCheckoutIdempotency(),
       cleanupExpiredCouponReservations(),
       reconcileMissingBookingConfirmationEvents({ limit: 100 }),
+      enqueueBookingReminderNotifications({ limit: 100 }),
       enqueueWaitlistNotPromotedNotifications({ limit: 100 }),
     ]);
   const dispatcherResult = await Promise.allSettled([
@@ -96,6 +100,10 @@ export async function GET(request: Request) {
     bookingConfirmationResult.status === "fulfilled" ? bookingConfirmationResult.value : null;
   const bookingConfirmationError =
     bookingConfirmationResult.status === "rejected" ? BOOKING_CONFIRMATION_RECONCILE_ERROR_CODE : null;
+  const bookingReminder =
+    bookingReminderResult.status === "fulfilled" ? bookingReminderResult.value : null;
+  const bookingReminderError =
+    bookingReminderResult.status === "rejected" ? BOOKING_REMINDER_ERROR_CODE : null;
   const waitlistNotPromoted =
     waitlistNotPromotedResult.status === "fulfilled" ? waitlistNotPromotedResult.value : null;
   const waitlistNotPromotedError =
@@ -108,6 +116,8 @@ export async function GET(request: Request) {
   const dispatchErrorDetail = dispatcherResult.status === "rejected" ? String(dispatcherResult.reason) : null;
   const bookingConfirmationErrorDetail =
     bookingConfirmationResult.status === "rejected" ? String(bookingConfirmationResult.reason) : null;
+  const bookingReminderErrorDetail =
+    bookingReminderResult.status === "rejected" ? String(bookingReminderResult.reason) : null;
   const waitlistNotPromotedErrorDetail =
     waitlistNotPromotedResult.status === "rejected" ? String(waitlistNotPromotedResult.reason) : null;
 
@@ -141,6 +151,12 @@ export async function GET(request: Request) {
       error: bookingConfirmationErrorDetail,
     });
   }
+  if (bookingReminderError) {
+    console.error("[cron/maintenance] booking reminder enqueue failed", {
+      code: BOOKING_REMINDER_ERROR_CODE,
+      error: bookingReminderErrorDetail,
+    });
+  }
   if (waitlistNotPromotedError) {
     console.error("[cron/maintenance] waitlist not-promoted enqueue failed", {
       code: WAITLIST_NOT_PROMOTED_ERROR_CODE,
@@ -159,12 +175,14 @@ export async function GET(request: Request) {
     expiredCouponReservations,
     emailAutomationDispatch: dispatchResult,
     bookingConfirmationReconcile,
+    bookingReminder,
     waitlistNotPromoted,
     ...(cleanupError ? { cleanupError } : {}),
     ...(cartIdempotencyError ? { cartIdempotencyError } : {}),
     ...(couponReservationError ? { couponReservationError } : {}),
     ...(dispatchError ? { dispatchError } : {}),
     ...(bookingConfirmationError ? { bookingConfirmationError } : {}),
+    ...(bookingReminderError ? { bookingReminderError } : {}),
     ...(waitlistNotPromotedError ? { waitlistNotPromotedError } : {}),
   });
 }

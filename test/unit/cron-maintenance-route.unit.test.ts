@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   cleanupExpiredCouponReservations: vi.fn(),
   dispatchEmailAutomationBatch: vi.fn(),
   reconcileMissingBookingConfirmationEvents: vi.fn(),
+  enqueueBookingReminderNotifications: vi.fn(),
   enqueueWaitlistNotPromotedNotifications: vi.fn(),
 }));
 
@@ -27,6 +28,10 @@ vi.mock("@/lib/email/email-automation-dispatcher-service", () => ({
 
 vi.mock("@/lib/public-booking/booking-confirmation-transition-service", () => ({
   reconcileMissingBookingConfirmationEvents: mocks.reconcileMissingBookingConfirmationEvents,
+}));
+
+vi.mock("@/lib/public-booking/booking-reminder-notification-service", () => ({
+  enqueueBookingReminderNotifications: mocks.enqueueBookingReminderNotifications,
 }));
 
 vi.mock("@/lib/public-booking/waitlist-notification-service", () => ({
@@ -59,6 +64,11 @@ describe("cron maintenance route", () => {
     mocks.reconcileMissingBookingConfirmationEvents.mockResolvedValue({
       scannedCount: 0,
       reconciledCount: 0,
+    });
+    mocks.enqueueBookingReminderNotifications.mockResolvedValue({
+      scanned: 0,
+      enqueued: 0,
+      failed: 0,
     });
     mocks.enqueueWaitlistNotPromotedNotifications.mockResolvedValue({
       scanned: 0,
@@ -107,12 +117,20 @@ describe("cron maintenance route", () => {
         leasedCount: 1,
         sentCount: 1,
       });
+      expect(payload.bookingReminder).toEqual({
+        scanned: 0,
+        enqueued: 0,
+        failed: 0,
+      });
       expect(payload.waitlistNotPromoted).toEqual({
         scanned: 0,
         enqueued: 0,
         failed: 0,
       });
       expect(mocks.cleanupExpiredCouponReservations).toHaveBeenCalledTimes(1);
+      expect(mocks.enqueueBookingReminderNotifications).toHaveBeenCalledWith({
+        limit: 100,
+      });
       expect(mocks.enqueueWaitlistNotPromotedNotifications).toHaveBeenCalledWith({
         limit: 100,
       });
@@ -151,6 +169,11 @@ describe("cron maintenance route", () => {
       expect(payload.expiredCouponReservations).toBe(4);
       expect(payload.emailAutomationDispatch).toBeNull();
       expect(payload.dispatchError).toBe("EMAIL_AUTOMATION_DISPATCH_FAILED");
+      expect(payload.bookingReminder).toEqual({
+        scanned: 0,
+        enqueued: 0,
+        failed: 0,
+      });
     } finally {
       if (previous === undefined) {
         delete process.env.CRON_SECRET;
