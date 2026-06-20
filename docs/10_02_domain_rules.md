@@ -48,7 +48,8 @@ These rules guide the Prisma schema design and must remain consistent across the
 - Class pack
 - Subscription / membership
 - Private session
-- Workshop / special event
+- Merchandise
+- Gift card
 
 ### Product type to entitlement behavior (active)
 - `CLASS_PACK` creates a credit-pack entitlement rule with configurable credit quantity for collective classes.
@@ -76,6 +77,7 @@ Store catalog defaults are Product + Price records only: gift-card defaults are 
 ### Promotions
 - Discount codes can be applied to orders.
 - Promotions affect pricing but do not alter product structure.
+- Promotions are covered through Coupons.
 
 ---
 
@@ -102,7 +104,7 @@ Store catalog defaults are Product + Price records only: gift-card defaults are 
 - A client may have only one active booking per session.
 - Active booking statuses are `PENDING` and `CONFIRMED`.
 - Booking statuses outside active uniqueness are `CANCELLED`, `EXPIRED`, `COMPLETED`, and `NO_SHOW`.
-- Phase 3 schema migration adds `BookingStatus.EXPIRED` for expired drafts.
+- `BookingStatus.EXPIRED` already exists in the schema and is the canonical state for expired drafts.
 - `COMPLETED` and `NO_SHOW` remain historical attendance-adjacent booking states and are not part of the active partial index.
 - Cancelled and expired bookings remain rebookable historical records.
 - Rebooking creates a new booking row.
@@ -148,7 +150,6 @@ HAVING COUNT(*) > 1;
 - Do not reintroduce broad `@@unique([clientId, studioSessionId])`.
 - Rollback may recreate the original broad unique constraint only if no multiple historical rows exist.
 - Never delete booking history automatically.
-- Phase 3 schema migration resolves the `EXPIRED` status contract.
 - Expired-draft behavior must use `BookingStatus.EXPIRED`; `COMPLETED` and `NO_SHOW` must not be included in active uniqueness.
 
 ---
@@ -244,6 +245,31 @@ HAVING COUNT(*) > 1;
 - `MASTER_ADMIN` may resolve `MANUAL_REVIEW` cases only after service-level consistency verification passes.
 - Resolved reconciliation cases are hidden by default and remain filterable for operational review.
 
+### Loyalty ledger foundation (approved contract, not active runtime)
+- Loyalty points must use a separate immutable ledger from gift-card and credit ledgers.
+- Reward redemption must convert points into loyalty credit through a separate audited loyalty-credit ledger.
+- Combined wallet presentation is read-model only and must not merge loyalty mutations into gift-card services.
+- Loyalty earn, redeem, reverse, expire, and manual-grant events must use persisted idempotency keys derived from the commercial or maintenance event.
+- Loyalty balances must be derived from ledger history; no hidden mutable balance fields should become the source of truth.
+
+### Loyalty earning and reversal rules
+- Loyalty awards occur only after successful settlement in existing checkout finalization or webhook-safe flows.
+- Duplicate webhook delivery, reconciliation replay, and manual replay must not create duplicate awards.
+- Reversal writes must link back to the original earning event and must not reverse the linked event below zero.
+- Partial financial reversals use proportional reversal based on reversed eligible settled amount, rounded down to whole points.
+- Failed, expired, and unpaid checkout paths create no loyalty award.
+
+### Loyalty admin permission boundaries
+- `ADMIN` and `MASTER_ADMIN` may grant positive manual points with required reason and audit metadata.
+- `ADMIN` and `MASTER_ADMIN` own loyalty program configuration and reward definition changes.
+- Negative loyalty adjustments are not part of the first admin UX unless a separate guarded reconciliation path is explicitly approved.
+- Client-facing loyalty history and wallet views are read models only and must enforce verified active client ownership server-side.
+
+### Loyalty and gift-card separation
+- Loyalty credit must never mutate `GiftCardWallet`, `GiftCardLedgerEntry`, or `GiftCardRedemption`.
+- Gift-card reconciliation tools must not be reused to mutate loyalty balances.
+- Shared wallet UI may present both balances, but domain invariants stay isolated by service boundary.
+
 ### Entitlements
 - Entitlements are only activated after successful payment.
 
@@ -303,7 +329,7 @@ HAVING COUNT(*) > 1;
 - Booking drafts represent temporary holds on session capacity during the booking process.
 - Drafts have PENDING status and are created before payment confirmation.
 - Drafts expire automatically after 15 minutes if not confirmed.
-- Expired drafts must move to the approved `EXPIRED` contract state after Phase 3 adds or otherwise resolves that status.
+- Expired drafts must move to `BookingStatus.EXPIRED`.
 - Expired drafts do not count towards session capacity.
 - Lifecycle target: Draft -> Payment -> Confirmed OR Expired.
 - If payment arrives after expiration, the booking is not confirmed, and payment must be rejected and escalated for operational handling.

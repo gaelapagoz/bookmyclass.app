@@ -159,9 +159,51 @@ TEACHER users cannot use this override.
 
 ## 8. Loyalty Program
 
-Loyalty points are not implemented in the active runtime.
+Loyalty points are not implemented in the active runtime today.
 
-Any future loyalty design, earning, redemption, or coupon-combination behavior is out of scope until a dedicated loyalty implementation plan is approved and shipped.
+The approved loyalty contract is frozen for future implementation and must not be treated as active until later slices land.
+
+### 8.1 Activation scope
+- Loyalty v1 starts with spend-based earning only.
+- Sign-up, booking, attendance, and other action-based earning are deferred.
+- Redemption, loyalty-credit checkout application, and public explainer behavior are deferred until the later loyalty slices.
+
+### 8.2 Eligible-product rules
+- Eligible loyalty earning products must be explicitly allowlisted before any earning runs in production.
+- The allowlist must use Product + Price catalog records as the source of truth.
+- Default v1 earning scope is one-time, non-recurring products only.
+- Gift-card product purchases may be allowlisted for earning when purchased through an eligible paid order.
+- Recurring subscription carts are excluded from loyalty earning and loyalty-credit application.
+
+### 8.3 Spend-based earning basis
+- Points are awarded only after successful payment settlement in the existing finalization/webhook-safe flows.
+- Checkout creation, pending drafts, failed checkouts, expired checkouts, and unpaid orders do not earn points.
+- Earning uses the final settled net amount actually paid for eligible items after coupon discounts.
+- Amounts funded by gift-card wallet value or loyalty credit do not earn additional loyalty points.
+
+### 8.4 Financial reversal policy
+- Customer refunds are not a supported loyalty flow because customer-facing refunds are not supported in the business model.
+- Chargebacks, operator payment invalidation, and equivalent financial reversals must create explicit reversing loyalty ledger entries.
+- Partial reversals use proportional point reversal from the reversed eligible settled amount, rounded down to whole points.
+- Reversal processing must be idempotent and linked to the original earning event.
+
+### 8.5 Manual grant policy
+- Only `ADMIN` and `MASTER_ADMIN` may create manual loyalty point grants.
+- Manual grants require an actor, reason, timestamp, and audit metadata.
+- Manual grant amounts must be upper-bounded by server-side validation before write.
+- Negative manual point adjustments are not part of the first admin UX and require separate approved reconciliation behavior before implementation.
+
+### 8.6 Combined wallet rule
+- Loyalty credit and gift-card wallet balances may appear together in client wallet read models.
+- Gift-card wallet and loyalty value remain separate balances with separate mutation rules.
+- Loyalty must not reuse or merge into the gift-card wallet implementation.
+
+### 8.7 Loyalty non-goals for this scope
+- Do not introduce plan-based loyalty abstractions.
+- Do not infer loyalty eligibility from frontend state.
+- Do not award points before settlement.
+- Do not allow loyalty-credit use on recurring carts.
+- Do not treat gift-card-funded or loyalty-funded spend as point-earning spend.
 
 ---
 
@@ -187,6 +229,7 @@ This applies to:
 - Individual bookings
 - Missed classes
 - Late cancellations
+- Products purchased with gift cards or loyalty credits
 
 ### 10.2 Credit Returns
 Credits are returned only when:

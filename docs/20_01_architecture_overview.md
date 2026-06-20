@@ -16,16 +16,22 @@ Purpose: describe the current application architecture from repository evidence.
 ## Active Product Flows (Confirmed)
 - Sign up, email verification, sign in, password reset.
 - Booking draft, payment-option selection, Stripe checkout, confirmation/reconciliation.
+- Waitlist join, cancel, and auto-promotion for collective classes.
+- Dashboard booking, subscription, wallet, and profile paths.
+- Kiosk and dashboard self check-in flows under the existing attendance model.
 - Subscription checkout + billing portal.
-- Dashboard booking/subscription/profile paths.
-- Admin operations for catalog, sessions, users, subscriptions, learning, marketing, inbox.
+- Store customer flows for merchandise and gift cards.
+- Online learning catalog/admin surfaces are present in the current application footprint.
+- Admin operations for catalog, sessions, users, subscriptions, learning, marketing, inbox, store-adjacent catalog, and related commerce management.
 - Admin-only `Automations` placeholder page exists at `/admin/automations` (informational only, no configuration engine).
 - Manual session roster operations remain service-enforced: admin can add/remove attendees and may use an audited no-credit override; teacher can manage only assigned sessions and remains eligibility-only.
 
-## Known Non-Goals / Not Fully Active
-- Waitlist auto-promotion is active for collective classes.
-- No-show runtime operations remain modeled but not fully active.
-- Teacher workflow coverage/enforcement is not fully confirmed.
+## Not Fully Active / Not Yet Introduced
+- No-show runtime operations remain modeled but not fully confirmed as active end-to-end.
+- Teacher workflow coverage/enforcement is not fully confirmed across all operational routes.
+- Loyalty points are not yet an active runtime capability at the time of this document update; the loyalty roadmap and scaffolds define the target state but not current production reality.
+- The approved loyalty target keeps mutation ownership in future `src/lib/loyalty/*` services, with checkout, webhook, cart, dashboard, and admin layers limited to orchestration and read models.
+- Any future combined wallet UI is read-model only; loyalty and gift-card mutation invariants remain separate.
 
 ## Canonical References
 - `docs/00_01_system_baseline.md`
