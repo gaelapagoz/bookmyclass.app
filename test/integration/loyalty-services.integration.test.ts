@@ -157,7 +157,6 @@ async function createPaidOrder(input: {
     })),
   });
 
-  let payment: Awaited<ReturnType<typeof prisma.payment.create>>;
   if (giftCardAmountMinor > 0) {
     await prisma.payment.create({
       data: {
@@ -172,7 +171,7 @@ async function createPaidOrder(input: {
     });
   }
 
-  payment = await prisma.payment.create({
+  const payment = await prisma.payment.create({
     data: {
       orderId: order.id,
       status: PaymentStatus.SUCCEEDED,
