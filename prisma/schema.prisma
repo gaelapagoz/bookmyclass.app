@@ -204,6 +204,13 @@ enum GiftCardRedemptionStatus {
   RELEASED
 }
 
+enum LoyaltyPointsLedgerEntryType {
+  EARN
+  MANUAL_GRANT
+  REVERSAL
+  EXPIRE
+}
+
 enum GiftCardReconciliationStatus {
   OPEN
   RETRYING
@@ -380,6 +387,8 @@ model User {
   clientEntitlements                  ClientEntitlement[]          @relation("ClientEntitlementClient")
   creditLedgerEntries                 CreditLedgerEntry[]          @relation("UserCreditLedger")
   createdCreditLedgerEntries          CreditLedgerEntry[]          @relation("CreditLedgerEntryCreatedBy")
+  loyaltyPointsLedgerEntries          LoyaltyPointsLedgerEntry[]   @relation("LoyaltyPointsLedgerClient")
+  createdLoyaltyPointsLedgerEntries   LoyaltyPointsLedgerEntry[]   @relation("LoyaltyPointsLedgerCreatedBy")
   giftCardWallets                     GiftCardWallet[]             @relation("GiftCardWalletClient")
   giftCardLedgerEntries               GiftCardLedgerEntry[]        @relation("GiftCardLedgerEntryClient")
   giftCardRedemptions                 GiftCardRedemption[]         @relation("GiftCardRedemptionClient")
@@ -503,6 +512,7 @@ model Product {
   prices                Price[]
   couponEligibilities   CouponEligibility[]
   entitlementRules      EntitlementRule[]
+  loyaltyEligibilities  LoyaltyEligibleProduct[]
   clientEntitlements    ClientEntitlement[]
   orderItems            OrderItem[]
   subscriptionContracts SubscriptionContract[]
@@ -855,6 +865,7 @@ model Order {
   bookings                    Booking[]                    @relation("BookingOrder")
   clientEntitlements          ClientEntitlement[]
   creditLedgerEntries         CreditLedgerEntry[]
+  loyaltyPointsLedgerEntries  LoyaltyPointsLedgerEntry[]
   couponId                    String?
   couponCodeSnapshot          String?
   coupon                      Coupon?                     @relation(fields: [couponId], references: [id], onDelete: SetNull)
@@ -920,6 +931,7 @@ model Payment {
   order                       Order?                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
   booking                     Booking?                     @relation("BookingPayment", fields: [bookingId], references: [id], onDelete: SetNull)
   couponRedemptions           CouponRedemption[]
+  loyaltyPointsLedgerEntries  LoyaltyPointsLedgerEntry[]
   giftCardLedgerEntries       GiftCardLedgerEntry[]
   giftCardReconciliationCases GiftCardReconciliationCase[]
   createdAt                   DateTime                     @default(now())
@@ -1016,6 +1028,69 @@ model GiftCardRedemption {
   @@index([orderId, status])
   @@index([expiresAt])
   @@index([createdAt])
+}
+
+model LoyaltyProgram {
+  id                     String                   @id @default(cuid())
+  currencyCode           String                   @unique
+  isActive               Boolean                  @default(false)
+  earningPoints          Int
+  earningAmountMinor     Int
+  pointsExpireAfterDays  Int
+  expirationReminderDays Int?
+  maxManualGrantPoints   Int
+  eligibleProducts       LoyaltyEligibleProduct[]
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+
+  @@index([isActive])
+}
+
+model LoyaltyEligibleProduct {
+  id        String         @id @default(cuid())
+  programId String
+  productId String
+  isActive  Boolean        @default(true)
+  program   LoyaltyProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  product   Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([programId, productId])
+  @@index([productId])
+  @@index([programId, isActive])
+}
+
+model LoyaltyPointsLedgerEntry {
+  id             String                        @id @default(cuid())
+  clientId       String
+  entryType      LoyaltyPointsLedgerEntryType
+  amountPoints   Int
+  currencyCode   String
+  orderId        String?
+  paymentId      String?
+  sourceEntryId  String?
+  createdById    String?
+  reason         String?
+  idempotencyKey String                        @unique
+  /// `MANUAL_GRANT` rows must include audit metadata; enforced by the SQL migration constraint.
+  metadata       Json?
+  happenedAt     DateTime                      @default(now())
+  expiresAt      DateTime?
+  client         User                          @relation("LoyaltyPointsLedgerClient", fields: [clientId], references: [id], onDelete: Restrict)
+  order          Order?                        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  payment        Payment?                      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  sourceEntry    LoyaltyPointsLedgerEntry?     @relation("LoyaltyPointsLedgerSource", fields: [sourceEntryId], references: [id], onDelete: Restrict)
+  derivedEntries LoyaltyPointsLedgerEntry[]    @relation("LoyaltyPointsLedgerSource")
+  createdBy      User?                         @relation("LoyaltyPointsLedgerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime                      @default(now())
+
+  @@index([clientId, happenedAt])
+  @@index([clientId, entryType, happenedAt])
+  @@index([orderId])
+  @@index([paymentId])
+  @@index([sourceEntryId])
+  @@index([expiresAt])
 }
 
 model GiftCardReconciliationCase {
