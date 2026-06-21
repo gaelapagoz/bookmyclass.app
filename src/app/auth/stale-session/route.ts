@@ -29,6 +29,8 @@ const STALE_SESSION_COOKIE_NAMES = [
 export async function GET(request: NextRequest) {
   const callbackPath = getSafeCallbackPath(request.nextUrl.searchParams.get("callbackUrl"));
   const destination = `/sign-in?callbackUrl=${encodeURIComponent(callbackPath)}`;
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  const isSecureRequest = request.nextUrl.protocol === "https:" || forwardedProto === "https";
   const response = new NextResponse(null, {
     status: 307,
     headers: {
@@ -42,6 +44,7 @@ export async function GET(request: NextRequest) {
       value: "",
       maxAge: 0,
       path: "/",
+      secure: isSecureRequest,
     });
   }
 

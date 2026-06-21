@@ -45,4 +45,17 @@ describe("GET /auth/stale-session", () => {
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe("/sign-in?callbackUrl=%2Fdashboard");
   });
+
+  it("marks cleared cookies as secure for https requests", async () => {
+    const request = new NextRequest(
+      "https://demo.bookmyclass.app/auth/stale-session?callbackUrl=%2Fdashboard",
+    );
+
+    const response = await handleStaleSession(request);
+    const setCookieText = getSetCookieHeaders(response).join("\n");
+
+    expect(setCookieText).toContain("__Secure-authjs.session-token=;");
+    expect(setCookieText).toContain("__Host-authjs.csrf-token=;");
+    expect(setCookieText).toContain("Secure");
+  });
 });
