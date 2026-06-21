@@ -24,6 +24,7 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     user: {
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
     },
   },
 }));
@@ -46,6 +47,7 @@ import SignUpPage from "../../src/app/(public)/sign-up/page";
 import ForgotPasswordPage from "../../src/app/(public)/forgot-password/page";
 import { auth } from "../../src/auth";
 import { redirect } from "next/navigation";
+import { prisma } from "../../src/lib/db";
 
 describe("Auth pages UI", () => {
   it("renders sign-up page", async () => {
@@ -120,6 +122,13 @@ describe("Auth pages UI", () => {
         name: "Client",
       },
       expires: new Date(Date.now() + 60_000).toISOString(),
+    });
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({
+      email: "client@example.com",
+      emailVerified: new Date(),
+      activationStatus: "ACTIVE",
+      isActive: true,
+      role: "CLIENT",
     });
 
     await SignUpPage({

@@ -776,6 +776,7 @@ const setAutomationTemplateStatusSchema = z.object({
 export async function setAutomationTemplateStatus(input: z.input<typeof setAutomationTemplateStatusSchema>): Promise<void> {
   const parsed = setAutomationTemplateStatusSchema.parse(input);
   const templateKey = getCanonicalAutomationTemplateKey(parsed.templateKey);
+  await ensureExpectedAutomationTemplateExists(templateKey);
   if (parsed.templateKey !== templateKey) {
     await reconcileLegacyAutomationTemplateKey(templateKey);
   }
@@ -818,6 +819,7 @@ const bulkSetAutomationTemplateStatusSchema = z.object({
 export async function bulkSetAutomationTemplateStatus(input: z.input<typeof bulkSetAutomationTemplateStatusSchema>): Promise<number> {
   const parsed = bulkSetAutomationTemplateStatusSchema.parse(input);
   const templateKeys = [...new Set(parsed.templateKeys.map((templateKey) => getCanonicalAutomationTemplateKey(templateKey)))];
+  await Promise.all(templateKeys.map((templateKey) => ensureExpectedAutomationTemplateExists(templateKey)));
   const includesLegacyAlias = parsed.templateKeys.some((templateKey) => getCanonicalAutomationTemplateKey(templateKey) !== templateKey);
   if (includesLegacyAlias) {
     await Promise.all(templateKeys.map((templateKey) => reconcileLegacyAutomationTemplateKey(templateKey)));

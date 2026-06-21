@@ -512,6 +512,41 @@ describe("email-automation-admin-service", () => {
     });
   });
 
+  describe("draft automation activation", () => {
+    it("creates and activates an expected draft automation on first activation", async () => {
+      await setAutomationTemplateStatus({
+        templateKey: "booking.welcome",
+        isActive: true,
+      });
+
+      const created = await prisma.emailTemplate.findUnique({
+        where: { templateKey: "booking.welcome" },
+      });
+
+      expect(created).not.toBeNull();
+      expect(created?.isActive).toBe(true);
+      expect(created?.name).toBe("Welcome");
+    });
+
+    it("bulk-creates and activates expected draft automations", async () => {
+      const updatedCount = await bulkSetAutomationTemplateStatus({
+        templateKeys: ["booking.class-cancelled", "booking.class-reminder"],
+        isActive: true,
+      });
+
+      const templates = await prisma.emailTemplate.findMany({
+        where: {
+          templateKey: { in: ["booking.class-cancelled", "booking.class-reminder"] },
+        },
+        orderBy: { templateKey: "asc" },
+      });
+
+      expect(updatedCount).toBe(2);
+      expect(templates).toHaveLength(2);
+      expect(templates.every((template) => template.isActive)).toBe(true);
+    });
+  });
+
   describe("replayAutomationDeadLetterEvent", () => {
     it("transitions a DEAD_LETTER event back to PENDING with reset state", async () => {
       const t = await createTemplate({});
