@@ -245,7 +245,7 @@ HAVING COUNT(*) > 1;
 - `MASTER_ADMIN` may resolve `MANUAL_REVIEW` cases only after service-level consistency verification passes.
 - Resolved reconciliation cases are hidden by default and remain filterable for operational review.
 
-### Loyalty ledger foundation (approved contract, not active runtime)
+### Loyalty ledger foundation (spend earning active)
 - Loyalty points must use a separate immutable ledger from gift-card and credit ledgers.
 - Reward redemption must convert points into loyalty credit through a separate audited loyalty-credit ledger.
 - Combined wallet presentation is read-model only and must not merge loyalty mutations into gift-card services.

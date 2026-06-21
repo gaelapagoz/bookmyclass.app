@@ -168,6 +168,29 @@ async function seedCheckoutReadyCatalog(input?: {
   return { product, price };
 }
 
+async function seedActiveLoyaltyProgramForProduct(productId: string) {
+  const program = await prisma.loyaltyProgram.create({
+    data: {
+      currencyCode: "EUR",
+      isActive: true,
+      earningPoints: 1,
+      earningAmountMinor: 100,
+      pointsExpireAfterDays: 180,
+      expirationReminderDays: 30,
+      maxManualGrantPoints: 5_000,
+    },
+    select: { id: true },
+  });
+
+  await prisma.loyaltyEligibleProduct.create({
+    data: {
+      programId: program.id,
+      productId,
+      isActive: true,
+    },
+  });
+}
+
 async function seedCoupon(input?: {
   code?: string;
   discountType?: CouponDiscountType;
@@ -2290,6 +2313,7 @@ describe("POST /api/cart/checkout — Slice 1D coupon checkout", () => {
       productType: ProductType.MERCHANDISE,
       unitAmountMinor: 2500,
     });
+    await seedActiveLoyaltyProgramForProduct(product.id);
     const coupon = await seedCoupon({
       code: "FREE2500",
       discountType: CouponDiscountType.FIXED_AMOUNT,
@@ -2348,6 +2372,9 @@ describe("POST /api/cart/checkout — Slice 1D coupon checkout", () => {
         totalAfterMinor: 0,
       }),
     ]);
+    await expect(prisma.loyaltyPointsLedgerEntry.count({
+      where: { orderId: order.id },
+    })).resolves.toBe(0);
   });
 
   it("ignores expired reserved coupon rows when enforcing usage limits", async () => {
@@ -3525,6 +3552,7 @@ describe("POST /api/cart/checkout — Slice 5 wallet checkout", () => {
       productType: ProductType.MERCHANDISE,
       unitAmountMinor: 2500,
     });
+    await seedActiveLoyaltyProgramForProduct(product.id);
     await prisma.giftCardWallet.create({
       data: { clientId: client.id, currencyCode: "EUR", balanceMinor: 2500 },
     });
@@ -3569,6 +3597,9 @@ describe("POST /api/cart/checkout — Slice 5 wallet checkout", () => {
       reservedAmountMinor: 2500,
       capturedAmountMinor: 2500,
     });
+    await expect(prisma.loyaltyPointsLedgerEntry.count({
+      where: { orderId: order.id },
+    })).resolves.toBe(0);
   });
 
   it("partial wallet plus Stripe creates reservation, GIFT_CARD payment, and Stripe payment", async () => {

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 
 import { auth, signIn } from "@/auth";
+import { resolvePublicAuthPageRedirect } from "@/lib/auth/public-auth-page";
 import { getSignInEligibilityUserByEmail } from "@/lib/auth/sign-in-service";
 import { getSafeCallbackPath, getPostSignInRedirectUrl } from "@/lib/auth/safe-callback-url";
 import { isInvalidCredentialsAuthError } from "@/lib/auth/auth-error-utils";
@@ -110,13 +111,16 @@ export default async function SignInPage({
   searchParams: SearchParams;
 }) {
   const session = await auth();
-  if (session?.user) {
-    redirect("/dashboard");
-  }
-
   const { callbackUrl: rawCallbackUrl = "/dashboard", error, email: rawEmail, password_reset } = await searchParams;
   const email = String(rawEmail ?? "").trim();
   const callbackUrl = getSafeCallbackPath(rawCallbackUrl, "/dashboard");
+  const sessionRedirectTarget = await resolvePublicAuthPageRedirect({
+    session,
+    callbackUrl,
+  });
+  if (sessionRedirectTarget) {
+    redirect(sessionRedirectTarget);
+  }
   const errorMessage = getErrorMessage(error);
   const csrfToken = await createCsrfToken();
   const csrfFieldName = getCsrfFieldName();

@@ -15,7 +15,7 @@ Purpose: document the current service-first boundaries and where logic belongs.
 - Subscription domain: `src/lib/subscription/*`.
 - Gift-card wallet foundation: `src/lib/gift-cards/*`.
 - Gift-card admin visibility, reconciliation note handling, and manual-review resolution checks: `src/lib/gift-cards/gift-card-admin-service.ts`.
-- Loyalty domain ownership for approved future slices: `src/lib/loyalty/*`.
+- Loyalty domain ownership for active spend-earning and approved follow-up slices: `src/lib/loyalty/*`.
 - Store catalog setup, read models, fulfillment wording, and wallet cap pre-check: `src/lib/store/*`.
 - Dashboard domain: `src/lib/dashboard/*`.
 - Admin domain: `src/lib/admin/*`.

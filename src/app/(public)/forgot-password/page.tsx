@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { auth } from "@/auth";
+import { resolvePublicAuthPageRedirect } from "@/lib/auth/public-auth-page";
 import { requestPasswordReset } from "@/lib/auth/password-service";
 import { assertValidCsrfToken, createCsrfToken, getCsrfFieldName } from "@/lib/security/csrf-token";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
@@ -17,8 +18,11 @@ export default async function ForgotPasswordPage({
   searchParams: SearchParams;
 }) {
   const session = await auth();
-  if (session?.user) {
-    redirect("/dashboard");
+  const sessionRedirectTarget = await resolvePublicAuthPageRedirect({
+    session,
+  });
+  if (sessionRedirectTarget) {
+    redirect(sessionRedirectTarget);
   }
 
   const params = await searchParams;

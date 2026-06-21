@@ -122,6 +122,11 @@ async function createDropInBookingFixture() {
       name: "Client",
       email: `client.wh-svc.${ts}@example.test`,
       role: Role.CLIENT,
+      activationStatus: "ACTIVE",
+      isActive: true,
+      isInactive: false,
+      emailVerified: new Date(),
+      emailVerifiedAt: new Date(),
     },
   });
 
@@ -169,6 +174,29 @@ async function createDropInBookingFixture() {
   });
 
   return { booking, payment, order, client, price };
+}
+
+async function seedActiveLoyaltyProgramForProduct(productId: string) {
+  const program = await prisma.loyaltyProgram.create({
+    data: {
+      currencyCode: "EUR",
+      isActive: true,
+      earningPoints: 1,
+      earningAmountMinor: 100,
+      pointsExpireAfterDays: 180,
+      expirationReminderDays: 30,
+      maxManualGrantPoints: 5_000,
+    },
+    select: { id: true },
+  });
+
+  await prisma.loyaltyEligibleProduct.create({
+    data: {
+      programId: program.id,
+      productId,
+      isActive: true,
+    },
+  });
 }
 
 async function createPlanPurchaseBookingFixture() {
@@ -649,6 +677,56 @@ describe("processStripeWebhookEvent — checkout.session.completed", () => {
     expect(updatedBooking?.status).toBe(BookingStatus.CONFIRMED);
     expect(receipt?.status).toBe(StripeWebhookReceiptStatus.PROCESSED);
     expect(confirmationOutboxCount).toBe(1);
+  });
+
+  it("awards loyalty exactly once across webhook replay for eligible settled checkout", async () => {
+    const { booking, payment, order } = await createDropInBookingFixture();
+    const orderItem = await prisma.orderItem.create({
+      data: {
+        orderId: order.id,
+        productId: booking.selectedPriceId ? (
+          await prisma.price.findUniqueOrThrow({
+            where: { id: booking.selectedPriceId },
+            select: { productId: true },
+          })
+        ).productId : "",
+        priceId: booking.selectedPriceId!,
+        quantity: 1,
+        productNameSnapshot: "Drop-In Class",
+        priceNameSnapshot: "Drop-In Price",
+        unitAmountMinor: 2500,
+        lineSubtotalAmountMinor: 2500,
+        lineDiscountAmountMinor: 0,
+        lineTotalAmountMinor: 2500,
+        currencyCode: "EUR",
+      },
+      select: { productId: true },
+    });
+    await seedActiveLoyaltyProgramForProduct(orderItem.productId);
+
+    const event = buildCheckoutCompletedEvent(
+      "evt_test_wh_loyalty_001",
+      "cs_test_wh_loyalty_001",
+      "pi_test_wh_loyalty_001",
+      payment.id,
+      booking.id,
+    );
+
+    await processStripeWebhookEvent(event as unknown as import("stripe").default.Event);
+    await processStripeWebhookEvent(event as unknown as import("stripe").default.Event);
+
+    const loyaltyEntries = await prisma.loyaltyPointsLedgerEntry.findMany({
+      where: { orderId: order.id, paymentId: payment.id },
+      select: { entryType: true, amountPoints: true, idempotencyKey: true },
+    });
+
+    expect(loyaltyEntries).toEqual([
+      expect.objectContaining({
+        entryType: "EARN",
+        amountPoints: 25,
+        idempotencyKey: `loyalty:earn:payment:${payment.id}`,
+      }),
+    ]);
   });
 
   it("booking plan purchase grants credits and consumes exactly one credit", async () => {

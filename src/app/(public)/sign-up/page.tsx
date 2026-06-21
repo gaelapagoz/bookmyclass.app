@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 
 import { auth } from "@/auth";
+import { resolvePublicAuthPageRedirect } from "@/lib/auth/public-auth-page";
 import { hashPassword } from "@/lib/auth/password-service";
 import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
 import { createPendingPublicRegistration, hasOpenPendingRegistration } from "@/lib/auth/user-identity-service";
@@ -112,8 +113,12 @@ export default async function SignUpPage({
   const session = await auth();
   const { error, callbackUrl: rawCallbackUrl = "/dashboard", email } = await searchParams;
   const callbackUrl = getSafeCallbackPath(rawCallbackUrl, "/dashboard");
-  if (session?.user) {
-    redirect(callbackUrl);
+  const sessionRedirectTarget = await resolvePublicAuthPageRedirect({
+    session,
+    callbackUrl,
+  });
+  if (sessionRedirectTarget) {
+    redirect(sessionRedirectTarget);
   }
 
   const errorMessage = getErrorMessage(error);

@@ -159,9 +159,9 @@ TEACHER users cannot use this override.
 
 ## 8. Loyalty Program
 
-Loyalty points are not implemented in the active runtime today.
+Loyalty spend-based earning is active for eligible settled one-time orders.
 
-The approved loyalty contract is frozen for future implementation and must not be treated as active until later slices land.
+Redemption, loyalty-credit checkout application, public explainer activation, and other action-based earning remain deferred.
 
 ### 8.1 Activation scope
 - Loyalty v1 starts with spend-based earning only.

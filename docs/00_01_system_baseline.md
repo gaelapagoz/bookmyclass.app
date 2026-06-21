@@ -200,7 +200,8 @@ Evidence label legend used in this file:
   - Scheduling/booking: `ClassCategory`, `ClassType`, `ClassTemplate`, `RecurringRule`, `StudioSession`, `Booking`, `BookingPolicy`, `WaitlistEntry`, `AttendanceRecord`.
   - Commerce: `Order`, `OrderItem`, `Payment`, `SubscriptionContract`, `ClientEntitlement`, `CreditLedgerEntry`.
   - Gift cards: `GiftCardWallet`, `GiftCardLedgerEntry`, `GiftCardRedemption`, `GiftCardReconciliationCase` foundation tables.
-  - Loyalty foundation: `LoyaltyProgram`, `LoyaltyEligibleProduct`, and `LoyaltyPointsLedgerEntry` exist for future slices, but loyalty runtime flows remain inactive.
+  - Loyalty runtime: spend-based earning is active for eligible settled one-time orders through `LoyaltyProgram`, `LoyaltyEligibleProduct`, and `LoyaltyPointsLedgerEntry`.
+  - Loyalty deferred scope: redemption, loyalty-credit checkout application, public explainer activation, and other action-based earning remain inactive.
   - Admin/support/marketing/content: `AuditLog`, `AdminNote`, `ContactMessage`, `ClientMessage`, `PublicDocument`, learning and marketing models.
   - Evidence status: Confirmed from repo (`prisma/schema.prisma`).
 - Key relationships:

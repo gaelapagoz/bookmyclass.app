@@ -1756,6 +1756,10 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
         orderPayment.giftCardPaymentId ??
         orderPayment.paymentId,
       internalPaymentIds: [orderPayment.giftCardPaymentId, orderPayment.zeroPaymentId],
+      loyaltyMetadata: {
+        source: CART_CHECKOUT_SOURCE,
+        idempotencyKey: input.idempotencyKey,
+      },
       giftCardCapture:
         orderPayment.redemptionId && orderPayment.giftCardPaymentId
           ? {

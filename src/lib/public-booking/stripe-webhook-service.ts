@@ -1125,6 +1125,11 @@ async function handleCheckoutCompleted(
         paymentId: payment.id,
         stripeCheckoutSessionId: session.id,
         internalPaymentIds: capturedGiftCardPaymentId ? [capturedGiftCardPaymentId] : [],
+        loyaltyMetadata: {
+          source: "stripe-webhook",
+          checkoutSource,
+          webhookCheckoutSessionId: session.id,
+        },
       });
     } catch (error) {
       if (error instanceof CouponSettlementAfterPaymentError) {

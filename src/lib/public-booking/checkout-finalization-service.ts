@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { fulfillPaidCartOrder } from "@/lib/fulfillment/order-fulfillment-service";
 import type { GiftCardActor } from "@/lib/gift-cards/gift-card-types";
 import { captureGiftCardRedemption } from "@/lib/gift-cards/gift-card-wallet-service";
+import { settleLoyaltyForSettledOrder } from "@/lib/loyalty/loyalty-settlement-service";
 import { transitionBookingToConfirmedAndQueueEmail } from "@/lib/public-booking/booking-confirmation-transition-service";
 import { ensureCartOrderOwnershipFromPersistedItems } from "@/lib/public-booking/checkout-ownership-service";
 
@@ -27,6 +28,7 @@ export async function settleSuccessfulCheckoutOrder(input: {
   paymentId?: string | null;
   stripeCheckoutSessionId?: string | null;
   internalPaymentIds?: Array<string | null | undefined>;
+  loyaltyMetadata?: Record<string, unknown>;
   giftCardCapture?:
     | {
         actor: GiftCardActor;
@@ -88,6 +90,17 @@ export async function settleSuccessfulCheckoutOrder(input: {
       );
     }
   });
+
+  if (input.paymentId) {
+    await settleLoyaltyForSettledOrder({
+      orderId: input.orderId,
+      paymentId: input.paymentId,
+      metadata: {
+        ...(input.loyaltyMetadata ?? {}),
+        stripeCheckoutSessionId: input.stripeCheckoutSessionId ?? null,
+      },
+    });
+  }
 }
 
 export async function finalizeCartOrderCompletion(input: {
