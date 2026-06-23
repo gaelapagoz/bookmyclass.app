@@ -15,7 +15,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "../../src/lib/db";
 import {
+  archiveLoyaltyRewardDefinitionByAdmin,
   getAdminLoyaltyClientDetails,
+  saveLoyaltyRewardDefinitionByAdmin,
   grantManualLoyaltyPointsByAdmin,
   listAdminLoyaltyClientsByActor,
   upsertLoyaltyProgramSettingsByAdmin,
@@ -25,6 +27,14 @@ import {
   expireLoyaltyPointsEntry,
   reverseLoyaltyPointsEntry,
 } from "../../src/lib/loyalty/loyalty-points-service";
+import {
+  captureLoyaltyCreditReservation,
+  getLoyaltyCreditBalance,
+  listActiveLoyaltyRewards,
+  redeemLoyaltyReward,
+  releaseLoyaltyCreditReservation,
+  reserveLoyaltyCreditValue,
+} from "../../src/lib/loyalty/loyalty-redemption-service";
 import { getClientLoyaltySummary, listClientLoyaltyHistory } from "../../src/lib/loyalty/loyalty-read-service";
 import { resetDb } from "./helpers/reset-db";
 
@@ -186,18 +196,6 @@ async function createPaidOrder(input: {
   return { order, payment };
 }
 
-function makeRewardConfig(input?: {
-  rewardName?: string;
-  rewardPointsRequired?: number;
-  rewardAmountMinor?: number;
-}) {
-  return {
-    rewardName: input?.rewardName ?? "5 EURO Reward",
-    rewardPointsRequired: input?.rewardPointsRequired ?? 500,
-    rewardAmountMinor: input?.rewardAmountMinor ?? 500,
-  };
-}
-
 describe("loyalty core services", () => {
   beforeEach(async () => {
     await resetDb();
@@ -221,8 +219,14 @@ describe("loyalty core services", () => {
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
       maxManualGrantPoints: 5_000,
-      ...makeRewardConfig(),
       eligibleProductIds: [eligible.product.id],
+    });
+    const reward = await saveLoyaltyRewardDefinitionByAdmin({
+      actorUserId: admin.id,
+      programId: program.id,
+      name: "5 EURO Reward",
+      pointsRequired: 500,
+      amountMinor: 500,
     });
 
     const grant = await grantManualLoyaltyPointsByAdmin({
@@ -250,6 +254,7 @@ describe("loyalty core services", () => {
     expect(program.currencyCode).toBe("EUR");
     expect(program.eligibleProducts.map((entry) => entry.productId)).toEqual([eligible.product.id]);
     expect(grant.outcome).toBe("created");
+    expect(reward.name).toBe("5 EURO Reward");
     expect(adminList.items).toHaveLength(1);
     expect(adminList.items[0]?.balancePoints).toBe(250);
     expect(details.summary.balancePoints).toBe(250);
@@ -261,7 +266,7 @@ describe("loyalty core services", () => {
       },
       orderBy: { createdAt: "asc" },
     });
-    expect(auditLogs).toHaveLength(2);
+    expect(auditLogs).toHaveLength(3);
   });
 
   it("awards points from discounted eligible net after excluding gift-card funded value", async () => {
@@ -287,7 +292,6 @@ describe("loyalty core services", () => {
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
       maxManualGrantPoints: 5_000,
-      ...makeRewardConfig(),
       eligibleProductIds: [eligible.product.id],
     });
 
@@ -368,7 +372,6 @@ describe("loyalty core services", () => {
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
       maxManualGrantPoints: 5_000,
-      ...makeRewardConfig(),
       eligibleProductIds: [eligible.product.id],
     });
 
@@ -448,11 +451,6 @@ describe("loyalty core services", () => {
       pointsExpireAfterDays: 90,
       expirationReminderDays: 14,
       maxManualGrantPoints: 2_000,
-      ...makeRewardConfig({
-        rewardName: "5 USD Reward",
-        rewardPointsRequired: 500,
-        rewardAmountMinor: 500,
-      }),
       eligibleProductIds: [eligible.product.id],
     });
 
@@ -509,7 +507,6 @@ describe("loyalty core services", () => {
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
       maxManualGrantPoints: 5_000,
-      ...makeRewardConfig(),
       eligibleProductIds: [eligible.product.id],
     });
 
@@ -567,7 +564,6 @@ describe("loyalty core services", () => {
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
       maxManualGrantPoints: 5_000,
-      ...makeRewardConfig(),
       eligibleProductIds: [eligible.product.id],
     });
 
@@ -593,5 +589,197 @@ describe("loyalty core services", () => {
         balancePoints: 0,
       }),
     ]);
+  });
+
+  it("redeems rewards into loyalty credit and supports reserve-capture-release flows", async () => {
+    const admin = await createAdmin();
+    const client = await createVerifiedClient();
+    const eligible = await createCatalogProduct({
+      namePrefix: "Reward Eligible Mat",
+      productType: ProductType.MERCHANDISE,
+      unitAmountMinor: 5_000,
+    });
+
+    const program = await upsertLoyaltyProgramSettingsByAdmin({
+      actorUserId: admin.id,
+      currencyCode: "EUR",
+      isActive: true,
+      earningPoints: 1,
+      earningAmountMinor: 100,
+      pointsExpireAfterDays: 180,
+      expirationReminderDays: 30,
+      maxManualGrantPoints: 5_000,
+      eligibleProductIds: [eligible.product.id],
+    });
+    const reward = await saveLoyaltyRewardDefinitionByAdmin({
+      actorUserId: admin.id,
+      programId: program.id,
+      name: "5 EURO Reward",
+      pointsRequired: 500,
+      amountMinor: 500,
+    });
+
+    await grantManualLoyaltyPointsByAdmin({
+      actorUserId: admin.id,
+      clientId: client.id,
+      currencyCode: "EUR",
+      amountPoints: 650,
+      reason: "Seed loyalty balance for redemption coverage.",
+      idempotencyKey: "loyalty:manual-grant:redemption-balance",
+    });
+
+    const rewards = await listActiveLoyaltyRewards({ currencyCode: "EUR" });
+    expect(rewards).toEqual([
+      expect.objectContaining({
+        id: reward.id,
+        pointsRequired: 500,
+        amountMinor: 500,
+      }),
+    ]);
+
+    const redemption = await redeemLoyaltyReward({
+      actor: { type: "USER", userId: client.id, role: Role.CLIENT },
+      clientId: client.id,
+      currencyCode: "EUR",
+      rewardDefinitionId: reward.id,
+      idempotencyKey: "loyalty:reward:redeem:test",
+      metadata: { source: "integration-test" },
+    });
+
+    expect(redemption.outcome).toBe("created");
+
+    const balanceAfterRedeem = await getLoyaltyCreditBalance({
+      clientId: client.id,
+      currencyCode: "EUR",
+    });
+    expect(balanceAfterRedeem).toMatchObject({
+      settledBalanceMinor: 500,
+      reservedAmountMinor: 0,
+      availableBalanceMinor: 500,
+    });
+
+    const order = await prisma.order.create({
+      data: {
+        clientId: client.id,
+        subtotalAmountMinor: 500,
+        discountAmountMinor: 0,
+        totalAmountMinor: 500,
+        currencyCode: "EUR",
+        status: OrderStatus.PLACED,
+      },
+    });
+
+    const releasedReservation = await reserveLoyaltyCreditValue({
+      actor: { type: "USER", userId: client.id, role: Role.CLIENT },
+      clientId: client.id,
+      orderId: order.id,
+      amountMinor: 200,
+      currencyCode: "EUR",
+      expiresAt: new Date("2026-06-24T10:00:00.000Z"),
+      idempotencyKey: "loyalty:reserve:release-path",
+      metadata: { source: "integration-test" },
+    });
+    await releaseLoyaltyCreditReservation({
+      actor: { type: "SYSTEM", label: "integration-test" },
+      reservationId: releasedReservation.reservation.id,
+      idempotencyKey: "loyalty:release:release-path",
+      metadata: { source: "integration-test" },
+    });
+
+    const capturedReservation = await reserveLoyaltyCreditValue({
+      actor: { type: "USER", userId: client.id, role: Role.CLIENT },
+      clientId: client.id,
+      orderId: order.id,
+      amountMinor: 300,
+      currencyCode: "EUR",
+      expiresAt: new Date("2026-06-24T11:00:00.000Z"),
+      idempotencyKey: "loyalty:reserve:capture-path",
+      metadata: { source: "integration-test" },
+    });
+    const internalPayment = await prisma.payment.create({
+      data: {
+        orderId: order.id,
+        status: PaymentStatus.PENDING,
+        amountMinor: 300,
+        currencyCode: "EUR",
+        method: PaymentMethod.LOYALTY_CREDIT,
+        provider: PaymentProvider.INTERNAL,
+      },
+    });
+    await captureLoyaltyCreditReservation({
+      actor: { type: "SYSTEM", label: "integration-test" },
+      reservationId: capturedReservation.reservation.id,
+      paymentId: internalPayment.id,
+      idempotencyKey: "loyalty:capture:capture-path",
+      metadata: { source: "integration-test" },
+    });
+
+    const finalBalance = await getLoyaltyCreditBalance({
+      clientId: client.id,
+      currencyCode: "EUR",
+    });
+    expect(finalBalance).toMatchObject({
+      settledBalanceMinor: 200,
+      reservedAmountMinor: 0,
+      availableBalanceMinor: 200,
+    });
+  });
+
+  it("rejects reward update and archive when reward ids do not belong to the target program", async () => {
+    const admin = await createAdmin();
+    const eligible = await createCatalogProduct({
+      namePrefix: "Scoped Reward Mat",
+      productType: ProductType.MERCHANDISE,
+      unitAmountMinor: 2_000,
+    });
+
+    const programOne = await upsertLoyaltyProgramSettingsByAdmin({
+      actorUserId: admin.id,
+      currencyCode: "EUR",
+      isActive: true,
+      earningPoints: 1,
+      earningAmountMinor: 100,
+      pointsExpireAfterDays: 180,
+      expirationReminderDays: 30,
+      maxManualGrantPoints: 5_000,
+      eligibleProductIds: [eligible.product.id],
+    });
+    const programTwo = await upsertLoyaltyProgramSettingsByAdmin({
+      actorUserId: admin.id,
+      currencyCode: "USD",
+      isActive: false,
+      earningPoints: 1,
+      earningAmountMinor: 100,
+      pointsExpireAfterDays: 180,
+      expirationReminderDays: 30,
+      maxManualGrantPoints: 5_000,
+      eligibleProductIds: [],
+    });
+    const reward = await saveLoyaltyRewardDefinitionByAdmin({
+      actorUserId: admin.id,
+      programId: programOne.id,
+      name: "Scoped Reward",
+      pointsRequired: 200,
+      amountMinor: 200,
+    });
+
+    await expect(
+      saveLoyaltyRewardDefinitionByAdmin({
+        actorUserId: admin.id,
+        programId: programTwo.id,
+        rewardDefinitionId: reward.id,
+        name: "Cross Program Reward",
+        pointsRequired: 250,
+        amountMinor: 250,
+      }),
+    ).rejects.toMatchObject({ code: "LOYALTY_REWARD_NOT_FOUND" });
+
+    await expect(
+      archiveLoyaltyRewardDefinitionByAdmin({
+        actorUserId: admin.id,
+        programId: programTwo.id,
+        rewardDefinitionId: reward.id,
+      }),
+    ).rejects.toMatchObject({ code: "LOYALTY_REWARD_NOT_FOUND" });
   });
 });

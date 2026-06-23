@@ -300,6 +300,7 @@ function computeEligibleSettledPaidAmount(input: {
   orderTotalAmountMinor: number;
   eligibleDiscountedAmountMinor: number;
   giftCardFundedAmountMinor: number;
+  loyaltyCreditFundedAmountMinor: number;
 }) {
   const totalAmountMinor = clampMinorAmount(input.orderTotalAmountMinor, input.orderTotalAmountMinor);
   const eligibleDiscountedAmountMinor = clampMinorAmount(
@@ -307,6 +308,10 @@ function computeEligibleSettledPaidAmount(input: {
     totalAmountMinor,
   );
   const giftCardFundedAmountMinor = clampMinorAmount(input.giftCardFundedAmountMinor, totalAmountMinor);
+  const loyaltyCreditFundedAmountMinor = clampMinorAmount(
+    input.loyaltyCreditFundedAmountMinor,
+    totalAmountMinor,
+  );
 
   if (totalAmountMinor === 0 || eligibleDiscountedAmountMinor === 0) {
     return 0;
@@ -317,9 +322,14 @@ function computeEligibleSettledPaidAmount(input: {
     proportionalToMinor: giftCardFundedAmountMinor,
     totalMinor: totalAmountMinor,
   });
+  const eligibleLoyaltyCreditShareMinor = allocateProportionalAmount({
+    baseAmountMinor: eligibleDiscountedAmountMinor,
+    proportionalToMinor: loyaltyCreditFundedAmountMinor,
+    totalMinor: totalAmountMinor,
+  });
 
   return clampMinorAmount(
-    eligibleDiscountedAmountMinor - eligibleGiftCardShareMinor,
+    eligibleDiscountedAmountMinor - eligibleGiftCardShareMinor - eligibleLoyaltyCreditShareMinor,
     eligibleDiscountedAmountMinor,
   );
 }
@@ -434,11 +444,24 @@ export async function awardLoyaltyPointsForSettledOrder(input: {
         ? total + entry.amountMinor
         : total;
     }, 0);
+    const loyaltyCreditFundedAmountMinor = order.payments.reduce((total, entry) => {
+      if (entry.currencyCode !== program.currencyCode) {
+        throw new LoyaltyPointsServiceError(
+          "LOYALTY_CURRENCY_MISMATCH",
+          "Order payment currencies must match the active loyalty program.",
+        );
+      }
+
+      return entry.method === PaymentMethod.LOYALTY_CREDIT
+        ? total + entry.amountMinor
+        : total;
+    }, 0);
 
     const eligibleAmountMinor = computeEligibleSettledPaidAmount({
       orderTotalAmountMinor: order.totalAmountMinor,
       eligibleDiscountedAmountMinor: computedEligibleAmountMinor,
       giftCardFundedAmountMinor,
+      loyaltyCreditFundedAmountMinor,
     });
 
     const amountPoints = calculateLoyaltyPoints({
@@ -464,6 +487,7 @@ export async function awardLoyaltyPointsForSettledOrder(input: {
           eligibleAmountMinor,
           computedEligibleAmountMinor,
           giftCardFundedAmountMinor,
+          loyaltyCreditFundedAmountMinor,
         }),
         happenedAt,
         expiresAt: addDays(happenedAt, program.pointsExpireAfterDays),

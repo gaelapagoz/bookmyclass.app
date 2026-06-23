@@ -3,14 +3,17 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/db";
 import {
+  archiveLoyaltyRewardDefinition,
   listEligibleLoyaltyProductsForCurrency,
   listLoyaltyPrograms,
   resolvePrimaryLoyaltyCurrencyCode,
+  upsertLoyaltyRewardDefinition,
   upsertLoyaltyProgramSettings,
   getLoyaltyProgramForCurrency,
   isMissingLoyaltyTableError,
 } from "./loyalty-program-service";
 import { grantManualLoyaltyPoints } from "./loyalty-points-service";
+import { getLoyaltyCreditBalance, listActiveLoyaltyRewards } from "./loyalty-redemption-service";
 import {
   getClientLoyaltySummary,
   listAdminLoyaltyClients,
@@ -33,10 +36,16 @@ const programSettingsSchema = z.object({
   pointsExpireAfterDays: z.number().int().positive(),
   expirationReminderDays: z.number().int().positive().nullable(),
   maxManualGrantPoints: z.number().int().positive(),
-  rewardName: z.string().trim().min(1).max(120),
-  rewardPointsRequired: z.number().int().positive(),
-  rewardAmountMinor: z.number().int().positive(),
   eligibleProductIds: z.array(z.string().trim().min(1)).max(250),
+});
+
+const rewardDefinitionSchema = z.object({
+  actorUserId: z.string().trim().min(1),
+  programId: z.string().trim().min(1),
+  rewardDefinitionId: z.string().trim().min(1).optional(),
+  name: z.string().trim().min(1).max(120),
+  pointsRequired: z.number().int().positive(),
+  amountMinor: z.number().int().positive(),
 });
 
 const manualGrantSchema = z.object({
@@ -97,9 +106,6 @@ export async function upsertLoyaltyProgramSettingsByAdmin(input: {
   pointsExpireAfterDays: number;
   expirationReminderDays: number | null;
   maxManualGrantPoints: number;
-  rewardName: string;
-  rewardPointsRequired: number;
-  rewardAmountMinor: number;
   eligibleProductIds: string[];
 }) {
   const parsed = programSettingsSchema.parse(input);
@@ -129,9 +135,6 @@ export async function upsertLoyaltyProgramSettingsByAdmin(input: {
               pointsExpireAfterDays: before.pointsExpireAfterDays,
               expirationReminderDays: before.expirationReminderDays,
               maxManualGrantPoints: before.maxManualGrantPoints,
-              rewardName: before.rewardName,
-              rewardPointsRequired: before.rewardPointsRequired,
-              rewardAmountMinor: before.rewardAmountMinor,
               eligibleProductIds: before.eligibleProducts.map((entry) => entry.productId),
             }
           : null,
@@ -142,9 +145,6 @@ export async function upsertLoyaltyProgramSettingsByAdmin(input: {
           pointsExpireAfterDays: program.pointsExpireAfterDays,
           expirationReminderDays: program.expirationReminderDays,
           maxManualGrantPoints: program.maxManualGrantPoints,
-          rewardName: program.rewardName,
-          rewardPointsRequired: program.rewardPointsRequired,
-          rewardAmountMinor: program.rewardAmountMinor,
           eligibleProductIds: program.eligibleProducts.map((entry) => entry.productId),
         },
       },
@@ -198,6 +198,81 @@ export async function grantManualLoyaltyPointsByAdmin(input: {
   });
 }
 
+export async function saveLoyaltyRewardDefinitionByAdmin(input: {
+  actorUserId: string;
+  programId: string;
+  rewardDefinitionId?: string;
+  name: string;
+  pointsRequired: number;
+  amountMinor: number;
+}) {
+  const parsed = rewardDefinitionSchema.parse(input);
+
+  return prisma.$transaction(async (tx) => {
+    const actor = await resolveLoyaltyAdminActor(parsed.actorUserId, tx);
+    const before = parsed.rewardDefinitionId
+      ? await tx.loyaltyRewardDefinition.findUnique({
+          where: { id: parsed.rewardDefinitionId },
+        })
+      : null;
+    const reward = await upsertLoyaltyRewardDefinition({
+      ...parsed,
+      prismaClient: tx,
+    });
+
+    await writeLoyaltyAuditLog(tx, {
+      actorId: actor.id,
+      actionType: "LOYALTY_PROGRAM_UPSERT",
+      entityType: "LoyaltyProgram",
+      entityId: parsed.programId,
+      metadata: {
+        actorRole: actor.role,
+        rewardAction: before ? "update" : "create",
+        before,
+        after: reward,
+      },
+    });
+
+    return reward;
+  });
+}
+
+export async function archiveLoyaltyRewardDefinitionByAdmin(input: {
+  actorUserId: string;
+  programId: string;
+  rewardDefinitionId: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const actor = await resolveLoyaltyAdminActor(input.actorUserId, tx);
+    const before = await tx.loyaltyRewardDefinition.findFirst({
+      where: {
+        id: input.rewardDefinitionId,
+        programId: input.programId,
+      },
+    });
+    const reward = await archiveLoyaltyRewardDefinition({
+      programId: input.programId,
+      rewardDefinitionId: input.rewardDefinitionId,
+      prismaClient: tx,
+    });
+
+    await writeLoyaltyAuditLog(tx, {
+      actorId: actor.id,
+      actionType: "LOYALTY_PROGRAM_UPSERT",
+      entityType: "LoyaltyProgram",
+      entityId: reward.programId,
+      metadata: {
+        actorRole: actor.role,
+        rewardAction: "archive",
+        before,
+        after: reward,
+      },
+    });
+
+    return reward;
+  });
+}
+
 export async function getAdminLoyaltyClientDetails(input: {
   actorUserId: string;
   clientId: string;
@@ -219,8 +294,12 @@ export async function getAdminLoyaltyClientDetails(input: {
       limit: input.historyLimit,
     }),
   ]);
+  const loyaltyCredit = await getLoyaltyCreditBalance({
+    clientId: input.clientId,
+    currencyCode: input.currencyCode,
+  });
 
-  return { summary, history };
+  return { summary, history, loyaltyCredit };
 }
 
 export async function listAdminLoyaltyClientsByActor(input: {
@@ -340,11 +419,13 @@ export async function getAdminLoyaltyOverview(input: {
       : Promise.resolve(null),
     getAdminLoyaltyOverviewMetrics(currencyCode),
   ]);
+  const rewards = await listActiveLoyaltyRewards({ currencyCode }).catch(() => []);
 
   return {
     currencyCode,
     programs,
     program,
+    rewards,
     eligibleProducts,
     clients,
     selectedClient,

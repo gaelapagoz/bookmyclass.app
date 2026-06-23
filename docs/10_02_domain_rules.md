@@ -266,11 +266,11 @@ HAVING COUNT(*) > 1;
 - Client-facing loyalty history and wallet views are read models only and must enforce verified active client ownership server-side.
 
 ### Loyalty redemption and checkout contract freeze
-- Cart checkout may accept a loyalty-credit contract field before redemption is active, but positive requests must fail closed until the later redemption slice ships.
+- Cart checkout accepts a loyalty-credit contract field for active one-time redemption flows.
 - Recurring carts must reject loyalty credit before reservation, capture, or release logic is reached.
 - Loyalty credit reserve/capture/release behavior must be owned by loyalty services and must not reuse gift-card redemptions or ledger mutations.
 - Success-summary read models must derive coupon, loyalty-credit, gift-card, and Stripe/card contribution lines from server-side order/payment records only.
-- Zero-payment loyalty paths remain deferred until reserve/capture/release safety and audit coverage are implemented.
+- Zero-payment loyalty paths are allowed only after reserve/capture/release safety and audit coverage are implemented.
 
 ### Loyalty and gift-card separation
 - Loyalty credit must never mutate `GiftCardWallet`, `GiftCardLedgerEntry`, or `GiftCardRedemption`.

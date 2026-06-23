@@ -159,15 +159,15 @@ TEACHER users cannot use this override.
 
 ## 8. Loyalty Program
 
-Loyalty spend-based earning is active for eligible settled one-time orders.
+Loyalty spend-based earning, reward redemption, and loyalty-credit checkout application are active for eligible one-time orders.
 
-Redemption, loyalty-credit checkout application, and other action-based earning remain deferred.
+Other action-based earning remains deferred.
 
 ### 8.1 Activation scope
-- Loyalty v1 starts with spend-based earning only.
+- Loyalty v1 includes spend-based earning plus fixed reward redemption into loyalty credit.
 - Sign-up, booking, attendance, and other action-based earning are deferred.
-- Redemption and loyalty-credit checkout application are deferred until the later loyalty slices.
-- The static public loyalty explainer may be shipped as read-only informational content before redemption is enabled.
+- Loyalty credit can be redeemed and applied only through server-controlled client wallet and checkout flows.
+- The static public loyalty explainer remains informational and must match the active spend/redeem scope.
 
 ### 8.2 Eligible-product rules
 - Eligible loyalty earning products must be explicitly allowlisted before any earning runs in production.
@@ -202,9 +202,8 @@ Redemption, loyalty-credit checkout application, and other action-based earning 
 ### 8.7 Frozen redemption and checkout contract
 - Fixed checkout stacking order is `coupon -> loyalty credit -> gift-card wallet -> Stripe/card remainder`.
 - Loyalty credit application is reserved for one-time non-recurring carts only and must be rejected for recurring carts before any reservation attempt.
-- Until redemption ships, any loyalty-credit checkout mutation request must fail closed server-side without mutating order, payment, gift-card, or loyalty state.
-- When loyalty credit becomes active, reserve/capture/release semantics must be implemented under loyalty-owned services with wallet-like idempotency and audit coverage.
-- Zero-payment checkout is allowed only for non-recurring carts after reservation/capture safety is implemented and covered by tests.
+- Loyalty-credit checkout mutations must use loyalty-owned reserve/capture/release semantics with persisted idempotency and audit metadata.
+- Zero-payment checkout is allowed only for non-recurring carts after loyalty-credit reserve/capture safety is reached and covered by tests.
 - Checkout success summaries must render coupon discount, loyalty credit applied, gift-card wallet applied, and Stripe/card remainder as separate server-derived lines.
 - Client loyalty redemption, wallet history, and checkout-read views must enforce verified active client ownership server-side and prevent IDOR.
 

@@ -2,7 +2,11 @@ import AdminLoyaltyCatalogEditor from "@/components/admin/AdminLoyaltyCatalogEdi
 import { requireAdminSession } from "@/lib/auth/require-auth";
 import { getAdminLoyaltyOverview } from "@/lib/loyalty/loyalty-admin-service";
 
-import { saveLoyaltyProgramAction } from "../../sales/loyalty/actions";
+import {
+  archiveLoyaltyRewardAction,
+  saveLoyaltyProgramAction,
+  saveLoyaltyRewardAction,
+} from "../../sales/loyalty/actions";
 
 type SearchParams = Promise<{
   currencyCode?: string | string[];
@@ -33,9 +37,6 @@ export default async function AdminCatalogLoyaltyPage({ searchParams }: { search
   const expirationDays = data.program?.pointsExpireAfterDays ?? 365;
   const reminderDays = data.program?.expirationReminderDays ?? 30;
   const maxManualGrantPoints = data.program?.maxManualGrantPoints ?? 5000;
-  const rewardAmountDisplay = data.program ? (data.program.rewardAmountMinor / 100).toFixed(2) : "5.00";
-  const rewardName = data.program?.rewardName ?? "5 EURO Reward";
-  const rewardPointsRequired = data.program?.rewardPointsRequired ?? 500;
 
   return (
     <section className="space-y-5">
@@ -65,9 +66,10 @@ export default async function AdminCatalogLoyaltyPage({ searchParams }: { search
         expirationReminderDays={reminderDays}
         maxManualGrantPoints={maxManualGrantPoints}
         pointsExpireAfterDays={expirationDays}
-        rewardAmountDisplay={rewardAmountDisplay}
-        rewardName={rewardName}
-        rewardPointsRequired={rewardPointsRequired}
+        programId={data.program?.id ?? ""}
+        rewards={data.program?.rewardDefinitions ?? []}
+        saveRewardAction={saveLoyaltyRewardAction}
+        archiveRewardAction={archiveLoyaltyRewardAction}
         saveAction={saveLoyaltyProgramAction}
       />
     </section>

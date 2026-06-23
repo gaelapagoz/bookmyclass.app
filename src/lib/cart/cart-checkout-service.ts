@@ -36,6 +36,10 @@ import { GIFT_CARD_CURRENCY_CODE } from "@/lib/gift-cards/gift-card-types";
 import { GiftCardError, giftCardErrorCodes } from "@/lib/gift-cards/gift-card-errors";
 import { isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
 import {
+  LoyaltyRedemptionServiceError,
+  reserveLoyaltyCreditValue,
+} from "@/lib/loyalty/loyalty-redemption-service";
+import {
   type CartCheckoutPricing,
   resolveCartCouponPricing,
   reserveCouponRedemptionForCartCheckout,
@@ -81,7 +85,9 @@ type IdempotencyAcquireResult =
         orderId: string | null;
         paymentId: string | null;
         redemptionId: string | null;
+        loyaltyCreditReservationId: string | null;
         giftCardPaymentId: string | null;
+        loyaltyCreditPaymentId: string | null;
         stripePaymentId: string | null;
         stripeRequestPayload: Prisma.JsonValue | null;
       };
@@ -97,7 +103,9 @@ type IdempotencyAcquireResult =
         orderId: string | null;
         paymentId: string | null;
         redemptionId: string | null;
+        loyaltyCreditReservationId: string | null;
         giftCardPaymentId: string | null;
+        loyaltyCreditPaymentId: string | null;
         stripePaymentId: string | null;
         stripeRequestPayload: Prisma.JsonValue | null;
         responseStatus: number | null;
@@ -137,8 +145,10 @@ type CartCheckoutPaymentRefs = {
   paymentId: string;
   stripePaymentId: string | null;
   giftCardPaymentId: string | null;
+  loyaltyCreditPaymentId: string | null;
   zeroPaymentId: string | null;
   redemptionId: string | null;
+  loyaltyCreditReservationId: string | null;
   stripeAmountMinor: number;
 };
 
@@ -414,6 +424,8 @@ async function persistTerminalResponse(input: {
   response: CartCheckoutResponse;
   giftCardPaymentId?: string | null;
   redemptionId?: string | null;
+  loyaltyCreditPaymentId?: string | null;
+  loyaltyCreditReservationId?: string | null;
 }) {
   const responseBody = input.response.body as Record<string, unknown>;
   const responseType =
@@ -445,6 +457,12 @@ async function persistTerminalResponse(input: {
         : {}),
       ...(input.giftCardPaymentId != null ? { giftCardPaymentId: input.giftCardPaymentId } : {}),
       ...(input.redemptionId != null ? { redemptionId: input.redemptionId } : {}),
+      ...(input.loyaltyCreditPaymentId != null
+        ? { loyaltyCreditPaymentId: input.loyaltyCreditPaymentId }
+        : {}),
+      ...(input.loyaltyCreditReservationId != null
+        ? { loyaltyCreditReservationId: input.loyaltyCreditReservationId }
+        : {}),
     },
   });
 }
@@ -469,7 +487,9 @@ async function acquireIdempotencyRecord(input: {
       orderId: true,
       paymentId: true,
       redemptionId: true,
+      loyaltyCreditReservationId: true,
       giftCardPaymentId: true,
+      loyaltyCreditPaymentId: true,
       stripePaymentId: true,
       stripeRequestPayload: true,
       responseStatus: true,
@@ -495,7 +515,9 @@ async function acquireIdempotencyRecord(input: {
           orderId: true,
           paymentId: true,
           redemptionId: true,
+          loyaltyCreditReservationId: true,
           giftCardPaymentId: true,
+          loyaltyCreditPaymentId: true,
           stripePaymentId: true,
           stripeRequestPayload: true,
           responseStatus: true,
@@ -523,7 +545,9 @@ async function acquireIdempotencyRecord(input: {
           orderId: true,
           paymentId: true,
           redemptionId: true,
+          loyaltyCreditReservationId: true,
           giftCardPaymentId: true,
+          loyaltyCreditPaymentId: true,
           stripePaymentId: true,
           stripeRequestPayload: true,
           responseStatus: true,
@@ -551,7 +575,9 @@ async function acquireIdempotencyRecord(input: {
         orderId: existing.orderId,
         paymentId: existing.paymentId,
         redemptionId: existing.redemptionId,
+        loyaltyCreditReservationId: existing.loyaltyCreditReservationId,
         giftCardPaymentId: existing.giftCardPaymentId,
+        loyaltyCreditPaymentId: existing.loyaltyCreditPaymentId,
         stripePaymentId: existing.stripePaymentId,
         stripeRequestPayload: existing.stripeRequestPayload,
       },
@@ -593,7 +619,9 @@ async function acquireIdempotencyRecord(input: {
         orderId: existing.orderId,
         paymentId: existing.paymentId,
         redemptionId: existing.redemptionId,
+        loyaltyCreditReservationId: existing.loyaltyCreditReservationId,
         giftCardPaymentId: existing.giftCardPaymentId,
+        loyaltyCreditPaymentId: existing.loyaltyCreditPaymentId,
         stripePaymentId: existing.stripePaymentId,
         stripeRequestPayload: existing.stripeRequestPayload,
         responseStatus: existing.responseStatus,
@@ -622,7 +650,9 @@ async function acquireIdempotencyRecord(input: {
       orderId: existing.orderId,
       paymentId: existing.paymentId,
       redemptionId: existing.redemptionId,
+      loyaltyCreditReservationId: existing.loyaltyCreditReservationId,
       giftCardPaymentId: existing.giftCardPaymentId,
+      loyaltyCreditPaymentId: existing.loyaltyCreditPaymentId,
       stripePaymentId: existing.stripePaymentId,
       stripeRequestPayload: existing.stripeRequestPayload,
       responseStatus: existing.responseStatus,
@@ -709,12 +739,15 @@ async function resolveOrCreateOrderPayment(input: {
   existingOrderId: string | null;
   existingPaymentId: string | null;
   existingRedemptionId: string | null;
+  existingLoyaltyCreditReservationId: string | null;
   existingGiftCardPaymentId: string | null;
+  existingLoyaltyCreditPaymentId: string | null;
   existingStripePaymentId: string | null;
   existingZeroPaymentId: string | null;
   validation: Extract<CartValidationResult, { ok: true }>;
   checkoutPricing: CartCheckoutPricing;
   walletAmountMinor: number;
+  loyaltyCreditAmountMinor: number;
 }): Promise<CartCheckoutPaymentRefs> {
   try {
     const orderContext = await prisma.$transaction(async (tx) => {
@@ -731,7 +764,9 @@ async function resolveOrCreateOrderPayment(input: {
           orderId: true,
           paymentId: true,
           redemptionId: true,
+          loyaltyCreditReservationId: true,
           giftCardPaymentId: true,
+          loyaltyCreditPaymentId: true,
           stripePaymentId: true,
         },
       });
@@ -739,9 +774,13 @@ async function resolveOrCreateOrderPayment(input: {
       const existingOrderId = idempotency?.orderId ?? input.existingOrderId;
       const existingStripePaymentId = idempotency?.stripePaymentId ?? input.existingStripePaymentId ?? input.existingPaymentId;
       const existingGiftCardPaymentId = idempotency?.giftCardPaymentId ?? input.existingGiftCardPaymentId;
+      const existingLoyaltyCreditPaymentId =
+        idempotency?.loyaltyCreditPaymentId ?? input.existingLoyaltyCreditPaymentId;
       const existingRedemptionId = idempotency?.redemptionId ?? input.existingRedemptionId;
+      const existingLoyaltyCreditReservationId =
+        idempotency?.loyaltyCreditReservationId ?? input.existingLoyaltyCreditReservationId;
       const existingZeroPaymentId =
-        existingGiftCardPaymentId || existingStripePaymentId
+        existingGiftCardPaymentId || existingLoyaltyCreditPaymentId || existingStripePaymentId
           ? null
           : idempotency?.paymentId ?? input.existingZeroPaymentId;
 
@@ -866,17 +905,20 @@ async function resolveOrCreateOrderPayment(input: {
       return {
         orderId: resolvedOrderId,
         redemptionId: existingRedemptionId,
+        loyaltyCreditReservationId: existingLoyaltyCreditReservationId,
         giftCardPaymentId: existingGiftCardPaymentId,
+        loyaltyCreditPaymentId: existingLoyaltyCreditPaymentId,
         stripePaymentId: existingStripePaymentId,
         zeroPaymentId: existingZeroPaymentId,
       };
     });
 
     const walletAmountMinor = input.walletAmountMinor;
+    const loyaltyCreditAmountMinor = input.loyaltyCreditAmountMinor;
     const totalAmountMinor = input.checkoutPricing.totalAmountMinor;
-    const stripeAmountMinor = totalAmountMinor - walletAmountMinor;
+    const stripeAmountMinor = totalAmountMinor - loyaltyCreditAmountMinor - walletAmountMinor;
 
-    if (walletAmountMinor <= 0) {
+    if (walletAmountMinor <= 0 && loyaltyCreditAmountMinor <= 0) {
       if (stripeAmountMinor === 0) {
         const zeroPaymentId =
           orderContext.zeroPaymentId ??
@@ -928,8 +970,10 @@ async function resolveOrCreateOrderPayment(input: {
           paymentId: zeroPaymentId,
           stripePaymentId: null,
           giftCardPaymentId: null,
+          loyaltyCreditPaymentId: null,
           zeroPaymentId,
           redemptionId: null,
+          loyaltyCreditReservationId: null,
           stripeAmountMinor: 0,
         };
       }
@@ -985,28 +1029,81 @@ async function resolveOrCreateOrderPayment(input: {
         paymentId: stripePaymentId,
         stripePaymentId,
         giftCardPaymentId: null,
+        loyaltyCreditPaymentId: null,
         zeroPaymentId: null,
         redemptionId: null,
+        loyaltyCreditReservationId: null,
         stripeAmountMinor,
       };
     }
 
+    const loyaltyCreditReservationId =
+      loyaltyCreditAmountMinor > 0
+        ? orderContext.loyaltyCreditReservationId ??
+          (
+            await reserveLoyaltyCreditValue({
+              actor: { type: "USER", userId: input.userId, role: Role.CLIENT },
+              clientId: input.userId,
+              orderId: orderContext.orderId,
+              amountMinor: loyaltyCreditAmountMinor,
+              currencyCode: input.checkoutPricing.currencyCode,
+              expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+              idempotencyKey: `loyalty-credit:reserve:order:${orderContext.orderId}`,
+              metadata: { source: CART_CHECKOUT_SOURCE, idempotencyRecordId: input.idempotencyRecordId },
+            })
+          ).reservation.id
+        : null;
+
     const redemptionId =
       orderContext.redemptionId ??
-      (
-        await reserveGiftCardValue({
-          actor: { type: "USER", userId: input.userId, role: Role.CLIENT },
-          clientId: input.userId,
-          orderId: orderContext.orderId,
-          amountMinor: walletAmountMinor,
-          currencyCode: GIFT_CARD_CURRENCY_CODE,
-          expiresAt: new Date(Date.now() + 15 * 60 * 1000),
-          idempotencyKey: `gift-card:reserve:order:${orderContext.orderId}`,
-          metadata: { source: CART_CHECKOUT_SOURCE, idempotencyRecordId: input.idempotencyRecordId },
-        })
-      ).redemption.id;
+      (walletAmountMinor > 0
+        ? (
+            await reserveGiftCardValue({
+              actor: { type: "USER", userId: input.userId, role: Role.CLIENT },
+              clientId: input.userId,
+              orderId: orderContext.orderId,
+              amountMinor: walletAmountMinor,
+              currencyCode: GIFT_CARD_CURRENCY_CODE,
+              expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+              idempotencyKey: `gift-card:reserve:order:${orderContext.orderId}`,
+              metadata: { source: CART_CHECKOUT_SOURCE, idempotencyRecordId: input.idempotencyRecordId },
+            })
+          ).redemption.id
+        : null);
 
     const paymentRefs = await prisma.$transaction(async (tx) => {
+      const existingLoyaltyCreditPaymentId =
+        orderContext.loyaltyCreditPaymentId ??
+        (
+          await tx.payment.findFirst({
+            where: {
+              orderId: orderContext.orderId,
+              provider: PaymentProvider.INTERNAL,
+              method: PaymentMethod.LOYALTY_CREDIT,
+            },
+            orderBy: { createdAt: "desc" },
+            select: { id: true },
+          })
+        )?.id;
+      const loyaltyCreditPaymentId =
+        loyaltyCreditAmountMinor > 0
+          ? existingLoyaltyCreditPaymentId ??
+            (
+              await tx.payment.create({
+                data: {
+                  orderId: orderContext.orderId,
+                  status: PaymentStatus.PENDING,
+                  method: PaymentMethod.LOYALTY_CREDIT,
+                  provider: PaymentProvider.INTERNAL,
+                  amountMinor: loyaltyCreditAmountMinor,
+                  currencyCode: input.checkoutPricing.currencyCode,
+                  checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+                },
+                select: { id: true },
+              })
+            ).id
+          : null;
+
       const existingGiftCardPaymentId =
         orderContext.giftCardPaymentId ??
         (
@@ -1022,21 +1119,23 @@ async function resolveOrCreateOrderPayment(input: {
         )?.id;
 
       const giftCardPaymentId =
-        existingGiftCardPaymentId ??
-        (
-          await tx.payment.create({
-            data: {
-              orderId: orderContext.orderId,
-              status: PaymentStatus.PENDING,
-              method: PaymentMethod.GIFT_CARD,
-              provider: PaymentProvider.INTERNAL,
-              amountMinor: walletAmountMinor,
-              currencyCode: input.checkoutPricing.currencyCode,
-              checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
-            },
-            select: { id: true },
-          })
-        ).id;
+        walletAmountMinor > 0
+          ? existingGiftCardPaymentId ??
+            (
+              await tx.payment.create({
+                data: {
+                  orderId: orderContext.orderId,
+                  status: PaymentStatus.PENDING,
+                  method: PaymentMethod.GIFT_CARD,
+                  provider: PaymentProvider.INTERNAL,
+                  amountMinor: walletAmountMinor,
+                  currencyCode: input.checkoutPricing.currencyCode,
+                  checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+                },
+                select: { id: true },
+              })
+            ).id
+          : null;
 
       const existingStripePaymentId =
         orderContext.stripePaymentId ??
@@ -1074,33 +1173,57 @@ async function resolveOrCreateOrderPayment(input: {
         where: { id: input.idempotencyRecordId },
         data: {
           orderId: orderContext.orderId,
-          paymentId: stripePaymentId ?? giftCardPaymentId,
+          paymentId:
+            stripePaymentId
+            ?? giftCardPaymentId
+            ?? loyaltyCreditPaymentId
+            ?? orderContext.zeroPaymentId,
           redemptionId,
-          giftCardPaymentId,
+          loyaltyCreditReservationId,
+          giftCardPaymentId: giftCardPaymentId ?? null,
+          loyaltyCreditPaymentId: loyaltyCreditPaymentId ?? null,
           stripePaymentId,
         },
       });
 
-      return { giftCardPaymentId, stripePaymentId };
+      return { loyaltyCreditPaymentId, giftCardPaymentId, stripePaymentId };
     });
 
     if (input.checkoutPricing.coupon) {
+      const primaryPaymentId =
+        paymentRefs.stripePaymentId
+        ?? paymentRefs.giftCardPaymentId
+        ?? paymentRefs.loyaltyCreditPaymentId;
+      if (!primaryPaymentId) {
+        throw new Error("Cart checkout payment invariant violated.");
+      }
+
       await updateCouponRedemptionReferencesForCartCheckout({
         coupon: input.checkoutPricing.coupon,
         clientId: input.userId,
         orderId: orderContext.orderId,
         idempotencyKey: input.checkoutAttemptIdempotencyKey,
-        paymentId: paymentRefs.stripePaymentId ?? paymentRefs.giftCardPaymentId,
+        paymentId: primaryPaymentId,
       });
+    }
+
+    const primaryPaymentId =
+      paymentRefs.stripePaymentId
+      ?? paymentRefs.giftCardPaymentId
+      ?? paymentRefs.loyaltyCreditPaymentId;
+    if (!primaryPaymentId) {
+      throw new Error("Cart checkout payment invariant violated.");
     }
 
     return {
       orderId: orderContext.orderId,
-      paymentId: paymentRefs.stripePaymentId ?? paymentRefs.giftCardPaymentId,
+      paymentId: primaryPaymentId,
       stripePaymentId: paymentRefs.stripePaymentId,
-      giftCardPaymentId: paymentRefs.giftCardPaymentId,
+      giftCardPaymentId: paymentRefs.giftCardPaymentId ?? null,
+      loyaltyCreditPaymentId: paymentRefs.loyaltyCreditPaymentId ?? null,
       zeroPaymentId: null,
-      redemptionId,
+      redemptionId: redemptionId ?? null,
+      loyaltyCreditReservationId: loyaltyCreditReservationId ?? null,
       stripeAmountMinor,
     };
   } catch (error) {
@@ -1719,21 +1842,6 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     return loyaltyScopeResponse;
   }
 
-  if (isLoyaltyCreditRequest) {
-    const loyaltyDeferredResponse = createErrorResponse({
-      status: 422,
-      code: "LOYALTY_CREDIT_NOT_ACTIVE",
-      message: "Loyalty credit checkout is not active yet.",
-      idempotency: {
-        key: input.idempotencyKey,
-        state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,
-        replayed: false,
-      },
-    });
-    await persistTerminalResponse({ id: idempotencyRecordId, response: loyaltyDeferredResponse });
-    return loyaltyDeferredResponse;
-  }
-
   if (isRedemptionRequest && (input.walletAmountMinor ?? 0) > checkoutPricing.totalAmountMinor) {
     const redemptionExceedsOrderResponse = createErrorResponse({
       status: 422,
@@ -1751,6 +1859,40 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     });
     return redemptionExceedsOrderResponse;
   }
+  if (isLoyaltyCreditRequest && (input.loyaltyCreditAmountMinor ?? 0) > checkoutPricing.totalAmountMinor) {
+    const loyaltyExceedsOrderResponse = createErrorResponse({
+      status: 422,
+      code: "LOYALTY_CREDIT_EXCEEDS_ORDER_TOTAL",
+      message: "Loyalty credit cannot exceed the order total.",
+      idempotency: {
+        key: input.idempotencyKey,
+        state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,
+        replayed: false,
+      },
+    });
+    await persistTerminalResponse({
+      id: idempotencyRecordId,
+      response: loyaltyExceedsOrderResponse,
+    });
+    return loyaltyExceedsOrderResponse;
+  }
+  if ((input.walletAmountMinor ?? 0) + (input.loyaltyCreditAmountMinor ?? 0) > checkoutPricing.totalAmountMinor) {
+    const stackedFundingResponse = createErrorResponse({
+      status: 422,
+      code: "LOYALTY_AND_WALLET_EXCEED_ORDER_TOTAL",
+      message: "Combined loyalty credit and wallet funding cannot exceed the order total.",
+      idempotency: {
+        key: input.idempotencyKey,
+        state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,
+        replayed: false,
+      },
+    });
+    await persistTerminalResponse({
+      id: idempotencyRecordId,
+      response: stackedFundingResponse,
+    });
+    return stackedFundingResponse;
+  }
 
   let orderPayment: CartCheckoutPaymentRefs;
   try {
@@ -1761,17 +1903,27 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       existingOrderId: resumedFailedRecord?.orderId ?? acquired.record.orderId,
       existingPaymentId: resumedFailedRecord?.paymentId ?? acquired.record.paymentId,
       existingRedemptionId: resumedFailedRecord?.redemptionId ?? acquired.record.redemptionId,
+      existingLoyaltyCreditReservationId:
+        resumedFailedRecord?.loyaltyCreditReservationId ?? acquired.record.loyaltyCreditReservationId,
       existingGiftCardPaymentId: resumedFailedRecord?.giftCardPaymentId ?? acquired.record.giftCardPaymentId,
+      existingLoyaltyCreditPaymentId:
+        resumedFailedRecord?.loyaltyCreditPaymentId ?? acquired.record.loyaltyCreditPaymentId,
       existingStripePaymentId: resumedFailedRecord?.stripePaymentId ?? acquired.record.stripePaymentId,
       existingZeroPaymentId:
-        resumedFailedRecord && !resumedFailedRecord.giftCardPaymentId && !resumedFailedRecord.stripePaymentId
+        resumedFailedRecord
+        && !resumedFailedRecord.giftCardPaymentId
+        && !resumedFailedRecord.loyaltyCreditPaymentId
+        && !resumedFailedRecord.stripePaymentId
           ? resumedFailedRecord.paymentId
-          : acquired.record.giftCardPaymentId || acquired.record.stripePaymentId
+          : acquired.record.giftCardPaymentId
+            || acquired.record.loyaltyCreditPaymentId
+            || acquired.record.stripePaymentId
             ? null
             : acquired.record.paymentId,
       validation,
       checkoutPricing,
       walletAmountMinor: input.walletAmountMinor ?? 0,
+      loyaltyCreditAmountMinor: input.loyaltyCreditAmountMinor ?? 0,
     });
   } catch (error) {
     if (error instanceof CartCouponCheckoutError) {
@@ -1813,6 +1965,23 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       });
       return walletFailureResponse;
     }
+    if (error instanceof LoyaltyRedemptionServiceError) {
+      const loyaltyFailureResponse = createErrorResponse({
+        status: 422,
+        code: error.code,
+        message: "Loyalty credit could not be applied to this checkout.",
+        idempotency: {
+          key: input.idempotencyKey,
+          state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,
+          replayed: false,
+        },
+      });
+      await persistTerminalResponse({
+        id: idempotencyRecordId,
+        response: loyaltyFailureResponse,
+      });
+      return loyaltyFailureResponse;
+    }
     throw error;
   }
 
@@ -1822,8 +1991,13 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       paymentId:
         orderPayment.zeroPaymentId ??
         orderPayment.giftCardPaymentId ??
+        orderPayment.loyaltyCreditPaymentId ??
         orderPayment.paymentId,
-      internalPaymentIds: [orderPayment.giftCardPaymentId, orderPayment.zeroPaymentId],
+      internalPaymentIds: [
+        orderPayment.loyaltyCreditPaymentId,
+        orderPayment.giftCardPaymentId,
+        orderPayment.zeroPaymentId,
+      ],
       loyaltyMetadata: {
         source: CART_CHECKOUT_SOURCE,
         idempotencyKey: input.idempotencyKey,
@@ -1835,6 +2009,16 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
               redemptionId: orderPayment.redemptionId,
               paymentId: orderPayment.giftCardPaymentId,
               idempotencyKey: `gift-card:capture:redemption:${orderPayment.redemptionId}`,
+              metadata: { source: CART_CHECKOUT_SOURCE, idempotencyRecordId },
+            }
+          : undefined,
+      loyaltyCreditCapture:
+        orderPayment.loyaltyCreditReservationId && orderPayment.loyaltyCreditPaymentId
+          ? {
+              actor: { type: "USER", userId: input.userId, role: Role.CLIENT },
+              reservationId: orderPayment.loyaltyCreditReservationId,
+              paymentId: orderPayment.loyaltyCreditPaymentId,
+              idempotencyKey: `loyalty-credit:capture:reservation:${orderPayment.loyaltyCreditReservationId}`,
               metadata: { source: CART_CHECKOUT_SOURCE, idempotencyRecordId },
             }
           : undefined,
@@ -1862,8 +2046,16 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       key: input.idempotencyKey,
       replayed: false,
       orderId: orderPayment.orderId,
-      paymentId: orderPayment.giftCardPaymentId ?? orderPayment.zeroPaymentId ?? orderPayment.paymentId,
-      paymentMethod: orderPayment.giftCardPaymentId ? PaymentMethod.GIFT_CARD : PaymentMethod.MANUAL,
+      paymentId:
+        orderPayment.giftCardPaymentId
+        ?? orderPayment.loyaltyCreditPaymentId
+        ?? orderPayment.zeroPaymentId
+        ?? orderPayment.paymentId,
+      paymentMethod: orderPayment.giftCardPaymentId
+        ? PaymentMethod.GIFT_CARD
+        : orderPayment.loyaltyCreditPaymentId
+          ? PaymentMethod.LOYALTY_CREDIT
+          : PaymentMethod.MANUAL,
       redirectUrl: resolveCompletedRedirectUrl({
         orderId: orderPayment.orderId,
         cartHasStoreItems,
@@ -1876,6 +2068,8 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       response: completedResponse,
       giftCardPaymentId: orderPayment.giftCardPaymentId,
       redemptionId: orderPayment.redemptionId,
+      loyaltyCreditPaymentId: orderPayment.loyaltyCreditPaymentId,
+      loyaltyCreditReservationId: orderPayment.loyaltyCreditReservationId,
     });
 
     return completedResponse;
@@ -1900,6 +2094,8 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       userId: input.userId,
       redemptionId: orderPayment.redemptionId ?? "",
       giftCardPaymentId: orderPayment.giftCardPaymentId ?? "",
+      loyaltyCreditReservationId: orderPayment.loyaltyCreditReservationId ?? "",
+      loyaltyCreditPaymentId: orderPayment.loyaltyCreditPaymentId ?? "",
       couponId: checkoutPricing.coupon?.couponId ?? "",
       couponCode: checkoutPricing.coupon?.couponCode ?? "",
       ...metadataOverrides,
@@ -1912,7 +2108,9 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       );
 
       const stripeLineItems =
-        (input.walletAmountMinor ?? 0) > 0 || checkoutPricing.discountAmountMinor > 0
+        (input.walletAmountMinor ?? 0) > 0
+          || (input.loyaltyCreditAmountMinor ?? 0) > 0
+          || checkoutPricing.discountAmountMinor > 0
           ? [
               {
                 price_data: {
@@ -2025,6 +2223,10 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       await persistTerminalResponse({
         id: idempotencyRecordId,
         response: syntheticSuccessResponse,
+        giftCardPaymentId: orderPayment.giftCardPaymentId,
+        redemptionId: orderPayment.redemptionId,
+        loyaltyCreditPaymentId: orderPayment.loyaltyCreditPaymentId,
+        loyaltyCreditReservationId: orderPayment.loyaltyCreditReservationId,
       });
 
       return syntheticSuccessResponse;
@@ -2093,6 +2295,10 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     await persistTerminalResponse({
       id: idempotencyRecordId,
       response: successResponse,
+      giftCardPaymentId: orderPayment.giftCardPaymentId,
+      redemptionId: orderPayment.redemptionId,
+      loyaltyCreditPaymentId: orderPayment.loyaltyCreditPaymentId,
+      loyaltyCreditReservationId: orderPayment.loyaltyCreditReservationId,
     });
     debugLog("branch_success", {
       idempotencyKey: input.idempotencyKey,

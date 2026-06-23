@@ -6,8 +6,10 @@ import { z } from "zod";
 
 import { requireAdminSession } from "@/lib/auth/require-auth";
 import {
+  archiveLoyaltyRewardDefinitionByAdmin,
   grantManualLoyaltyPointsByAdmin,
   resolveAdminLoyaltyClientIdByEmail,
+  saveLoyaltyRewardDefinitionByAdmin,
   upsertLoyaltyProgramSettingsByAdmin,
 } from "@/lib/loyalty/loyalty-admin-service";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
@@ -20,13 +22,19 @@ const loyaltyProgramActionSchema = z.object({
   pointsExpireAfterDays: z.coerce.number().int().positive(),
   expirationReminderDays: z.string().trim().optional(),
   maxManualGrantPoints: z.coerce.number().int().positive(),
-  rewardName: z.string().trim().min(1).max(120).optional(),
-  rewardPointsRequired: z.coerce.number().int().positive().optional(),
-  rewardAmountDisplay: z.string().trim().optional(),
   eligibleProductIds: z.array(z.string().trim().min(1)).max(250),
   clientId: z.string().trim().optional(),
   query: z.string().trim().optional(),
   page: z.string().trim().optional(),
+});
+
+const loyaltyRewardActionSchema = z.object({
+  programId: z.string().trim().min(1),
+  rewardDefinitionId: z.string().trim().optional(),
+  currencyCode: z.string().trim().length(3),
+  name: z.string().trim().min(1).max(120),
+  pointsRequired: z.coerce.number().int().positive(),
+  amountDisplay: z.string().trim().min(1),
 });
 
 const loyaltyManualGrantSchema = z.object({
@@ -135,6 +143,15 @@ function mapProgramActionError(error: unknown) {
   }
 }
 
+function mapRewardActionError(error: unknown) {
+  switch (getErrorCode(error)) {
+    case "LOYALTY_REWARD_INPUT_INVALID":
+      return "Loyalty reward settings are invalid.";
+    default:
+      return "Unable to save loyalty reward settings right now.";
+  }
+}
+
 function mapManualGrantActionError(error: unknown) {
   switch (getErrorCode(error)) {
     case "LOYALTY_ADMIN_FORBIDDEN":
@@ -192,7 +209,6 @@ export async function saveLoyaltyProgramAction(formData: FormData) {
   }
 
   const earningAmountMinor = toMinorAmount(parsed.data.earningAmountDisplay);
-  const rewardAmountMinor = toMinorAmount(parsed.data.rewardAmountDisplay ?? "5.00");
   const expirationReminderDays = toOptionalPositiveInt(parsed.data.expirationReminderDays);
   if (earningAmountMinor === null) {
     redirect(buildCatalogLoyaltyPageHref({
@@ -200,13 +216,6 @@ export async function saveLoyaltyProgramAction(formData: FormData) {
       error: "Spend threshold must be a positive amount.",
     }));
   }
-  if (rewardAmountMinor === null) {
-    redirect(buildCatalogLoyaltyPageHref({
-      currencyCode: parsed.data.currencyCode,
-      error: "Reward amount must be a positive amount.",
-    }));
-  }
-
   try {
     await upsertLoyaltyProgramSettingsByAdmin({
       actorUserId: session.user.id,
@@ -217,9 +226,6 @@ export async function saveLoyaltyProgramAction(formData: FormData) {
       pointsExpireAfterDays: parsed.data.pointsExpireAfterDays,
       expirationReminderDays,
       maxManualGrantPoints: parsed.data.maxManualGrantPoints,
-      rewardName: parsed.data.rewardName ?? "5 EURO Reward",
-      rewardPointsRequired: parsed.data.rewardPointsRequired ?? 500,
-      rewardAmountMinor,
       eligibleProductIds: parsed.data.eligibleProductIds,
     });
   } catch (error) {
@@ -234,6 +240,90 @@ export async function saveLoyaltyProgramAction(formData: FormData) {
   redirect(buildCatalogLoyaltyPageHref({
     currencyCode: parsed.data.currencyCode,
     success: "Loyalty program updated.",
+  }));
+}
+
+export async function saveLoyaltyRewardAction(formData: FormData) {
+  const session = await assertAdminAccess();
+  const parsed = loyaltyRewardActionSchema.safeParse({
+    programId: String(formData.get("programId") ?? "").trim(),
+    rewardDefinitionId: String(formData.get("rewardDefinitionId") ?? "").trim() || undefined,
+    currencyCode: String(formData.get("currencyCode") ?? "").trim().toUpperCase(),
+    name: String(formData.get("name") ?? "").trim(),
+    pointsRequired: formData.get("pointsRequired"),
+    amountDisplay: String(formData.get("amountDisplay") ?? "").trim(),
+  });
+
+  if (!parsed.success) {
+    redirect(buildCatalogLoyaltyPageHref({
+      currencyCode: String(formData.get("currencyCode") ?? "EUR"),
+      error: "Invalid loyalty reward input.",
+    }));
+  }
+
+  const amountMinor = toMinorAmount(parsed.data.amountDisplay);
+  if (amountMinor === null) {
+    redirect(buildCatalogLoyaltyPageHref({
+      currencyCode: parsed.data.currencyCode,
+      error: "Reward amount must be a positive amount.",
+    }));
+  }
+
+  try {
+    await saveLoyaltyRewardDefinitionByAdmin({
+      actorUserId: session.user.id,
+      programId: parsed.data.programId,
+      rewardDefinitionId: parsed.data.rewardDefinitionId,
+      name: parsed.data.name,
+      pointsRequired: parsed.data.pointsRequired,
+      amountMinor,
+    });
+  } catch (error) {
+    redirect(buildCatalogLoyaltyPageHref({
+      currencyCode: parsed.data.currencyCode,
+      error: mapRewardActionError(error),
+    }));
+  }
+
+  revalidatePath("/admin/catalog/loyalty");
+  revalidatePath("/admin/sales/loyalty");
+  redirect(buildCatalogLoyaltyPageHref({
+    currencyCode: parsed.data.currencyCode,
+    success: "Loyalty reward updated.",
+  }));
+}
+
+export async function archiveLoyaltyRewardAction(formData: FormData) {
+  const session = await assertAdminAccess();
+  const programId = String(formData.get("programId") ?? "").trim();
+  const rewardDefinitionId = String(formData.get("rewardDefinitionId") ?? "").trim();
+  const currencyCode = String(formData.get("currencyCode") ?? "EUR").trim().toUpperCase();
+
+  if (!programId || !rewardDefinitionId) {
+    redirect(buildCatalogLoyaltyPageHref({
+      currencyCode,
+      error: "Reward definition is required.",
+    }));
+  }
+
+  try {
+    await archiveLoyaltyRewardDefinitionByAdmin({
+      actorUserId: session.user.id,
+      programId,
+      rewardDefinitionId,
+    });
+  } catch (error) {
+    redirect(buildCatalogLoyaltyPageHref({
+      currencyCode,
+      error: mapRewardActionError(error),
+    }));
+  }
+
+  revalidatePath("/admin/catalog/loyalty");
+  revalidatePath("/admin/sales/loyalty");
+  redirect(buildCatalogLoyaltyPageHref({
+    currencyCode,
+    success: "Loyalty reward archived.",
   }));
 }
 

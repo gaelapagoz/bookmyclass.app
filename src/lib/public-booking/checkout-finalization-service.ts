@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { fulfillPaidCartOrder } from "@/lib/fulfillment/order-fulfillment-service";
 import type { GiftCardActor } from "@/lib/gift-cards/gift-card-types";
 import { captureGiftCardRedemption } from "@/lib/gift-cards/gift-card-wallet-service";
+import { captureLoyaltyCreditReservation } from "@/lib/loyalty/loyalty-redemption-service";
 import { settleLoyaltyForSettledOrder } from "@/lib/loyalty/loyalty-settlement-service";
 import { transitionBookingToConfirmedAndQueueEmail } from "@/lib/public-booking/booking-confirmation-transition-service";
 import { ensureCartOrderOwnershipFromPersistedItems } from "@/lib/public-booking/checkout-ownership-service";
@@ -38,6 +39,15 @@ export async function settleSuccessfulCheckoutOrder(input: {
         metadata?: Record<string, string>;
       }
     | undefined;
+  loyaltyCreditCapture?:
+    | {
+        actor: GiftCardActor;
+        reservationId: string;
+        paymentId: string;
+        idempotencyKey: string;
+        metadata?: Record<string, string>;
+      }
+    | undefined;
   tx?: DbClient;
 }) {
   if (input.giftCardCapture) {
@@ -47,6 +57,15 @@ export async function settleSuccessfulCheckoutOrder(input: {
       paymentId: input.giftCardCapture.paymentId,
       idempotencyKey: input.giftCardCapture.idempotencyKey,
       metadata: input.giftCardCapture.metadata,
+    });
+  }
+  if (input.loyaltyCreditCapture) {
+    await captureLoyaltyCreditReservation({
+      actor: input.loyaltyCreditCapture.actor,
+      reservationId: input.loyaltyCreditCapture.reservationId,
+      paymentId: input.loyaltyCreditCapture.paymentId,
+      idempotencyKey: input.loyaltyCreditCapture.idempotencyKey,
+      metadata: input.loyaltyCreditCapture.metadata,
     });
   }
 

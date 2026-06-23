@@ -17,7 +17,10 @@ import {
   updateClientCartLineQuantity,
   validateClientCart,
 } from "@/lib/cart/cart-client";
-import { CART_CHECKOUT_MAX_WALLET_AMOUNT_MINOR } from "@/lib/cart/cart-contract";
+import {
+  CART_CHECKOUT_MAX_LOYALTY_CREDIT_AMOUNT_MINOR,
+  CART_CHECKOUT_MAX_WALLET_AMOUNT_MINOR,
+} from "@/lib/cart/cart-contract";
 
 function formatAmount(minor: number, currencyCode: string): string {
   return new Intl.NumberFormat("en-GB", {
@@ -31,6 +34,13 @@ type WalletBalance = {
   balanceMinor: number;
   availableBalanceMinor: number;
   reservedAmountMinor: number;
+  currencyCode: string;
+};
+
+type LoyaltyCreditBalance = {
+  settledBalanceMinor: number;
+  reservedAmountMinor: number;
+  availableBalanceMinor: number;
   currencyCode: string;
 };
 
@@ -95,6 +105,9 @@ export function CartPageClient() {
   const [walletBalance, setWalletBalance] = useState<WalletBalance | null>(null);
   const [walletAmountMinor, setWalletAmountMinor] = useState<number>(0);
   const [walletInputValue, setWalletInputValue] = useState<string>("");
+  const [loyaltyBalance, setLoyaltyBalance] = useState<LoyaltyCreditBalance | null>(null);
+  const [loyaltyCreditAmountMinor, setLoyaltyCreditAmountMinor] = useState<number>(0);
+  const [loyaltyInputValue, setLoyaltyInputValue] = useState<string>("");
   const [couponInput, setCouponInput] = useState<string>("");
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -127,12 +140,20 @@ export function CartPageClient() {
 
     async function fetchWalletBalance() {
       try {
-        const response = await fetch("/api/wallet/balance");
-        if (!response.ok) {
-          return;
+        const [walletResponse, loyaltyResponse] = await Promise.all([
+          fetch("/api/wallet/balance"),
+          fetch("/api/loyalty/wallet"),
+        ]);
+        if (walletResponse.ok) {
+          const data = (await walletResponse.json()) as { balance: WalletBalance | null };
+          setWalletBalance(data.balance ?? null);
         }
-        const data = (await response.json()) as { balance: WalletBalance | null };
-        setWalletBalance(data.balance ?? null);
+        if (loyaltyResponse.ok) {
+          const data = (await loyaltyResponse.json()) as {
+            loyalty: { loyaltyCredit: LoyaltyCreditBalance } | null;
+          };
+          setLoyaltyBalance(data.loyalty?.loyaltyCredit ?? null);
+        }
       } catch {
         // wallet balance fetch failure is non-blocking
       }
@@ -200,7 +221,7 @@ export function CartPageClient() {
   const validation = useMemo(() => validateClientCart({ lines }), [lines]);
   const fingerprint = useMemo(() => getCheckoutSubmissionFingerprint(lines), [lines]);
   const discountedSubtotalMinor = appliedCoupon?.totalAmountMinor ?? subtotalMinor;
-  const totalMinor = Math.max(0, discountedSubtotalMinor - walletAmountMinor);
+  const totalMinor = Math.max(0, discountedSubtotalMinor - loyaltyCreditAmountMinor - walletAmountMinor);
 
   const fingerprintWithCoupon = useMemo(() => {
     return appliedCoupon ? `${fingerprint}|coupon=${appliedCoupon.couponCode}` : fingerprint;
@@ -211,18 +232,35 @@ export function CartPageClient() {
     walletBalance !== null &&
     walletBalance.availableBalanceMinor > 0 &&
     hasOneTimeItems(lines);
+  const showLoyaltyControls =
+    isHydrated &&
+    loyaltyBalance !== null &&
+    loyaltyBalance.availableBalanceMinor > 0 &&
+    hasOneTimeItems(lines);
 
   const showRecurringWalletNote =
     isHydrated &&
     walletBalance !== null &&
     walletBalance.availableBalanceMinor > 0 &&
     hasRecurringOnlyItems(lines);
+  const showRecurringLoyaltyNote =
+    isHydrated &&
+    loyaltyBalance !== null &&
+    loyaltyBalance.availableBalanceMinor > 0 &&
+    hasRecurringOnlyItems(lines);
 
   const maxApplicableWallet = showWalletControls
     ? Math.min(
         walletBalance.availableBalanceMinor,
-        subtotalMinor,
+        Math.max(0, discountedSubtotalMinor - loyaltyCreditAmountMinor),
         CART_CHECKOUT_MAX_WALLET_AMOUNT_MINOR,
+      )
+    : 0;
+  const maxApplicableLoyalty = showLoyaltyControls
+    ? Math.min(
+        loyaltyBalance.availableBalanceMinor,
+        discountedSubtotalMinor,
+        CART_CHECKOUT_MAX_LOYALTY_CREDIT_AMOUNT_MINOR,
       )
     : 0;
 
@@ -245,6 +283,26 @@ export function CartPageClient() {
   const removeWallet = () => {
     setWalletAmountMinor(0);
     setWalletInputValue("");
+    setFeedback(null);
+  };
+
+  const applyLoyaltyCredit = () => {
+    const parsed = Math.round(parseFloat(loyaltyInputValue) * 100);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setFeedback("Enter a valid loyalty credit amount in EUR.");
+      return;
+    }
+    if (parsed > maxApplicableLoyalty) {
+      setFeedback(`Maximum applicable loyalty credit is ${formatAmount(maxApplicableLoyalty, "EUR")}.`);
+      return;
+    }
+    setLoyaltyCreditAmountMinor(parsed);
+    setFeedback(null);
+  };
+
+  const removeLoyaltyCredit = () => {
+    setLoyaltyCreditAmountMinor(0);
+    setLoyaltyInputValue("");
     setFeedback(null);
   };
 
@@ -314,6 +372,7 @@ export function CartPageClient() {
         })),
         clientCartVersion: `v${clientCartVersion}`,
         ...(walletAmountMinor > 0 ? { walletAmountMinor } : {}),
+        ...(loyaltyCreditAmountMinor > 0 ? { loyaltyCreditAmountMinor } : {}),
         ...(appliedCoupon ? { couponCode: appliedCoupon.couponCode } : {}),
       });
 
@@ -562,6 +621,14 @@ export function CartPageClient() {
                 </span>
               </div>
               <div className="flex items-center justify-between gap-4">
+                <span>Loyalty credit</span>
+                <span className="font-medium text-[#6f2b2b]">
+                  {loyaltyCreditAmountMinor > 0
+                    ? `- ${formatAmount(loyaltyCreditAmountMinor, "EUR")}`
+                    : formatAmount(0, subtotalCurrency)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
                 <span>Gift card</span>
                 <span className="font-medium text-[#6f2b2b]">
                   {walletAmountMinor > 0
@@ -690,6 +757,76 @@ export function CartPageClient() {
               </p>
             ) : null}
           </div>
+
+          {showLoyaltyControls ? (
+            <div className="border-b border-[#d8cec6] px-4 py-4" data-testid="loyalty-controls">
+              <h2 className="text-sm font-semibold text-[#6f2b2b]">Loyalty credit</h2>
+              <p className="mt-1 text-xs text-[#7f5a5a]">
+                Available: {formatAmount(loyaltyBalance.availableBalanceMinor, "EUR")}
+              </p>
+              {loyaltyCreditAmountMinor > 0 ? (
+                <div className="mt-3 flex items-start justify-between gap-3">
+                  <span className="text-sm text-[#5f4040]" data-testid="loyalty-applied-amount">
+                    Applied: {formatAmount(loyaltyCreditAmountMinor, "EUR")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={removeLoyaltyCredit}
+                    className="text-xs text-[#7b2d2d] underline underline-offset-2"
+                    data-testid="loyalty-remove"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  <label htmlFor="loyalty-amount" className="block text-xs text-[#7f5a5a]">
+                    Amount (EUR)
+                  </label>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <input
+                      id="loyalty-amount"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      max={(maxApplicableLoyalty / 100).toFixed(2)}
+                      value={loyaltyInputValue}
+                      onChange={(e) => setLoyaltyInputValue(e.target.value)}
+                      placeholder="0.00"
+                      className="rounded border border-[#d8cec6] px-3 py-2 text-sm text-[#5f4040] outline-none"
+                      data-testid="loyalty-amount-input"
+                    />
+                    <button
+                      type="button"
+                      onClick={applyLoyaltyCredit}
+                      className="rounded-md border border-[#7b2d2d] px-4 py-2 text-sm text-[#7b2d2d] hover:bg-[#f2ede7]"
+                      data-testid="loyalty-apply"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoyaltyInputValue((maxApplicableLoyalty / 100).toFixed(2));
+                    }}
+                    className="text-xs text-[#7b2d2d] underline underline-offset-2"
+                    data-testid="loyalty-use-all"
+                  >
+                    Use all available
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {showRecurringLoyaltyNote ? (
+            <div className="border-b border-[#d8cec6] px-4 py-4" data-testid="loyalty-recurring-note">
+              <p className="text-xs text-[#7f5a5a]">
+                Loyalty credit cannot be used for recurring memberships. It remains available for one-time purchases.
+              </p>
+            </div>
+          ) : null}
 
           {showWalletControls ? (
             <div className="border-b border-[#d8cec6] px-4 py-4" data-testid="wallet-controls">

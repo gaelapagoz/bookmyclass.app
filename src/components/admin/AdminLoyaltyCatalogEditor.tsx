@@ -2,6 +2,14 @@
 
 import { useMemo, useState } from "react";
 
+type LoyaltyRewardDefinition = {
+  id: string;
+  name: string;
+  pointsRequired: number;
+  amountMinor: number;
+  isActive: boolean;
+};
+
 type LoyaltyCatalogEditorProps = {
   currencyCode: string;
   earningAmountDisplay: string;
@@ -10,13 +18,14 @@ type LoyaltyCatalogEditorProps = {
   expirationReminderDays: number;
   maxManualGrantPoints: number;
   pointsExpireAfterDays: number;
-  rewardAmountDisplay: string;
-  rewardName: string;
-  rewardPointsRequired: number;
+  programId: string;
+  rewards: LoyaltyRewardDefinition[];
   saveAction: (formData: FormData) => Promise<void>;
+  saveRewardAction: (formData: FormData) => Promise<void>;
+  archiveRewardAction: (formData: FormData) => Promise<void>;
 };
 
-type EditorSection = "purchase" | "expiration" | "reward" | null;
+type EditorSection = "purchase" | "expiration" | "reward-create" | "reward-edit" | null;
 
 function ModalShell({
   children,
@@ -54,14 +63,20 @@ function ModalShell({
 
 export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorProps) {
   const [openSection, setOpenSection] = useState<EditorSection>(null);
+  const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
   const [earningPoints, setEarningPoints] = useState(String(props.earningPoints));
   const [earningAmountDisplay, setEarningAmountDisplay] = useState(props.earningAmountDisplay);
   const [pointsExpireAfterDays, setPointsExpireAfterDays] = useState(String(props.pointsExpireAfterDays));
   const [expirationReminderDays, setExpirationReminderDays] = useState(String(props.expirationReminderDays));
-  const [rewardName, setRewardName] = useState(props.rewardName);
-  const [rewardPointsRequired, setRewardPointsRequired] = useState(String(props.rewardPointsRequired));
-  const [rewardAmountDisplay, setRewardAmountDisplay] = useState(props.rewardAmountDisplay);
   const [maxManualGrantPoints, setMaxManualGrantPoints] = useState(String(props.maxManualGrantPoints));
+  const [rewardName, setRewardName] = useState("");
+  const [rewardPointsRequired, setRewardPointsRequired] = useState("");
+  const [rewardAmountDisplay, setRewardAmountDisplay] = useState("");
+
+  const activeRewards = props.rewards.filter((reward) => reward.isActive);
+  const editingReward = editingRewardId
+    ? props.rewards.find((reward) => reward.id === editingRewardId) ?? null
+    : null;
 
   const commonHiddenFields = useMemo(
     () => (
@@ -72,9 +87,6 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
         <input type="hidden" name="earningAmountDisplay" value={earningAmountDisplay} />
         <input type="hidden" name="pointsExpireAfterDays" value={pointsExpireAfterDays} />
         <input type="hidden" name="expirationReminderDays" value={expirationReminderDays} />
-        <input type="hidden" name="rewardName" value={rewardName} />
-        <input type="hidden" name="rewardPointsRequired" value={rewardPointsRequired} />
-        <input type="hidden" name="rewardAmountDisplay" value={rewardAmountDisplay} />
         <input type="hidden" name="maxManualGrantPoints" value={maxManualGrantPoints} />
         {props.eligibleProductIds.map((productId) => (
           <input key={productId} type="hidden" name="eligibleProductIds" value={productId} />
@@ -84,16 +96,29 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
     [
       earningAmountDisplay,
       earningPoints,
-      props.eligibleProductIds,
       expirationReminderDays,
       maxManualGrantPoints,
       pointsExpireAfterDays,
       props.currencyCode,
-      rewardAmountDisplay,
-      rewardName,
-      rewardPointsRequired,
+      props.eligibleProductIds,
     ],
   );
+
+  const openCreateReward = () => {
+    setRewardName("");
+    setRewardPointsRequired("");
+    setRewardAmountDisplay("");
+    setEditingRewardId(null);
+    setOpenSection("reward-create");
+  };
+
+  const openEditReward = (reward: LoyaltyRewardDefinition) => {
+    setRewardName(reward.name);
+    setRewardPointsRequired(String(reward.pointsRequired));
+    setRewardAmountDisplay((reward.amountMinor / 100).toFixed(2));
+    setEditingRewardId(reward.id);
+    setOpenSection("reward-edit");
+  };
 
   return (
     <div className="space-y-5">
@@ -111,7 +136,7 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
                 Every {props.currencyCode} {earningAmountDisplay} spent gives {earningPoints} point{earningPoints === "1" ? "" : "s"}.
               </p>
               <p className="mt-1 text-sm text-[#4b5a72]">
-                Loyalty points apply to all non-recurring products. Recurring products are excluded automatically.
+                Loyalty points apply to eligible non-recurring catalog products only.
               </p>
             </div>
             <button
@@ -127,7 +152,7 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
             <div className="max-w-3xl">
               <h3 className="text-base font-semibold text-[#1f2735]">Points expiration</h3>
               <p className="mt-2 text-sm text-[#4b5a72]">
-                100% of points expire after {pointsExpireAfterDays} days of inactivity.
+                100% of points expire after {pointsExpireAfterDays} days.
               </p>
               <p className="mt-1 text-sm text-[#4b5a72]">
                 Expiration reminders go out {expirationReminderDays} days before expiry.
@@ -145,28 +170,66 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
       </section>
 
       <section className="overflow-hidden rounded-xl border border-[#d3dbe5] bg-white">
-        <div className="border-b border-[#e2e8f0] px-5 py-4">
-          <h2 className="text-lg font-semibold text-[#1f2735]">Rewards</h2>
-          <p className="mt-1 text-sm text-[#4b5a72]">Manage the reward customers can claim when redeeming loyalty points.</p>
-        </div>
-
-        <div className="flex items-start justify-between gap-4 px-5 py-5">
-          <div className="max-w-3xl">
-            <h3 className="text-base font-semibold text-[#1f2735]">{rewardName}</h3>
-            <p className="mt-2 text-sm text-[#4b5a72]">
-              {rewardPointsRequired} points = {props.currencyCode} {rewardAmountDisplay} off eligible non-recurring purchases.
-            </p>
+        <div className="flex items-center justify-between gap-4 border-b border-[#e2e8f0] px-5 py-4">
+          <div>
+            <h2 className="text-lg font-semibold text-[#1f2735]">Rewards</h2>
             <p className="mt-1 text-sm text-[#4b5a72]">
-              Manual grant ceiling: {maxManualGrantPoints} points.
+              Reward definitions convert points into loyalty credit before checkout.
             </p>
           </div>
           <button
             type="button"
-            onClick={() => setOpenSection("reward")}
-            className="rounded-full border border-[#cbd5e1] px-4 py-2 text-sm font-medium text-[#1d3652] transition-colors hover:bg-[#f8fafc]"
+            onClick={openCreateReward}
+            className="rounded-full bg-[#1d3652] px-4 py-2 text-sm font-semibold text-white"
           >
-            Edit
+            Add reward
           </button>
+        </div>
+
+        <div className="space-y-4 px-5 py-5">
+          <p className="text-sm text-[#4b5a72]">
+            Manual grant ceiling: {maxManualGrantPoints} points.
+          </p>
+
+          {activeRewards.length > 0 ? (
+            <div className="space-y-3">
+              {activeRewards.map((reward) => (
+                <article
+                  key={reward.id}
+                  className="flex items-start justify-between gap-4 rounded-xl border border-[#d3dbe5] bg-[#fbfcfe] p-4"
+                >
+                  <div>
+                    <h3 className="text-base font-semibold text-[#1f2735]">{reward.name}</h3>
+                    <p className="mt-1 text-sm text-[#4b5a72]">
+                      {reward.pointsRequired} points = {props.currencyCode} {(reward.amountMinor / 100).toFixed(2)} loyalty credit
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEditReward(reward)}
+                      className="rounded-full border border-[#cbd5e1] px-4 py-2 text-sm font-medium text-[#1d3652]"
+                    >
+                      Edit
+                    </button>
+                    <form action={props.archiveRewardAction}>
+                      <input type="hidden" name="currencyCode" value={props.currencyCode} />
+                      <input type="hidden" name="programId" value={props.programId} />
+                      <input type="hidden" name="rewardDefinitionId" value={reward.id} />
+                      <button
+                        type="submit"
+                        className="rounded-full border border-[#e2c5c5] px-4 py-2 text-sm font-medium text-[#8a2d2d]"
+                      >
+                        Archive
+                      </button>
+                    </form>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-[#4b5a72]">No active reward definitions yet.</p>
+          )}
         </div>
       </section>
 
@@ -178,7 +241,6 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
               <label htmlFor="purchase-earning-points" className="font-medium">Points awarded</label>
               <input
                 id="purchase-earning-points"
-                name="earningPointsVisible"
                 type="number"
                 min={1}
                 value={earningPoints}
@@ -190,7 +252,6 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
               <label htmlFor="purchase-earning-amount" className="font-medium">Per spend amount ({props.currencyCode})</label>
               <input
                 id="purchase-earning-amount"
-                name="earningAmountDisplayVisible"
                 type="text"
                 inputMode="decimal"
                 value={earningAmountDisplay}
@@ -236,6 +297,17 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
                 className="w-full rounded-md border border-[#cbd5e1] px-3 py-2"
               />
             </div>
+            <div className="space-y-1 text-sm text-[#334155]">
+              <label htmlFor="max-manual-grant-points" className="font-medium">Max manual grant points</label>
+              <input
+                id="max-manual-grant-points"
+                type="number"
+                min={1}
+                value={maxManualGrantPoints}
+                onChange={(event) => setMaxManualGrantPoints(event.currentTarget.value)}
+                className="w-full rounded-md border border-[#cbd5e1] px-3 py-2"
+              />
+            </div>
             <div className="flex justify-end gap-3">
               <button type="button" onClick={() => setOpenSection(null)} className="rounded-full border border-[#cbd5e1] px-5 py-2 text-sm font-medium text-[#1f2735]">
                 Cancel
@@ -248,14 +320,23 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
         </ModalShell>
       ) : null}
 
-      {openSection === "reward" ? (
-        <ModalShell title="Edit reward" onClose={() => setOpenSection(null)}>
-          <form action={props.saveAction} className="space-y-5">
-            {commonHiddenFields}
+      {openSection === "reward-create" || openSection === "reward-edit" ? (
+        <ModalShell
+          title={openSection === "reward-create" ? "Add reward" : "Edit reward"}
+          onClose={() => {
+            setOpenSection(null);
+            setEditingRewardId(null);
+          }}
+        >
+          <form action={props.saveRewardAction} className="space-y-5">
+            <input type="hidden" name="currencyCode" value={props.currencyCode} />
+            <input type="hidden" name="programId" value={props.programId} />
+            <input type="hidden" name="rewardDefinitionId" value={editingReward?.id ?? ""} />
             <div className="space-y-1 text-sm text-[#334155]">
               <label htmlFor="reward-name" className="font-medium">Reward name</label>
               <input
                 id="reward-name"
+                name="name"
                 type="text"
                 value={rewardName}
                 onChange={(event) => setRewardName(event.currentTarget.value)}
@@ -267,6 +348,7 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
                 <label htmlFor="reward-points-required" className="font-medium">Points required</label>
                 <input
                   id="reward-points-required"
+                  name="pointsRequired"
                   type="number"
                   min={1}
                   value={rewardPointsRequired}
@@ -278,6 +360,7 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
                 <label htmlFor="reward-amount" className="font-medium">Reward amount ({props.currencyCode})</label>
                 <input
                   id="reward-amount"
+                  name="amountDisplay"
                   type="text"
                   inputMode="decimal"
                   value={rewardAmountDisplay}
@@ -285,17 +368,6 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
                   className="w-full rounded-md border border-[#cbd5e1] px-3 py-2"
                 />
               </div>
-            </div>
-            <div className="space-y-1 text-sm text-[#334155]">
-              <label htmlFor="max-manual-grant-points" className="font-medium">Max manual grant points</label>
-              <input
-                id="max-manual-grant-points"
-                type="number"
-                min={1}
-                value={maxManualGrantPoints}
-                onChange={(event) => setMaxManualGrantPoints(event.currentTarget.value)}
-                className="w-full rounded-md border border-[#cbd5e1] px-3 py-2"
-              />
             </div>
             <div className="flex justify-end gap-3">
               <button type="button" onClick={() => setOpenSection(null)} className="rounded-full border border-[#cbd5e1] px-5 py-2 text-sm font-medium text-[#1f2735]">

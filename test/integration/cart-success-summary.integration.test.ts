@@ -21,6 +21,7 @@ async function createCartSuccessFixture(input: {
   discountAmountMinor?: number;
   couponCodeSnapshot?: string | null;
   walletAmountMinor?: number;
+  loyaltyCreditAmountMinor?: number;
 }) {
   const client = await prisma.user.create({
     data: {
@@ -126,11 +127,29 @@ async function createCartSuccessFixture(input: {
       provider: PaymentProvider.STRIPE,
       providerReference: checkoutSessionId,
       stripeCheckoutSessionId: checkoutSessionId,
-      amountMinor: 11000 - (input.discountAmountMinor ?? 0) - (input.walletAmountMinor ?? 0),
+      amountMinor:
+        11000
+        - (input.discountAmountMinor ?? 0)
+        - (input.walletAmountMinor ?? 0)
+        - (input.loyaltyCreditAmountMinor ?? 0),
       currencyCode: "EUR",
       checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
     },
   });
+
+  if ((input.loyaltyCreditAmountMinor ?? 0) > 0) {
+    await prisma.payment.create({
+      data: {
+        orderId: order.id,
+        status: input.paymentStatus,
+        method: PaymentMethod.LOYALTY_CREDIT,
+        provider: PaymentProvider.INTERNAL,
+        amountMinor: input.loyaltyCreditAmountMinor ?? 0,
+        currencyCode: "EUR",
+        checkoutSource: CheckoutSource.CART_CHECKOUT_V1,
+      },
+    });
+  }
 
   if ((input.walletAmountMinor ?? 0) > 0) {
     await prisma.payment.create({
@@ -254,12 +273,13 @@ describe("cart success summary read model", () => {
     expect(state.totalAmountMinor).toBe(11000);
   });
 
-  it("returns coupon, wallet, and Stripe reference fields from the server read model", async () => {
+  it("returns coupon, loyalty, wallet, and Stripe reference fields from the server read model", async () => {
     const fixture = await createCartSuccessFixture({
       paymentStatus: PaymentStatus.SUCCEEDED,
       orderStatus: OrderStatus.PAID,
       discountAmountMinor: 2000,
       couponCodeSnapshot: "SAVE20",
+      loyaltyCreditAmountMinor: 1500,
       walletAmountMinor: 3000,
     });
 
@@ -270,9 +290,9 @@ describe("cart success summary read model", () => {
 
     expect(state.discountAmountMinor).toBe(2000);
     expect(state.couponCodeSnapshot).toBe("SAVE20");
-    expect(state.loyaltyCreditAmountMinor).toBe(0);
+    expect(state.loyaltyCreditAmountMinor).toBe(1500);
     expect(state.walletAmountMinor).toBe(3000);
-    expect(state.stripePaidAmountMinor).toBe(6000);
+    expect(state.stripePaidAmountMinor).toBe(4500);
     expect(state.stripeCheckoutSessionId).toBe(fixture.checkoutSessionId);
     expect(state.totalAmountMinor).toBe(9000);
     expect(state.totalPaidAmountMinor).toBe(9000);

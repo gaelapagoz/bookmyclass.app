@@ -16,6 +16,7 @@ import {
   PaymentMethod,
   PaymentProvider,
   PaymentStatus,
+  LoyaltyCreditLedgerEntryType,
   Prisma,
   PriceType,
   ProductType,
@@ -1634,9 +1635,19 @@ describe("POST /api/cart/checkout — Slice 4 idempotency edge cases (formerly f
     expect(createStripeCheckoutSessionWithIdempotencyMock).not.toHaveBeenCalled();
   });
 
-  it("rejects one-time loyalty credit requests while checkout redemption remains deferred", async () => {
+  it("applies loyalty credit to one-time carts through loyalty-owned reservation flow", async () => {
     const client = await seedClient({ verified: true });
     const { product, price } = await seedCheckoutReadyCatalog({ productType: ProductType.CLASS_PACK });
+    await prisma.loyaltyCreditLedgerEntry.create({
+      data: {
+        clientId: client.id,
+        entryType: LoyaltyCreditLedgerEntryType.REDEEM,
+        amountMinor: 1200,
+        currencyCode: "EUR",
+        idempotencyKey: `loyalty:credit:seed:${client.id}`,
+        payloadHash: "seed-payload-hash",
+      },
+    });
 
     vi.mocked(auth).mockResolvedValue({
       user: { id: client.id, name: client.name, email: client.email },
@@ -1654,11 +1665,39 @@ describe("POST /api/cart/checkout — Slice 4 idempotency edge cases (formerly f
       }),
     );
 
-    expect(response.status).toBe(422);
+    expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      code: "LOYALTY_CREDIT_NOT_ACTIVE",
+      type: "stripe_redirect",
     });
-    expect(createStripeCheckoutSessionWithIdempotencyMock).not.toHaveBeenCalled();
+
+    const order = await prisma.order.findFirstOrThrow({
+      where: { clientId: client.id },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, totalAmountMinor: true },
+    });
+    const loyaltyPayment = await prisma.payment.findFirstOrThrow({
+      where: {
+        orderId: order.id,
+        method: PaymentMethod.LOYALTY_CREDIT,
+      },
+      select: { amountMinor: true, provider: true, status: true },
+    });
+    const reservation = await prisma.loyaltyCreditReservation.findFirstOrThrow({
+      where: { orderId: order.id },
+      select: { reservedAmountMinor: true, currencyCode: true, status: true },
+    });
+
+    expect(loyaltyPayment).toMatchObject({
+      amountMinor: 1200,
+      provider: PaymentProvider.INTERNAL,
+      status: PaymentStatus.PENDING,
+    });
+    expect(reservation).toMatchObject({
+      reservedAmountMinor: 1200,
+      currencyCode: "EUR",
+      status: "RESERVED",
+    });
+    expect(createStripeCheckoutSessionWithIdempotencyMock).toHaveBeenCalledTimes(1);
   });
 
   it("rejects walletAmountMinor above the route max", async () => {

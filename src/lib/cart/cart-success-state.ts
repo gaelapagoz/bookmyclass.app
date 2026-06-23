@@ -195,6 +195,15 @@ async function readOrderSuccessState(input: {
           payment.status !== PaymentStatus.REFUNDED,
       )
       .reduce((sum, payment) => sum + payment.amountMinor, 0) ?? 0;
+  const loyaltyCreditAmountMinor =
+    order?.payments
+      .filter(
+        (payment) =>
+          payment.method === PaymentMethod.LOYALTY_CREDIT &&
+          payment.status !== PaymentStatus.FAILED &&
+          payment.status !== PaymentStatus.REFUNDED,
+      )
+      .reduce((sum, payment) => sum + payment.amountMinor, 0) ?? 0;
   const stripePaidAmountMinor =
     order?.payments
       .filter(
@@ -233,7 +242,7 @@ async function readOrderSuccessState(input: {
     stripePaidAmountMinor,
     currencyCode: order?.currencyCode ?? null,
     couponCodeSnapshot: order?.couponCodeSnapshot ?? null,
-    loyaltyCreditAmountMinor: 0,
+    loyaltyCreditAmountMinor,
     walletAmountMinor,
     stripeCheckoutSessionId,
     hasZeroValuePayment,

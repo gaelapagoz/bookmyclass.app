@@ -43,9 +43,16 @@ function makeOverview() {
       pointsExpireAfterDays: 365,
       expirationReminderDays: 30,
       maxManualGrantPoints: 5000,
-      rewardName: "5 EURO Reward",
-      rewardPointsRequired: 500,
-      rewardAmountMinor: 500,
+      rewardDefinitions: [
+        {
+          id: "reward-1",
+          name: "5 EURO Reward",
+          pointsRequired: 500,
+          amountMinor: 500,
+          isActive: true,
+          createdAt: new Date("2026-06-01T10:00:00.000Z"),
+        },
+      ],
       eligibleProducts: [{ productId: "product-1" }],
     },
     eligibleProducts: [
@@ -86,7 +93,7 @@ describe("admin loyalty catalog page", () => {
     expect(screen.getByRole("heading", { name: "Catalog: Loyalty Points" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Points" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Rewards" })).toBeVisible();
-    expect(screen.getByText(/all non-recurring products/i)).toBeVisible();
+    expect(screen.getByText(/eligible non-recurring catalog products/i)).toBeVisible();
     expect(screen.getByText("5 EURO Reward")).toBeVisible();
     expect(screen.queryByText("Stage 1 Scope Lock")).not.toBeInTheDocument();
 

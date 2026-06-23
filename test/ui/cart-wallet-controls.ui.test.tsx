@@ -59,6 +59,21 @@ describe("CartPageClient wallet controls", () => {
           }),
         } as Response;
       }
+      if (urlStr.includes("/api/loyalty/wallet")) {
+        return {
+          ok: true,
+          json: async () => ({
+            loyalty: {
+              loyaltyCredit: {
+                settledBalanceMinor: 2500,
+                availableBalanceMinor: 2500,
+                reservedAmountMinor: 0,
+                currencyCode: "EUR",
+              },
+            },
+          }),
+        } as Response;
+      }
       if (urlStr.includes("/api/cart/reconcile")) {
         // Return no lines so the component does not replace the seeded cart.
         return {
@@ -80,6 +95,7 @@ describe("CartPageClient wallet controls", () => {
     expect(screen.getAllByText(/available/i).length).toBeGreaterThan(0);
     expect(screen.getByTestId("wallet-amount-input")).toBeInTheDocument();
     expect(screen.getByTestId("wallet-apply")).toBeInTheDocument();
+    expect(screen.getByTestId("loyalty-controls")).toBeInTheDocument();
   });
 
   it("does not show wallet controls when cart has no store items", async () => {
@@ -133,6 +149,23 @@ describe("CartPageClient wallet controls", () => {
     expect(screen.getByTestId("wallet-applied-amount")).toHaveTextContent("€10.00");
     expect(screen.getByTestId("wallet-remove")).toBeInTheDocument();
     expect(screen.queryByTestId("wallet-amount-input")).not.toBeInTheDocument();
+  });
+
+  it("shows applied loyalty credit and remove button after applying loyalty", async () => {
+    seedCart([storeCartLine]);
+    render(<CartPageClient />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loyalty-amount-input")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId("loyalty-amount-input"), { target: { value: "5.00" } });
+    fireEvent.click(screen.getByTestId("loyalty-apply"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loyalty-applied-amount")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("loyalty-remove")).toBeInTheDocument();
   });
 
   it("removes applied wallet and shows input again after clicking remove", async () => {

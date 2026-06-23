@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   requireAdminSession: vi.fn(),
   assertSameOriginServerAction: vi.fn(),
   upsertLoyaltyProgramSettingsByAdmin: vi.fn(),
+  saveLoyaltyRewardDefinitionByAdmin: vi.fn(),
+  archiveLoyaltyRewardDefinitionByAdmin: vi.fn(),
   grantManualLoyaltyPointsByAdmin: vi.fn(),
   resolveAdminLoyaltyClientIdByEmail: vi.fn(),
 }));
@@ -35,12 +37,16 @@ vi.mock("@/lib/security/same-origin", () => ({
 
 vi.mock("@/lib/loyalty/loyalty-admin-service", () => ({
   upsertLoyaltyProgramSettingsByAdmin: mocks.upsertLoyaltyProgramSettingsByAdmin,
+  saveLoyaltyRewardDefinitionByAdmin: mocks.saveLoyaltyRewardDefinitionByAdmin,
+  archiveLoyaltyRewardDefinitionByAdmin: mocks.archiveLoyaltyRewardDefinitionByAdmin,
   grantManualLoyaltyPointsByAdmin: mocks.grantManualLoyaltyPointsByAdmin,
   resolveAdminLoyaltyClientIdByEmail: mocks.resolveAdminLoyaltyClientIdByEmail,
 }));
 
 import {
+  archiveLoyaltyRewardAction,
   grantLoyaltyPointsAction,
+  saveLoyaltyRewardAction,
   saveLoyaltyProgramAction,
 } from "../../src/app/admin/(private)/sales/loyalty/actions";
 
@@ -101,9 +107,6 @@ describe("admin loyalty actions", () => {
         pointsExpireAfterDays: "180",
         expirationReminderDays: "30",
         maxManualGrantPoints: "5000",
-        rewardName: "4 EURO Reward",
-        rewardPointsRequired: "400",
-        rewardAmountDisplay: "4.00",
         eligibleProductIds: ["product-1"],
         clientId: "client-1",
         query: "client@example.test",
@@ -117,40 +120,11 @@ describe("admin loyalty actions", () => {
         currencyCode: "EUR",
         earningPoints: 2,
         earningAmountMinor: 500,
-        rewardName: "4 EURO Reward",
-        rewardPointsRequired: 400,
-        rewardAmountMinor: 400,
         eligibleProductIds: ["product-1"],
       }),
     );
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/sales/loyalty");
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/catalog/loyalty");
-  });
-
-  it("forwards edited reward fields from the catalog form", async () => {
-    await expect(
-      saveLoyaltyProgramAction(makeForm({
-        currencyCode: "EUR",
-        isActive: "on",
-        earningPoints: "1",
-        earningAmountDisplay: "1.00",
-        pointsExpireAfterDays: "365",
-        expirationReminderDays: "30",
-        maxManualGrantPoints: "5000",
-        rewardName: "10 EURO Reward",
-        rewardPointsRequired: "1000",
-        rewardAmountDisplay: "10.00",
-        eligibleProductIds: ["product-2"],
-      })),
-    ).rejects.toThrow("NEXT_REDIRECT:/admin/catalog/loyalty?currencyCode=EUR&success=Loyalty+program+updated.");
-
-    expect(mocks.upsertLoyaltyProgramSettingsByAdmin).toHaveBeenCalledWith(
-      expect.objectContaining({
-        rewardName: "10 EURO Reward",
-        rewardPointsRequired: 1000,
-        rewardAmountMinor: 1000,
-      }),
-    );
   });
 
   it("maps manual grant limit failures to the loyalty page banner", async () => {
@@ -190,5 +164,43 @@ describe("admin loyalty actions", () => {
         idempotencyKey: "loyalty:manual-grant:admin-action:admin-1:client-1:grant-456",
       }),
     );
+  });
+
+  it("saves loyalty reward definitions separately from program settings", async () => {
+    await expect(
+      saveLoyaltyRewardAction(makeForm({
+        programId: "program-1",
+        currencyCode: "EUR",
+        name: "10 EURO Reward",
+        pointsRequired: "1000",
+        amountDisplay: "10.00",
+      })),
+    ).rejects.toThrow("NEXT_REDIRECT:/admin/catalog/loyalty?currencyCode=EUR&success=Loyalty+reward+updated.");
+
+    expect(mocks.saveLoyaltyRewardDefinitionByAdmin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: "admin-1",
+        programId: "program-1",
+        name: "10 EURO Reward",
+        pointsRequired: 1000,
+        amountMinor: 1000,
+      }),
+    );
+  });
+
+  it("archives loyalty reward definitions from the catalog page", async () => {
+    await expect(
+      archiveLoyaltyRewardAction(makeForm({
+        programId: "program-1",
+        rewardDefinitionId: "reward-1",
+        currencyCode: "EUR",
+      })),
+    ).rejects.toThrow("NEXT_REDIRECT:/admin/catalog/loyalty?currencyCode=EUR&success=Loyalty+reward+archived.");
+
+    expect(mocks.archiveLoyaltyRewardDefinitionByAdmin).toHaveBeenCalledWith({
+      actorUserId: "admin-1",
+      programId: "program-1",
+      rewardDefinitionId: "reward-1",
+    });
   });
 });

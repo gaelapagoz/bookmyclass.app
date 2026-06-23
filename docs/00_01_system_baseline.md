@@ -50,8 +50,8 @@ Evidence label legend used in this file:
   - Public class catalogue + availability APIs.
   - Booking draft -> payment-option selection -> Stripe checkout/confirmation.
   - Product/subscription checkout from `/subscription`.
-  - Customer dashboard (bookings/membership/profile/password/email change, wallet, loyalty read-only visibility).
-  - Admin CRUD/ops for classes/sessions/plans/subscriptions/users/learning/marketing/inbox plus loyalty program visibility/manual grants.
+  - Customer dashboard (bookings/membership/profile/password/email change, wallet, loyalty balance/history, reward redemption).
+  - Admin CRUD/ops for classes/sessions/plans/subscriptions/users/learning/marketing/inbox plus loyalty program/reward configuration and manual grants.
   - Evidence status: Confirmed from repo (`src/app`, `src/lib`).
 
 ## 2. Functional specification
@@ -87,7 +87,7 @@ Evidence label legend used in this file:
   - Evidence status: Confirmed from repo (`src/app/(public)/page.tsx`, `src/lib/client-messages/client-message-service.ts`, `src/app/admin/(private)/inbox/page.tsx`, `homesite/index.html`, `src/app/api/contact-form/route.ts`, `src/lib/contact-form/contact-form-service.ts`).
 - Capability status summary:
   - Confirmed: booking draft/payment/checkout, subscription checkout, admin operations, auth flows, contact/inbox, attendance self check-in (dashboard + kiosk), staff attendance finalization.
-  - Confirmed: loyalty spend-earning admin visibility/manual grants and client dashboard/wallet read-only surfaces are active; redemption and loyalty-credit checkout remain deferred.
+  - Confirmed: loyalty spend-earning, reward redemption, loyalty-credit wallet visibility, and loyalty-credit checkout application for one-time carts are active.
   - Confirmed: admin and teacher session calendar surfaces include active waitlist count visibility (read-only, no manual controls).
   - Confirmed: teacher own-session roster management is enforced server-side; teacher add/remove is restricted to assigned sessions and still requires eligible credit or qualifying subscription.
   - Inferred: teacher operational workflows (UI placeholder suggests planned expansion).
@@ -201,8 +201,8 @@ Evidence label legend used in this file:
   - Scheduling/booking: `ClassCategory`, `ClassType`, `ClassTemplate`, `RecurringRule`, `StudioSession`, `Booking`, `BookingPolicy`, `WaitlistEntry`, `AttendanceRecord`.
   - Commerce: `Order`, `OrderItem`, `Payment`, `SubscriptionContract`, `ClientEntitlement`, `CreditLedgerEntry`.
   - Gift cards: `GiftCardWallet`, `GiftCardLedgerEntry`, `GiftCardRedemption`, `GiftCardReconciliationCase` foundation tables.
-  - Loyalty runtime: spend-based earning is active for eligible settled one-time orders through `LoyaltyProgram`, `LoyaltyEligibleProduct`, and `LoyaltyPointsLedgerEntry`.
-  - Loyalty deferred scope: redemption, loyalty-credit checkout application, and other action-based earning remain inactive; the public explainer is shipped as read-only informational content.
+  - Loyalty runtime: spend-based earning is active for eligible settled one-time orders through `LoyaltyProgram`, `LoyaltyEligibleProduct`, `LoyaltyPointsLedgerEntry`, reward redemptions, loyalty-credit reservations, and loyalty-credit ledger entries.
+  - Loyalty deferred scope: other action-based earning remains inactive; the public explainer remains informational and must not overstate earning modes.
   - Admin/support/marketing/content: `AuditLog`, `AdminNote`, `ContactMessage`, `ClientMessage`, `PublicDocument`, learning and marketing models.
   - Evidence status: Confirmed from repo (`prisma/schema.prisma`).
 - Key relationships:

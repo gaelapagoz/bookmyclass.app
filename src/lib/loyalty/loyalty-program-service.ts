@@ -11,9 +11,6 @@ const loyaltyProgramSettingsSchema = z.object({
   pointsExpireAfterDays: z.number().int().positive(),
   expirationReminderDays: z.number().int().positive().nullable(),
   maxManualGrantPoints: z.number().int().positive(),
-  rewardName: z.string().trim().min(1).max(120),
-  rewardPointsRequired: z.number().int().positive(),
-  rewardAmountMinor: z.number().int().positive(),
   eligibleProductIds: z.array(z.string().trim().min(1)).max(250),
 }).superRefine((input, ctx) => {
   if (input.isActive && input.eligibleProductIds.length === 0) {
@@ -42,7 +39,9 @@ export class LoyaltyProgramServiceError extends Error {
       | "LOYALTY_PROGRAM_NOT_FOUND"
       | "LOYALTY_PROGRAM_NOT_ACTIVE"
       | "LOYALTY_PROGRAM_INPUT_INVALID"
-      | "LOYALTY_ELIGIBLE_PRODUCTS_INVALID",
+      | "LOYALTY_ELIGIBLE_PRODUCTS_INVALID"
+      | "LOYALTY_REWARD_INPUT_INVALID"
+      | "LOYALTY_REWARD_NOT_FOUND",
     message: string,
     public readonly details?: Record<string, unknown>,
   ) {
@@ -67,6 +66,7 @@ export type LoyaltyProgramRecord = Prisma.LoyaltyProgramGetPayload<{
         };
       };
     };
+    rewardDefinitions: true;
   };
 }>;
 
@@ -80,9 +80,6 @@ export type LoyaltyProgramSummary = Pick<
   | "pointsExpireAfterDays"
   | "expirationReminderDays"
   | "maxManualGrantPoints"
-  | "rewardName"
-  | "rewardPointsRequired"
-  | "rewardAmountMinor"
 >;
 
 type LoyaltyProgramDbClient = Prisma.TransactionClient | typeof prisma;
@@ -95,10 +92,17 @@ export type UpsertLoyaltyProgramSettingsInput = {
   pointsExpireAfterDays: number;
   expirationReminderDays: number | null;
   maxManualGrantPoints: number;
-  rewardName: string;
-  rewardPointsRequired: number;
-  rewardAmountMinor: number;
   eligibleProductIds: string[];
+  prismaClient?: LoyaltyProgramDbClient;
+};
+
+export type UpsertLoyaltyRewardDefinitionInput = {
+  programId: string;
+  rewardDefinitionId?: string;
+  name: string;
+  pointsRequired: number;
+  amountMinor: number;
+  isActive?: boolean;
   prismaClient?: LoyaltyProgramDbClient;
 };
 
@@ -138,6 +142,9 @@ const loyaltyProgramInclude = {
       },
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  },
+  rewardDefinitions: {
+    orderBy: [{ pointsRequired: "asc" }, { createdAt: "asc" }, { id: "asc" }],
   },
 } satisfies Prisma.LoyaltyProgramInclude;
 
@@ -263,9 +270,6 @@ export async function listLoyaltyPrograms(
         pointsExpireAfterDays: true,
         expirationReminderDays: true,
         maxManualGrantPoints: true,
-        rewardName: true,
-        rewardPointsRequired: true,
-        rewardAmountMinor: true,
       },
     });
   } catch (error) {
@@ -369,9 +373,6 @@ export async function upsertLoyaltyProgramSettings(
         pointsExpireAfterDays: normalized.pointsExpireAfterDays,
         expirationReminderDays: normalized.expirationReminderDays,
         maxManualGrantPoints: normalized.maxManualGrantPoints,
-        rewardName: normalized.rewardName,
-        rewardPointsRequired: normalized.rewardPointsRequired,
-        rewardAmountMinor: normalized.rewardAmountMinor,
       },
     });
 
@@ -418,9 +419,6 @@ export async function upsertLoyaltyProgramSettings(
         pointsExpireAfterDays: normalized.pointsExpireAfterDays,
         expirationReminderDays: normalized.expirationReminderDays,
         maxManualGrantPoints: normalized.maxManualGrantPoints,
-        rewardName: normalized.rewardName,
-        rewardPointsRequired: normalized.rewardPointsRequired,
-        rewardAmountMinor: normalized.rewardAmountMinor,
         eligibleProducts: {
           create: normalized.eligibleProductIds.map((productId) => ({
             productId,
@@ -445,5 +443,107 @@ export async function upsertLoyaltyProgramSettings(
       throw new LoyaltyProgramServiceError("LOYALTY_PROGRAM_NOT_FOUND", "No loyalty program exists for this currency.");
     }
     return program;
+  });
+}
+
+const rewardDefinitionSchema = z.object({
+  programId: z.string().trim().min(1),
+  rewardDefinitionId: z.string().trim().min(1).optional(),
+  name: z.string().trim().min(1).max(120),
+  pointsRequired: z.number().int().positive(),
+  amountMinor: z.number().int().positive(),
+  isActive: z.boolean().optional(),
+});
+
+function normalizeRewardDefinition(input: UpsertLoyaltyRewardDefinitionInput) {
+  const parsed = rewardDefinitionSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new LoyaltyProgramServiceError(
+      "LOYALTY_REWARD_INPUT_INVALID",
+      "Loyalty reward definition is invalid.",
+      { issues: parsed.error.issues },
+    );
+  }
+
+  return parsed.data;
+}
+
+export async function upsertLoyaltyRewardDefinition(
+  input: UpsertLoyaltyRewardDefinitionInput,
+) {
+  const normalized = normalizeRewardDefinition(input);
+  const db = getDbClient(input.prismaClient);
+
+  const program = await db.loyaltyProgram.findUnique({
+    where: { id: normalized.programId },
+    select: { id: true },
+  });
+  if (!program) {
+    throw new LoyaltyProgramServiceError(
+      "LOYALTY_PROGRAM_NOT_FOUND",
+      "No loyalty program exists for this reward.",
+    );
+  }
+
+  if (normalized.rewardDefinitionId) {
+    const existingReward = await db.loyaltyRewardDefinition.findFirst({
+      where: {
+        id: normalized.rewardDefinitionId,
+        programId: normalized.programId,
+      },
+      select: { id: true },
+    });
+    if (!existingReward) {
+      throw new LoyaltyProgramServiceError(
+        "LOYALTY_REWARD_NOT_FOUND",
+        "Loyalty reward definition was not found for this program.",
+      );
+    }
+
+    return db.loyaltyRewardDefinition.update({
+      where: { id: existingReward.id },
+      data: {
+        name: normalized.name,
+        pointsRequired: normalized.pointsRequired,
+        amountMinor: normalized.amountMinor,
+        isActive: normalized.isActive ?? true,
+      },
+    });
+  }
+
+  return db.loyaltyRewardDefinition.create({
+    data: {
+      programId: normalized.programId,
+      name: normalized.name,
+      pointsRequired: normalized.pointsRequired,
+      amountMinor: normalized.amountMinor,
+      isActive: normalized.isActive ?? true,
+    },
+  });
+}
+
+export async function archiveLoyaltyRewardDefinition(input: {
+  programId: string;
+  rewardDefinitionId: string;
+  prismaClient?: LoyaltyProgramDbClient;
+}) {
+  const db = getDbClient(input.prismaClient);
+  const reward = await db.loyaltyRewardDefinition.findFirst({
+    where: {
+      id: input.rewardDefinitionId,
+      programId: input.programId,
+    },
+    select: { id: true },
+  });
+  if (!reward) {
+    throw new LoyaltyProgramServiceError(
+      "LOYALTY_REWARD_NOT_FOUND",
+      "Loyalty reward definition was not found for this program.",
+    );
+  }
+
+  return db.loyaltyRewardDefinition.update({
+    where: { id: input.rewardDefinitionId },
+    data: { isActive: false },
   });
 }

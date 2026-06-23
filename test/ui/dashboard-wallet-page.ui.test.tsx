@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   resolvePrimaryLoyaltyCurrencyCode: vi.fn(),
   getClientLoyaltySummary: vi.fn(),
   listClientLoyaltyHistory: vi.fn(),
+  getLoyaltyCreditBalance: vi.fn(),
+  listActiveLoyaltyRewards: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-auth", () => ({
@@ -29,8 +31,17 @@ vi.mock("@/lib/loyalty/loyalty-read-service", () => ({
   listClientLoyaltyHistory: mocks.listClientLoyaltyHistory,
 }));
 
+vi.mock("@/lib/loyalty/loyalty-redemption-service", () => ({
+  getLoyaltyCreditBalance: mocks.getLoyaltyCreditBalance,
+  listActiveLoyaltyRewards: mocks.listActiveLoyaltyRewards,
+}));
+
 vi.mock("@/components/dashboard/GiftCardRedeemForm", () => ({
   GiftCardRedeemForm: () => <div>Redeem gift card form</div>,
+}));
+
+vi.mock("@/components/dashboard/LoyaltyRewardRedeemForm", () => ({
+  LoyaltyRewardRedeemForm: () => <div>Redeem loyalty reward form</div>,
 }));
 
 import DashboardWalletPage from "../../src/app/(protected)/dashboard/wallet/page";
@@ -68,6 +79,22 @@ describe("dashboard wallet page", () => {
         happenedAt: new Date("2026-06-01T10:00:00.000Z"),
       },
     ]);
+    mocks.getLoyaltyCreditBalance.mockResolvedValue({
+      settledBalanceMinor: 500,
+      reservedAmountMinor: 0,
+      availableBalanceMinor: 500,
+      currencyCode: "EUR",
+    });
+    mocks.listActiveLoyaltyRewards.mockResolvedValue([
+      {
+        id: "reward-1",
+        name: "5 EURO Reward",
+        pointsRequired: 500,
+        amountMinor: 500,
+        currencyCode: "EUR",
+        isActive: true,
+      },
+    ]);
   });
 
   it("renders separate gift-card and loyalty sections", async () => {
@@ -77,7 +104,9 @@ describe("dashboard wallet page", () => {
     expect(screen.getByRole("heading", { name: "Gift Card Wallet" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Loyalty" })).toBeVisible();
     expect(screen.getByText("Redeem gift card form")).toBeVisible();
+    expect(screen.getByText("Redeem loyalty reward form")).toBeVisible();
     expect(screen.getByText("Current Points")).toBeVisible();
+    expect(screen.getByText("Loyalty Credit")).toBeVisible();
     expect(screen.getByText("Loyalty History")).toBeVisible();
   });
 

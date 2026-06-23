@@ -157,6 +157,7 @@ enum PaymentMethod {
   CASH
   MANUAL
   GIFT_CARD
+  LOYALTY_CREDIT
 }
 
 enum PaymentProvider {
@@ -207,8 +208,22 @@ enum GiftCardRedemptionStatus {
 enum LoyaltyPointsLedgerEntryType {
   EARN
   MANUAL_GRANT
+  REDEEM
   REVERSAL
   EXPIRE
+}
+
+enum LoyaltyCreditLedgerEntryType {
+  REDEEM
+  RESERVE
+  CAPTURE
+  RELEASE
+}
+
+enum LoyaltyCreditReservationStatus {
+  RESERVED
+  CAPTURED
+  RELEASED
 }
 
 enum GiftCardReconciliationStatus {
@@ -389,6 +404,9 @@ model User {
   createdCreditLedgerEntries          CreditLedgerEntry[]          @relation("CreditLedgerEntryCreatedBy")
   loyaltyPointsLedgerEntries          LoyaltyPointsLedgerEntry[]   @relation("LoyaltyPointsLedgerClient")
   createdLoyaltyPointsLedgerEntries   LoyaltyPointsLedgerEntry[]   @relation("LoyaltyPointsLedgerCreatedBy")
+  loyaltyRewardRedemptions            LoyaltyRewardRedemption[]    @relation("LoyaltyRewardRedemptionClient")
+  loyaltyCreditLedgerEntries          LoyaltyCreditLedgerEntry[]   @relation("LoyaltyCreditLedgerClient")
+  loyaltyCreditReservations           LoyaltyCreditReservation[]   @relation("LoyaltyCreditReservationClient")
   giftCardWallets                     GiftCardWallet[]             @relation("GiftCardWalletClient")
   giftCardLedgerEntries               GiftCardLedgerEntry[]        @relation("GiftCardLedgerEntryClient")
   giftCardRedemptions                 GiftCardRedemption[]         @relation("GiftCardRedemptionClient")
@@ -866,6 +884,8 @@ model Order {
   clientEntitlements          ClientEntitlement[]
   creditLedgerEntries         CreditLedgerEntry[]
   loyaltyPointsLedgerEntries  LoyaltyPointsLedgerEntry[]
+  loyaltyCreditLedgerEntries  LoyaltyCreditLedgerEntry[]
+  loyaltyCreditReservations   LoyaltyCreditReservation[]
   couponId                    String?
   couponCodeSnapshot          String?
   coupon                      Coupon?                     @relation(fields: [couponId], references: [id], onDelete: SetNull)
@@ -932,6 +952,7 @@ model Payment {
   booking                     Booking?                     @relation("BookingPayment", fields: [bookingId], references: [id], onDelete: SetNull)
   couponRedemptions           CouponRedemption[]
   loyaltyPointsLedgerEntries  LoyaltyPointsLedgerEntry[]
+  loyaltyCreditLedgerEntries  LoyaltyCreditLedgerEntry[]
   giftCardLedgerEntries       GiftCardLedgerEntry[]
   giftCardReconciliationCases GiftCardReconciliationCase[]
   createdAt                   DateTime                     @default(now())
@@ -1039,14 +1060,28 @@ model LoyaltyProgram {
   pointsExpireAfterDays  Int
   expirationReminderDays Int?
   maxManualGrantPoints   Int
-  rewardName             String                   @default("5 EURO Reward")
-  rewardPointsRequired   Int                      @default(500)
-  rewardAmountMinor      Int                      @default(500)
   eligibleProducts       LoyaltyEligibleProduct[]
+  rewardDefinitions      LoyaltyRewardDefinition[]
+  rewardRedemptions      LoyaltyRewardRedemption[]
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
 
   @@index([isActive])
+}
+
+model LoyaltyRewardDefinition {
+  id                 String                   @id @default(cuid())
+  programId          String
+  name               String
+  pointsRequired     Int
+  amountMinor        Int
+  isActive           Boolean                  @default(true)
+  program            LoyaltyProgram           @relation(fields: [programId], references: [id], onDelete: Cascade)
+  rewardRedemptions  LoyaltyRewardRedemption[]
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  @@index([programId, isActive])
 }
 
 model LoyaltyEligibleProduct {
@@ -1073,6 +1108,7 @@ model LoyaltyPointsLedgerEntry {
   orderId        String?
   paymentId      String?
   sourceEntryId  String?
+  rewardRedemptionId String?
   createdById    String?
   reason         String?
   idempotencyKey String                        @unique
@@ -1085,6 +1121,7 @@ model LoyaltyPointsLedgerEntry {
   payment        Payment?                      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
   sourceEntry    LoyaltyPointsLedgerEntry?     @relation("LoyaltyPointsLedgerSource", fields: [sourceEntryId], references: [id], onDelete: Restrict)
   derivedEntries LoyaltyPointsLedgerEntry[]    @relation("LoyaltyPointsLedgerSource")
+  rewardRedemption LoyaltyRewardRedemption?    @relation(fields: [rewardRedemptionId], references: [id], onDelete: SetNull)
   createdBy      User?                         @relation("LoyaltyPointsLedgerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt      DateTime                      @default(now())
 
@@ -1093,7 +1130,86 @@ model LoyaltyPointsLedgerEntry {
   @@index([orderId])
   @@index([paymentId])
   @@index([sourceEntryId])
+  @@index([rewardRedemptionId])
   @@index([expiresAt])
+}
+
+model LoyaltyRewardRedemption {
+  id                  String                    @id @default(cuid())
+  clientId            String
+  programId           String
+  rewardDefinitionId  String
+  pointsSpent         Int
+  creditAmountMinor   Int
+  currencyCode        String
+  idempotencyKey      String                    @unique
+  payloadHash         String
+  metadata            Json?
+  happenedAt          DateTime                  @default(now())
+  client              User                      @relation("LoyaltyRewardRedemptionClient", fields: [clientId], references: [id], onDelete: Restrict)
+  program             LoyaltyProgram            @relation(fields: [programId], references: [id], onDelete: Restrict)
+  rewardDefinition    LoyaltyRewardDefinition   @relation(fields: [rewardDefinitionId], references: [id], onDelete: Restrict)
+  pointEntries        LoyaltyPointsLedgerEntry[]
+  creditLedgerEntries LoyaltyCreditLedgerEntry[]
+  createdAt           DateTime                  @default(now())
+
+  @@index([clientId, happenedAt])
+  @@index([programId])
+  @@index([rewardDefinitionId])
+}
+
+model LoyaltyCreditReservation {
+  id                  String                         @id @default(cuid())
+  clientId            String
+  orderId             String
+  status              LoyaltyCreditReservationStatus @default(RESERVED)
+  reservedAmountMinor Int
+  capturedAmountMinor Int                            @default(0)
+  releasedAmountMinor Int                            @default(0)
+  currencyCode        String
+  idempotencyKey      String                         @unique
+  payloadHash         String
+  expiresAt           DateTime
+  retryCount          Int                            @default(0)
+  lastRetryAt         DateTime?
+  client              User                           @relation("LoyaltyCreditReservationClient", fields: [clientId], references: [id], onDelete: Restrict)
+  order               Order                          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  ledgerEntries       LoyaltyCreditLedgerEntry[]
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+
+  @@index([clientId, createdAt])
+  @@index([orderId, status])
+  @@index([status, expiresAt])
+}
+
+model LoyaltyCreditLedgerEntry {
+  id                 String                      @id @default(cuid())
+  clientId           String
+  entryType          LoyaltyCreditLedgerEntryType
+  amountMinor        Int
+  currencyCode       String
+  orderId            String?
+  paymentId          String?
+  rewardRedemptionId String?
+  reservationId      String?
+  idempotencyKey     String                      @unique
+  payloadHash        String
+  metadata           Json?
+  happenedAt         DateTime                    @default(now())
+  client             User                        @relation("LoyaltyCreditLedgerClient", fields: [clientId], references: [id], onDelete: Restrict)
+  order              Order?                      @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  payment            Payment?                    @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  rewardRedemption   LoyaltyRewardRedemption?    @relation(fields: [rewardRedemptionId], references: [id], onDelete: SetNull)
+  reservation        LoyaltyCreditReservation?   @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  createdAt          DateTime                    @default(now())
+
+  @@index([clientId, happenedAt])
+  @@index([entryType, happenedAt])
+  @@index([orderId])
+  @@index([paymentId])
+  @@index([rewardRedemptionId])
+  @@index([reservationId])
 }
 
 model GiftCardReconciliationCase {
@@ -1184,7 +1300,9 @@ model CartCheckoutIdempotency {
   orderId              String?
   paymentId            String?
   redemptionId         String?
+  loyaltyCreditReservationId String?
   giftCardPaymentId    String?
+  loyaltyCreditPaymentId String?
   stripePaymentId      String?
   checkoutSessionId    String?
   responseType         CartCheckoutResponseType?

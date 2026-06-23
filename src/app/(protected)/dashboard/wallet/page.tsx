@@ -2,8 +2,10 @@ import Link from "next/link";
 import { GiftCardLedgerEntryType } from "@prisma/client";
 
 import { GiftCardRedeemForm } from "@/components/dashboard/GiftCardRedeemForm";
+import { LoyaltyRewardRedeemForm } from "@/components/dashboard/LoyaltyRewardRedeemForm";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { getGiftCardWalletWithHistory } from "@/lib/gift-cards/gift-card-wallet-read-service";
+import { getLoyaltyCreditBalance, listActiveLoyaltyRewards } from "@/lib/loyalty/loyalty-redemption-service";
 import { resolvePrimaryLoyaltyCurrencyCode } from "@/lib/loyalty/loyalty-program-service";
 import { getClientLoyaltySummary, listClientLoyaltyHistory } from "@/lib/loyalty/loyalty-read-service";
 
@@ -49,6 +51,7 @@ function loyaltyEntryLabel(entryType: string): string {
   switch (entryType) {
     case "EARN": return "Spend earning";
     case "MANUAL_GRANT": return "Manual grant";
+    case "REDEEM": return "Reward redemption";
     case "REVERSAL": return "Financial reversal";
     case "EXPIRE": return "Expiration";
     default: return entryType;
@@ -58,7 +61,7 @@ function loyaltyEntryLabel(entryType: string): string {
 export default async function DashboardWalletPage() {
   const session = await requireAuth();
   const loyaltyCurrencyCode = await resolvePrimaryLoyaltyCurrencyCode();
-  const [wallet, loyaltySummary, loyaltyHistory] = await Promise.all([
+  const [wallet, loyaltySummary, loyaltyHistory, loyaltyCredit, rewards] = await Promise.all([
     getGiftCardWalletWithHistory(session.user.id),
     getClientLoyaltySummary({
       actor: { type: "CLIENT", userId: session.user.id },
@@ -71,6 +74,11 @@ export default async function DashboardWalletPage() {
       currencyCode: loyaltyCurrencyCode,
       limit: 20,
     }),
+    getLoyaltyCreditBalance({
+      clientId: session.user.id,
+      currencyCode: loyaltyCurrencyCode,
+    }),
+    listActiveLoyaltyRewards({ currencyCode: loyaltyCurrencyCode }),
   ]);
 
   return (
@@ -145,7 +153,7 @@ export default async function DashboardWalletPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {wallet.ledgerEntries.map((entry) => {
+                      {wallet.ledgerEntries.map((entry: (typeof wallet.ledgerEntries)[number]) => {
                         const sign = ledgerEntrySign(entry.entryType);
                         const isPositive = sign === "+";
                         const isNegative = sign === "-";
@@ -177,7 +185,7 @@ export default async function DashboardWalletPage() {
           <div>
             <h2 className="text-lg font-semibold text-[#6f2b2b]">Loyalty</h2>
             <p className="mt-1 text-sm text-[#5f4040]">
-              Read-only loyalty visibility for this first-stage rollout. Redemption arrives in a later slice.
+              Loyalty points and loyalty credit stay separate from gift cards, but work together at checkout.
             </p>
           </div>
           <div className="rounded-lg bg-[#faf5f2] px-3 py-2 text-xs text-[#7f5a5a]">
@@ -206,6 +214,13 @@ export default async function DashboardWalletPage() {
               {loyaltySummary.nextExpirationAt ? formatDate(loyaltySummary.nextExpirationAt) : "No scheduled expiry"}
             </p>
           </article>
+
+          <article className="rounded-xl border border-[#d8cec6] bg-[#fffdfb] p-4">
+            <p className="text-xs uppercase tracking-wide text-[#8a5959]">Loyalty Credit</p>
+            <p className="mt-2 text-2xl font-semibold text-[#6f2b2b]">
+              {formatAmount(loyaltyCredit.availableBalanceMinor, loyaltyCurrencyCode)}
+            </p>
+          </article>
         </div>
 
         <div className="mt-4 grid gap-2 text-sm text-[#5f4040]">
@@ -213,6 +228,16 @@ export default async function DashboardWalletPage() {
           <p>Manual grants: {formatPoints(loyaltySummary.manualGrantPoints)} points</p>
           <p>Reversed: {formatPoints(loyaltySummary.reversedPoints)} points</p>
           <p>Expired: {formatPoints(loyaltySummary.expiredPoints)} points</p>
+        </div>
+
+        <div className="mt-5 rounded-xl border border-[#d8cec6] bg-[#fffdfb] p-4">
+          <h3 className="text-lg font-semibold text-[#6f2b2b]">Redeem points</h3>
+          <p className="mt-1 text-sm text-[#5f4040]">
+            Convert points into loyalty credit for future one-time checkouts.
+          </p>
+          <div className="mt-4">
+            <LoyaltyRewardRedeemForm rewards={rewards} />
+          </div>
         </div>
 
         {loyaltyHistory.length > 0 ? (
@@ -229,7 +254,7 @@ export default async function DashboardWalletPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {loyaltyHistory.map((entry) => (
+                  {loyaltyHistory.map((entry: (typeof loyaltyHistory)[number]) => (
                     <tr key={entry.id} className="border-t border-[#f0e8e4] text-[#5f4040]">
                       <td className="px-4 py-2 whitespace-nowrap text-xs text-[#8a5959]">
                         {formatDate(entry.happenedAt)}

@@ -32,6 +32,10 @@ import { getStripeClient } from "../payments/stripe";
 import { isE2ETestModeEnabled } from "@/lib/e2e/e2e-test-guard";
 import { emitCouponAlertEvent } from "@/lib/coupons/coupon-events";
 import { settleCouponRedemptionForCartCheckout } from "@/lib/coupons/coupon-validation-service";
+import {
+  captureLoyaltyCreditReservation,
+  releaseLoyaltyCreditReservation,
+} from "@/lib/loyalty/loyalty-redemption-service";
 import { transitionBookingToConfirmedAndQueueEmail } from "@/lib/public-booking/booking-confirmation-transition-service";
 import {
   CouponSettlementAfterPaymentError,
@@ -663,6 +667,13 @@ async function markPaymentFailedByCheckoutSession(input: {
         select: { id: true },
       })
     : null;
+  const loyaltyCreditReservation = payment.orderId
+    ? await prisma.loyaltyCreditReservation.findFirst({
+        where: { orderId: payment.orderId, status: "RESERVED" },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      })
+    : null;
 
   if (redemption) {
     try {
@@ -685,6 +696,24 @@ async function markPaymentFailedByCheckoutSession(input: {
       }
     }
   }
+  if (loyaltyCreditReservation) {
+    try {
+      await releaseLoyaltyCreditReservation({
+        actor: { type: "SYSTEM", label: "stripe-checkout-failure" },
+        reservationId: loyaltyCreditReservation.id,
+        idempotencyKey: `loyalty-credit:release:reservation:${loyaltyCreditReservation.id}`,
+        metadata: {
+          checkoutSessionId: input.checkoutSessionId,
+          reason: input.reason,
+          source: "stripe-webhook",
+        },
+      });
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("no longer releasable")) {
+        throw error;
+      }
+    }
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.payment.update({
@@ -701,7 +730,9 @@ async function markPaymentFailedByCheckoutSession(input: {
         where: {
           orderId: payment.orderId,
           provider: PaymentProvider.INTERNAL,
-          method: PaymentMethod.GIFT_CARD,
+          method: {
+            in: [PaymentMethod.GIFT_CARD, PaymentMethod.LOYALTY_CREDIT],
+          },
           status: PaymentStatus.PENDING,
         },
         data: {
@@ -959,6 +990,7 @@ async function handleCheckoutCompleted(
   });
 
   let capturedGiftCardPaymentId: string | null = null;
+  let capturedLoyaltyCreditPaymentId: string | null = null;
   if (checkoutSource === CheckoutSource.CART_CHECKOUT_V1 && orderId) {
     const giftCardPayment = await prisma.payment.findFirst({
       where: {
@@ -1083,6 +1115,83 @@ async function handleCheckoutCompleted(
       });
       return;
     }
+
+    const loyaltyCreditPayment = await prisma.payment.findFirst({
+      where: {
+        orderId,
+        provider: PaymentProvider.INTERNAL,
+        method: PaymentMethod.LOYALTY_CREDIT,
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, status: true },
+    });
+    const loyaltyCreditReservation = await prisma.loyaltyCreditReservation.findFirst({
+      where: { orderId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, status: true },
+    });
+
+    if (loyaltyCreditPayment && !loyaltyCreditReservation) {
+      logWarn("cart checkout completion blocked: loyalty credit payment has no reservation", {
+        checkoutSessionId: session.id,
+        orderId,
+        loyaltyCreditPaymentId: loyaltyCreditPayment.id,
+      });
+      return;
+    }
+
+    if (loyaltyCreditPayment && loyaltyCreditReservation?.status === "RELEASED") {
+      logWarn("cart checkout completion blocked: loyalty credit reservation already released", {
+        checkoutSessionId: session.id,
+        orderId,
+        loyaltyCreditPaymentId: loyaltyCreditPayment.id,
+        loyaltyCreditReservationId: loyaltyCreditReservation.id,
+      });
+      return;
+    }
+
+    if (
+      loyaltyCreditPayment &&
+      loyaltyCreditReservation?.status === "CAPTURED" &&
+      loyaltyCreditPayment.status !== PaymentStatus.SUCCEEDED
+    ) {
+      capturedLoyaltyCreditPaymentId = loyaltyCreditPayment.id;
+    }
+
+    if (
+      loyaltyCreditPayment &&
+      loyaltyCreditReservation?.status === "RESERVED" &&
+      loyaltyCreditPayment.status === PaymentStatus.PENDING
+    ) {
+      await captureLoyaltyCreditReservation({
+        actor: { type: "SYSTEM", label: "stripe-checkout-success" },
+        reservationId: loyaltyCreditReservation.id,
+        paymentId: loyaltyCreditPayment.id,
+        idempotencyKey: `loyalty-credit:capture:reservation:${loyaltyCreditReservation.id}`,
+        metadata: {
+          checkoutSessionId: session.id,
+          stripePaymentId: payment.id,
+          source: "stripe-webhook",
+        },
+      });
+      capturedLoyaltyCreditPaymentId = loyaltyCreditPayment.id;
+    }
+
+    if (
+      loyaltyCreditPayment &&
+      loyaltyCreditPayment.status !== PaymentStatus.SUCCEEDED &&
+      !capturedLoyaltyCreditPaymentId
+    ) {
+      logWarn("cart checkout completion blocked: loyalty credit payment is not capturable", {
+        checkoutSessionId: session.id,
+        orderId,
+        loyaltyCreditPaymentId: loyaltyCreditPayment.id,
+        loyaltyCreditPaymentStatus: loyaltyCreditPayment.status,
+        loyaltyCreditReservationId: loyaltyCreditReservation?.id ?? null,
+        loyaltyCreditReservationStatus: loyaltyCreditReservation?.status ?? null,
+      });
+      return;
+    }
   }
 
   await prisma.$transaction(async (tx) => {
@@ -1124,7 +1233,7 @@ async function handleCheckoutCompleted(
         orderId,
         paymentId: payment.id,
         stripeCheckoutSessionId: session.id,
-        internalPaymentIds: capturedGiftCardPaymentId ? [capturedGiftCardPaymentId] : [],
+        internalPaymentIds: [capturedGiftCardPaymentId, capturedLoyaltyCreditPaymentId],
         loyaltyMetadata: {
           source: "stripe-webhook",
           checkoutSource,
