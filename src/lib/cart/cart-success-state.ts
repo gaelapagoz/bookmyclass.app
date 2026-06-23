@@ -30,8 +30,10 @@ export type CartSuccessState = {
   discountAmountMinor: number | null;
   totalAmountMinor: number | null;
   totalPaidAmountMinor: number | null;
+  stripePaidAmountMinor: number;
   currencyCode: string | null;
   couponCodeSnapshot: string | null;
+  loyaltyCreditAmountMinor: number;
   walletAmountMinor: number;
   stripeCheckoutSessionId: string | null;
   hasZeroValuePayment: boolean;
@@ -193,6 +195,14 @@ async function readOrderSuccessState(input: {
           payment.status !== PaymentStatus.REFUNDED,
       )
       .reduce((sum, payment) => sum + payment.amountMinor, 0) ?? 0;
+  const stripePaidAmountMinor =
+    order?.payments
+      .filter(
+        (payment) =>
+          payment.provider === PaymentProvider.STRIPE &&
+          payment.status === PaymentStatus.SUCCEEDED,
+      )
+      .reduce((sum, payment) => sum + payment.amountMinor, 0) ?? 0;
   const totalPaidAmountMinor =
     order?.payments.reduce(
       (sum, payment) =>
@@ -220,8 +230,10 @@ async function readOrderSuccessState(input: {
     discountAmountMinor: order?.discountAmountMinor ?? null,
     totalAmountMinor: order?.totalAmountMinor ?? null,
     totalPaidAmountMinor,
+    stripePaidAmountMinor,
     currencyCode: order?.currencyCode ?? null,
     couponCodeSnapshot: order?.couponCodeSnapshot ?? null,
+    loyaltyCreditAmountMinor: 0,
     walletAmountMinor,
     stripeCheckoutSessionId,
     hasZeroValuePayment,
@@ -248,8 +260,10 @@ export async function getCartCheckoutSuccessStateForOrder(input: {
       discountAmountMinor: null,
       totalAmountMinor: null,
       totalPaidAmountMinor: null,
+      stripePaidAmountMinor: 0,
       currencyCode: null,
       couponCodeSnapshot: null,
+      loyaltyCreditAmountMinor: 0,
       walletAmountMinor: 0,
       stripeCheckoutSessionId: null,
       hasZeroValuePayment: false,
@@ -352,8 +366,10 @@ export async function getCartCheckoutSuccessState(input: {
       discountAmountMinor: null,
       totalAmountMinor: null,
       totalPaidAmountMinor: null,
+      stripePaidAmountMinor: 0,
       currencyCode: null,
       couponCodeSnapshot: null,
+      loyaltyCreditAmountMinor: 0,
       walletAmountMinor: 0,
       stripeCheckoutSessionId: null,
       hasZeroValuePayment: false,

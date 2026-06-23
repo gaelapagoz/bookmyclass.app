@@ -165,10 +165,22 @@ export default async function StoreSuccessPage({
                 -{renderAmount(successState.discountAmountMinor, successState.currencyCode)}
               </p>
             ) : null}
+            {successState.loyaltyCreditAmountMinor > 0 && successState.currencyCode ? (
+              <p>
+                <span className="font-medium">Loyalty Credit:</span>{" "}
+                -{formatAmount(successState.loyaltyCreditAmountMinor, successState.currencyCode)}
+              </p>
+            ) : null}
             {successState.walletAmountMinor > 0 && successState.currencyCode ? (
               <p>
                 <span className="font-medium">Gift Card Wallet:</span>{" "}
                 -{formatAmount(successState.walletAmountMinor, successState.currencyCode)}
+              </p>
+            ) : null}
+            {successState.stripePaidAmountMinor > 0 && successState.currencyCode ? (
+              <p>
+                <span className="font-medium">Stripe/Card Remainder:</span>{" "}
+                {formatAmount(successState.stripePaidAmountMinor, successState.currencyCode)}
               </p>
             ) : null}
             <p>

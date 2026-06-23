@@ -265,6 +265,13 @@ HAVING COUNT(*) > 1;
 - Negative loyalty adjustments are not part of the first admin UX unless a separate guarded reconciliation path is explicitly approved.
 - Client-facing loyalty history and wallet views are read models only and must enforce verified active client ownership server-side.
 
+### Loyalty redemption and checkout contract freeze
+- Cart checkout may accept a loyalty-credit contract field before redemption is active, but positive requests must fail closed until the later redemption slice ships.
+- Recurring carts must reject loyalty credit before reservation, capture, or release logic is reached.
+- Loyalty credit reserve/capture/release behavior must be owned by loyalty services and must not reuse gift-card redemptions or ledger mutations.
+- Success-summary read models must derive coupon, loyalty-credit, gift-card, and Stripe/card contribution lines from server-side order/payment records only.
+- Zero-payment loyalty paths remain deferred until reserve/capture/release safety and audit coverage are implemented.
+
 ### Loyalty and gift-card separation
 - Loyalty credit must never mutate `GiftCardWallet`, `GiftCardLedgerEntry`, or `GiftCardRedemption`.
 - Gift-card reconciliation tools must not be reused to mutate loyalty balances.

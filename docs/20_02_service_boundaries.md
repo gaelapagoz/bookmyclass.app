@@ -36,6 +36,7 @@ Purpose: document the current service-first boundaries and where logic belongs.
 - Loyalty program settings, earning, redemption, manual grants, expirations, and read models belong in `src/lib/loyalty/*`.
 - Checkout finalization and Stripe webhook handlers may orchestrate loyalty services, but must not own loyalty rules or ledger calculations.
 - Cart checkout may orchestrate loyalty-credit reservation/capture/release only through loyalty services.
+- Cart success-summary read models must expose coupon, loyalty-credit, gift-card, and Stripe/card contribution lines from server-derived order/payment data.
 - Dashboard and wallet pages may compose loyalty read models, but must not calculate balances or eligibility in UI code.
 - Admin routes and server actions may orchestrate loyalty admin services, but must not duplicate permission, bound-check, or audit rules.
 - Store Product + Price readiness and setup rules are owned by `store/*`.

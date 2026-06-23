@@ -38,8 +38,10 @@ const confirmedCouponMerchandiseState = {
   discountAmountMinor: 1000,
   totalAmountMinor: 3000,
   totalPaidAmountMinor: 3000,
+  stripePaidAmountMinor: 1500,
   currencyCode: "EUR",
   couponCodeSnapshot: "SAVE25",
+  loyaltyCreditAmountMinor: 1000,
   walletAmountMinor: 500,
   stripeCheckoutSessionId: "cs_store_coupon",
   hasZeroValuePayment: false,
@@ -68,8 +70,10 @@ const confirmedGiftCardState = {
   discountAmountMinor: null,
   totalAmountMinor: 2500,
   totalPaidAmountMinor: 2500,
+  stripePaidAmountMinor: 2500,
   currencyCode: "EUR",
   couponCodeSnapshot: null,
+  loyaltyCreditAmountMinor: 0,
   walletAmountMinor: 0,
   stripeCheckoutSessionId: "cs_store_gift_card",
   hasZeroValuePayment: false,
@@ -110,9 +114,12 @@ describe("Store success page", () => {
     expect(screen.getByText("Subtotal:")).toBeInTheDocument();
     expect(screen.getByText("€40.00")).toBeInTheDocument();
     expect(screen.getByText("Coupon (SAVE25):")).toBeInTheDocument();
-    expect(screen.getByText("-€10.00")).toBeInTheDocument();
+    expect(screen.getByText("Loyalty Credit:")).toBeInTheDocument();
+    expect(screen.getAllByText("-€10.00")).toHaveLength(2);
     expect(screen.getByText("Gift Card Wallet:")).toBeInTheDocument();
     expect(screen.getByText("-€5.00")).toBeInTheDocument();
+    expect(screen.getByText("Stripe/Card Remainder:")).toBeInTheDocument();
+    expect(screen.getByText("€15.00")).toBeInTheDocument();
     expect(screen.getByText("Order Total:")).toBeInTheDocument();
     expect(screen.getAllByText("€30.00")).toHaveLength(3);
     expect(screen.getByText("Stripe Session:")).toBeInTheDocument();
@@ -169,8 +176,10 @@ describe("Store success page", () => {
       discountAmountMinor: null,
       totalAmountMinor: null,
       totalPaidAmountMinor: null,
+      stripePaidAmountMinor: 0,
       currencyCode: null,
       couponCodeSnapshot: null,
+      loyaltyCreditAmountMinor: 0,
       walletAmountMinor: 0,
       stripeCheckoutSessionId: null,
       hasZeroValuePayment: false,
@@ -186,6 +195,7 @@ describe("Store success page", () => {
 
     expect(screen.getByRole("heading", { name: "Purchase Failed" })).toBeInTheDocument();
     expect(screen.getByText(/did not complete/i)).toBeInTheDocument();
+    expect(screen.queryByText("Stripe/Card Remainder:")).not.toBeInTheDocument();
   });
 
   it("renders dashboard wallet and back to store links", async () => {
@@ -239,15 +249,17 @@ describe("Store success page", () => {
         ...confirmedGiftCardState,
         reconciliationState: "PENDING" as const,
         cartClearEligible: false,
+        stripePaidAmountMinor: 0,
       });
 
       render(
-        await StoreSuccessPage({
-          searchParams: Promise.resolve({ orderId: "order_pending" }),
-        }),
-      );
+      await StoreSuccessPage({
+        searchParams: Promise.resolve({ orderId: "order_pending" }),
+      }),
+    );
 
       expect(screen.getByRole("heading", { name: "Purchase Processing" })).toBeInTheDocument();
+      expect(screen.queryByText("Stripe/Card Remainder:")).not.toBeInTheDocument();
       expect(screen.queryByTestId("gift-card-success-copy")).not.toBeInTheDocument();
     });
   });
@@ -258,7 +270,9 @@ describe("Store success page", () => {
       discountAmountMinor: 4000,
       totalAmountMinor: 0,
       totalPaidAmountMinor: 0,
+      stripePaidAmountMinor: 0,
       couponCodeSnapshot: "FREE100",
+      loyaltyCreditAmountMinor: 0,
       walletAmountMinor: 0,
       stripeCheckoutSessionId: null,
       hasZeroValuePayment: true,

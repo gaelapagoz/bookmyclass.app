@@ -69,8 +69,10 @@ describe("Subscription success page", () => {
       discountAmountMinor: 2000,
       totalAmountMinor: 9000,
       totalPaidAmountMinor: 9000,
+      stripePaidAmountMinor: 4500,
       currencyCode: "EUR",
       couponCodeSnapshot: "SAVE20",
+      loyaltyCreditAmountMinor: 1500,
       walletAmountMinor: 3000,
       stripeCheckoutSessionId: "cs_test_123",
       hasZeroValuePayment: false,
@@ -125,8 +127,12 @@ describe("Subscription success page", () => {
     expect(screen.getByText("€110.00")).toBeInTheDocument();
     expect(screen.getByText("Coupon (SAVE20):")).toBeInTheDocument();
     expect(screen.getByText("-€20.00")).toBeInTheDocument();
+    expect(screen.getByText("Loyalty Credit:")).toBeInTheDocument();
+    expect(screen.getByText("-€15.00")).toBeInTheDocument();
     expect(screen.getByText("Gift Card Wallet:")).toBeInTheDocument();
     expect(screen.getByText("-€30.00")).toBeInTheDocument();
+    expect(screen.getByText("Stripe/Card Remainder:")).toBeInTheDocument();
+    expect(screen.getByText("€45.00")).toBeInTheDocument();
     expect(screen.getByText("Order Total:")).toBeInTheDocument();
     expect(screen.getAllByText("€90.00")).toHaveLength(2);
     expect(screen.getByText("Stripe Session:")).toBeInTheDocument();
@@ -148,8 +154,10 @@ describe("Subscription success page", () => {
       discountAmountMinor: null,
       totalAmountMinor: null,
       totalPaidAmountMinor: null,
+      stripePaidAmountMinor: 0,
       currencyCode: null,
       couponCodeSnapshot: null,
+      loyaltyCreditAmountMinor: 0,
       walletAmountMinor: 0,
       stripeCheckoutSessionId: null,
       hasZeroValuePayment: false,
@@ -166,6 +174,7 @@ describe("Subscription success page", () => {
 
     expect(screen.getByRole("heading", { name: "Payment Processing" })).toBeInTheDocument();
     expect(screen.queryByText("Cart Clear Eligible")).not.toBeInTheDocument();
+    expect(screen.queryByText("Stripe/Card Remainder:")).not.toBeInTheDocument();
     expect(screen.getByText("No order items found for this checkout session.")).toBeInTheDocument();
     expect(window.localStorage.getItem(CART_STORAGE_KEY)).not.toBeNull();
   });
@@ -185,8 +194,10 @@ describe("Subscription success page", () => {
       discountAmountMinor: null,
       totalAmountMinor: 5000,
       totalPaidAmountMinor: 5000,
+      stripePaidAmountMinor: 5000,
       currencyCode: "EUR",
       couponCodeSnapshot: null,
+      loyaltyCreditAmountMinor: 0,
       walletAmountMinor: 0,
       stripeCheckoutSessionId: checkoutSessionId,
       hasZeroValuePayment: false,
@@ -227,8 +238,10 @@ describe("Subscription success page", () => {
       discountAmountMinor: null,
       totalAmountMinor: 11000,
       totalPaidAmountMinor: 0,
+      stripePaidAmountMinor: 0,
       currencyCode: "EUR",
       couponCodeSnapshot: null,
+      loyaltyCreditAmountMinor: 0,
       walletAmountMinor: 0,
       stripeCheckoutSessionId: "cs_test_failed",
       hasZeroValuePayment: false,
@@ -247,6 +260,7 @@ describe("Subscription success page", () => {
     expect(screen.getAllByText("FAILED")).toHaveLength(2);
     expect(screen.getByText("CANCELLED")).toBeInTheDocument();
     expect(screen.queryByText("Cart Clear Eligible")).not.toBeInTheDocument();
+    expect(screen.queryByText("Stripe/Card Remainder:")).not.toBeInTheDocument();
     expect(window.localStorage.getItem(CART_STORAGE_KEY)).not.toBeNull();
   });
 
@@ -260,8 +274,10 @@ describe("Subscription success page", () => {
       discountAmountMinor: null,
       totalAmountMinor: 11000,
       totalPaidAmountMinor: 11000,
+      stripePaidAmountMinor: 11000,
       currencyCode: "EUR",
       couponCodeSnapshot: null,
+      loyaltyCreditAmountMinor: 0,
       walletAmountMinor: 0,
       stripeCheckoutSessionId: "cs_test_not_paid",
       hasZeroValuePayment: false,
@@ -470,8 +486,10 @@ describe("Subscription success page", () => {
       discountAmountMinor: 2000,
       totalAmountMinor: 0,
       totalPaidAmountMinor: 0,
+      stripePaidAmountMinor: 0,
       currencyCode: "EUR",
       couponCodeSnapshot: "FREE100",
+      loyaltyCreditAmountMinor: 0,
       walletAmountMinor: 0,
       stripeCheckoutSessionId: null,
       hasZeroValuePayment: true,
@@ -509,8 +527,10 @@ describe("Subscription success page", () => {
       discountAmountMinor: null,
       totalAmountMinor: 5000,
       totalPaidAmountMinor: 5000,
+      stripePaidAmountMinor: 0,
       currencyCode: "EUR",
       couponCodeSnapshot: null,
+      loyaltyCreditAmountMinor: 0,
       walletAmountMinor: 0,
       stripeCheckoutSessionId: null,
       hasZeroValuePayment: false,

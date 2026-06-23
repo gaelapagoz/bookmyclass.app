@@ -173,8 +173,10 @@ describe("cart success summary read model", () => {
     expect(state.discountAmountMinor).toBe(0);
     expect(state.totalAmountMinor).toBe(11000);
     expect(state.totalPaidAmountMinor).toBe(11000);
+    expect(state.stripePaidAmountMinor).toBe(11000);
     expect(state.currencyCode).toBe("EUR");
     expect(state.couponCodeSnapshot).toBeNull();
+    expect(state.loyaltyCreditAmountMinor).toBe(0);
     expect(state.walletAmountMinor).toBe(0);
     expect(state.stripeCheckoutSessionId).toBe(fixture.checkoutSessionId);
     expect(state.hasZeroValuePayment).toBe(false);
@@ -210,6 +212,7 @@ describe("cart success summary read model", () => {
 
     expect(pendingState.reconciliationState).toBe("PENDING");
     expect(pendingState.cartClearEligible).toBe(false);
+    expect(pendingState.stripePaidAmountMinor).toBe(0);
 
     const failedFixture = await createCartSuccessFixture({
       paymentStatus: PaymentStatus.FAILED,
@@ -223,6 +226,7 @@ describe("cart success summary read model", () => {
 
     expect(failedState.reconciliationState).toBe("FAILED");
     expect(failedState.cartClearEligible).toBe(false);
+    expect(failedState.stripePaidAmountMinor).toBe(0);
   });
 
   it("does not depend on client-side cart state to build summary", async () => {
@@ -266,7 +270,9 @@ describe("cart success summary read model", () => {
 
     expect(state.discountAmountMinor).toBe(2000);
     expect(state.couponCodeSnapshot).toBe("SAVE20");
+    expect(state.loyaltyCreditAmountMinor).toBe(0);
     expect(state.walletAmountMinor).toBe(3000);
+    expect(state.stripePaidAmountMinor).toBe(6000);
     expect(state.stripeCheckoutSessionId).toBe(fixture.checkoutSessionId);
     expect(state.totalAmountMinor).toBe(9000);
     expect(state.totalPaidAmountMinor).toBe(9000);
@@ -324,8 +330,10 @@ describe("cart success summary read model", () => {
     expect(state.discountAmountMinor).toBeNull();
     expect(state.totalAmountMinor).toBeNull();
     expect(state.totalPaidAmountMinor).toBeNull();
+    expect(state.stripePaidAmountMinor).toBe(0);
     expect(state.currencyCode).toBeNull();
     expect(state.couponCodeSnapshot).toBeNull();
+    expect(state.loyaltyCreditAmountMinor).toBe(0);
     expect(state.walletAmountMinor).toBe(0);
     expect(state.stripeCheckoutSessionId).toBeNull();
     expect(state.hasZeroValuePayment).toBe(false);
@@ -359,8 +367,10 @@ describe("cart success summary read model", () => {
     expect(state.discountAmountMinor).toBeNull();
     expect(state.totalAmountMinor).toBeNull();
     expect(state.totalPaidAmountMinor).toBeNull();
+    expect(state.stripePaidAmountMinor).toBe(0);
     expect(state.currencyCode).toBeNull();
     expect(state.couponCodeSnapshot).toBeNull();
+    expect(state.loyaltyCreditAmountMinor).toBe(0);
     expect(state.walletAmountMinor).toBe(0);
     expect(state.stripeCheckoutSessionId).toBeNull();
     expect(state.hasZeroValuePayment).toBe(false);
@@ -472,7 +482,9 @@ describe("cart success state — full-wallet orderId path (Phase 2.1)", () => {
     expect(state.cartClearEligible).toBe(true);
     expect(state.orderStatus).toBe(OrderStatus.PAID);
     expect(state.paymentStatus).toBe(PaymentStatus.SUCCEEDED);
+    expect(state.loyaltyCreditAmountMinor).toBe(0);
     expect(state.walletAmountMinor).toBe(2500);
+    expect(state.stripePaidAmountMinor).toBe(0);
     expect(state.totalPaidAmountMinor).toBe(2500);
     expect(state.hasZeroValuePayment).toBe(false);
     expect(state.items).toHaveLength(1);
@@ -518,9 +530,11 @@ describe("cart success state — full-wallet orderId path (Phase 2.1)", () => {
 
     expect(state.discountAmountMinor).toBe(2500);
     expect(state.couponCodeSnapshot).toBe("FREE100");
+    expect(state.loyaltyCreditAmountMinor).toBe(0);
     expect(state.walletAmountMinor).toBe(0);
     expect(state.totalAmountMinor).toBe(0);
     expect(state.totalPaidAmountMinor).toBe(0);
+    expect(state.stripePaidAmountMinor).toBe(0);
     expect(state.stripeCheckoutSessionId).toBeNull();
     expect(state.hasZeroValuePayment).toBe(true);
     expect(state.hasGiftCardItems).toBe(false);

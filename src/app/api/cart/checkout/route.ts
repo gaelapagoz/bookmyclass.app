@@ -5,6 +5,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import {
   CART_CHECKOUT_IDEMPOTENCY_KEY_REGEX,
+  CART_CHECKOUT_MAX_LOYALTY_CREDIT_AMOUNT_MINOR,
   CART_CHECKOUT_MAX_WALLET_AMOUNT_MINOR,
 } from "@/lib/cart/cart-contract";
 import { computeCartHash } from "@/lib/cart/cart-hash";
@@ -30,6 +31,12 @@ const checkoutPayloadSchema = z.object({
     ),
   clientCartVersion: z.string().min(1),
   walletAmountMinor: z.number().int().min(0).max(CART_CHECKOUT_MAX_WALLET_AMOUNT_MINOR).optional(),
+  loyaltyCreditAmountMinor: z
+    .number()
+    .int()
+    .min(0)
+    .max(CART_CHECKOUT_MAX_LOYALTY_CREDIT_AMOUNT_MINOR)
+    .optional(),
   couponCode: z.string().trim().min(1).max(64).optional(),
 });
 const CART_CHECKOUT_DEBUG = process.env.CART_CHECKOUT_DEBUG === "1";
@@ -74,10 +81,14 @@ function buildDeterministicFailureCartHash(input: {
       (parsed.data.walletAmountMinor ?? 0) > 0
         ? `|walletAmountMinor=${parsed.data.walletAmountMinor}`
         : "";
+    const loyaltyCreditSuffix =
+      (parsed.data.loyaltyCreditAmountMinor ?? 0) > 0
+        ? `|loyaltyCreditAmountMinor=${parsed.data.loyaltyCreditAmountMinor}`
+        : "";
     const couponSuffix = parsed.data.couponCode
       ? `|couponCode=${parsed.data.couponCode.trim().toUpperCase()}`
       : "";
-    return `AUTH_FAILURE_V1|cartHash=${computeCartHash(parsed.data.lines)}|clientCartVersion=${parsed.data.clientCartVersion}${walletSuffix}${couponSuffix}`;
+    return `AUTH_FAILURE_V1|cartHash=${computeCartHash(parsed.data.lines)}|clientCartVersion=${parsed.data.clientCartVersion}${walletSuffix}${loyaltyCreditSuffix}${couponSuffix}`;
   }
 
   return `AUTH_FAILURE_V1|rawBodySha256=${sha256Hex(input.rawBody)}`;
@@ -259,6 +270,7 @@ export async function POST(request: Request) {
       lines: parsed.data.lines,
       clientCartVersion: parsed.data.clientCartVersion,
       walletAmountMinor: parsed.data.walletAmountMinor,
+      loyaltyCreditAmountMinor: parsed.data.loyaltyCreditAmountMinor,
       couponCode: parsed.data.couponCode,
     });
     debugLog("checkout_result", {

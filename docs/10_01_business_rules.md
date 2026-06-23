@@ -199,7 +199,16 @@ Redemption, loyalty-credit checkout application, and other action-based earning 
 - Gift-card wallet and loyalty value remain separate balances with separate mutation rules.
 - Loyalty must not reuse or merge into the gift-card wallet implementation.
 
-### 8.7 Loyalty non-goals for this scope
+### 8.7 Frozen redemption and checkout contract
+- Fixed checkout stacking order is `coupon -> loyalty credit -> gift-card wallet -> Stripe/card remainder`.
+- Loyalty credit application is reserved for one-time non-recurring carts only and must be rejected for recurring carts before any reservation attempt.
+- Until redemption ships, any loyalty-credit checkout mutation request must fail closed server-side without mutating order, payment, gift-card, or loyalty state.
+- When loyalty credit becomes active, reserve/capture/release semantics must be implemented under loyalty-owned services with wallet-like idempotency and audit coverage.
+- Zero-payment checkout is allowed only for non-recurring carts after reservation/capture safety is implemented and covered by tests.
+- Checkout success summaries must render coupon discount, loyalty credit applied, gift-card wallet applied, and Stripe/card remainder as separate server-derived lines.
+- Client loyalty redemption, wallet history, and checkout-read views must enforce verified active client ownership server-side and prevent IDOR.
+
+### 8.8 Loyalty non-goals for this scope
 - Do not introduce plan-based loyalty abstractions.
 - Do not infer loyalty eligibility from frontend state.
 - Do not award points before settlement.

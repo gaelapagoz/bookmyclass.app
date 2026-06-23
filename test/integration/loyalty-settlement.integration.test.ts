@@ -135,6 +135,18 @@ async function createOrderFixture(input: {
   return { order, stripePayment, giftCardPayment };
 }
 
+function makeRewardConfig(input?: {
+  rewardName?: string;
+  rewardPointsRequired?: number;
+  rewardAmountMinor?: number;
+}) {
+  return {
+    rewardName: input?.rewardName ?? "5 EURO Reward",
+    rewardPointsRequired: input?.rewardPointsRequired ?? 500,
+    rewardAmountMinor: input?.rewardAmountMinor ?? 500,
+  };
+}
+
 describe("loyalty settlement integration", () => {
   beforeEach(async () => {
     await resetDb();
@@ -156,6 +168,7 @@ describe("loyalty settlement integration", () => {
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
       maxManualGrantPoints: 5_000,
+      ...makeRewardConfig(),
       eligibleProductIds: [product.id],
     });
 
@@ -246,6 +259,7 @@ describe("loyalty settlement integration", () => {
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
       maxManualGrantPoints: 5_000,
+      ...makeRewardConfig(),
       eligibleProductIds: [product.id],
     });
 
@@ -311,6 +325,7 @@ describe("loyalty settlement integration", () => {
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
       maxManualGrantPoints: 5_000,
+      ...makeRewardConfig(),
       eligibleProductIds: [product.id],
     });
 

@@ -14,6 +14,7 @@ import {
 } from "@prisma/client";
 import {
   CART_CHECKOUT_MAX_WALLET_AMOUNT_MINOR,
+  CART_CHECKOUT_MAX_LOYALTY_CREDIT_AMOUNT_MINOR,
   CART_CHECKOUT_IDEMPOTENCY_STATES,
   CART_CHECKOUT_RESPONSE_TYPES,
   CART_CHECKOUT_SOURCE,
@@ -112,6 +113,7 @@ type CartCheckoutStartInput = {
   lines: CartLineInput[];
   clientCartVersion: string;
   walletAmountMinor?: number;
+  loyaltyCreditAmountMinor?: number;
   couponCode?: string;
   allowUnverifiedClient?: boolean;
   redirectUrls?: {
@@ -1269,6 +1271,16 @@ function buildWalletAugmentedCartHash(cartHash: string, walletAmountMinor: numbe
   return `${cartHash}|walletAmountMinor=${walletAmountMinor}`;
 }
 
+function buildLoyaltyCreditAugmentedCartHash(
+  cartHash: string,
+  loyaltyCreditAmountMinor: number | undefined,
+): string {
+  if (!loyaltyCreditAmountMinor || loyaltyCreditAmountMinor <= 0) {
+    return cartHash;
+  }
+  return `${cartHash}|loyaltyCreditAmountMinor=${loyaltyCreditAmountMinor}`;
+}
+
 function buildCouponAugmentedCartHash(cartHash: string, couponCode: string | undefined): string {
   const normalizedCouponCode = couponCode?.trim().toUpperCase() ?? "";
   if (!normalizedCouponCode) {
@@ -1280,10 +1292,14 @@ function buildCouponAugmentedCartHash(cartHash: string, couponCode: string | und
 function buildCartAttemptHash(input: {
   cartHash: string;
   walletAmountMinor: number | undefined;
+  loyaltyCreditAmountMinor: number | undefined;
   couponCode: string | undefined;
 }): string {
   return buildCouponAugmentedCartHash(
-    buildWalletAugmentedCartHash(input.cartHash, input.walletAmountMinor),
+    buildLoyaltyCreditAugmentedCartHash(
+      buildWalletAugmentedCartHash(input.cartHash, input.walletAmountMinor),
+      input.loyaltyCreditAmountMinor,
+    ),
     input.couponCode,
   );
 }
@@ -1353,6 +1369,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     const authFailureHash = `AUTH_FAILURE_V1|cartHash=${buildCartAttemptHash({
       cartHash: baseCartHash,
       walletAmountMinor: input.walletAmountMinor,
+      loyaltyCreditAmountMinor: input.loyaltyCreditAmountMinor,
       couponCode: input.couponCode,
     })}|clientCartVersion=${input.clientCartVersion}`;
     return resolveDeterministicFailureWithIdempotency({
@@ -1373,11 +1390,29 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
       cartHash: buildCartAttemptHash({
         cartHash: baseCartHash,
         walletAmountMinor: input.walletAmountMinor,
+        loyaltyCreditAmountMinor: input.loyaltyCreditAmountMinor,
         couponCode: input.couponCode,
       }),
       status: 422,
       code: "WALLET_REDEMPTION_EXCEEDS_MAX",
       message: "Wallet redemption cannot exceed 500 EUR per order.",
+    });
+  }
+
+  if ((input.loyaltyCreditAmountMinor ?? 0) > CART_CHECKOUT_MAX_LOYALTY_CREDIT_AMOUNT_MINOR) {
+    const baseCartHash = computeCartHash(input.lines);
+    return resolveDeterministicFailureWithIdempotency({
+      userId: input.userId,
+      idempotencyKey: input.idempotencyKey,
+      cartHash: buildCartAttemptHash({
+        cartHash: baseCartHash,
+        walletAmountMinor: input.walletAmountMinor,
+        loyaltyCreditAmountMinor: input.loyaltyCreditAmountMinor,
+        couponCode: input.couponCode,
+      }),
+      status: 422,
+      code: "LOYALTY_CREDIT_AMOUNT_EXCEEDS_MAX",
+      message: "Loyalty credit amount exceeds the allowed maximum.",
     });
   }
 
@@ -1389,6 +1424,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
   const effectiveCartHash = buildCartAttemptHash({
     cartHash: validation.cartHash,
     walletAmountMinor: input.walletAmountMinor,
+    loyaltyCreditAmountMinor: input.loyaltyCreditAmountMinor,
     couponCode: input.couponCode,
   });
 
@@ -1400,6 +1436,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     clientCartVersion: input.clientCartVersion,
     validationOk: validation.ok,
     walletAmountMinor: input.walletAmountMinor ?? 0,
+    loyaltyCreditAmountMinor: input.loyaltyCreditAmountMinor ?? 0,
     couponCode: input.couponCode?.trim().toUpperCase() || null,
   });
 
@@ -1613,6 +1650,7 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     (line) => line.productType === ProductType.GIFT_CARD,
   );
   const isRedemptionRequest = (input.walletAmountMinor ?? 0) > 0;
+  const isLoyaltyCreditRequest = (input.loyaltyCreditAmountMinor ?? 0) > 0;
   // Wallet is safe only for one-time payments; recurring renewals are Stripe-backed only.
   const cartIsOneTimeOnly = validation.composition === "ONE_TIME_ONLY";
 
@@ -1664,6 +1702,36 @@ export async function startCartCheckout(input: CartCheckoutStartInput): Promise<
     });
     await persistTerminalResponse({ id: idempotencyRecordId, response: redemptionScopeResponse });
     return redemptionScopeResponse;
+  }
+
+  if (isLoyaltyCreditRequest && !cartIsOneTimeOnly) {
+    const loyaltyScopeResponse = createErrorResponse({
+      status: 422,
+      code: "LOYALTY_CREDIT_REQUIRES_ONE_TIME_CART",
+      message: "Loyalty credit cannot be used for recurring membership purchases.",
+      idempotency: {
+        key: input.idempotencyKey,
+        state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,
+        replayed: false,
+      },
+    });
+    await persistTerminalResponse({ id: idempotencyRecordId, response: loyaltyScopeResponse });
+    return loyaltyScopeResponse;
+  }
+
+  if (isLoyaltyCreditRequest) {
+    const loyaltyDeferredResponse = createErrorResponse({
+      status: 422,
+      code: "LOYALTY_CREDIT_NOT_ACTIVE",
+      message: "Loyalty credit checkout is not active yet.",
+      idempotency: {
+        key: input.idempotencyKey,
+        state: CART_CHECKOUT_IDEMPOTENCY_STATES.SUCCEEDED,
+        replayed: false,
+      },
+    });
+    await persistTerminalResponse({ id: idempotencyRecordId, response: loyaltyDeferredResponse });
+    return loyaltyDeferredResponse;
   }
 
   if (isRedemptionRequest && (input.walletAmountMinor ?? 0) > checkoutPricing.totalAmountMinor) {

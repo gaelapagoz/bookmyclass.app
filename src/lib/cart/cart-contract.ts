@@ -8,6 +8,7 @@ export const CART_CHECKOUT_RESPONSE_TYPES = {
 } as const;
 
 export const CART_CHECKOUT_MAX_WALLET_AMOUNT_MINOR = 50_000;
+export const CART_CHECKOUT_MAX_LOYALTY_CREDIT_AMOUNT_MINOR = 50_000;
 
 export type CartCheckoutResponseType =
   (typeof CART_CHECKOUT_RESPONSE_TYPES)[keyof typeof CART_CHECKOUT_RESPONSE_TYPES];

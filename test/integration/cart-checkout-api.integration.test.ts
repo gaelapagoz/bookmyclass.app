@@ -1604,6 +1604,63 @@ describe("POST /api/cart/checkout — Slice 4 idempotency edge cases (formerly f
     expect(createStripeCheckoutSessionWithIdempotencyMock).not.toHaveBeenCalled();
   });
 
+  it("rejects loyalty credit for recurring carts before any reservation path", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({
+      productType: ProductType.UNLIMITED_MEMBERSHIP,
+      priceType: PriceType.RECURRING,
+    });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_f4a00011-0000-0000-0000-000000000011",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          loyaltyCreditAmountMinor: 1200,
+        },
+      }),
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "LOYALTY_CREDIT_REQUIRES_ONE_TIME_CART",
+    });
+    expect(createStripeCheckoutSessionWithIdempotencyMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects one-time loyalty credit requests while checkout redemption remains deferred", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({ productType: ProductType.CLASS_PACK });
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: client.id, name: client.name, email: client.email },
+      expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    const response = await cartCheckoutRoute(
+      createRequest({
+        key: "cartchk_f4a00012-0000-0000-0000-000000000012",
+        body: {
+          lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+          clientCartVersion: "v1",
+          loyaltyCreditAmountMinor: 1200,
+        },
+      }),
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "LOYALTY_CREDIT_NOT_ACTIVE",
+    });
+    expect(createStripeCheckoutSessionWithIdempotencyMock).not.toHaveBeenCalled();
+  });
+
   it("rejects walletAmountMinor above the route max", async () => {
     const client = await seedClient({ verified: true });
     const { product, price } = await seedCheckoutReadyCatalog({ productType: ProductType.GIFT_CARD });
@@ -1652,6 +1709,32 @@ describe("POST /api/cart/checkout — Slice 4 idempotency edge cases (formerly f
     expect(first.status).toBe(422);
     expect(second.status).toBe(422);
     expect(first.body.code).toBe("WALLET_REDEMPTION_EXCEEDS_MAX");
+    expect(second.body.idempotency).toMatchObject({ replayed: true });
+  });
+
+  it("service guard deterministically rejects loyalty credit above max", async () => {
+    const client = await seedClient({ verified: true });
+    const { product, price } = await seedCheckoutReadyCatalog({ productType: ProductType.CLASS_PACK });
+    const key = "cartchk_f4a00013-0000-0000-0000-000000000013";
+
+    const first = await startCartCheckout({
+      userId: client.id,
+      idempotencyKey: key,
+      lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+      clientCartVersion: "v1",
+      loyaltyCreditAmountMinor: 50001,
+    });
+    const second = await startCartCheckout({
+      userId: client.id,
+      idempotencyKey: key,
+      lines: [{ productId: product.id, priceId: price.id, quantity: 1 }],
+      clientCartVersion: "v1",
+      loyaltyCreditAmountMinor: 50001,
+    });
+
+    expect(first.status).toBe(422);
+    expect(second.status).toBe(422);
+    expect(first.body.code).toBe("LOYALTY_CREDIT_AMOUNT_EXCEEDS_MAX");
     expect(second.body.idempotency).toMatchObject({ replayed: true });
   });
 
