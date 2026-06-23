@@ -88,6 +88,17 @@ function collectTestFiles(dir: string, output: string[]): void {
 }
 
 function resolveRequestedPath(arg: string): string[] {
+  if (!arg.includes("/") && !arg.includes("\\")) {
+    const discovered: string[] = [];
+    collectTestFiles(testRoot, discovered);
+    return discovered
+      .filter((file) => {
+        const normalized = normalizePathForComparison(file);
+        return normalized.endsWith(`/${arg}`) || normalized === arg;
+      })
+      .sort((left, right) => left.localeCompare(right));
+  }
+
   const fullPath = resolve(repoRoot, arg);
   const normalizedFullPath = normalizePathForComparison(fullPath);
   const normalizedIntegrationRoot = normalizePathForComparison(testRoot);
@@ -117,6 +128,11 @@ function resolveRequestedFiles(requestedFiles: string[]): string[] {
   if (requestedFiles.length > 0) {
     const filteredRequestedFiles = requestedFiles.filter((arg) => !isConfigLikePath(arg));
     if (filteredRequestedFiles.length > 0) {
+      const explicitFileArgs = filteredRequestedFiles.filter((arg) => testFilePattern.test(arg));
+      if (explicitFileArgs.length > 0) {
+        return explicitFileArgs.flatMap(resolveRequestedPath);
+      }
+
       return filteredRequestedFiles.flatMap(resolveRequestedPath);
     }
   }

@@ -180,7 +180,7 @@ describe("/admin private layout", () => {
   });
 
   it("auto-expands parent group when current path matches child route", async () => {
-    vi.mocked(usePathname).mockReturnValue("/admin/subscriptions");
+    vi.mocked(usePathname).mockReturnValue("/admin/sales/loyalty");
     vi.mocked(auth).mockResolvedValue({
       user: {
         id: "admin-1",
@@ -199,6 +199,7 @@ describe("/admin private layout", () => {
     expect(screen.getByRole("button", { name: "Sales-" })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("link", { name: "Orders" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Subscriptions" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Loyalty Points" })).toBeInTheDocument();
   });
 
   it("auto-expands booking group for calendar deep links", async () => {

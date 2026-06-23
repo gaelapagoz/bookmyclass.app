@@ -34,37 +34,37 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
   const pathname = usePathname();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isAboutOpen, setIsAboutOpen] = useState(false);
-  const [isDesktopAboutOpen, setIsDesktopAboutOpen] = useState(false);
+  const [openMobileDisclosureId, setOpenMobileDisclosureId] = useState<string | null>(null);
+  const [openDesktopDisclosureId, setOpenDesktopDisclosureId] = useState<string | null>(null);
   const [isCartHydrated, setIsCartHydrated] = useState(false);
   const [cartItemCount, setCartItemCount] = useState(0);
 
-  const desktopAboutRef = useRef<HTMLDivElement | null>(null);
+  const desktopDisclosureRef = useRef<HTMLDivElement | null>(null);
 
   const primaryItems = useMemo(() => getHeaderPrimaryNavigation(), []);
   const accountItems = useMemo(() => getHeaderAccountNavigation({ isAuthenticated }), [isAuthenticated]);
 
   useEffect(() => {
     setIsMobileMenuOpen(false);
-    setIsAboutOpen(false);
-    setIsDesktopAboutOpen(false);
+    setOpenMobileDisclosureId(null);
+    setOpenDesktopDisclosureId(null);
   }, [pathname, isAuthenticated]);
 
   useEffect(() => {
     function onOutsideClick(event: MouseEvent) {
-      if (!isDesktopAboutOpen || !desktopAboutRef.current) {
+      if (!openDesktopDisclosureId || !desktopDisclosureRef.current) {
         return;
       }
 
       const target = event.target as Node | null;
-      if (target && !desktopAboutRef.current.contains(target)) {
-        setIsDesktopAboutOpen(false);
+      if (target && !desktopDisclosureRef.current.contains(target)) {
+        setOpenDesktopDisclosureId(null);
       }
     }
 
     function onEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        setIsDesktopAboutOpen(false);
+        setOpenDesktopDisclosureId(null);
       }
     }
 
@@ -75,7 +75,7 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
       document.removeEventListener("mousedown", onOutsideClick);
       document.removeEventListener("keydown", onEscape);
     };
-  }, [isDesktopAboutOpen]);
+  }, [openDesktopDisclosureId]);
 
   useEffect(() => {
     const sync = () => {
@@ -111,7 +111,7 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
             className="flex items-center gap-3"
             onClick={() => {
               setIsMobileMenuOpen(false);
-              setIsAboutOpen(false);
+              setOpenMobileDisclosureId(null);
             }}
           >
             <Image
@@ -135,7 +135,7 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
             className="inline-flex items-center justify-center rounded-md border border-[#c7b7aa] px-3 py-2 text-sm text-[#7b2d2d] md:hidden"
             onClick={() => {
               setIsMobileMenuOpen((prev) => !prev);
-              setIsAboutOpen(false);
+              setOpenMobileDisclosureId(null);
             }}
           >
             Menu
@@ -146,29 +146,34 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
           <nav className="flex items-center justify-center gap-4">
             {primaryItems.map((item, index) => {
               if (item.type === "disclosure") {
+                const isDesktopOpen = openDesktopDisclosureId === item.id;
                 return (
-                  <div key={item.id} className="relative flex items-center gap-4" ref={desktopAboutRef}>
+                  <div
+                    key={item.id}
+                    className="relative flex items-center gap-4"
+                    ref={isDesktopOpen ? desktopDisclosureRef : null}
+                  >
                     <button
                       type="button"
-                      aria-expanded={isDesktopAboutOpen}
+                      aria-expanded={isDesktopOpen}
                       aria-haspopup="menu"
-                      aria-controls="about-us-menu-desktop"
+                      aria-controls={`${item.id}-menu-desktop`}
                       className={`${linkClass(item.links.some((link) => isActivePath(pathname, link.href)))} inline-flex items-center gap-1`}
-                      onClick={() => setIsDesktopAboutOpen((prev) => !prev)}
+                      onClick={() => setOpenDesktopDisclosureId((prev) => (prev === item.id ? null : item.id))}
                     >
                       {item.label}
-                      <span aria-hidden="true" className={`transition-transform ${isDesktopAboutOpen ? "rotate-180" : ""}`}>
+                      <span aria-hidden="true" className={`transition-transform ${isDesktopOpen ? "rotate-180" : ""}`}>
                         v
                       </span>
                     </button>
 
                     <div
-                      id="about-us-menu-desktop"
+                      id={`${item.id}-menu-desktop`}
                       role="menu"
-                      hidden={!isDesktopAboutOpen}
-                      aria-hidden={!isDesktopAboutOpen}
+                      hidden={!isDesktopOpen}
+                      aria-hidden={!isDesktopOpen}
                       className={`${
-                        isDesktopAboutOpen ? "block" : "hidden"
+                        isDesktopOpen ? "block" : "hidden"
                       } absolute left-0 top-full z-20 mt-2 min-w-[280px] rounded-md border border-[#d8cec6] bg-[#fffdfa] p-2 shadow-md`}
                     >
                       {item.links.map((link) => (
@@ -177,7 +182,7 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
                           href={link.href}
                           role="menuitem"
                           className={`block whitespace-nowrap rounded px-2 py-1.5 text-sm ${linkClass(isActivePath(pathname, link.href))}`}
-                          onClick={() => setIsDesktopAboutOpen(false)}
+                          onClick={() => setOpenDesktopDisclosureId(null)}
                         >
                           {link.label}
                         </Link>
@@ -232,32 +237,33 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
             <nav className="flex flex-col gap-2">
               {primaryItems.map((item) => {
                 if (item.type === "disclosure") {
+                  const isMobileOpen = openMobileDisclosureId === item.id;
                   return (
                     <section key={item.id} className="w-full">
                       <button
                         type="button"
-                        data-testid="mobile-about-toggle"
-                        aria-expanded={isAboutOpen}
-                        aria-controls="about-mobile-links"
+                        data-testid={`mobile-disclosure-toggle-${item.id}`}
+                        aria-expanded={isMobileOpen}
+                        aria-controls={`${item.id}-mobile-links`}
                         className="inline-flex items-center gap-1 text-sm tracking-wide text-[#8a5959] hover:text-[#7b2d2d]"
-                        onClick={() => setIsAboutOpen((prev) => !prev)}
+                        onClick={() => setOpenMobileDisclosureId((prev) => (prev === item.id ? null : item.id))}
                       >
                         {item.label}
-                        <span aria-hidden="true" className={`transition-transform ${isAboutOpen ? "rotate-180" : ""}`}>
+                        <span aria-hidden="true" className={`transition-transform ${isMobileOpen ? "rotate-180" : ""}`}>
                           v
                         </span>
                       </button>
 
                       <div
-                        id="about-mobile-links"
-                        hidden={!isAboutOpen}
-                        className={`${isAboutOpen ? "block" : "hidden"} mt-2 space-y-2 border-l border-[#d8cec6] pl-3`}
+                        id={`${item.id}-mobile-links`}
+                        hidden={!isMobileOpen}
+                        className={`${isMobileOpen ? "block" : "hidden"} mt-2 space-y-2 border-l border-[#d8cec6] pl-3`}
                       >
                         {item.links.map((link) => (
                           <Link
                             key={link.href}
                             href={link.href}
-                            data-testid={`mobile-about-link-${link.href.replace(/\//g, "-")}`}
+                            data-testid={`mobile-disclosure-link-${item.id}-${link.href.replace(/\//g, "-")}`}
                             className={`block whitespace-nowrap text-sm ${linkClass(isActivePath(pathname, link.href))}`}
                             onClick={() => setIsMobileMenuOpen(false)}
                           >

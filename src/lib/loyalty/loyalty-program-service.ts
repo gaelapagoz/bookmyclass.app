@@ -11,6 +11,9 @@ const loyaltyProgramSettingsSchema = z.object({
   pointsExpireAfterDays: z.number().int().positive(),
   expirationReminderDays: z.number().int().positive().nullable(),
   maxManualGrantPoints: z.number().int().positive(),
+  rewardName: z.string().trim().min(1).max(120),
+  rewardPointsRequired: z.number().int().positive(),
+  rewardAmountMinor: z.number().int().positive(),
   eligibleProductIds: z.array(z.string().trim().min(1)).max(250),
 }).superRefine((input, ctx) => {
   if (input.isActive && input.eligibleProductIds.length === 0) {
@@ -67,6 +70,21 @@ export type LoyaltyProgramRecord = Prisma.LoyaltyProgramGetPayload<{
   };
 }>;
 
+export type LoyaltyProgramSummary = Pick<
+  LoyaltyProgramRecord,
+  | "id"
+  | "currencyCode"
+  | "isActive"
+  | "earningPoints"
+  | "earningAmountMinor"
+  | "pointsExpireAfterDays"
+  | "expirationReminderDays"
+  | "maxManualGrantPoints"
+  | "rewardName"
+  | "rewardPointsRequired"
+  | "rewardAmountMinor"
+>;
+
 type LoyaltyProgramDbClient = Prisma.TransactionClient | typeof prisma;
 
 export type UpsertLoyaltyProgramSettingsInput = {
@@ -77,9 +95,33 @@ export type UpsertLoyaltyProgramSettingsInput = {
   pointsExpireAfterDays: number;
   expirationReminderDays: number | null;
   maxManualGrantPoints: number;
+  rewardName: string;
+  rewardPointsRequired: number;
+  rewardAmountMinor: number;
   eligibleProductIds: string[];
   prismaClient?: LoyaltyProgramDbClient;
 };
+
+export type LoyaltyEligibleProductOption = {
+  id: string;
+  name: string;
+  slug: string;
+  productType: Prisma.ProductGetPayload<{ select: { productType: true } }>["productType"];
+  priceId: string;
+  priceName: string;
+  unitAmountMinor: number;
+  currencyCode: string;
+};
+
+function isMissingTableError(error: unknown, tableName?: string) {
+  return error instanceof Prisma.PrismaClientKnownRequestError
+    && error.code === "P2021"
+    && (
+      !tableName
+      || error.message.includes(`table \`public.${tableName}\``)
+      || error.message.includes(`table "public.${tableName}"`)
+    );
+}
 
 const loyaltyProgramInclude = {
   eligibleProducts: {
@@ -179,10 +221,17 @@ export async function getLoyaltyProgramForCurrency(
   currencyCode: string,
   prismaClient?: LoyaltyProgramDbClient,
 ): Promise<LoyaltyProgramRecord | null> {
-  return getDbClient(prismaClient).loyaltyProgram.findUnique({
-    where: { currencyCode: currencyCode.trim().toUpperCase() },
-    include: loyaltyProgramInclude,
-  });
+  try {
+    return await getDbClient(prismaClient).loyaltyProgram.findUnique({
+      where: { currencyCode: currencyCode.trim().toUpperCase() },
+      include: loyaltyProgramInclude,
+    });
+  } catch (error) {
+    if (isMissingTableError(error, "LoyaltyProgram")) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function getActiveLoyaltyProgram(
@@ -198,6 +247,104 @@ export async function getActiveLoyaltyProgram(
   }
   return program;
 }
+
+export async function listLoyaltyPrograms(
+  prismaClient?: LoyaltyProgramDbClient,
+): Promise<LoyaltyProgramSummary[]> {
+  try {
+    return await getDbClient(prismaClient).loyaltyProgram.findMany({
+      orderBy: [{ isActive: "desc" }, { currencyCode: "asc" }],
+      select: {
+        id: true,
+        currencyCode: true,
+        isActive: true,
+        earningPoints: true,
+        earningAmountMinor: true,
+        pointsExpireAfterDays: true,
+        expirationReminderDays: true,
+        maxManualGrantPoints: true,
+        rewardName: true,
+        rewardPointsRequired: true,
+        rewardAmountMinor: true,
+      },
+    });
+  } catch (error) {
+    if (isMissingTableError(error, "LoyaltyProgram")) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+export async function resolvePrimaryLoyaltyCurrencyCode(
+  prismaClient?: LoyaltyProgramDbClient,
+): Promise<string> {
+  const programs = await listLoyaltyPrograms(prismaClient);
+  return programs[0]?.currencyCode ?? "EUR";
+}
+
+export async function listEligibleLoyaltyProductsForCurrency(
+  currencyCode: string,
+  prismaClient?: LoyaltyProgramDbClient,
+): Promise<LoyaltyEligibleProductOption[]> {
+  return getDbClient(prismaClient).product.findMany({
+    where: {
+      isActive: true,
+      isArchived: false,
+      prices: {
+        some: {
+          currencyCode: currencyCode.trim().toUpperCase(),
+          priceType: PriceType.ONE_TIME,
+          isActive: true,
+          isArchived: false,
+        },
+      },
+    },
+    orderBy: [{ name: "asc" }, { slug: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      productType: true,
+      prices: {
+        where: {
+          currencyCode: currencyCode.trim().toUpperCase(),
+          priceType: PriceType.ONE_TIME,
+          isActive: true,
+          isArchived: false,
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 1,
+        select: {
+          id: true,
+          name: true,
+          unitAmountMinor: true,
+          currencyCode: true,
+        },
+      },
+    },
+  }).then((products) =>
+    products.flatMap((product) => {
+      const price = product.prices[0];
+      if (!price) {
+        return [];
+      }
+
+      return [{
+        id: product.id,
+        name: product.name,
+        slug: product.slug,
+        productType: product.productType,
+        priceId: price.id,
+        priceName: price.name,
+        unitAmountMinor: price.unitAmountMinor,
+        currencyCode: price.currencyCode,
+      }];
+    }),
+  );
+}
+
+export { isMissingTableError as isMissingLoyaltyTableError };
 
 export async function upsertLoyaltyProgramSettings(
   input: UpsertLoyaltyProgramSettingsInput,
@@ -222,6 +369,9 @@ export async function upsertLoyaltyProgramSettings(
         pointsExpireAfterDays: normalized.pointsExpireAfterDays,
         expirationReminderDays: normalized.expirationReminderDays,
         maxManualGrantPoints: normalized.maxManualGrantPoints,
+        rewardName: normalized.rewardName,
+        rewardPointsRequired: normalized.rewardPointsRequired,
+        rewardAmountMinor: normalized.rewardAmountMinor,
       },
     });
 
@@ -268,6 +418,9 @@ export async function upsertLoyaltyProgramSettings(
         pointsExpireAfterDays: normalized.pointsExpireAfterDays,
         expirationReminderDays: normalized.expirationReminderDays,
         maxManualGrantPoints: normalized.maxManualGrantPoints,
+        rewardName: normalized.rewardName,
+        rewardPointsRequired: normalized.rewardPointsRequired,
+        rewardAmountMinor: normalized.rewardAmountMinor,
         eligibleProducts: {
           create: normalized.eligibleProductIds.map((productId) => ({
             productId,

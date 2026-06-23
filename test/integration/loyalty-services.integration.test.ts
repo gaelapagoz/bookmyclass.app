@@ -186,6 +186,18 @@ async function createPaidOrder(input: {
   return { order, payment };
 }
 
+function makeRewardConfig(input?: {
+  rewardName?: string;
+  rewardPointsRequired?: number;
+  rewardAmountMinor?: number;
+}) {
+  return {
+    rewardName: input?.rewardName ?? "5 EURO Reward",
+    rewardPointsRequired: input?.rewardPointsRequired ?? 500,
+    rewardAmountMinor: input?.rewardAmountMinor ?? 500,
+  };
+}
+
 describe("loyalty core services", () => {
   beforeEach(async () => {
     await resetDb();
@@ -209,6 +221,7 @@ describe("loyalty core services", () => {
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
       maxManualGrantPoints: 5_000,
+      ...makeRewardConfig(),
       eligibleProductIds: [eligible.product.id],
     });
 
@@ -274,6 +287,7 @@ describe("loyalty core services", () => {
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
       maxManualGrantPoints: 5_000,
+      ...makeRewardConfig(),
       eligibleProductIds: [eligible.product.id],
     });
 
@@ -354,6 +368,7 @@ describe("loyalty core services", () => {
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
       maxManualGrantPoints: 5_000,
+      ...makeRewardConfig(),
       eligibleProductIds: [eligible.product.id],
     });
 
@@ -433,6 +448,11 @@ describe("loyalty core services", () => {
       pointsExpireAfterDays: 90,
       expirationReminderDays: 14,
       maxManualGrantPoints: 2_000,
+      ...makeRewardConfig({
+        rewardName: "5 USD Reward",
+        rewardPointsRequired: 500,
+        rewardAmountMinor: 500,
+      }),
       eligibleProductIds: [eligible.product.id],
     });
 
@@ -489,6 +509,7 @@ describe("loyalty core services", () => {
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
       maxManualGrantPoints: 5_000,
+      ...makeRewardConfig(),
       eligibleProductIds: [eligible.product.id],
     });
 
@@ -525,5 +546,52 @@ describe("loyalty core services", () => {
         currencyCode: "EUR",
       }),
     ).rejects.toMatchObject({ code: "LOYALTY_CLIENT_EMAIL_UNVERIFIED" });
+  });
+
+  it("allows admin search to find verified zero-balance clients before a first manual grant", async () => {
+    const admin = await createAdmin();
+    const zeroBalanceClient = await createVerifiedClient();
+    const activeLoyaltyClient = await createVerifiedClient();
+    const eligible = await createCatalogProduct({
+      namePrefix: "Search Eligible Mat",
+      productType: ProductType.MERCHANDISE,
+      unitAmountMinor: 2_500,
+    });
+
+    await upsertLoyaltyProgramSettingsByAdmin({
+      actorUserId: admin.id,
+      currencyCode: "EUR",
+      isActive: true,
+      earningPoints: 1,
+      earningAmountMinor: 100,
+      pointsExpireAfterDays: 180,
+      expirationReminderDays: 30,
+      maxManualGrantPoints: 5_000,
+      ...makeRewardConfig(),
+      eligibleProductIds: [eligible.product.id],
+    });
+
+    await grantManualLoyaltyPointsByAdmin({
+      actorUserId: admin.id,
+      clientId: activeLoyaltyClient.id,
+      currencyCode: "EUR",
+      amountPoints: 50,
+      reason: "Keep one indexed loyalty client in the default view.",
+      idempotencyKey: "loyalty:manual-grant:search-active",
+    });
+
+    const searchResults = await listAdminLoyaltyClientsByActor({
+      actorUserId: admin.id,
+      currencyCode: "EUR",
+      query: zeroBalanceClient.email,
+    });
+
+    expect(searchResults.items).toEqual([
+      expect.objectContaining({
+        id: zeroBalanceClient.id,
+        email: zeroBalanceClient.email,
+        balancePoints: 0,
+      }),
+    ]);
   });
 });

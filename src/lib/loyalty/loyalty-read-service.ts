@@ -1,13 +1,38 @@
 import { LoyaltyPointsLedgerEntryType, Prisma, Role, UserActivationStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
-import { getLoyaltyProgramForCurrency } from "./loyalty-program-service";
+import { getLoyaltyProgramForCurrency, isMissingLoyaltyTableError } from "./loyalty-program-service";
 import { LoyaltyPointsServiceError } from "./loyalty-points-service";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_HISTORY_LIMIT = 50;
 const MAX_HISTORY_LIMIT = 200;
+
+type LoyaltyHistoryRecord = Prisma.LoyaltyPointsLedgerEntryGetPayload<{
+  include: {
+    createdBy: { select: { id: true; name: true; email: true; role: true } };
+    sourceEntry: {
+      select: {
+        id: true;
+        entryType: true;
+        amountPoints: true;
+        happenedAt: true;
+      };
+    };
+  };
+}>;
+
+type LoyaltyAdminClientRecord = Prisma.UserGetPayload<{
+  select: {
+    id: true;
+    name: true;
+    email: true;
+    isActive: true;
+    isInactive: true;
+    activationStatus: true;
+  };
+}>;
 
 type LoyaltyReadActor =
   | { type: "CLIENT"; userId: string }
@@ -89,8 +114,8 @@ function summarizePositiveSourceBuckets(entries: Array<{
   expiresAt: Date | null;
   derivedEntries: Array<{ amountPoints: number }>;
 }>) {
-  let expiringPoints = 0;
   let nextExpirationAt: Date | null = null;
+  let expiringPoints = 0;
 
   for (const entry of entries) {
     if (!entry.expiresAt) {
@@ -102,9 +127,14 @@ function summarizePositiveSourceBuckets(entries: Array<{
       continue;
     }
 
-    expiringPoints += remainingPoints;
     if (!nextExpirationAt || entry.expiresAt < nextExpirationAt) {
       nextExpirationAt = entry.expiresAt;
+      expiringPoints = remainingPoints;
+      continue;
+    }
+
+    if (entry.expiresAt.getTime() === nextExpirationAt.getTime()) {
+      expiringPoints += remainingPoints;
     }
   }
 
@@ -120,36 +150,61 @@ export async function getClientLoyaltySummary(input: {
   const { clientId, currencyCode } = input;
   const client = await resolveClient(clientId);
 
-  const [program, aggregate, positiveSources] = await Promise.all([
-    getLoyaltyProgramForCurrency(currencyCode),
-    prisma.loyaltyPointsLedgerEntry.aggregate({
+  let program = null;
+  let aggregate: { _sum: { amountPoints: number | null }; _max: { happenedAt: Date | null } };
+  let positiveSources: Array<{
+    id: string;
+    amountPoints: number;
+    expiresAt: Date | null;
+    derivedEntries: Array<{ amountPoints: number }>;
+  }>;
+  let balancesByType: Array<{ entryType: LoyaltyPointsLedgerEntryType; _sum: { amountPoints: number | null } }>;
+
+  try {
+    [program, aggregate, positiveSources] = await Promise.all([
+      getLoyaltyProgramForCurrency(currencyCode),
+      prisma.loyaltyPointsLedgerEntry.aggregate({
+        where: { clientId, currencyCode },
+        _sum: { amountPoints: true },
+        _max: { happenedAt: true },
+      }),
+      prisma.loyaltyPointsLedgerEntry.findMany({
+        where: {
+          clientId,
+          currencyCode,
+          amountPoints: { gt: 0 },
+        },
+        select: {
+          id: true,
+          amountPoints: true,
+          expiresAt: true,
+          derivedEntries: {
+            select: { amountPoints: true },
+          },
+        },
+        orderBy: [{ expiresAt: "asc" }, { happenedAt: "asc" }],
+      }),
+    ]);
+
+    const groupedBalances = await prisma.loyaltyPointsLedgerEntry.groupBy({
+      by: ["entryType"],
       where: { clientId, currencyCode },
       _sum: { amountPoints: true },
-      _max: { happenedAt: true },
-    }),
-    prisma.loyaltyPointsLedgerEntry.findMany({
-      where: {
-        clientId,
-        currencyCode,
-        amountPoints: { gt: 0 },
-      },
-      select: {
-        id: true,
-        amountPoints: true,
-        expiresAt: true,
-        derivedEntries: {
-          select: { amountPoints: true },
-        },
-      },
-      orderBy: [{ expiresAt: "asc" }, { happenedAt: "asc" }],
-    }),
-  ]);
+    });
+    balancesByType = groupedBalances as Array<{
+      entryType: LoyaltyPointsLedgerEntryType;
+      _sum: { amountPoints: number | null };
+    }>;
+  } catch (error) {
+    if (!isMissingLoyaltyTableError(error)) {
+      throw error;
+    }
 
-  const balancesByType = await prisma.loyaltyPointsLedgerEntry.groupBy({
-    by: ["entryType"],
-    where: { clientId, currencyCode },
-    _sum: { amountPoints: true },
-  });
+    aggregate = { _sum: { amountPoints: 0 }, _max: { happenedAt: null } };
+    positiveSources = [];
+    balancesByType = [];
+  }
+
   const totals = new Map(balancesByType.map((item) => [item.entryType, item._sum.amountPoints ?? 0]));
   const { expiringPoints, nextExpirationAt } = summarizePositiveSourceBuckets(positiveSources);
 
@@ -190,22 +245,30 @@ export async function listClientLoyaltyHistory(input: {
   await resolveClient(input.clientId);
   const limit = normalizeHistoryLimit(input.limit);
 
-  const items = await prisma.loyaltyPointsLedgerEntry.findMany({
-    where: { clientId: input.clientId, currencyCode: input.currencyCode },
-    orderBy: [{ happenedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
-    take: limit,
-    include: {
-      createdBy: { select: { id: true, name: true, email: true, role: true } },
-      sourceEntry: {
-        select: {
-          id: true,
-          entryType: true,
-          amountPoints: true,
-          happenedAt: true,
+  let items: LoyaltyHistoryRecord[] = [];
+  try {
+    items = await prisma.loyaltyPointsLedgerEntry.findMany({
+      where: { clientId: input.clientId, currencyCode: input.currencyCode },
+      orderBy: [{ happenedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+      take: limit,
+      include: {
+        createdBy: { select: { id: true, name: true, email: true, role: true } },
+        sourceEntry: {
+          select: {
+            id: true,
+            entryType: true,
+            amountPoints: true,
+            happenedAt: true,
+          },
         },
       },
-    },
-  });
+    });
+  } catch (error) {
+    if (!isMissingLoyaltyTableError(error)) {
+      throw error;
+    }
+    items = [];
+  }
 
   return items.map((item) => ({
     id: item.id,
@@ -236,7 +299,6 @@ export async function listAdminLoyaltyClients(input: {
 
   const where: Prisma.UserWhereInput = {
     role: Role.CLIENT,
-    loyaltyPointsLedgerEntries: { some: { currencyCode: input.currencyCode } },
     ...(query
       ? {
           OR: [
@@ -244,26 +306,58 @@ export async function listAdminLoyaltyClients(input: {
             { name: { contains: query, mode: "insensitive" } },
           ],
         }
-      : {}),
+      : { loyaltyPointsLedgerEntries: { some: { currencyCode: input.currencyCode } } }),
   };
 
-  const [clients, totalItems] = await prisma.$transaction([
-    prisma.user.findMany({
-      where,
-      orderBy: [{ name: "asc" }, { email: "asc" }],
-      skip,
-      take: pageSize,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        isActive: true,
-        isInactive: true,
-        activationStatus: true,
-      },
-    }),
-    prisma.user.count({ where }),
-  ]);
+  let clients: LoyaltyAdminClientRecord[] = [];
+  let totalItems = 0;
+  try {
+    [clients, totalItems] = await prisma.$transaction([
+      prisma.user.findMany({
+        where,
+        orderBy: [{ name: "asc" }, { email: "asc" }],
+        skip,
+        take: pageSize,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          isActive: true,
+          isInactive: true,
+          activationStatus: true,
+        },
+      }),
+      prisma.user.count({ where }),
+    ]);
+  } catch (error) {
+    if (!isMissingLoyaltyTableError(error)) {
+      throw error;
+    }
+
+    clients = query
+      ? await prisma.user.findMany({
+          where: {
+            role: Role.CLIENT,
+            OR: [
+              { email: { contains: query, mode: "insensitive" } },
+              { name: { contains: query, mode: "insensitive" } },
+            ],
+          },
+          orderBy: [{ name: "asc" }, { email: "asc" }],
+          skip,
+          take: pageSize,
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            isActive: true,
+            isInactive: true,
+            activationStatus: true,
+          },
+        })
+      : [];
+    totalItems = clients.length;
+  }
 
   const clientIds = clients.map((client) => client.id);
   const balances = clientIds.length > 0
@@ -272,6 +366,11 @@ export async function listAdminLoyaltyClients(input: {
         where: { clientId: { in: clientIds }, currencyCode: input.currencyCode },
         _sum: { amountPoints: true },
         _max: { happenedAt: true },
+      }).catch((error: unknown) => {
+        if (!isMissingLoyaltyTableError(error)) {
+          throw error;
+        }
+        return [];
       })
     : [];
   const balanceMap = new Map(

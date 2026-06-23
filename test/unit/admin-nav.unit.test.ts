@@ -53,14 +53,16 @@ describe("adminNavConfig - Store navigation structure", () => {
     const hrefs = sales!.children.map((child) => child.href);
 
     expect(hrefs).toContain("/admin/sales/coupons");
+    expect(hrefs).toContain("/admin/sales/loyalty");
     expect(hrefs).toContain("/admin/gift-cards");
   });
 
-  it("Catalog group still contains Booking Services and Plans", () => {
+  it("Catalog group still contains Booking Services, Plans, and Loyalty Points", () => {
     const catalog = getGroup("catalog");
     expect(catalog).toBeDefined();
     const hrefs = catalog!.children.map((child) => child.href);
     expect(hrefs).toContain("/admin/classes");
     expect(hrefs).toContain("/admin/plans");
+    expect(hrefs).toContain("/admin/catalog/loyalty");
   });
 });

@@ -11,6 +11,21 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("NavbarClient", () => {
+  it("shows Promos between Store and Online Learning and opens the loyalty submenu", () => {
+    render(<NavbarClient isAuthenticated={false} onSignOutAction={vi.fn(async () => undefined)} />);
+
+    const store = screen.getByText("Store");
+    const promosButton = screen.getByRole("button", { name: /promos/i });
+    const onlineLearning = screen.getByText("Online Learning");
+
+    expect(store.compareDocumentPosition(promosButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(promosButton.compareDocumentPosition(onlineLearning) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(promosButton);
+
+    expect(screen.getByRole("menuitem", { name: "Loyalty Points" })).toBeInTheDocument();
+  });
+
   it("shows About Us after Online Learning and opens submenu on click", () => {
     render(<NavbarClient isAuthenticated={false} onSignOutAction={vi.fn(async () => undefined)} />);
 
@@ -99,6 +114,23 @@ describe("NavbarClient", () => {
 
     expect(studioLink.tagName).toBe("A");
     expect(studioLink).toHaveAttribute("href", "/about/studio");
+  });
+
+  it("mobile Promos submenu item is a real plain link", () => {
+    render(<NavbarClient isAuthenticated={false} onSignOutAction={vi.fn(async () => undefined)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle navigation menu" }));
+    const promoButtons = screen.getAllByRole("button", { name: /promos/i });
+    fireEvent.click(promoButtons[promoButtons.length - 1] as HTMLElement);
+
+    const loyaltyLink = screen.getAllByRole("link", { name: "Loyalty Points" }).at(-1);
+    expect(loyaltyLink).toBeDefined();
+    if (!loyaltyLink) {
+      throw new Error("Missing Loyalty Points link");
+    }
+
+    expect(loyaltyLink.tagName).toBe("A");
+    expect(loyaltyLink).toHaveAttribute("href", "/promos/loyalty-points");
   });
 
   it("mobile logout submits sign out action", async () => {

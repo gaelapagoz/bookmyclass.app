@@ -161,12 +161,13 @@ TEACHER users cannot use this override.
 
 Loyalty spend-based earning is active for eligible settled one-time orders.
 
-Redemption, loyalty-credit checkout application, public explainer activation, and other action-based earning remain deferred.
+Redemption, loyalty-credit checkout application, and other action-based earning remain deferred.
 
 ### 8.1 Activation scope
 - Loyalty v1 starts with spend-based earning only.
 - Sign-up, booking, attendance, and other action-based earning are deferred.
-- Redemption, loyalty-credit checkout application, and public explainer behavior are deferred until the later loyalty slices.
+- Redemption and loyalty-credit checkout application are deferred until the later loyalty slices.
+- The static public loyalty explainer may be shipped as read-only informational content before redemption is enabled.
 
 ### 8.2 Eligible-product rules
 - Eligible loyalty earning products must be explicitly allowlisted before any earning runs in production.

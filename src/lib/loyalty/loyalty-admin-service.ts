@@ -3,8 +3,12 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/db";
 import {
+  listEligibleLoyaltyProductsForCurrency,
+  listLoyaltyPrograms,
+  resolvePrimaryLoyaltyCurrencyCode,
   upsertLoyaltyProgramSettings,
   getLoyaltyProgramForCurrency,
+  isMissingLoyaltyTableError,
 } from "./loyalty-program-service";
 import { grantManualLoyaltyPoints } from "./loyalty-points-service";
 import {
@@ -29,6 +33,9 @@ const programSettingsSchema = z.object({
   pointsExpireAfterDays: z.number().int().positive(),
   expirationReminderDays: z.number().int().positive().nullable(),
   maxManualGrantPoints: z.number().int().positive(),
+  rewardName: z.string().trim().min(1).max(120),
+  rewardPointsRequired: z.number().int().positive(),
+  rewardAmountMinor: z.number().int().positive(),
   eligibleProductIds: z.array(z.string().trim().min(1)).max(250),
 });
 
@@ -90,6 +97,9 @@ export async function upsertLoyaltyProgramSettingsByAdmin(input: {
   pointsExpireAfterDays: number;
   expirationReminderDays: number | null;
   maxManualGrantPoints: number;
+  rewardName: string;
+  rewardPointsRequired: number;
+  rewardAmountMinor: number;
   eligibleProductIds: string[];
 }) {
   const parsed = programSettingsSchema.parse(input);
@@ -119,6 +129,9 @@ export async function upsertLoyaltyProgramSettingsByAdmin(input: {
               pointsExpireAfterDays: before.pointsExpireAfterDays,
               expirationReminderDays: before.expirationReminderDays,
               maxManualGrantPoints: before.maxManualGrantPoints,
+              rewardName: before.rewardName,
+              rewardPointsRequired: before.rewardPointsRequired,
+              rewardAmountMinor: before.rewardAmountMinor,
               eligibleProductIds: before.eligibleProducts.map((entry) => entry.productId),
             }
           : null,
@@ -129,6 +142,9 @@ export async function upsertLoyaltyProgramSettingsByAdmin(input: {
           pointsExpireAfterDays: program.pointsExpireAfterDays,
           expirationReminderDays: program.expirationReminderDays,
           maxManualGrantPoints: program.maxManualGrantPoints,
+          rewardName: program.rewardName,
+          rewardPointsRequired: program.rewardPointsRequired,
+          rewardAmountMinor: program.rewardAmountMinor,
           eligibleProductIds: program.eligibleProducts.map((entry) => entry.productId),
         },
       },
@@ -221,6 +237,119 @@ export async function listAdminLoyaltyClientsByActor(input: {
     pageSize: input.pageSize,
     query: input.query,
   });
+}
+
+export async function resolveAdminLoyaltyClientIdByEmail(input: {
+  actorUserId: string;
+  email: string;
+}) {
+  await resolveLoyaltyAdminActor(input.actorUserId);
+
+  const email = input.email.trim();
+  if (!email) {
+    throw new Error("LOYALTY_CLIENT_REQUIRED");
+  }
+
+  const client = await prisma.user.findFirst({
+    where: {
+      role: Role.CLIENT,
+      email: {
+        equals: email,
+        mode: "insensitive",
+      },
+    },
+    select: {
+      id: true,
+      email: true,
+    },
+  });
+
+  if (!client) {
+    throw new Error("LOYALTY_CLIENT_REQUIRED");
+  }
+
+  return client;
+}
+
+async function getAdminLoyaltyOverviewMetrics(currencyCode: string) {
+  try {
+    const [clientRows, groupedPoints] = await Promise.all([
+      prisma.loyaltyPointsLedgerEntry.groupBy({
+        by: ["clientId"],
+        where: { currencyCode },
+      }),
+      prisma.loyaltyPointsLedgerEntry.groupBy({
+        by: ["entryType"],
+        where: { currencyCode },
+        _sum: { amountPoints: true },
+      }),
+    ]);
+
+    const totals = new Map(groupedPoints.map((item) => [item.entryType, item._sum.amountPoints ?? 0]));
+
+    return {
+      totalClients: clientRows.length,
+      totalEarnedPoints: totals.get("EARN") ?? 0,
+      totalManualGrantPoints: totals.get("MANUAL_GRANT") ?? 0,
+      totalBalancePoints: groupedPoints.reduce((sum, item) => sum + (item._sum.amountPoints ?? 0), 0),
+    };
+  } catch (error) {
+    if (!isMissingLoyaltyTableError(error)) {
+      throw error;
+    }
+
+    return {
+      totalClients: 0,
+      totalEarnedPoints: 0,
+      totalManualGrantPoints: 0,
+      totalBalancePoints: 0,
+    };
+  }
+}
+
+export async function getAdminLoyaltyOverview(input: {
+  actorUserId: string;
+  currencyCode?: string;
+  page?: number;
+  pageSize?: number;
+  query?: string;
+  selectedClientId?: string | null;
+  historyLimit?: number;
+}) {
+  await resolveLoyaltyAdminActor(input.actorUserId);
+
+  const currencyCode = (input.currencyCode?.trim().toUpperCase() || await resolvePrimaryLoyaltyCurrencyCode());
+  const [programs, program, eligibleProducts, clients, selectedClient, metrics] = await Promise.all([
+    listLoyaltyPrograms(),
+    getLoyaltyProgramForCurrency(currencyCode),
+    listEligibleLoyaltyProductsForCurrency(currencyCode),
+    listAdminLoyaltyClientsByActor({
+      actorUserId: input.actorUserId,
+      currencyCode,
+      page: input.page,
+      pageSize: input.pageSize,
+      query: input.query,
+    }),
+    input.selectedClientId
+      ? getAdminLoyaltyClientDetails({
+          actorUserId: input.actorUserId,
+          clientId: input.selectedClientId,
+          currencyCode,
+          historyLimit: input.historyLimit,
+        })
+      : Promise.resolve(null),
+    getAdminLoyaltyOverviewMetrics(currencyCode),
+  ]);
+
+  return {
+    currencyCode,
+    programs,
+    program,
+    eligibleProducts,
+    clients,
+    selectedClient,
+    metrics,
+  };
 }
 
 export { resolveLoyaltyAdminActor };

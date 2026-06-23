@@ -47,6 +47,7 @@ export const adminNavConfig: AdminNavItem[] = [
       { type: "link", href: "/admin/orders", label: "Orders" },
       { type: "link", href: "/admin/subscriptions", label: "Subscriptions" },
       { type: "link", href: "/admin/sales/coupons", label: "Coupons" },
+      { type: "link", href: "/admin/sales/loyalty", label: "Loyalty Points" },
       { type: "link", href: "/admin/gift-cards", label: "Gift Cards" },
     ],
   },
@@ -58,6 +59,7 @@ export const adminNavConfig: AdminNavItem[] = [
       { type: "link", href: "/admin/classes", label: "Booking Services" },
       { type: "link", href: "/admin/plans", label: "Plans" },
       { type: "link", href: "/admin/coupons", label: "Coupons" },
+      { type: "link", href: "/admin/catalog/loyalty", label: "Loyalty Points" },
       {
         type: "link",
         href: "/admin/store",
