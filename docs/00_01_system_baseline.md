@@ -171,7 +171,7 @@ Evidence label legend used in this file:
   4. `createCheckoutSessionForCart` validates line items against DB, creates order/payments, and opens a Stripe Checkout session (`CheckoutSource.CART_CHECKOUT_V1`).
   5. Client is redirected to Stripe and returns to `/subscription/success?session_id=...` (shared with subscription catalog success page).
   6. Webhook `checkout.session.completed` updates payments → SUCCEEDED, orders → PAID, bookings → CONFIRMED via `processStripeWebhookEvent`.
-  7. Stale `CartCheckoutIdempotency` rows (SUCCEEDED/FAILED_* > 7 days; IN_PROGRESS > 1 hour) are cleaned up by the `GET /api/cron/maintenance` job.
+  7. Stale `CartCheckoutIdempotency` rows (SUCCEEDED/FAILED_* > 7 days; IN_PROGRESS > 1 hour), loyalty point expirations/reminders, and stale loyalty-credit reservations are maintained by the `GET /api/cron/maintenance` job.
   - Flow status: Confirmed.
   - Evidence status: Confirmed from repo (`src/app/api/cart/checkout/route.ts`, `src/lib/cart/cart-checkout-service.ts`, `src/lib/public-booking/checkout-service.ts`, `src/lib/public-booking/stripe-webhook-service.ts`, `src/app/api/cron/maintenance/route.ts`).
 - Payment/webhook synchronization:

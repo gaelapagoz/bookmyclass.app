@@ -1,4 +1,4 @@
-name: Staging SSH Connectivity
+name: staging-ssh-connectivity
 
 on:
   workflow_dispatch:

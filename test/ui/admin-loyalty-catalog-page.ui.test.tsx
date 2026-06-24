@@ -20,6 +20,8 @@ vi.mock("@/lib/loyalty/loyalty-admin-service", () => ({
 
 vi.mock("../../src/app/admin/(private)/sales/loyalty/actions", () => ({
   saveLoyaltyProgramAction: vi.fn(),
+  saveLoyaltyRewardAction: vi.fn(),
+  archiveLoyaltyRewardAction: vi.fn(),
 }));
 
 import AdminCatalogLoyaltyPage from "../../src/app/admin/(private)/catalog/loyalty/page";

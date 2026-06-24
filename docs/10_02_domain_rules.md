@@ -251,6 +251,8 @@ HAVING COUNT(*) > 1;
 - Combined wallet presentation is read-model only and must not merge loyalty mutations into gift-card services.
 - Loyalty earn, redeem, reverse, expire, and manual-grant events must use persisted idempotency keys derived from the commercial or maintenance event.
 - Loyalty balances must be derived from ledger history; no hidden mutable balance fields should become the source of truth.
+- Loyalty expiration reminders must enqueue replay-safe outbox events through `GET /api/cron/maintenance`, with idempotency derived from source entry plus effective date.
+- Expired loyalty-credit reservations may be released by maintenance only when no Stripe checkout session is already attached to the order.
 
 ### Loyalty earning and reversal rules
 - Loyalty awards occur only after successful settlement in existing checkout finalization or webhook-safe flows.

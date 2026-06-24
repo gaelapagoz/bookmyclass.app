@@ -29,6 +29,7 @@ import { hash } from "bcryptjs";
 import { assertLearningImagePath } from "../../../src/lib/learning/image-paths";
 import prisma from "../../../src/lib/db";
 import { ensureAllExpectedAutomationTemplatesHaveStatus } from "../../../src/lib/email/email-automation-admin-service";
+import { upsertLoyaltyProgramSettings } from "../../../src/lib/loyalty/loyalty-program-service";
 import {
   FITNESS_COURSES,
   FITNESS_PROGRAM,
@@ -63,6 +64,12 @@ const PERF_RANDOM_SEED = 20260419;
 const PERF_SESSION_CAPACITY = 15;
 
 const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9_]+$/;
+const DEFAULT_LOYALTY_CURRENCY_CODE = "EUR";
+const DEFAULT_LOYALTY_EARNING_POINTS = 10;
+const DEFAULT_LOYALTY_EARNING_AMOUNT_MINOR = 500;
+const DEFAULT_LOYALTY_POINTS_EXPIRE_AFTER_DAYS = 180;
+const DEFAULT_LOYALTY_EXPIRATION_REMINDER_DAYS = 30;
+const DEFAULT_LOYALTY_MAX_MANUAL_GRANT_POINTS = 500;
 
 type CatalogStripePriceEnvSpec = { productName: string; lookupKey: string; envVarName: string };
 
@@ -187,6 +194,13 @@ async function purgeForCleanSeed() {
   await prisma.giftCardRedemption.deleteMany();
   await prisma.giftCardCode.deleteMany();
   await prisma.giftCardWallet.deleteMany();
+  await prisma.loyaltyCreditLedgerEntry.deleteMany();
+  await prisma.loyaltyCreditReservation.deleteMany();
+  await prisma.loyaltyRewardRedemption.deleteMany();
+  await prisma.loyaltyPointsLedgerEntry.deleteMany();
+  await prisma.loyaltyRewardDefinition.deleteMany();
+  await prisma.loyaltyEligibleProduct.deleteMany();
+  await prisma.loyaltyProgram.deleteMany();
   await prisma.cartCheckoutIdempotency.deleteMany();
   await prisma.creditLedgerEntry.deleteMany();
   await prisma.clientEntitlement.deleteMany();
@@ -470,6 +484,38 @@ async function seedStoreCatalog(stripePriceIdByLookupKey: Record<string, string>
   console.info(
     `[seed:perf] Store catalog seeded: ${STORE_CATALOG_PRODUCTS.length} products (gift cards + merchandise, pickup-only). mediaCopied=${copiedCount}, mediaExisting=${existingCount}.`,
   );
+}
+
+async function seedLoyaltyProgram() {
+  const eligibleProducts = await prisma.product.findMany({
+    where: {
+      isActive: true,
+      isArchived: false,
+      prices: {
+        some: {
+          currencyCode: DEFAULT_LOYALTY_CURRENCY_CODE,
+          priceType: PriceType.ONE_TIME,
+          isActive: true,
+          isArchived: false,
+        },
+      },
+    },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: { id: true },
+  });
+
+  await upsertLoyaltyProgramSettings({
+    currencyCode: DEFAULT_LOYALTY_CURRENCY_CODE,
+    isActive: true,
+    earningPoints: DEFAULT_LOYALTY_EARNING_POINTS,
+    earningAmountMinor: DEFAULT_LOYALTY_EARNING_AMOUNT_MINOR,
+    pointsExpireAfterDays: DEFAULT_LOYALTY_POINTS_EXPIRE_AFTER_DAYS,
+    expirationReminderDays: DEFAULT_LOYALTY_EXPIRATION_REMINDER_DAYS,
+    maxManualGrantPoints: DEFAULT_LOYALTY_MAX_MANUAL_GRANT_POINTS,
+    eligibleProductIds: eligibleProducts.map((product) => product.id),
+  });
+
+  console.info(`[seed:perf] Loyalty program seeded (${eligibleProducts.length} eligible one-time products).`);
 }
 
 //  Class schedule helpers 
@@ -849,6 +895,7 @@ export async function runStagingSeed(): Promise<void> {
   await seedBookingPolicy();
   await seedCatalog(stripePriceIdByLookupKey);
   await seedStoreCatalog(stripePriceIdByLookupKey);
+  await seedLoyaltyProgram();
   const learningSummary = await seedProductionLearningForStaging();
   await seedAgendaSchedule();
   const summary = await seedSchedulingAndBookings({ teachers: { anaId: teachers.ana.id, elenaId: teachers.elena.id, sofiaId: teachers.sofia.id }, clients });

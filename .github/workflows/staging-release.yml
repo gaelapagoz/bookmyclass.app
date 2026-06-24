@@ -1,4 +1,4 @@
-name: Staging Release
+name: staging-release
 run-name: "staging-release - ${{ github.ref_name }}"
 
 on:
@@ -529,94 +529,96 @@ jobs:
             test-results/
           if-no-files-found: ignore
 
-  k6_smoke_staging:
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    needs: e2e_staging
-    environment: uat
-    env:
-      BASE_URL: ${{ secrets.UAT_BASE_URL }}
-      STAGE_PROFILE: smoke
-      K6_SCENARIO_SET: non_booking_smoke
-      RUN_STAGING_K6_SEED: ${{ vars.RUN_STAGING_K6_SEED || '0' }}
-      EVIDENCE_ROOT: artifacts/staging-k6
+  # Temporarily disabled: k6 smoke is being run manually to avoid automated email-budget burn.
+  # k6_smoke_staging:
+  #   if: startsWith(github.ref, 'refs/tags/v')
+  #   runs-on: ubuntu-latest
+  #   needs: e2e_staging
+  #   environment: uat
+  #   env:
+  #     BASE_URL: ${{ secrets.UAT_BASE_URL }}
+  #     STAGE_PROFILE: smoke
+  #     K6_SCENARIO_SET: non_booking_smoke
+  #     RUN_STAGING_K6_SEED: ${{ vars.RUN_STAGING_K6_SEED || '0' }}
+  #     EVIDENCE_ROOT: artifacts/staging-k6
+  #
+  #   steps:
+  #     - name: Check out exact pushed tag
+  #       uses: actions/checkout@v4
+  #       with:
+  #         ref: ${{ github.ref }}
+  #
+  #     - name: Set up Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 20.19.0
+  #         cache: npm
+  #
+  #     - name: Install dependencies
+  #       run: npm ci
+  #
+  #     - name: Generate Prisma client
+  #       run: npx prisma generate
+  #
+  #     - name: Setup k6
+  #       uses: grafana/setup-k6-action@v1
+  #
+  #     - name: Guard k6 seed requirements for booking scenario sets
+  #       run: |
+  #         set -euo pipefail
+  #         if [[ "${K6_SCENARIO_SET}" != "non_booking_smoke" && "${RUN_STAGING_K6_SEED}" != "YES" ]]; then
+  #           echo "K6_SCENARIO_SET=${K6_SCENARIO_SET} requires explicit staging k6 data prep approval." >&2
+  #           echo "Set RUN_STAGING_K6_SEED=YES and run approved staging k6 seed preparation before this job." >&2
+  #           exit 1
+  #         fi
+  #
+  #     - name: Run k6 smoke against deployed staging
+  #       run: |
+  #         set -euo pipefail
+  #         mkdir -p artifacts/staging-k6
+  #         echo "Effective BASE_URL=${BASE_URL}"
+  #         bash scripts/performance-server-run-smoke.sh 2>&1 | tee artifacts/staging-k6/k6-smoke.log
+  #
+  #     - name: Upload staging k6 artifacts
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: staging-k6-artifacts-${{ github.ref_name }}
+  #         path: artifacts/staging-k6
+  #         if-no-files-found: ignore
 
-    steps:
-      - name: Check out exact pushed tag
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20.19.0
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate Prisma client
-        run: npx prisma generate
-
-      - name: Setup k6
-        uses: grafana/setup-k6-action@v1
-
-      - name: Guard k6 seed requirements for booking scenario sets
-        run: |
-          set -euo pipefail
-          if [[ "${K6_SCENARIO_SET}" != "non_booking_smoke" && "${RUN_STAGING_K6_SEED}" != "YES" ]]; then
-            echo "K6_SCENARIO_SET=${K6_SCENARIO_SET} requires explicit staging k6 data prep approval." >&2
-            echo "Set RUN_STAGING_K6_SEED=YES and run approved staging k6 seed preparation before this job." >&2
-            exit 1
-          fi
-
-      - name: Run k6 smoke against deployed staging
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts/staging-k6
-          echo "Effective BASE_URL=${BASE_URL}"
-          bash scripts/performance-server-run-smoke.sh 2>&1 | tee artifacts/staging-k6/k6-smoke.log
-
-      - name: Upload staging k6 artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: staging-k6-artifacts-${{ github.ref_name }}
-          path: artifacts/staging-k6
-          if-no-files-found: ignore
-
-  zap_staging:
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    needs: k6_smoke_staging
-    environment: uat
-    env:
-      BASE_URL: ${{ secrets.UAT_BASE_URL }}
-      EVIDENCE_ROOT: artifacts/staging-zap
-      ZAP_MAX_MINUTES: "5"
-      RUN_NORMALIZER: "YES"
-
-    steps:
-      - name: Check out exact pushed tag
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref }}
-
-      - name: Ensure ZAP scripts are executable
-        run: |
-          chmod +x scripts/security-server-run-baseline.sh scripts/security-server-collect-metrics.sh
-
-      - name: Run OWASP ZAP baseline against deployed staging
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts/staging-zap
-          bash scripts/security-server-run-baseline.sh 2>&1 | tee artifacts/staging-zap/zap-baseline.log
-
-      - name: Upload staging ZAP artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: staging-zap-artifacts-${{ github.ref_name }}
-          path: artifacts/staging-zap
-          if-no-files-found: ignore
+  # Temporarily disabled: ZAP baseline is being run manually alongside manual smoke validation.
+  # zap_staging:
+  #   if: startsWith(github.ref, 'refs/tags/v')
+  #   runs-on: ubuntu-latest
+  #   needs: k6_smoke_staging
+  #   environment: uat
+  #   env:
+  #     BASE_URL: ${{ secrets.UAT_BASE_URL }}
+  #     EVIDENCE_ROOT: artifacts/staging-zap
+  #     ZAP_MAX_MINUTES: "5"
+  #     RUN_NORMALIZER: "YES"
+  #
+  #   steps:
+  #     - name: Check out exact pushed tag
+  #       uses: actions/checkout@v4
+  #       with:
+  #         ref: ${{ github.ref }}
+  #
+  #     - name: Ensure ZAP scripts are executable
+  #       run: |
+  #         chmod +x scripts/security-server-run-baseline.sh scripts/security-server-collect-metrics.sh
+  #
+  #     - name: Run OWASP ZAP baseline against deployed staging
+  #       run: |
+  #         set -euo pipefail
+  #         mkdir -p artifacts/staging-zap
+  #         bash scripts/security-server-run-baseline.sh 2>&1 | tee artifacts/staging-zap/zap-baseline.log
+  #
+  #     - name: Upload staging ZAP artifacts
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: staging-zap-artifacts-${{ github.ref_name }}
+  #         path: artifacts/staging-zap
+  #         if-no-files-found: ignore

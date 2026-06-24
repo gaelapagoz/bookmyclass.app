@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
   reconcileMissingBookingConfirmationEvents: vi.fn(),
   enqueueBookingReminderNotifications: vi.fn(),
   enqueueWaitlistNotPromotedNotifications: vi.fn(),
+  expireDueLoyaltyPoints: vi.fn(),
+  enqueueLoyaltyExpirationReminderNotifications: vi.fn(),
+  cleanupExpiredLoyaltyCreditReservations: vi.fn(),
 }));
 
 vi.mock("@/lib/public-booking/booking-draft-service", () => ({
@@ -36,6 +39,12 @@ vi.mock("@/lib/public-booking/booking-reminder-notification-service", () => ({
 
 vi.mock("@/lib/public-booking/waitlist-notification-service", () => ({
   enqueueWaitlistNotPromotedNotifications: mocks.enqueueWaitlistNotPromotedNotifications,
+}));
+
+vi.mock("@/lib/loyalty/loyalty-maintenance-service", () => ({
+  expireDueLoyaltyPoints: mocks.expireDueLoyaltyPoints,
+  enqueueLoyaltyExpirationReminderNotifications: mocks.enqueueLoyaltyExpirationReminderNotifications,
+  cleanupExpiredLoyaltyCreditReservations: mocks.cleanupExpiredLoyaltyCreditReservations,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -74,6 +83,26 @@ describe("cron maintenance route", () => {
       scanned: 0,
       enqueued: 0,
       failed: 0,
+    });
+    mocks.expireDueLoyaltyPoints.mockResolvedValue({
+      scannedCount: 0,
+      createdCount: 0,
+      replayedCount: 0,
+      skippedCount: 0,
+      failedCount: 0,
+    });
+    mocks.enqueueLoyaltyExpirationReminderNotifications.mockResolvedValue({
+      scannedCount: 0,
+      enqueuedCount: 0,
+      failedCount: 0,
+    });
+    mocks.cleanupExpiredLoyaltyCreditReservations.mockResolvedValue({
+      scannedCount: 0,
+      releasedCount: 0,
+      skippedCount: 0,
+      failedCount: 0,
+      paymentFailedCount: 0,
+      orderCancelledCount: 0,
     });
   });
 
@@ -127,12 +156,41 @@ describe("cron maintenance route", () => {
         enqueued: 0,
         failed: 0,
       });
+      expect(payload.loyaltyExpiration).toEqual({
+        scannedCount: 0,
+        createdCount: 0,
+        replayedCount: 0,
+        skippedCount: 0,
+        failedCount: 0,
+      });
+      expect(payload.loyaltyReminder).toEqual({
+        scannedCount: 0,
+        enqueuedCount: 0,
+        failedCount: 0,
+      });
+      expect(payload.loyaltyReservationCleanup).toEqual({
+        scannedCount: 0,
+        releasedCount: 0,
+        skippedCount: 0,
+        failedCount: 0,
+        paymentFailedCount: 0,
+        orderCancelledCount: 0,
+      });
       expect(mocks.cleanupExpiredCouponReservations).toHaveBeenCalledTimes(1);
       expect(mocks.enqueueBookingReminderNotifications).toHaveBeenCalledWith({
         limit: 100,
       });
       expect(mocks.enqueueWaitlistNotPromotedNotifications).toHaveBeenCalledWith({
         limit: 100,
+      });
+      expect(mocks.expireDueLoyaltyPoints).toHaveBeenCalledWith({
+        batchSize: 100,
+      });
+      expect(mocks.enqueueLoyaltyExpirationReminderNotifications).toHaveBeenCalledWith({
+        batchSize: 100,
+      });
+      expect(mocks.cleanupExpiredLoyaltyCreditReservations).toHaveBeenCalledWith({
+        batchSize: 100,
       });
       expect(mocks.dispatchEmailAutomationBatch).toHaveBeenCalledWith({
         workerId: "cron-maintenance",
@@ -174,6 +232,11 @@ describe("cron maintenance route", () => {
         enqueued: 0,
         failed: 0,
       });
+      expect(payload.loyaltyReminder).toEqual({
+        scannedCount: 0,
+        enqueuedCount: 0,
+        failedCount: 0,
+      });
     } finally {
       if (previous === undefined) {
         delete process.env.CRON_SECRET;
@@ -200,6 +263,32 @@ describe("cron maintenance route", () => {
       expect(payload.ok).toBe(false);
       expect(payload.expiredCouponReservations).toBeNull();
       expect(payload.couponReservationError).toBe("COUPON_RESERVATION_CLEANUP_FAILED");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.CRON_SECRET;
+      } else {
+        process.env.CRON_SECRET = previous;
+      }
+    }
+  });
+
+  it("marks maintenance as failed when loyalty expiration maintenance fails", async () => {
+    const previous = process.env.CRON_SECRET;
+    process.env.CRON_SECRET = "cron_secret_test";
+    mocks.expireDueLoyaltyPoints.mockRejectedValue(new Error("loyalty expiration failed"));
+
+    try {
+      const response = await GET(
+        new Request("http://localhost/api/cron/maintenance", {
+          headers: { authorization: "Bearer cron_secret_test" },
+        }),
+      );
+      const payload = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(false);
+      expect(payload.loyaltyExpiration).toBeNull();
+      expect(payload.loyaltyExpirationError).toBe("LOYALTY_EXPIRATION_MAINTENANCE_FAILED");
     } finally {
       if (previous === undefined) {
         delete process.env.CRON_SECRET;

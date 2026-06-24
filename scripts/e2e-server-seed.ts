@@ -37,6 +37,7 @@ import {
 import { hash } from "bcryptjs";
 import prisma from "../src/lib/db";
 import { ensureAllExpectedAutomationTemplatesHaveStatus } from "../src/lib/email/email-automation-admin-service";
+import { upsertLoyaltyProgramSettings } from "../src/lib/loyalty/loyalty-program-service";
 import { runDevelopmentSeed } from "../prisma/seed/modes/development";
 import {
   SEEDED_CANONICAL_EMAILS,
@@ -58,6 +59,12 @@ const E2E_DEV_BASELINE_STRIPE_PRICE_ENV_DEFAULTS: Record<string, string> = {
   STRIPE_PRICE_ID_STORE_MERCH_RESISTANCE_BANDS: "price_E2eStoreResistanceBands",
   STRIPE_PRICE_ID_STORE_MERCH_STUDIO_TOTE: "price_E2eStoreStudioTote",
 };
+const DEFAULT_LOYALTY_CURRENCY_CODE = "EUR";
+const DEFAULT_LOYALTY_EARNING_POINTS = 10;
+const DEFAULT_LOYALTY_EARNING_AMOUNT_MINOR = 500;
+const DEFAULT_LOYALTY_POINTS_EXPIRE_AFTER_DAYS = 180;
+const DEFAULT_LOYALTY_EXPIRATION_REMINDER_DAYS = 30;
+const DEFAULT_LOYALTY_MAX_MANUAL_GRANT_POINTS = 500;
 
 function ensureE2EDatabaseUrl() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -103,6 +110,13 @@ async function resetE2EDatabase() {
   await prisma.giftCardLedgerEntry.deleteMany();
   await prisma.giftCardRedemption.deleteMany();
   await prisma.giftCardWallet.deleteMany();
+  await prisma.loyaltyCreditLedgerEntry.deleteMany();
+  await prisma.loyaltyCreditReservation.deleteMany();
+  await prisma.loyaltyRewardRedemption.deleteMany();
+  await prisma.loyaltyPointsLedgerEntry.deleteMany();
+  await prisma.loyaltyRewardDefinition.deleteMany();
+  await prisma.loyaltyEligibleProduct.deleteMany();
+  await prisma.loyaltyProgram.deleteMany();
   await prisma.creditLedgerEntry.deleteMany();
   await prisma.clientEntitlement.deleteMany();
   await prisma.cartCheckoutIdempotency.deleteMany();
@@ -135,6 +149,38 @@ async function resetE2EDatabase() {
   await prisma.pendingUserRegistration.deleteMany();
   await prisma.verificationToken.deleteMany();
   await prisma.user.deleteMany();
+}
+
+async function seedLoyaltyProgram() {
+  const eligibleProducts = await prisma.product.findMany({
+    where: {
+      isActive: true,
+      isArchived: false,
+      prices: {
+        some: {
+          currencyCode: DEFAULT_LOYALTY_CURRENCY_CODE,
+          priceType: PriceType.ONE_TIME,
+          isActive: true,
+          isArchived: false,
+        },
+      },
+    },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: { id: true },
+  });
+
+  await upsertLoyaltyProgramSettings({
+    currencyCode: DEFAULT_LOYALTY_CURRENCY_CODE,
+    isActive: true,
+    earningPoints: DEFAULT_LOYALTY_EARNING_POINTS,
+    earningAmountMinor: DEFAULT_LOYALTY_EARNING_AMOUNT_MINOR,
+    pointsExpireAfterDays: DEFAULT_LOYALTY_POINTS_EXPIRE_AFTER_DAYS,
+    expirationReminderDays: DEFAULT_LOYALTY_EXPIRATION_REMINDER_DAYS,
+    maxManualGrantPoints: DEFAULT_LOYALTY_MAX_MANUAL_GRANT_POINTS,
+    eligibleProductIds: eligibleProducts.map((product) => product.id),
+  });
+
+  console.info(`[e2e-seed] loyalty program refreshed (${eligibleProducts.length} eligible one-time products).`);
 }
 
 async function main() {
@@ -574,6 +620,8 @@ async function main() {
   const recurringPrice = recurringProduct.prices[0];
   const singlePrice = singleProduct.prices[0];
   const packPrice = packProduct.prices[0];
+
+  await seedLoyaltyProgram();
 
   console.info("[e2e-seed] completed", {
     adminEmail: admin.email,

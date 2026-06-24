@@ -65,6 +65,7 @@ const EXPECTED_AUTOMATION_TEMPLATES: readonly ExpectedAutomationTemplate[] = [
   { templateKey: "waitlist.on-list", triggerLabel: "On Waiting List", category: "Waitlist", whenDescription: "Immediately", defaultSubject: "You're on the waitlist for {{waitlist.classTitle}}" },
   { templateKey: "waitlist.promoted", triggerLabel: "Promoted Waiting List", category: "Waitlist", whenDescription: "Immediately on promotion", defaultSubject: "Spot available: {{waitlist.classTitle}}" },
   { templateKey: "waitlist.not-promoted", triggerLabel: "Not Promoted Waiting List", category: "Waitlist", whenDescription: "At class start", defaultSubject: "Waitlist update for {{waitlist.classTitle}}" },
+  { templateKey: "loyalty.points-expiring", triggerLabel: "Loyalty Points Expiring", category: "Loyalty", whenDescription: "On the configured reminder day before expiry", defaultSubject: "{{loyalty.pointsExpiring}} loyalty points expire on {{loyalty.expiresAt}}" },
   { templateKey: "auth.verify-email", triggerLabel: "Auth Verification Email", category: "Auth", whenDescription: "Immediately after signup", defaultSubject: "Verify your email" },
   { templateKey: "auth.password-reset", triggerLabel: "Auth Password Reset Email", category: "Auth", whenDescription: "On password reset request", defaultSubject: "Reset your password" },
   { templateKey: "auth.verify-email-change", triggerLabel: "Auth Email Change Verification", category: "Auth", whenDescription: "On email change request", defaultSubject: "Confirm your new email" },
@@ -182,6 +183,16 @@ function getDefaultTemplateContent(templateKey: string, triggerLabel: string): D
       return generic("Good news. A spot opened for {{waitlist.classTitle}}.");
     case "waitlist.not-promoted":
       return generic("No spot opened for {{waitlist.classTitle}} this time.");
+    case "loyalty.points-expiring":
+      return {
+        subjectTemplate: "{{loyalty.pointsExpiring}} loyalty points expire on {{loyalty.expiresAt}}",
+        blocks: [
+          { type: "paragraph", contentHtml: "<p>Hello {{contact.fullName}},</p>" },
+          { type: "paragraph", contentHtml: "<p>{{loyalty.pointsExpiring}} loyalty points in {{loyalty.currencyCode}} will expire on {{loyalty.expiresAt}}.</p>" },
+          { type: "paragraph", contentHtml: "<p>Visit your wallet to review your balance and available rewards before they expire.</p>" },
+          { type: "button", labelHtml: "Open wallet", url: "{{loyalty.walletUrl}}" },
+        ],
+      };
     case "subscription.cancelled":
       return generic("Your subscription has been cancelled.");
     case "subscription.renewal":
@@ -1188,6 +1199,10 @@ function buildTemplateSamplePayload(_templateKey: string): Record<string, string
     resetPasswordUrl: "https://bookmyclass.app/reset-password?token=test",
     emailChangeVerificationUrl: "https://bookmyclass.app/verify-email?emailChangeToken=test",
     "token.expiresAt": "2026-05-18T12:00:00Z",
+    "loyalty.pointsExpiring": "120",
+    "loyalty.expiresAt": "2026-08-01",
+    "loyalty.currencyCode": "EUR",
+    "loyalty.walletUrl": "https://bookmyclass.app/dashboard/wallet",
   };
 }
 

@@ -33,4 +33,17 @@ describe("email automation seed wiring", () => {
 
     expect(e2eSeed).toContain("ensureAllExpectedAutomationTemplatesHaveStatus(true)");
   });
+
+  it("re-seeds the loyalty baseline after loyalty tables are purged", () => {
+    const stagingSeed = readRepoFile("prisma/seed/modes/staging.ts");
+    const developmentSeed = readRepoFile("prisma/seed/modes/development.ts");
+    const e2eSeed = readRepoFile("scripts/e2e-server-seed.ts");
+
+    expect(stagingSeed).toContain("await prisma.loyaltyProgram.deleteMany();");
+    expect(stagingSeed).toContain("await seedLoyaltyProgram();");
+    expect(developmentSeed).toContain("await prisma.loyaltyProgram.deleteMany();");
+    expect(developmentSeed).toContain("await seedLoyaltyProgram();");
+    expect(e2eSeed).toContain("await prisma.loyaltyProgram.deleteMany();");
+    expect(e2eSeed).toContain("await seedLoyaltyProgram();");
+  });
 });

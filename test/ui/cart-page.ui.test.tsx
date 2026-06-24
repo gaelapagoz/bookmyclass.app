@@ -78,6 +78,21 @@ function mockCartFetch(checkoutResponses: Response[] = []) {
     if (url.includes("/api/wallet/balance")) {
       return new Response(JSON.stringify({ balance: null }), { status: 200, headers: { "content-type": "application/json" } });
     }
+    if (url.includes("/api/loyalty/wallet")) {
+      return new Response(
+        JSON.stringify({
+          loyalty: {
+            loyaltyCredit: {
+              settledBalanceMinor: 0,
+              reservedAmountMinor: 0,
+              availableBalanceMinor: 0,
+              currencyCode: "EUR",
+            },
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
 
     const next = pendingCheckoutResponses.shift();
     if (next) {

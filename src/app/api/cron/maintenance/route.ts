@@ -9,6 +9,11 @@ import { reconcileMissingBookingConfirmationEvents } from "@/lib/public-booking/
 import { enqueueBookingReminderNotifications } from "@/lib/public-booking/booking-reminder-notification-service";
 import { cleanupExpiredCouponReservations } from "@/lib/coupons/coupon-maintenance-service";
 import { enqueueWaitlistNotPromotedNotifications } from "@/lib/public-booking/waitlist-notification-service";
+import {
+  cleanupExpiredLoyaltyCreditReservations,
+  enqueueLoyaltyExpirationReminderNotifications,
+  expireDueLoyaltyPoints,
+} from "@/lib/loyalty/loyalty-maintenance-service";
 
 const CART_IDEMPOTENCY_TERMINAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const CART_IDEMPOTENCY_IN_PROGRESS_RETENTION_MS = 60 * 60 * 1000; // 1 hour
@@ -20,6 +25,9 @@ const DISPATCH_ERROR_CODE = "EMAIL_AUTOMATION_DISPATCH_FAILED";
 const BOOKING_CONFIRMATION_RECONCILE_ERROR_CODE = "BOOKING_CONFIRMATION_RECONCILE_FAILED";
 const BOOKING_REMINDER_ERROR_CODE = "BOOKING_REMINDER_ENQUEUE_FAILED";
 const WAITLIST_NOT_PROMOTED_ERROR_CODE = "WAITLIST_NOT_PROMOTED_ENQUEUE_FAILED";
+const LOYALTY_EXPIRATION_ERROR_CODE = "LOYALTY_EXPIRATION_MAINTENANCE_FAILED";
+const LOYALTY_REMINDER_ERROR_CODE = "LOYALTY_REMINDER_ENQUEUE_FAILED";
+const LOYALTY_RESERVATION_ERROR_CODE = "LOYALTY_RESERVATION_CLEANUP_FAILED";
 
 async function cleanupStaleCartCheckoutIdempotency(): Promise<{ deletedCount: number }> {
   const now = new Date();
@@ -67,6 +75,9 @@ export async function GET(request: Request) {
     bookingConfirmationResult,
     bookingReminderResult,
     waitlistNotPromotedResult,
+    loyaltyExpirationResult,
+    loyaltyReminderResult,
+    loyaltyReservationResult,
   ] =
     await Promise.allSettled([
       expireStaleBookingDrafts(),
@@ -76,6 +87,9 @@ export async function GET(request: Request) {
       reconcileMissingBookingConfirmationEvents({ limit: 100 }),
       enqueueBookingReminderNotifications({ limit: 100 }),
       enqueueWaitlistNotPromotedNotifications({ limit: 100 }),
+      expireDueLoyaltyPoints({ batchSize: 100 }),
+      enqueueLoyaltyExpirationReminderNotifications({ batchSize: 100 }),
+      cleanupExpiredLoyaltyCreditReservations({ batchSize: 100 }),
     ]);
   const dispatcherResult = await Promise.allSettled([
     dispatchEmailAutomationBatch({
@@ -108,6 +122,18 @@ export async function GET(request: Request) {
     waitlistNotPromotedResult.status === "fulfilled" ? waitlistNotPromotedResult.value : null;
   const waitlistNotPromotedError =
     waitlistNotPromotedResult.status === "rejected" ? WAITLIST_NOT_PROMOTED_ERROR_CODE : null;
+  const loyaltyExpiration =
+    loyaltyExpirationResult.status === "fulfilled" ? loyaltyExpirationResult.value : null;
+  const loyaltyExpirationError =
+    loyaltyExpirationResult.status === "rejected" ? LOYALTY_EXPIRATION_ERROR_CODE : null;
+  const loyaltyReminder =
+    loyaltyReminderResult.status === "fulfilled" ? loyaltyReminderResult.value : null;
+  const loyaltyReminderError =
+    loyaltyReminderResult.status === "rejected" ? LOYALTY_REMINDER_ERROR_CODE : null;
+  const loyaltyReservationCleanup =
+    loyaltyReservationResult.status === "fulfilled" ? loyaltyReservationResult.value : null;
+  const loyaltyReservationError =
+    loyaltyReservationResult.status === "rejected" ? LOYALTY_RESERVATION_ERROR_CODE : null;
   const cleanupErrorDetail = cleanupResult.status === "rejected" ? String(cleanupResult.reason) : null;
   const cartIdempotencyErrorDetail =
     cartIdempotencyResult.status === "rejected" ? String(cartIdempotencyResult.reason) : null;
@@ -120,6 +146,12 @@ export async function GET(request: Request) {
     bookingReminderResult.status === "rejected" ? String(bookingReminderResult.reason) : null;
   const waitlistNotPromotedErrorDetail =
     waitlistNotPromotedResult.status === "rejected" ? String(waitlistNotPromotedResult.reason) : null;
+  const loyaltyExpirationErrorDetail =
+    loyaltyExpirationResult.status === "rejected" ? String(loyaltyExpirationResult.reason) : null;
+  const loyaltyReminderErrorDetail =
+    loyaltyReminderResult.status === "rejected" ? String(loyaltyReminderResult.reason) : null;
+  const loyaltyReservationErrorDetail =
+    loyaltyReservationResult.status === "rejected" ? String(loyaltyReservationResult.reason) : null;
 
   if (cleanupError) {
     console.error("[cron/maintenance] webhook receipt cleanup failed", {
@@ -163,12 +195,33 @@ export async function GET(request: Request) {
       error: waitlistNotPromotedErrorDetail,
     });
   }
+  if (loyaltyExpirationError) {
+    console.error("[cron/maintenance] loyalty expiration maintenance failed", {
+      code: LOYALTY_EXPIRATION_ERROR_CODE,
+      error: loyaltyExpirationErrorDetail,
+    });
+  }
+  if (loyaltyReminderError) {
+    console.error("[cron/maintenance] loyalty reminder enqueue failed", {
+      code: LOYALTY_REMINDER_ERROR_CODE,
+      error: loyaltyReminderErrorDetail,
+    });
+  }
+  if (loyaltyReservationError) {
+    console.error("[cron/maintenance] loyalty reservation cleanup failed", {
+      code: LOYALTY_RESERVATION_ERROR_CODE,
+      error: loyaltyReservationErrorDetail,
+    });
+  }
 
   return Response.json({
     ok:
       cleanupResult.status === "fulfilled" &&
       cartIdempotencyResult.status === "fulfilled" &&
-      couponReservationResult.status === "fulfilled",
+      couponReservationResult.status === "fulfilled" &&
+      loyaltyExpirationResult.status === "fulfilled" &&
+      loyaltyReminderResult.status === "fulfilled" &&
+      loyaltyReservationResult.status === "fulfilled",
     expiredBookingDrafts: expiredDrafts,
     cleanedWebhookReceipts: cleanedWebhooks,
     deletedCartCheckoutIdempotency: deletedCartIdempotency,
@@ -177,6 +230,9 @@ export async function GET(request: Request) {
     bookingConfirmationReconcile,
     bookingReminder,
     waitlistNotPromoted,
+    loyaltyExpiration,
+    loyaltyReminder,
+    loyaltyReservationCleanup,
     ...(cleanupError ? { cleanupError } : {}),
     ...(cartIdempotencyError ? { cartIdempotencyError } : {}),
     ...(couponReservationError ? { couponReservationError } : {}),
@@ -184,5 +240,8 @@ export async function GET(request: Request) {
     ...(bookingConfirmationError ? { bookingConfirmationError } : {}),
     ...(bookingReminderError ? { bookingReminderError } : {}),
     ...(waitlistNotPromotedError ? { waitlistNotPromotedError } : {}),
+    ...(loyaltyExpirationError ? { loyaltyExpirationError } : {}),
+    ...(loyaltyReminderError ? { loyaltyReminderError } : {}),
+    ...(loyaltyReservationError ? { loyaltyReservationError } : {}),
   });
 }

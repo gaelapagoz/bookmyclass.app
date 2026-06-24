@@ -6,8 +6,9 @@ import { buildAutomationScaffoldRows } from "@/lib/email/email-automation-admin-
 describe("email-automation-admin-service scaffold rows", () => {
   it("returns all expected trigger rows even when templates are empty", () => {
     const rows = buildAutomationScaffoldRows({ templates: [], eventCounts: [], sentLast30: [] });
-    expect(rows.length).toBe(15);
+    expect(rows.length).toBe(16);
     expect(rows.some((row) => row.triggerLabel === "Welcome")).toBe(true);
+    expect(rows.some((row) => row.triggerLabel === "Loyalty Points Expiring")).toBe(true);
     expect(rows.some((row) => row.triggerLabel === "Auth Verification Email")).toBe(true);
     expect(rows.some((row) => row.triggerLabel === "Gift Card Issuance")).toBe(true);
     expect(rows.some((row) => row.templateKey === "purchase.product.confirmation")).toBe(false);

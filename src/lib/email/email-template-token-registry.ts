@@ -3,6 +3,7 @@ export type TokenGroup =
   | "Auth"
   | "Booking"
   | "Waitlist"
+  | "Loyalty"
   | "Payment"
   | "Store"
   | "Gift card"
@@ -14,6 +15,7 @@ export type TokenFamily =
   | "auth"
   | "booking"
   | "waitlist"
+  | "loyalty"
   | "payment"
   | "store"
   | "gift-card"
@@ -61,6 +63,15 @@ const TOKEN_GROUPS: readonly TokenGroupDefinition[] = [
   {
     group: "Waitlist",
     tokens: ["waitlist.classTitle", "waitlist.position", "waitlist.promotionExpiresAt", "waitlist.manageUrl"],
+  },
+  {
+    group: "Loyalty",
+    tokens: [
+      "loyalty.pointsExpiring",
+      "loyalty.expiresAt",
+      "loyalty.currencyCode",
+      "loyalty.walletUrl",
+    ],
   },
   {
     group: "Payment",
@@ -111,6 +122,7 @@ const FAMILY_GROUPS: Record<TokenFamily, readonly TokenGroup[]> = {
   auth: ["Common", "Auth"],
   booking: ["Common", "Booking"],
   waitlist: ["Common", "Waitlist"],
+  loyalty: ["Common", "Loyalty"],
   payment: ["Common", "Payment"],
   store: ["Common", "Store"],
   "gift-card": ["Common", "Gift card"],
@@ -133,6 +145,7 @@ const TEMPLATE_KEY_FAMILY: Record<string, TokenFamily> = {
   "waitlist.on-list": "waitlist",
   "waitlist.promoted": "waitlist",
   "waitlist.not-promoted": "waitlist",
+  "loyalty.points-expiring": "loyalty",
   "payment.purchase.confirmation": "payment",
   "store.purchase.confirmation": "store",
   "gift-card.issuance": "gift-card",
@@ -147,6 +160,7 @@ export function inferTokenFamilyForTemplateKey(templateKey: string): TokenFamily
   if (canonicalTemplateKey.startsWith("auth.")) return "auth";
   if (canonicalTemplateKey.startsWith("booking.")) return "booking";
   if (canonicalTemplateKey.startsWith("waitlist.")) return "waitlist";
+  if (canonicalTemplateKey.startsWith("loyalty.")) return "loyalty";
   if (canonicalTemplateKey.startsWith("payment.")) return "payment";
   if (canonicalTemplateKey.startsWith("store.")) return "store";
   if (canonicalTemplateKey.startsWith("gift-card.")) return "gift-card";

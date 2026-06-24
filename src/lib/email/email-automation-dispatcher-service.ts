@@ -127,6 +127,14 @@ function getRequiredPayloadFieldsForTemplate(templateKey: string): string[] {
         "waitlistEntryId",
         "bookingId",
       ];
+    case "loyalty.points-expiring":
+      return [
+        "contact.fullName",
+        "loyalty.pointsExpiring",
+        "loyalty.expiresAt",
+        "loyalty.currencyCode",
+        "loyalty.walletUrl",
+      ];
     default:
       return [];
   }

@@ -26,7 +26,7 @@ If a setup/runbook file conflicts with this file, treat this file as authoritati
 | Backup script path | `/usr/local/bin/bookmyclass-db-backup-run.sh` | Verified live | Confirmed in root crontab on production host. |
 | Healthcheck cron | `*/5 * * * * /usr/local/bin/bookmyclass-healthcheck.sh >> /var/log/bookmyclass-healthcheck.log 2>&1` | Confirmed from deployment docs | Root crontab. |
 | Backup cron | `30 2 * * * /usr/local/bin/bookmyclass-db-backup-run.sh >> /var/log/bookmyclass-db-backup.log 2>&1` | Verified live | Root crontab. |
-| App maintenance cron | `*/5 * * * * cd /var/www/bookmyclass && set -a && . ./.env && set +a && curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://bookmyclass.app/api/cron/maintenance >> /var/log/bookmyclass-maintenance.log 2>&1` | Required | Runs webhook receipt cleanup, cart checkout idempotency cleanup, and expired booking draft cleanup. The old daily maintenance cron is insufficient for booking/cart cleanup. |
+| App maintenance cron | `*/5 * * * * cd /var/www/bookmyclass && set -a && . ./.env && set +a && curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://bookmyclass.app/api/cron/maintenance >> /var/log/bookmyclass-maintenance.log 2>&1` | Required | Runs webhook receipt cleanup, cart checkout idempotency cleanup, expired booking draft cleanup, loyalty point expiration/reminder maintenance, and stale loyalty reservation cleanup. The old daily maintenance cron is insufficient for booking/cart/loyalty cleanup. |
 | `MARKETING_TRACKING_SECRET` env var | Required for marketing tracking token generation (campaign send paths). | Required for marketing flows | Missing value does not block Stripe client initialization or checkout session creation. Keep configured in production for marketing operations. |
 | Canonical auth secret env var | `AUTH_SECRET` | Confirmed from code/runtime | `NEXTAUTH_SECRET` is non-canonical and should not be required in new env examples. |
 | Canonical Stripe env vars | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Confirmed from code/runtime | Seed/test-only Stripe price IDs are separate from core runtime Stripe keys. |
@@ -51,7 +51,7 @@ Production root cron should include these managed operational jobs:
 */5 * * * * /usr/local/bin/bookmyclass-healthcheck.sh >> /var/log/bookmyclass-healthcheck.log 2>&1
 ```
 
-- App maintenance must run every 5 minutes so expired booking drafts and cart checkout idempotency records are cleaned up promptly.
+- App maintenance must run every 5 minutes so expired booking drafts, cart checkout idempotency records, and loyalty maintenance work are cleaned up promptly.
 - DB backup runs daily at 02:30 UTC.
 - Local app healthcheck runs every 5 minutes.
 - The previous daily `0 3 * * *` maintenance cron is insufficient for booking/cart cleanup and should be replaced.

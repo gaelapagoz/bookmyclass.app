@@ -1,6 +1,6 @@
 import "./helpers/setup-env";
 
-import { CouponRedemptionStatus, CouponStatus, Role } from "@prisma/client";
+import { CouponRedemptionStatus, CouponStatus, LoyaltyPointsLedgerEntryType, Role, UserActivationStatus } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -152,6 +152,119 @@ describe("cron maintenance route integration", () => {
           where: {
             couponId: coupon.id,
             status: CouponRedemptionStatus.EXPIRED,
+          },
+        }),
+      ).toBe(1);
+    } finally {
+      if (previousSecret === undefined) {
+        delete process.env.CRON_SECRET;
+      } else {
+        process.env.CRON_SECRET = previousSecret;
+      }
+    }
+  });
+
+  it("runs loyalty expiration and reminder maintenance through the canonical route", async () => {
+    const previousSecret = process.env.CRON_SECRET;
+    process.env.CRON_SECRET = "cron_secret_test";
+
+    try {
+      const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const verifiedAt = new Date();
+      const client = await prisma.user.create({
+        data: {
+          name: "Loyalty Client",
+          email: `loyalty-client-${unique}@example.test`,
+          role: Role.CLIENT,
+          isActive: true,
+          isInactive: false,
+          activationStatus: UserActivationStatus.ACTIVE,
+          emailVerified: verifiedAt,
+          emailVerifiedAt: verifiedAt,
+        },
+      });
+      await prisma.emailTemplate.create({
+        data: {
+          templateKey: "loyalty.points-expiring",
+          name: "Loyalty Reminder",
+          category: "Loyalty",
+          subjectTemplate: "{{loyalty.pointsExpiring}} loyalty points expire on {{loyalty.expiresAt}}",
+          bodyTemplateJson: {
+            blocks: [{ type: "paragraph", contentHtml: "<p>Hello {{contact.fullName}}</p>" }],
+          },
+          contentSchemaVersion: 1,
+          isActive: true,
+        },
+      });
+      await prisma.loyaltyProgram.create({
+        data: {
+          currencyCode: "EUR",
+          isActive: true,
+          earningPoints: 10,
+          earningAmountMinor: 500,
+          pointsExpireAfterDays: 30,
+          expirationReminderDays: 7,
+          maxManualGrantPoints: 500,
+        },
+      });
+      const now = new Date();
+      const expiringEntry = await prisma.loyaltyPointsLedgerEntry.create({
+        data: {
+          clientId: client.id,
+          entryType: LoyaltyPointsLedgerEntryType.EARN,
+          amountPoints: 50,
+          currencyCode: "EUR",
+          idempotencyKey: `loyalty-route-expire-${unique}`,
+          happenedAt: new Date(now.getTime() - 20 * 24 * 60 * 60 * 1000),
+          expiresAt: new Date(now.getTime() - 60 * 60 * 1000),
+        },
+      });
+      const reminderEntry = await prisma.loyaltyPointsLedgerEntry.create({
+        data: {
+          clientId: client.id,
+          entryType: LoyaltyPointsLedgerEntryType.EARN,
+          amountPoints: 70,
+          currencyCode: "EUR",
+          idempotencyKey: `loyalty-route-reminder-${unique}`,
+          happenedAt: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000),
+          expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000),
+        },
+      });
+
+      const response = await GET(
+        new Request("http://localhost/api/cron/maintenance", {
+          headers: { authorization: "Bearer cron_secret_test" },
+        }),
+      );
+      const payload = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.loyaltyExpiration).toMatchObject({
+        scannedCount: 1,
+        createdCount: 1,
+        failedCount: 0,
+      });
+      expect(payload.loyaltyReminder).toMatchObject({
+        scannedCount: 1,
+        enqueuedCount: 1,
+        failedCount: 0,
+      });
+      expect(
+        await prisma.loyaltyPointsLedgerEntry.count({
+          where: {
+            sourceEntryId: expiringEntry.id,
+            entryType: LoyaltyPointsLedgerEntryType.EXPIRE,
+          },
+        }),
+      ).toBe(1);
+      expect(
+        await prisma.emailAutomationEvent.count({
+          where: {
+            template: { templateKey: "loyalty.points-expiring" },
+            idempotencyKey: {
+              startsWith: `loyalty:reminder:entry:${reminderEntry.id}:`,
+            },
           },
         }),
       ).toBe(1);
