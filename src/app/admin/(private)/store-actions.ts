@@ -17,10 +17,12 @@ import {
   setAdminStoreProductActiveState,
 } from "@/lib/store/store-admin-catalog-service";
 import {
+  ProductMediaError,
   unlinkStoreProductImage,
   uploadStoreProductImage,
   validateProductImageUpload,
 } from "@/lib/media/product-media-service";
+import { getProductImageUploadLimitLabel } from "@/lib/media/product-image-config";
 import { attemptStorePriceSyncFromEnv } from "@/lib/store/store-stripe-sync-service";
 
 // ---------------------------------------------------------------------------
@@ -58,6 +60,27 @@ function isChecked(formData: FormData, key: string): boolean {
 function getImageFile(formData: FormData): File | null {
   const value = formData.get("image");
   return value instanceof File && value.size > 0 ? value : null;
+}
+
+function getStoreActionErrorMessage(error: unknown): string {
+  if (error instanceof ProductMediaError) {
+    if (error.code === "IMAGE_TOO_LARGE") {
+      return `Image exceeds the ${getProductImageUploadLimitLabel()} upload limit.`;
+    }
+    if (error.code === "UNSUPPORTED_MIME_TYPE" || error.code === "UNSUPPORTED_EXTENSION") {
+      return "Upload a JPEG, PNG, or WebP image.";
+    }
+    if (error.code === "SIGNATURE_MISMATCH") {
+      return "The uploaded file does not contain a valid JPEG, PNG, or WebP image.";
+    }
+    if (error.code === "UNSAFE_FILENAME") {
+      return "The uploaded filename is not allowed.";
+    }
+
+    return error.message;
+  }
+
+  return error instanceof Error ? error.message : "UNKNOWN_ERROR";
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +130,7 @@ export async function createStoreMerchandiseAction(formData: FormData) {
       }
     }
   } catch (err) {
-    const code = err instanceof Error ? err.message : "UNKNOWN_ERROR";
+    const code = getStoreActionErrorMessage(err);
     redirect(`/admin/store/merchandise/new?error=${encodeURIComponent(code)}`);
   }
 
@@ -162,7 +185,7 @@ export async function updateStoreMerchandiseAction(id: string, formData: FormDat
       }
     }
   } catch (err) {
-    const code = err instanceof Error ? err.message : "UNKNOWN_ERROR";
+    const code = getStoreActionErrorMessage(err);
     redirect(`/admin/store/merchandise/${id}/edit?error=${encodeURIComponent(code)}`);
   }
 
@@ -230,7 +253,7 @@ export async function createStoreGiftCardAction(formData: FormData) {
       }
     }
   } catch (err) {
-    const code = err instanceof Error ? err.message : "UNKNOWN_ERROR";
+    const code = getStoreActionErrorMessage(err);
     redirect(`/admin/store/gift-cards/new?error=${encodeURIComponent(code)}`);
   }
 
@@ -285,7 +308,7 @@ export async function updateStoreGiftCardAction(id: string, formData: FormData) 
       }
     }
   } catch (err) {
-    const code = err instanceof Error ? err.message : "UNKNOWN_ERROR";
+    const code = getStoreActionErrorMessage(err);
     redirect(`/admin/store/gift-cards/${id}/edit?error=${encodeURIComponent(code)}`);
   }
 

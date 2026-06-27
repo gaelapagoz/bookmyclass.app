@@ -53,6 +53,11 @@ vi.mock("@/lib/store/store-stripe-sync-service", () => ({
 }));
 
 vi.mock("@/lib/media/product-media-service", () => ({
+  ProductMediaError: class ProductMediaError extends Error {
+    constructor(public readonly code: string, message: string) {
+      super(message);
+    }
+  },
   uploadStoreProductImage: mocks.uploadStoreProductImage,
   unlinkStoreProductImage: mocks.unlinkStoreProductImage,
   validateProductImageUpload: mocks.validateProductImageUpload,
@@ -66,6 +71,7 @@ import {
   retryStoreMerchandiseSyncAction,
   retryStoreGiftCardSyncAction,
 } from "../../src/app/admin/(private)/store-actions";
+import { ProductMediaError } from "../../src/lib/media/product-media-service";
 
 function makeForm(input: Record<string, string>) {
   const formData = new FormData();
@@ -351,6 +357,24 @@ describe("admin store actions", () => {
 
     expect(mocks.updateAdminStoreGiftCardProduct).not.toHaveBeenCalled();
     expect(mocks.uploadStoreProductImage).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a friendly image-too-large message for gift-card edits", async () => {
+    const image = new File([new Uint8Array([0xff])], "gift.jpg", { type: "image/jpeg" });
+    const form = makeForm(baseForm);
+    form.set("image", image);
+    mocks.updateAdminStoreGiftCardProduct.mockResolvedValue(undefined);
+    mocks.validateProductImageUpload.mockRejectedValue(
+      new ProductMediaError("IMAGE_TOO_LARGE", "File exceeds the allowed size."),
+    );
+
+    await expect(updateStoreGiftCardAction("gift-1", form)).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/store/gift-cards/gift-1/edit",
+    );
+
+    expect(redirectMock.mock.calls[0][0]).toContain(
+      encodeURIComponent("Image exceeds the 5 MB upload limit."),
+    );
   });
 });
 

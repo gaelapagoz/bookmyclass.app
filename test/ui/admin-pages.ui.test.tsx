@@ -981,7 +981,6 @@ describe("Admin pages branching", () => {
 
   it("renders automations scaffold page", async () => {
     vi.mocked(getAutomationScaffoldRows).mockResolvedValue([
-      { templateKey: "booking.welcome", triggerLabel: "Welcome", category: "Lifecycle", subject: "Not configured", previewText: "", whenDescription: "Immediately", status: "Draft", marketingStatus: "Never sent", sentLast30Days: 0, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: false },
       { templateKey: "subscription.cancelled", triggerLabel: "Cancel Subscription", category: "Subscription", subject: "Not configured", previewText: "", whenDescription: "Immediately on cancellation", status: "Draft", marketingStatus: "Never sent", sentLast30Days: 0, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: false },
       { templateKey: "subscription.renewal", triggerLabel: "Renewal Subscription", category: "Subscription", subject: "Not configured", previewText: "", whenDescription: "Immediately on charge success", status: "Draft", marketingStatus: "Never sent", sentLast30Days: 0, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: false },
       { templateKey: "booking.class-booked", triggerLabel: "Booked Class", category: "Booking", subject: "Not configured", previewText: "", whenDescription: "Immediately", status: "Draft", marketingStatus: "Never sent", sentLast30Days: 0, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: false },
@@ -996,6 +995,7 @@ describe("Admin pages branching", () => {
       { templateKey: "payment.purchase.confirmation", triggerLabel: "Payment Purchase Confirmation", category: "Payment", subject: "Payment purchase confirmation", previewText: "", whenDescription: "Immediately on payment success", status: "Active", marketingStatus: "Never sent", sentLast30Days: 2, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: true },
       { templateKey: "store.purchase.confirmation", triggerLabel: "Store Purchase Confirmation", category: "Store", subject: "Store purchase confirmation", previewText: "", whenDescription: "Immediately on checkout success", status: "Active", marketingStatus: "Never sent", sentLast30Days: 2, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: true },
       { templateKey: "gift-card.issuance", triggerLabel: "Gift Card Issuance", category: "Gift card", subject: "Your gift card is ready", previewText: "", whenDescription: "Immediately after gift card purchase", status: "Active", marketingStatus: "Never sent", sentLast30Days: 2, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: true },
+      { templateKey: "loyalty.points-expiring", triggerLabel: "Loyalty Points Expiring", category: "Loyalty", subject: "{{loyalty.pointsExpiring}} loyalty points expire on {{loyalty.expiresAt}}", previewText: "", whenDescription: "On the configured reminder day before expiry", status: "Draft", marketingStatus: "Never sent", sentLast30Days: 0, pendingCount: 0, deadLetterCount: 0, openRate: null, clickRate: null, unsubscribeRate: null, exists: false },
     ]);
     render(await AdminAutomationsPage());
 
@@ -1006,10 +1006,11 @@ describe("Admin pages branching", () => {
     expect(screen.getByRole("columnheader", { name: "When" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Sent - 30D" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Marketing" })).toBeInTheDocument();
-    expect(screen.getByText("Welcome")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Actions" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Marketing" })).not.toBeInTheDocument();
     expect(screen.getByText("Auth Verification Email")).toBeInTheDocument();
     expect(screen.getByText("Gift Card Issuance")).toBeInTheDocument();
+    expect(screen.getByText("Loyalty Points Expiring")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: /View|Configure/ }).length).toBe(15);
     expect(vi.mocked(ensureAllExpectedAutomationTemplatesExist)).not.toHaveBeenCalled();
   });

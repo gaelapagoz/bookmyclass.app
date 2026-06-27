@@ -74,6 +74,29 @@ const EXPECTED_AUTOMATION_TEMPLATES: readonly ExpectedAutomationTemplate[] = [
   { templateKey: "gift-card.issuance", triggerLabel: "Gift Card Issuance", category: "Gift card", whenDescription: "Immediately after gift card purchase", defaultSubject: "Your gift card is ready" },
 ] as const;
 
+const ADMIN_AUTOMATION_TEMPLATE_ORDER = [
+  "auth.verify-email",
+  "auth.password-reset",
+  "auth.verify-email-change",
+  "payment.purchase.confirmation",
+  "store.purchase.confirmation",
+  "booking.class-booked",
+  "booking.class-reminder",
+  "booking.class-cancelled",
+  "waitlist.on-list",
+  "waitlist.promoted",
+  "waitlist.not-promoted",
+  "subscription.cancelled",
+  "subscription.renewal",
+  "gift-card.issuance",
+  "loyalty.points-expiring",
+] as const satisfies readonly string[];
+
+function getAdminVisibleAutomationTemplates(): readonly ExpectedAutomationTemplate[] {
+  const byKey = new Map(EXPECTED_AUTOMATION_TEMPLATES.map((item) => [item.templateKey, item]));
+  return ADMIN_AUTOMATION_TEMPLATE_ORDER.map((templateKey) => byKey.get(templateKey)).filter((item): item is ExpectedAutomationTemplate => Boolean(item));
+}
+
 function getCanonicalAutomationTemplateKey(templateKey: string): string {
   return LEGACY_AUTOMATION_TEMPLATE_KEYS[templateKey] ?? templateKey;
 }
@@ -628,7 +651,7 @@ export function buildAutomationScaffoldRows(input: {
   }
   const sentByTemplate = new Map(input.sentLast30.map((row) => [row.templateId, row.count]));
 
-  return EXPECTED_AUTOMATION_TEMPLATES.map((expected) => {
+  return getAdminVisibleAutomationTemplates().map((expected) => {
     const template = templateByKey.get(expected.templateKey);
     if (!template) {
       return {

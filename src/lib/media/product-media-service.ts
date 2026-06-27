@@ -1,6 +1,7 @@
 import { ProductType } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { getMaxProductImageBytes as resolveMaxProductImageBytes } from "@/lib/media/product-image-config";
 import {
   CanonicalMediaError,
   storeCanonicalImageWithPathPersistence,
@@ -160,12 +161,7 @@ export async function unlinkStoreProductImage(productId: string): Promise<void> 
 }
 
 function getMaxProductImageBytes(): number {
-  const raw = process.env.PRODUCT_IMAGE_MAX_BYTES ?? process.env.IMAGE_UPLOAD_MAX_BYTES;
-  if (!raw) return 5 * 1024 * 1024;
-
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed <= 0) return 5 * 1024 * 1024;
-  return parsed;
+  return resolveMaxProductImageBytes(process.env);
 }
 
 function mapCanonicalMediaError(error: unknown): ProductMediaError {

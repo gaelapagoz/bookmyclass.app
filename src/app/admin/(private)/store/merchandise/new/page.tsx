@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { requireAdminSession } from "@/lib/auth/require-auth";
 import { createStoreMerchandiseAction } from "@/app/admin/(private)/store-actions";
+import { getProductImageUploadLimitLabel } from "@/lib/media/product-image-config";
 import { STORE_PICKUP_WORDING } from "@/lib/store/store-constants";
 
 type SearchParams = Promise<{ error?: string }>;
@@ -13,6 +14,7 @@ export default async function AdminStoreMerchandiseNewPage({
 }) {
   await requireAdminSession();
   const { error } = await searchParams;
+  const imageUploadLimitLabel = getProductImageUploadLimitLabel();
 
   return (
     <section className="space-y-4">
@@ -63,7 +65,7 @@ export default async function AdminStoreMerchandiseNewPage({
             className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2"
           />
           <span className="mt-1 block text-xs text-[#64748b]">
-            JPEG, PNG, or WebP. Maximum size is 5 MB unless configured otherwise.
+            JPEG, PNG, or WebP. Maximum size is {imageUploadLimitLabel}.
           </span>
         </label>
 

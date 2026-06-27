@@ -14,6 +14,7 @@ import {
   getAdminStoreMerchandiseById,
   getStorePriceCheckoutReadinessLabel,
 } from "@/lib/store/store-admin-catalog-service";
+import { getProductImageUploadLimitLabel } from "@/lib/media/product-image-config";
 import { STORE_PICKUP_WORDING } from "@/lib/store/store-constants";
 
 type Params = Promise<{ id: string }>;
@@ -29,6 +30,7 @@ export default async function AdminStoreMerchandiseEditPage({
   await requireAdminSession();
   const { id } = await params;
   const { error, success } = await searchParams;
+  const imageUploadLimitLabel = getProductImageUploadLimitLabel();
 
   const record = await getAdminStoreMerchandiseById(id);
   if (!record) notFound();
@@ -114,6 +116,9 @@ export default async function AdminStoreMerchandiseEditPage({
               accept="image/jpeg,image/png,image/webp"
               className="mt-1 w-full rounded-md border border-[#d3dbe5] bg-white px-3 py-2"
             />
+            <span className="mt-1 block text-xs text-[#64748b]">
+              JPEG, PNG, or WebP. Maximum size is {imageUploadLimitLabel}.
+            </span>
           </label>
         </div>
 

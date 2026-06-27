@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
+import { getRecommendedProductImageServerActionBodySizeLimit } from "./src/lib/media/product-image-config";
 import { buildBaseSecurityHeaders } from "./src/lib/security/response-security";
 
 const nextConfig: NextConfig = {
@@ -8,7 +9,7 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   experimental: {
     serverActions: {
-      bodySizeLimit: "6mb",
+      bodySizeLimit: getRecommendedProductImageServerActionBodySizeLimit(),
     },
   },
   async headers() {

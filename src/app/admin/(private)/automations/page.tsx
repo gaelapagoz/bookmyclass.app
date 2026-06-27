@@ -78,7 +78,6 @@ export default async function AdminAutomationsPage() {
                 <th className="px-3 py-2">When</th>
                 <th className="px-3 py-2">Sent - 30D</th>
                 <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Marketing</th>
                 <th className="px-3 py-2">Actions</th>
               </tr>
             </thead>
@@ -91,7 +90,6 @@ export default async function AdminAutomationsPage() {
                   <td className="px-3 py-2">{row.whenDescription}</td>
                   <td className="px-3 py-2 tabular-nums">{row.sentLast30Days.toLocaleString("en-US")}</td>
                   <td className="px-3 py-2">{row.status}</td>
-                  <td className="px-3 py-2">{row.marketingStatus}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
                       <Link href={`/admin/automations/${row.templateKey}`} className="text-[#2a4f78] underline">
@@ -110,7 +108,7 @@ export default async function AdminAutomationsPage() {
               ))}
               {!loadError && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-6 text-center text-sm text-[#4b5a72]">No automations match these filters.</td>
+                  <td colSpan={7} className="px-3 py-6 text-center text-sm text-[#4b5a72]">No automations match these filters.</td>
                 </tr>
               ) : null}
             </tbody>

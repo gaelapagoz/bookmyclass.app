@@ -67,6 +67,16 @@ Resolution used for this campaign:
 - At least one redeemed gift-card wallet ledger entry for wallet history checks.
 - Two verified client accounts are available for IDOR and duplicate redemption checks.
 - Admin Store catalog access is available for merchandise, gift cards, and images.
+- `client_loyalty_earner`: verified active client with zero or known baseline points and access to an eligible one-time product purchase path.
+- `client_loyalty_reward_ready`: verified active client with enough points for at least one active loyalty reward redemption.
+- `client_loyalty_with_credit`: verified active client with an existing loyalty credit balance for checkout application checks.
+- `client_loyalty_expiring`: verified active client with points inside the configured reminder/expiration window.
+- `client_loyalty_ineligible`: inactive or unverified client account for loyalty access and mutation rejection checks.
+- Active loyalty program configuration exists with a known earning ratio, reminder window, and expiration policy.
+- At least one active loyalty reward definition exists in the primary loyalty currency.
+- At least one checkout-ready eligible one-time loyalty product exists.
+- At least one checkout-ready recurring product exists for loyalty-credit rejection checks.
+- Operator can trigger or observe `GET /api/cron/maintenance` for loyalty expiration, reminder, and stale reservation validation.
 - At least one full collective session with waitlist capacity available.
 - At least one full collective session with waitlist already full.
 
@@ -78,21 +88,24 @@ Resolution used for this campaign:
 5. Client subscription/membership
 6. Store checkout and gift-card lifecycle
 7. Store dashboard and history
-8. Store admin/catalog/media
-9. Store security
-10. Client dashboard/profile/security
-11. Admin auth/access
-12. Admin catalog/session/user operations
-13. Teacher/kiosk/attendance
-14. Learning
-15. Inbox/contact
-16. Marketing
-17. Agenda/public document
-18. Store production readiness
-19. Operational confidence checks
+8. Client loyalty
+9. Store admin/catalog/media
+10. Store security
+11. Loyalty security and maintenance
+12. Client dashboard/profile/security
+13. Admin auth/access
+14. Admin catalog/session/user operations
+15. Admin loyalty operations
+16. Teacher/kiosk/attendance
+17. Learning
+18. Inbox/contact
+19. Marketing
+20. Agenda/public document
+21. Store production readiness
+22. Operational confidence checks
 
 ## Release-Blocking Subset
-`SMK-001`, `SMK-002`, `AUT-001`, `AUT-002`, `AUT-003`, `BKG-002`, `BKG-003`, `BKG-004`, `BKG-005`, `BKG-006`, `BKG-007`, `WTL-001`, `WTL-002`, `WTL-003`, `SUB-001`, `SUB-002`, `STR-001`, `STR-002`, `STR-003`, `STR-004`, `STR-005`, `STR-006`, `STR-007`, `STR-008`, `STH-001`, `STH-002`, `STA-001`, `STA-002`, `STS-001`, `STS-002`, `STS-003`, `SPR-001`, `SPR-002`, `SPR-003`, `SPR-004`, `DBO-001`, `ADM-001`, `ADM-002`, `AOP-001`, `AOP-002`, `TCH-001`, `TCH-002`, `TCH-003`, `LRN-001`, `INB-001`, `AGD-001`, `OPC-001`
+`SMK-001`, `SMK-002`, `AUT-001`, `AUT-002`, `AUT-003`, `BKG-002`, `BKG-003`, `BKG-004`, `BKG-005`, `BKG-006`, `BKG-007`, `WTL-001`, `WTL-002`, `WTL-003`, `SUB-001`, `SUB-002`, `STR-001`, `STR-002`, `STR-003`, `STR-004`, `STR-005`, `STR-006`, `STR-007`, `STR-008`, `STH-001`, `STH-002`, `LYT-002`, `LYT-003`, `LYT-004`, `LYT-005`, `LYT-006`, `STA-001`, `STA-002`, `STS-001`, `STS-002`, `STS-003`, `LYS-001`, `LYS-002`, `LYS-003`, `SPR-001`, `SPR-002`, `SPR-003`, `SPR-004`, `DBO-001`, `ADM-001`, `ADM-002`, `AOP-001`, `AOP-002`, `LYA-001`, `LYA-002`, `LYA-003`, `TCH-001`, `TCH-002`, `TCH-003`, `LRN-001`, `INB-001`, `AGD-001`, `OPC-001`
 
 ## Known Baseline Risks
 - Teacher workflow enforcement is a known risk area; execute teacher/kiosk tests with strict evidence capture and do not over-assume role gating behavior.
@@ -100,6 +113,8 @@ Resolution used for this campaign:
 - Product + Price is the catalog source of truth; any mismatch between catalog display and checkout behavior is an S2.
 - Gift-card wallet balance is credited only after code redemption, never at purchase.
 - Plaintext gift-card codes must appear only in purchaser email/outbox evidence.
+- Loyalty public messaging must match the active spend-earning plus redeem-to-credit contract; stale read-only-only copy is a release risk.
+- Loyalty credit and gift-card wallet are intentionally separate mutation domains even when shown on the same wallet or checkout surface.
 - Store production signoff is invalid without the Store readiness evidence file.
 
 ## Manual Campaign
@@ -108,7 +123,7 @@ Resolution used for this campaign:
 
 | Test ID | Persona | Priority | Release Blocking | Title | Preconditions | Steps | Expected Result |
 |---|---|---|---|---|---|---|---|
-| SMK-001 | Admin | Critical | Yes | Core endpoints respond | Target deployed | Call `/api/health`, `/`, `/sign-in`, `/book-a-class`, `/subscription`, `/api/categories` | All endpoints return expected success (`200`; health ready) and pages render usable content |
+| SMK-001 | Admin | Critical | Yes | Core endpoints respond | Target deployed | Call `/api/health`, `/`, `/sign-in`, `/book-a-class`, `/subscription`, `/promos/loyalty-points`, `/api/categories` | All endpoints return expected success (`200`; health ready) and pages render usable content |
 | SMK-002 | Admin | Critical | Yes | Smoke command pass | Target deployed and operator shell access | Run `npm run test:uat:smoke` against operator-approved URL | Smoke command exits successfully with no failed check |
 
 ### Client Auth
@@ -172,6 +187,19 @@ Resolution used for this campaign:
 | STH-002 | Client | Critical | Yes | Store purchases appear in order history | Client has merchandise and gift-card orders | Open `/dashboard/orders` or purchase history surface | Merchandise and gift-card purchases show date, item, quantity, total, payment status, and fulfillment note |
 | STH-003 | Client | Major | No | Store product images render in purchase history | Purchased product has uploaded image; another product has none | Open purchase history | Uploaded image displays where available; placeholder displays where absent; no broken image appears |
 
+### Client Loyalty
+
+| Test ID | Persona | Priority | Release Blocking | Title | Preconditions | Steps | Expected Result |
+|---|---|---|---|---|---|---|---|
+| LYT-001 | Client | Major | No | Public loyalty explainer matches active scope | Public site reachable | Open `/promos/loyalty-points`; review hero, steps, and CTA copy | Public explainer loads successfully and describes active spend-based earning plus loyalty-credit redemption scope without implying sign-up or booking earning |
+| LYT-002 | Client | Critical | Yes | Dashboard and wallet show loyalty balances and history | `client_loyalty_reward_ready` or client with seeded loyalty activity | Sign in; open dashboard overview and wallet page | Dashboard shows loyalty summary, wallet shows separate loyalty points, loyalty credit, expiry visibility, and history without merging values into gift-card balance |
+| LYT-003 | Client | Critical | Yes | Reward redemption converts points into loyalty credit | `client_loyalty_reward_ready`; active reward definition | Open wallet; redeem one reward; refresh wallet/history | Points decrease once, loyalty credit increases by the reward amount, reward action is recorded in history, and duplicate clicks/retry do not double-redeem |
+| LYT-004 | Client | Critical | Yes | Loyalty credit applies to eligible one-time checkout in the correct order | `client_loyalty_with_credit`; eligible one-time cart item; coupon and gift-card wallet value available if stacking is seeded | Build eligible cart; apply coupon if available; apply loyalty credit; apply gift-card wallet if available; complete checkout; open success page | Checkout applies funding in the order `coupon -> loyalty credit -> gift-card wallet -> Stripe/card remainder`, succeeds, and success summary shows each contribution as a separate line |
+| LYT-005 | Client | Critical | Yes | Recurring cart rejects loyalty credit before checkout | `client_loyalty_with_credit`; checkout-ready recurring product exists | Add recurring product to cart; attempt to apply loyalty credit | Client gets a safe rejection before reservation/checkout and recurring purchase path remains intact without consuming loyalty credit |
+| LYT-006 | Client | Critical | Yes | Eligible settled one-time purchase earns points only after settlement | `client_loyalty_earner`; eligible one-time product; Stripe test data | Record starting balance; complete eligible paid order; refresh dashboard/wallet after settlement | Points are absent before settlement, appear once after successful settlement, and earned amount matches the configured net paid eligible spend |
+| LYT-007 | Client | Major | No | Failed or expired checkout does not earn points | `client_loyalty_earner`; eligible one-time product; failed or expired checkout path available | Start eligible checkout; fail or abandon until expiry; inspect wallet/history | No new loyalty award is created and any temporary loyalty credit reservation is released safely if one existed |
+| LYT-008 | Client | Major | No | Gift-card-funded or loyalty-funded amount does not earn extra points | `client_loyalty_with_credit`; client with gift-card wallet balance; eligible one-time product | Complete one or more eligible orders using loyalty credit and/or gift-card wallet for part of the total; inspect resulting points award | Earned points are based only on the settled net cash/card-paid eligible amount and exclude loyalty-funded or gift-card-funded portions |
+
 ### Store Admin, Catalog, and Media
 
 | Test ID | Persona | Priority | Release Blocking | Title | Preconditions | Steps | Expected Result |
@@ -188,6 +216,15 @@ Resolution used for this campaign:
 | STS-002 | Client | Critical | Yes | Wallet IDOR is blocked | Client A has wallet activity; Client B exists | Sign in as Client B; attempt wallet/API access for Client A | Client B sees only own wallet; no other-client wallet data leaks |
 | STS-003 | Client | Critical | Yes | Redemption response hides purchaser identity and code hash | Valid code purchased by Client A; Client B redeems | Redeem as Client B; inspect UI/API response | Redeemer cannot see purchaser identity, order data, or `GiftCardCode.codeHash` |
 | STS-004 | Admin/Client | Major | No | Upload route authorization and validation | Non-admin user and admin user available | Attempt product image upload as anonymous/client/admin with unsafe file variants | Anonymous/client upload is rejected; admin valid upload succeeds; unsafe files are rejected |
+
+### Loyalty Security and Maintenance
+
+| Test ID | Persona | Priority | Release Blocking | Title | Preconditions | Steps | Expected Result |
+|---|---|---|---|---|---|---|---|
+| LYS-001 | Client | Critical | Yes | Loyalty wallet and history ownership is enforced | Client A has loyalty points/credit/history; Client B exists | Sign in as Client B; attempt Client A loyalty wallet/history or API access | Access is denied or not found; Client B cannot view or mutate Client A loyalty data |
+| LYS-002 | Client | Critical | Yes | Loyalty redemption requires authenticated verified active client | `client_loyalty_ineligible` and anonymous session available; active reward exists | Attempt wallet/redeem access while signed out, unverified, or inactive | Signed-out access is rejected, inactive/unverified client cannot redeem, and no points or credit mutate |
+| LYS-003 | Admin/System | Critical | Yes | Loyalty maintenance expires and reminds without duplicate effects | `client_loyalty_expiring`; maintenance access available | Trigger or observe `GET /api/cron/maintenance`; inspect loyalty history, reminder delivery evidence, and rerun behavior for the same effective window | Reminder/expiration effects occur when due, balances/read models update correctly, and replay does not duplicate reminder or expiration entries |
+| LYS-004 | Client/System | Major | No | Failed loyalty-funded cart releases reserved loyalty credit | `client_loyalty_with_credit`; eligible one-time product; failure path available | Start checkout with loyalty credit applied; fail or expire the checkout; inspect wallet and retry | Reserved loyalty credit is released once after failure/expiry and client can reuse the credit on a later eligible checkout |
 
 ### Client Dashboard/Profile/Security
 
@@ -212,6 +249,15 @@ Resolution used for this campaign:
 | AOP-002 | Admin | Critical | Yes | Create/update studio session | Admin session and class template/category exists | Create session; edit schedule/capacity; save | Session persists and appears in booking availability as expected |
 | AOP-003 | Admin | Major | No | Create teacher user account | Admin session | Create teacher user and set credentials | Teacher user is created and can authenticate where applicable |
 | AOP-004 | Admin | Major | No | Admin user update safety | Admin session and target user exists | Edit user profile/role metadata within allowed UI path | Update persists and no unauthorized mutation path is exposed |
+
+### Admin Loyalty Operations
+
+| Test ID | Persona | Priority | Release Blocking | Title | Preconditions | Steps | Expected Result |
+|---|---|---|---|---|---|---|---|
+| LYA-001 | Admin | Critical | Yes | Sales loyalty page shows balances, history, and client search | Admin session; at least one client with loyalty activity | Open `/admin/sales/loyalty`; search for a client; inspect overview and client detail panels | Admin can find loyalty clients, see read-only balances/history, and overview totals render without exposing mutation paths outside approved actions |
+| LYA-002 | Admin | Critical | Yes | Manual grant requires active verified client and reason | Admin session; `client_loyalty_earner`; inactive or unverified client also available | Submit a valid manual grant with reason to eligible client; attempt grant to inactive/unverified client or without reason | Eligible grant succeeds once with audit-visible history, invalid targets/reasonless attempts are rejected, and no negative adjustment path is exposed |
+| LYA-003 | Admin | Critical | Yes | Catalog loyalty configuration and rewards match frozen scope | Admin session; active loyalty program and reward definitions exist | Open `/admin/catalog/loyalty`; inspect earning settings, expiration/reminder controls, and reward definitions | Admin can view/manage spend-based earning, expiration, and rewards; UI does not expose `Sign up to the site` or `Book a session` earning actions |
+| LYA-004 | Admin | Major | No | Loyalty reward edits preserve client-facing redemption safety | Admin session; existing active reward definition | Create, update, and archive a reward definition; revisit client wallet reward list | Admin changes persist safely and client wallet only shows currently active valid rewards |
 
 ### Teacher/Kiosk/Attendance
 
