@@ -289,6 +289,7 @@ npx prisma generate
 npx prisma migrate deploy
 npm run build
 npm prune --omit=dev
+set -a && . /var/www/bookmyclass/.env && set +a
 pm2 restart bookmyclass-app --update-env
 npm run verify:media-runtime
 ```
@@ -320,6 +321,7 @@ npx prisma generate
 npx prisma migrate deploy
 npm run build
 npm prune --omit=dev
+set -a && . /var/www/bookmyclass/.env && set +a
 pm2 restart bookmyclass-app --update-env
 npm run verify:media-runtime
 ```
@@ -333,7 +335,8 @@ npm run verify:media-runtime
 * `npx prisma generate` regenerates Prisma client artifacts for the checked out version
 * `npm run build` builds the Next.js application
 * `npm prune --omit=dev` removes devDependencies before runtime activation
-* `pm2 restart bookmyclass-app --update-env` restarts the app with the current environment
+* `set -a && . /var/www/bookmyclass/.env && set +a` exports the checked-out `.env` into the current shell before PM2 restart
+* `pm2 restart bookmyclass-app --update-env` restarts the app with the current shell environment, not by re-reading `.env` on disk
 * `npm run verify:media-runtime` confirms persistent upload storage is writable and returns `/uploads/...` paths for all canonical image folders
 
 ### Rules
@@ -343,6 +346,7 @@ npm run verify:media-runtime
 * Always run `npx prisma migrate deploy` before `npx prisma generate`
 * Always run `npx prisma generate` before `npm run build`
 * Always run `npm prune --omit=dev` after build and before PM2 restart/reload
+* Always export `/var/www/bookmyclass/.env` into the current shell immediately before `pm2 restart ... --update-env` if any runtime env value changed
 * Always restart PM2 only after a successful build
 * Never run `prisma migrate reset` or seed commands during normal UAT/production deploy
 

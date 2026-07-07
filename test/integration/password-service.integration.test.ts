@@ -183,6 +183,78 @@ describe("password-service integration", () => {
     expect(activeTokenCount).toBe(1);
   });
 
+  it("uses APP_URL for password reset links and normalizes trailing slashes", async () => {
+    const user = await createClientUser(`forgot.url.${Date.now()}@example.test`, "Password123!");
+
+    const result = await requestPasswordReset({
+      email: user.email,
+      appUrl: "https://demo.bookmyclass.app/",
+    });
+
+    expect(result).toEqual({ outcome: "SENT" });
+    const message = getCapturedTestEmails().find((item) => item.to.includes(user.email.toLowerCase()));
+    expect(message?.html).toContain("https://demo.bookmyclass.app/reset-password?token=");
+    expect(message?.html).not.toContain("https://demo.bookmyclass.app//reset-password");
+  });
+
+  it("dead-letters superseded password reset emails before dispatch", async () => {
+    const user = await createClientUser(`forgot.rotate.${Date.now()}@example.test`, "Password123!");
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalApiKey = process.env.RESEND_API_KEY;
+    const originalAllowRealEmails = process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION;
+    process.env.NODE_ENV = "development";
+    process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION = "1";
+    delete process.env.RESEND_API_KEY;
+    process.env.EMAIL_FROM = "Book My Class <no-reply@bookmyclass.app>";
+
+    try {
+      const first = await requestPasswordReset({
+        email: user.email,
+        appUrl: "https://demo.bookmyclass.app",
+      });
+      expect(first).toEqual({ outcome: "SENT" });
+
+      const firstEvent = await prisma.emailAutomationEvent.findFirstOrThrow({
+        where: {
+          recipientEmail: user.email.toLowerCase(),
+          status: "PENDING",
+        },
+        orderBy: { createdAt: "asc" },
+        select: { id: true },
+      });
+
+      await clearPasswordResetRateLimitForTests();
+      const second = await requestPasswordReset({
+        email: user.email,
+        appUrl: "https://demo.bookmyclass.app",
+      });
+      expect(second).toEqual({ outcome: "SENT" });
+
+      const staleEvent = await prisma.emailAutomationEvent.findUniqueOrThrow({
+        where: { id: firstEvent.id },
+        select: { status: true, lastError: true },
+      });
+      expect(staleEvent.status).toBe("DEAD_LETTER");
+      expect(staleEvent.lastError).toBe("AUTH_SECURITY_EMAIL_SUPERSEDED");
+    } finally {
+      if (originalNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
+      if (originalApiKey === undefined) {
+        delete process.env.RESEND_API_KEY;
+      } else {
+        process.env.RESEND_API_KEY = originalApiKey;
+      }
+      if (originalAllowRealEmails === undefined) {
+        delete process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION;
+      } else {
+        process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION = originalAllowRealEmails;
+      }
+    }
+  });
+
   it("forgot password with unknown email returns same response", async () => {
     const result = await requestPasswordReset({
       email: `forgot.unknown.${Date.now()}@example.test`,

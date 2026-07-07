@@ -2,8 +2,10 @@ import { UserActivationStatus } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import { compare, hash } from "bcryptjs";
 import { getRequiredAuthSecret } from "@/lib/auth/auth-secret";
-import { enqueuePasswordResetEmailFastLane, resolveAppUrl } from "@/lib/auth/auth-email-fast-lane-service";
+import { enqueuePasswordResetEmailFastLane } from "@/lib/auth/auth-email-fast-lane-service";
+import { AUTH_SECURITY_EMAIL_TEMPLATE_KEYS, deadLetterSupersededAuthSecurityEmails } from "@/lib/auth/auth-security-email-guard";
 import { createInMemoryTtlCache } from "@/lib/cache/in-memory-ttl-cache";
+import { buildAppUrl } from "@/lib/config/app-url";
 import { prisma } from "@/lib/db";
 
 const PASSWORD_MIN_LENGTH = 8;
@@ -298,10 +300,21 @@ export async function requestPasswordReset(input: {
     expiresAtIso: expiresAt.toISOString(),
   });
 
-  const appUrl = resolveAppUrl(input.appUrl);
-  const resetUrl = `${appUrl.replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(resetToken)}`;
+  await deadLetterSupersededAuthSecurityEmails({
+    recipientEmail: user.email,
+    templateKeys: [AUTH_SECURITY_EMAIL_TEMPLATE_KEYS[2]],
+    now,
+  });
+
+  const resetUrl = buildAppUrl({
+    appUrl: input.appUrl,
+    path: "/reset-password",
+    query: {
+      token: resetToken,
+    },
+  });
   logPasswordResetDebug("reset-url-built", {
-    appUrl,
+    appUrl: input.appUrl,
     hasTokenInUrl: resetUrl.includes("token="),
   });
 

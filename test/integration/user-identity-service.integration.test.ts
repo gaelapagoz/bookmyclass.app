@@ -173,6 +173,102 @@ describe("user identity hardening", () => {
     expect(user.createdIp).toBe("203.0.113.3");
   });
 
+  it("uses APP_URL for signup verification links and normalizes trailing slashes", async () => {
+    const email = `verify-url.${Date.now()}@example.test`;
+    const result = await createPendingPublicRegistration({
+      firstName: "Verify",
+      lastName: "URL",
+      email,
+      passwordHash: await hash("Password123!", 12),
+      ipAddress: "203.0.113.53",
+      appUrl: "https://demo.bookmyclass.app/",
+    });
+    expect(result.outcome).toBe("PENDING_VERIFICATION");
+
+    const message = getCapturedTestEmails().find((item) => item.to.includes(email.toLowerCase()));
+    expect(message?.html).toContain("https://demo.bookmyclass.app/verify-email?");
+    expect(message?.html).not.toContain("https://demo.bookmyclass.app//verify-email");
+    expect(message?.html).toContain(`email=${encodeURIComponent(email)}`);
+  });
+
+  it("suppresses older signup verification emails after token rotation", async () => {
+    const email = `verify-rotate.${Date.now()}@example.test`;
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalApiKey = process.env.RESEND_API_KEY;
+    const originalAllowRealEmails = process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION;
+    process.env.NODE_ENV = "development";
+    process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION = "1";
+    delete process.env.RESEND_API_KEY;
+    process.env.EMAIL_FROM = "Book My Class <no-reply@bookmyclass.app>";
+
+    try {
+      const created = await createPendingPublicRegistration({
+        firstName: "Rotate",
+        lastName: "Signup",
+        email,
+        passwordHash: await hash("Password123!", 12),
+        ipAddress: "203.0.113.77",
+        appUrl: "https://demo.bookmyclass.app",
+      });
+      expect(created.outcome).toBe("PENDING_VERIFICATION");
+
+      const firstPending = await prisma.pendingUserRegistration.findUniqueOrThrow({
+        where: { email },
+        select: { tokenHash: true },
+      });
+      const firstEvent = await prisma.emailAutomationEvent.findUniqueOrThrow({
+        where: {
+          idempotencyKey: `auth.verify-email:registration:${email}:${firstPending.tokenHash}`,
+        },
+        select: { id: true, status: true },
+      });
+      expect(firstEvent.status).toBe("PENDING");
+
+      const resent = await requestEmailVerification({
+        email,
+        appUrl: "https://demo.bookmyclass.app",
+        now: new Date(Date.now() + 61_000),
+      });
+      expect(resent.outcome).toBe("SENT");
+
+      const staleAfterRotate = await prisma.emailAutomationEvent.findUniqueOrThrow({
+        where: { id: firstEvent.id },
+        select: { status: true, lastError: true },
+      });
+      expect(staleAfterRotate.status).toBe("DEAD_LETTER");
+      expect(staleAfterRotate.lastError).toBe("AUTH_SECURITY_EMAIL_SUPERSEDED");
+
+      const latestPending = await prisma.pendingUserRegistration.findUniqueOrThrow({
+        where: { email },
+        select: { tokenHash: true },
+      });
+      const latestEvent = await prisma.emailAutomationEvent.findUniqueOrThrow({
+        where: {
+          idempotencyKey: `auth.verify-email:registration:${email}:${latestPending.tokenHash}`,
+        },
+        select: { status: true, lastError: true },
+      });
+      expect(latestEvent.status).toBe("PENDING");
+      expect(latestEvent.lastError).toBe("Missing RESEND_API_KEY.");
+    } finally {
+      if (originalNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
+      if (originalApiKey === undefined) {
+        delete process.env.RESEND_API_KEY;
+      } else {
+        process.env.RESEND_API_KEY = originalApiKey;
+      }
+      if (originalAllowRealEmails === undefined) {
+        delete process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION;
+      } else {
+        process.env.ALLOW_REAL_EMAILS_IN_NON_PRODUCTION = originalAllowRealEmails;
+      }
+    }
+  });
+
   it("rejects pending-registration verification with invalid token", async () => {
     const result = await verifyPendingRegistrationByToken({ token: "not-a-valid-token" });
     expect(result).toEqual({ verified: false, email: null });

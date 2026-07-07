@@ -1,7 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Role, UserActivationStatus, UserCreatedVia } from "@prisma/client";
 import { verifyPassword } from "@/lib/auth/password-service";
-import { enqueueVerificationEmailFastLane, resolveAppUrl } from "@/lib/auth/auth-email-fast-lane-service";
+import { enqueueVerificationEmailFastLane } from "@/lib/auth/auth-email-fast-lane-service";
+import { AUTH_SECURITY_EMAIL_TEMPLATE_KEYS, deadLetterSupersededAuthSecurityEmails } from "@/lib/auth/auth-security-email-guard";
+import { buildAppUrl } from "@/lib/config/app-url";
 import { prisma } from "@/lib/db";
 
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -198,8 +200,20 @@ async function storePendingRegistrationAndSend(params: {
     },
   });
 
-  const appUrl = resolveAppUrl(params.appUrl);
-  const verificationUrl = `${appUrl.replace(/\/$/, "")}/verify-email?registrationToken=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(params.email)}`;
+  await deadLetterSupersededAuthSecurityEmails({
+    recipientEmail: params.email,
+    templateKeys: [AUTH_SECURITY_EMAIL_TEMPLATE_KEYS[0]],
+    now: params.now,
+  });
+
+  const verificationUrl = buildAppUrl({
+    appUrl: params.appUrl,
+    path: "/verify-email",
+    query: {
+      registrationToken: rawToken,
+      email: params.email,
+    },
+  });
 
   await sendVerificationEmail({
     to: params.email,
@@ -432,8 +446,20 @@ export async function requestEmailVerification(input: {
     }),
   ]);
 
-  const appUrl = resolveAppUrl(input.appUrl);
-  const verificationUrl = `${appUrl.replace(/\/$/, "")}/verify-email?email=${encodeURIComponent(user.email)}&token=${encodeURIComponent(rawToken)}`;
+  await deadLetterSupersededAuthSecurityEmails({
+    recipientEmail: user.email,
+    templateKeys: [AUTH_SECURITY_EMAIL_TEMPLATE_KEYS[0]],
+    now,
+  });
+
+  const verificationUrl = buildAppUrl({
+    appUrl: input.appUrl,
+    path: "/verify-email",
+    query: {
+      email: user.email,
+      token: rawToken,
+    },
+  });
 
   await sendVerificationEmail({
     to: user.email,
@@ -750,8 +776,20 @@ export async function requestEmailChange(input: {
     },
   });
 
-  const appUrl = resolveAppUrl(input.appUrl);
-  const verificationUrl = `${appUrl.replace(/\/$/, "")}/verify-email?emailChangeToken=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(newEmail)}`;
+  await deadLetterSupersededAuthSecurityEmails({
+    recipientEmail: newEmail,
+    templateKeys: [AUTH_SECURITY_EMAIL_TEMPLATE_KEYS[1]],
+    now,
+  });
+
+  const verificationUrl = buildAppUrl({
+    appUrl: input.appUrl,
+    path: "/verify-email",
+    query: {
+      emailChangeToken: rawToken,
+      email: newEmail,
+    },
+  });
 
   await sendVerificationEmail({
     to: newEmail,

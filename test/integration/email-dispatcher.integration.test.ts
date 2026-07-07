@@ -10,7 +10,9 @@ import {
 } from "@/lib/email/email-automation-dispatcher-service";
 import { enqueueEmailAutomationEvent } from "@/lib/email/email-automation-outbox-service";
 import { clearCapturedTestEmails, getCapturedTestEmails } from "@/lib/email/resend-delivery";
+import { createPendingPublicRegistration } from "@/lib/auth/user-identity-service";
 import { resetDb } from "./helpers/reset-db";
+import { hash } from "bcryptjs";
 
 async function createTemplate(templateKey: string) {
   return prisma.emailTemplate.upsert({
@@ -85,6 +87,61 @@ describe("email automation dispatcher", () => {
     expect(heartbeat.activeLeaseCount).toBe(0);
     expect(getCapturedTestEmails()).toHaveLength(1);
     expect(getCapturedTestEmails()[0]?.html).toContain("Hello Client");
+  });
+
+  it("dead-letters stale auth verification emails instead of delivering them", async () => {
+    const email = `dispatcher.stale.${Date.now()}@example.test`;
+    const created = await createPendingPublicRegistration({
+      firstName: "Dispatcher",
+      lastName: "Stale",
+      email,
+      passwordHash: await hash("Password123!", 12),
+      ipAddress: "203.0.113.91",
+      appUrl: "https://demo.bookmyclass.app",
+    });
+    expect(created.outcome).toBe("PENDING_VERIFICATION");
+
+    const firstPending = await prisma.pendingUserRegistration.findUniqueOrThrow({
+      where: { email },
+      select: { tokenHash: true },
+    });
+    const staleEvent = await prisma.emailAutomationEvent.findUniqueOrThrow({
+      where: {
+        idempotencyKey: `auth.verify-email:registration:${email}:${firstPending.tokenHash}`,
+      },
+      select: { id: true },
+    });
+
+    await prisma.pendingUserRegistration.update({
+      where: { email },
+      data: {
+        tokenHash: `superseded-${Date.now()}`,
+      },
+    });
+    await prisma.emailAutomationEvent.update({
+      where: { id: staleEvent.id },
+      data: {
+        status: "PENDING",
+        deadLetteredAt: null,
+        lastError: null,
+      },
+    });
+    clearCapturedTestEmails();
+
+    const result = await dispatchEmailAutomationBatch({
+      workerId: "dispatcher-stale-auth",
+      maxEvents: 1,
+      leaseMs: 30_000,
+      now: new Date(),
+    });
+    const afterDispatch = await prisma.emailAutomationEvent.findUniqueOrThrow({
+      where: { id: staleEvent.id },
+    });
+
+    expect(result).toMatchObject({ leasedCount: 1, sentCount: 0, failedCount: 1, deadLetterCount: 1 });
+    expect(afterDispatch.status).toBe(EmailAutomationEventStatus.DEAD_LETTER);
+    expect(afterDispatch.lastError).toBe("AUTH_SECURITY_EMAIL_SUPERSEDED");
+    expect(getCapturedTestEmails()).toHaveLength(0);
   });
 
   it("retries failed delivery with backoff and eventually dead-letters", async () => {

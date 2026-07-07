@@ -6,6 +6,7 @@ import {
   finalizeEmailAutomationLease,
   recordEmailDispatcherHeartbeat,
 } from "@/lib/email/email-automation-outbox-service";
+import { shouldDeliverCurrentAuthSecurityEmail, SUPERSEDED_AUTH_EMAIL_ERROR } from "@/lib/auth/auth-security-email-guard";
 import { normalizeMarketingContentJson, renderMarketingPreviewHtml } from "@/lib/marketing/marketing-renderer";
 import { isDeterministicEmailDeliveryMode, sendEmailViaResend } from "@/lib/email/resend-delivery";
 
@@ -248,6 +249,55 @@ export async function dispatchEmailAutomationBatch(
       }
       const payloadJson = payloadParsed.data;
       assertRequiredPayloadFields(template.templateKey, payloadJson);
+
+      if (
+        ["auth.verify-email", "auth.verify-email-change", "auth.password-reset"].includes(template.templateKey)
+        && typeof payloadJson.verificationUrl === "string"
+      ) {
+        const shouldDeliver = await shouldDeliverCurrentAuthSecurityEmail({
+          recipientEmail: event.recipientEmail,
+          verificationUrl: payloadJson.verificationUrl,
+          now,
+        });
+        if (!shouldDeliver) {
+          await finalizeEmailAutomationLease({
+            eventId: event.id,
+            leaseOwner: parsed.workerId,
+            sent: false,
+            errorMessage: SUPERSEDED_AUTH_EMAIL_ERROR,
+            forceDeadLetter: true,
+            now,
+          });
+          failedCount += 1;
+          deadLetterCount += 1;
+          continue;
+        }
+      }
+
+      if (
+        template.templateKey === "auth.password-reset"
+        && typeof payloadJson.resetUrl === "string"
+      ) {
+        const shouldDeliver = await shouldDeliverCurrentAuthSecurityEmail({
+          recipientEmail: event.recipientEmail,
+          verificationUrl: payloadJson.resetUrl,
+          now,
+        });
+        if (!shouldDeliver) {
+          await finalizeEmailAutomationLease({
+            eventId: event.id,
+            leaseOwner: parsed.workerId,
+            sent: false,
+            errorMessage: SUPERSEDED_AUTH_EMAIL_ERROR,
+            forceDeadLetter: true,
+            now,
+          });
+          failedCount += 1;
+          deadLetterCount += 1;
+          continue;
+        }
+      }
+
       const deliveryContext =
         typeof payloadJson.deliveryContext === "string" && payloadJson.deliveryContext.trim().length > 0
           ? payloadJson.deliveryContext.trim()

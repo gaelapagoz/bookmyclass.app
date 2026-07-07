@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AppUrlConfigError, resolveAppUrl, validateProductionAppUrl } from "@/lib/config/app-url";
+import { AppUrlConfigError, buildAppUrl, resolveAppUrl, validateProductionAppUrl } from "@/lib/config/app-url";
 
 describe("app url validation", () => {
   afterEach(() => {
@@ -41,5 +41,29 @@ describe("app url validation", () => {
 
     expect(() => validateProductionAppUrl()).not.toThrow();
     expect(resolveAppUrl()).toBe("http://localhost:3000");
+  });
+
+  it("builds encoded application urls from APP_URL without double slashes", () => {
+    expect(
+      buildAppUrl({
+        appUrl: "https://demo.bookmyclass.app/",
+        path: "/verify-email",
+        query: {
+          registrationToken: "token with spaces",
+          email: "client+test@example.com",
+        },
+      }),
+    ).toBe(
+      "https://demo.bookmyclass.app/verify-email?registrationToken=token+with+spaces&email=client%2Btest%40example.com",
+    );
+  });
+
+  it("rejects app url paths without a leading slash", () => {
+    expect(() =>
+      buildAppUrl({
+        appUrl: "https://demo.bookmyclass.app",
+        path: "verify-email",
+      }),
+    ).toThrow("Application URL paths must start with '/'.");
   });
 });

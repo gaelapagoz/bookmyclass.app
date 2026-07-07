@@ -7,6 +7,8 @@ export class AppUrlConfigError extends Error {
   }
 }
 
+type AppUrlSearchValue = string | number | boolean;
+
 function isLoopbackHost(host: string): boolean {
   const normalized = host.toLowerCase();
   return (
@@ -115,6 +117,30 @@ export function resolveAppUrl(inputAppUrl?: string): string {
   const isProduction = process.env.NODE_ENV === "production";
   const allowPrivateDevHost = !isProduction || isE2EProductionRuntimeAllowed();
   return normalizeAppUrlOrigin(resolved, { allowPrivateDevHost });
+}
+
+export function buildAppUrl(input: {
+  path: string;
+  query?: Record<string, AppUrlSearchValue | null | undefined>;
+  appUrl?: string;
+}): string {
+  const normalizedPath = input.path.trim();
+  if (!normalizedPath.startsWith("/")) {
+    throw new AppUrlConfigError("Application URL paths must start with '/'.");
+  }
+
+  const url = new URL(resolveAppUrl(input.appUrl));
+  url.pathname = normalizedPath;
+  url.search = "";
+
+  for (const [key, value] of Object.entries(input.query ?? {})) {
+    if (value === null || value === undefined) {
+      continue;
+    }
+    url.searchParams.set(key, String(value));
+  }
+
+  return url.toString();
 }
 
 export function validateProductionAppUrl(): void {

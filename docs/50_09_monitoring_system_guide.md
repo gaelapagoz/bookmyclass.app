@@ -509,8 +509,15 @@ Then:
 ```bash
 npx prisma migrate deploy
 npm run build
+set -a && . /var/www/bookmyclass/.env && set +a
 pm2 restart bookmyclass-app --update-env
 ```
+
+Important:
+
+- `pm2 restart ... --update-env` only applies environment variables that already exist in the current shell.
+- Editing `/var/www/bookmyclass/.env` alone does not refresh PM2 runtime env.
+- After any `APP_URL`, `AUTH_URL`, `NEXTAUTH_URL`, or similar runtime env change, export the file into the shell immediately before the PM2 restart/reload step.
 
 Rules:
 
@@ -523,7 +530,8 @@ Rules:
 
 ```bash
 git checkout vPREVIOUS
-pm2 restart bookmyclass-app
+set -a && . /var/www/bookmyclass/.env && set +a
+pm2 restart bookmyclass-app --update-env
 ```
 
 Rules:

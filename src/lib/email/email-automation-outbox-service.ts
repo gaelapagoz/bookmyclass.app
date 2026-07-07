@@ -24,6 +24,7 @@ const finalizeInputSchema = z.object({
   leaseOwner: z.string().trim().min(1),
   sent: z.boolean(),
   errorMessage: z.string().trim().max(5_000).optional(),
+  forceDeadLetter: z.boolean().optional(),
   now: z.coerce.date().optional(),
   retryBackoffMs: z.coerce.number().int().min(0).max(86_400_000).optional(),
 });
@@ -189,7 +190,7 @@ export async function finalizeEmailAutomationLease(input: z.input<typeof finaliz
     }
 
     const nextAttempts = leased.attempts + 1;
-    const reachedMax = !parsed.sent && nextAttempts >= leased.maxAttempts;
+    const reachedMax = !parsed.sent && (parsed.forceDeadLetter || nextAttempts >= leased.maxAttempts);
     const nextStatus = parsed.sent
       ? EmailAutomationEventStatus.SENT
       : reachedMax
