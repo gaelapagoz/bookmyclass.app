@@ -4,30 +4,27 @@ import Image from "next/image";
 import Link from "next/link";
 import { siteConfig } from "@/lib/site-config";
 
-const socialLinks = [
+const socialIcons = [
   {
-    href: siteConfig.socialLinks.facebook,
     label: "Facebook",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current md:h-7 md:w-7">
+      <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current md:h-7 md:w-7" aria-hidden="true">
         <path d="M13.5 21v-8h2.7l.4-3h-3.1V8.1c0-.9.3-1.5 1.6-1.5h1.7V4c-.3 0-1.4-.1-2.6-.1-2.6 0-4.3 1.6-4.3 4.5V10H7v3h2.9v8h3.6z" />
       </svg>
     ),
   },
   {
-    href: siteConfig.socialLinks.instagram,
     label: "Instagram",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current md:h-7 md:w-7">
+      <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current md:h-7 md:w-7" aria-hidden="true">
         <path d="M7.8 2h8.4A5.8 5.8 0 0 1 22 7.8v8.4a5.8 5.8 0 0 1-5.8 5.8H7.8A5.8 5.8 0 0 1 2 16.2V7.8A5.8 5.8 0 0 1 7.8 2zm0 1.9A3.9 3.9 0 0 0 3.9 7.8v8.4a3.9 3.9 0 0 0 3.9 3.9h8.4a3.9 3.9 0 0 0 3.9-3.9V7.8a3.9 3.9 0 0 0-3.9-3.9H7.8zm8.9 1.5a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4zM12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 1.9a3.1 3.1 0 1 0 0 6.2 3.1 3.1 0 0 0 0-6.2z" />
       </svg>
     ),
   },
   {
-    href: siteConfig.socialLinks.youtube,
     label: "YouTube",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current md:h-7 md:w-7">
+      <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current md:h-7 md:w-7" aria-hidden="true">
         <path d="M23 12s0-3.2-.4-4.7a3 3 0 0 0-2.1-2.1C19 4.8 12 4.8 12 4.8s-7 0-8.5.4a3 3 0 0 0-2.1 2.1C1 8.8 1 12 1 12s0 3.2.4 4.7a3 3 0 0 0 2.1 2.1c1.5.4 8.5.4 8.5.4s7 0 8.5-.4a3 3 0 0 0 2.1-2.1c.4-1.5.4-4.7.4-4.7zM9.8 15.5v-7l6.2 3.5-6.2 3.5z" />
       </svg>
     ),
@@ -107,17 +104,15 @@ export default function Footer() {
           <div className="text-center">
             <p className="mb-3 text-lg font-medium md:text-2xl">Follow us</p>
             <div className="flex items-center justify-center gap-4">
-              {socialLinks.map((social) => (
-                <a
+              {socialIcons.map((social) => (
+                <span
                   key={social.label}
-                  href={social.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={social.label}
-                  className="transition hover:opacity-80"
+                  data-testid={`footer-social-icon-${social.label.toLowerCase()}`}
+                  aria-hidden="true"
+                  className="inline-flex text-white"
                 >
                   {social.icon}
-                </a>
+                </span>
               ))}
             </div>
           </div>
@@ -137,4 +132,3 @@ export default function Footer() {
     </>
   );
 }
-
