@@ -4,607 +4,290 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Client Experience | BookMyClass</title>
-  <meta name="description" content="See the complete client booking journey — from discovering the studio to managing bookings from a personal dashboard.">
-<style>
-  :root {
-    --bg: #f4f7fb;
-    --bg-soft: #eef3f9;
-    --surface: #ffffff;
-    --surface-strong: #f8fbff;
-    --text: #122031;
-    --text-muted: #4f6278;
-    --line: #d8e3f0;
-    --line-strong: #bfd2e7;
-    --primary: #0d6e6e;
-    --primary-strong: #0a5252;
-    --accent: #1b9aaa;
-    --shadow: 0 16px 40px rgba(17, 36, 58, 0.12);
-    --shadow-soft: 0 8px 24px rgba(17, 36, 58, 0.08);
-    --radius-xl: 28px;
-    --radius-lg: 20px;
-    --radius-md: 14px;
-    --radius-sm: 10px;
-    --container: 1320px;
-    --space-1: 0.5rem;
-    --space-2: 0.75rem;
-    --space-3: 1rem;
-    --space-4: 1.5rem;
-    --space-5: 2rem;
-    --space-6: 3rem;
-    --space-7: 4rem;
-  }
-
-  * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-
-  body {
-    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    color: var(--text);
-    background: var(--bg);
-    line-height: 1.6;
-  }
-
-  a {
-    color: inherit;
-    text-decoration: none;
-  }
-
-  .container {
-    width: min(var(--container), 92%);
-    margin: 0 auto;
-  }
-
-  .section {
-    padding: var(--space-7) 0;
-  }
-
-  .eyebrow {
-    display: inline-block;
-    font-size: 0.78rem;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--primary);
-    background: rgba(13, 110, 110, 0.12);
-    border: 1px solid rgba(13, 110, 110, 0.18);
-    border-radius: 999px;
-    padding: 0.38rem 0.75rem;
-    margin-bottom: var(--space-3);
-    font-weight: 700;
-  }
-
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 999px;
-    font-weight: 700;
-    padding: 0.86rem 1.35rem;
-    border: 1px solid transparent;
-    transition: all 0.2s ease;
-    white-space: nowrap;
-  }
-
-  .btn-primary {
-    background: linear-gradient(145deg, var(--primary), var(--primary-strong));
-    color: #f8feff;
-    box-shadow: 0 10px 22px rgba(10, 82, 82, 0.28);
-  }
-
-  .btn-primary:hover,
-  .btn-primary:focus-visible {
-    transform: translateY(-1px);
-  }
-
-  .btn-secondary {
-    background: rgba(255, 255, 255, 0.86);
-    border-color: var(--line-strong);
-    color: var(--text);
-  }
-
-  .btn-secondary:hover,
-  .btn-secondary:focus-visible {
-    border-color: var(--accent);
-    color: var(--primary-strong);
-  }
-
-  .btn-light {
-    background: rgba(255, 255, 255, 0.13);
-    border-color: rgba(255, 255, 255, 0.32);
-    color: #f8fbff;
-  }
-
-  .btn-light:hover,
-  .btn-light:focus-visible {
-    background: rgba(255, 255, 255, 0.22);
-  }
-
-  header {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    backdrop-filter: blur(12px);
-    background: rgba(248, 252, 255, 0.84);
-    border-bottom: 1px solid rgba(191, 210, 231, 0.8);
-  }
-
-  .nav-wrap {
-    min-height: 78px;
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    gap: var(--space-3);
-  }
-
-  .brand {
-    font-size: 1.15rem;
-    font-weight: 800;
-    letter-spacing: 0.01em;
-    flex-shrink: 0;
-  }
-
-  .brand span {
-    color: var(--primary);
-  }
-
-  .nav-links {
-    list-style: none;
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    font-size: 0.95rem;
-    color: var(--text-muted);
-  }
-
-  .nav-links [aria-current="page"] {
-    color: var(--primary-strong);
-    font-weight: 700;
-  }
-
-  .nav-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.65rem;
-    flex-shrink: 0;
-  }
-
-  .cta-wrap {
-    background: linear-gradient(150deg, #0f3246 0%, #174f67 100%);
-    border: 1px solid rgba(163, 207, 235, 0.2);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow);
-    padding: clamp(1.4rem, 4vw, 2.8rem);
-    color: #f8f1eb;
-  }
-
-  .cta-wrap h2 {
-    font-size: clamp(1.6rem, 3vw, 2.4rem);
-    line-height: 1.15;
-    margin-bottom: 0.45rem;
-  }
-
-  .cta-wrap p {
-    color: #d2ecff;
-  }
-
-  footer {
-    margin-top: var(--space-7);
-    background: #10212f;
-    color: #d0deea;
-    border-top: 1px solid rgba(145, 174, 201, 0.2);
-  }
-
-  .footer-wrap {
-    padding: var(--space-6) 0 var(--space-4);
-  }
-
-  .footer-brand h3,
-  .footer-links h4 {
-    color: #f4fbff;
-    margin-bottom: 0.55rem;
-  }
-
-  .footer-brand p,
-  .footer-links a {
-    color: #b4c8da;
-  }
-
-  .footer-links ul {
-    list-style: none;
-    display: grid;
-    gap: 0.35rem;
-    font-size: 0.9rem;
-  }
-
-  .copyright {
-    border-top: 1px solid rgba(145, 174, 201, 0.2);
-    padding: var(--space-3) 0;
-    font-size: 0.84rem;
-    color: #9eb6ca;
-  }
-
-  /* === Brochure Page Styles === */
-
-  .brochure-hero {
-    background: linear-gradient(150deg, #0f3246 0%, #174f67 100%);
-    color: #f8fbff;
-    padding: var(--space-7) 0 var(--space-6);
-    border-bottom: 1px solid rgba(163, 207, 235, 0.2);
-  }
-
-  .brochure-hero .eyebrow {
-    color: #9ee4f4;
-    background: rgba(30, 160, 185, 0.22);
-    border-color: rgba(30, 160, 185, 0.35);
-  }
-
-  .brochure-hero h1 {
-    font-size: clamp(2rem, 4.5vw, 3.2rem);
-    line-height: 1.08;
-    letter-spacing: -0.02em;
-    margin-bottom: var(--space-3);
-    color: #f8fbff;
-  }
-
-  .brochure-hero .lead {
-    font-size: 1.1rem;
-    color: #cde8ff;
-    max-width: 62ch;
-    margin-bottom: var(--space-4);
-  }
-
-  .brochure-hero-actions {
-    display: flex;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-  }
-
-  .brochure-step {
-    padding: var(--space-7) 0;
-    border-bottom: 1px solid rgba(191, 210, 231, 0.4);
-  }
-
-  .brochure-step--bg {
-    background: linear-gradient(180deg, #f3f7fb 0%, #edf3fa 100%);
-  }
-
-  .brochure-step-grid {
-    display: grid;
-    grid-template-columns: 1fr 1.15fr;
-    gap: clamp(2rem, 5vw, 4.5rem);
-    align-items: center;
-  }
-
-  .brochure-step--alt .brochure-step-content {
-    order: 2;
-  }
-
-  .brochure-step--alt .brochure-step-visual {
-    order: 1;
-  }
-
-  .step-tag {
-    display: inline-block;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--primary);
-    background: rgba(13, 110, 110, 0.10);
-    border: 1px solid rgba(13, 110, 110, 0.20);
-    border-radius: 999px;
-    padding: 0.32rem 0.8rem;
-    margin-bottom: var(--space-3);
-  }
-
-  .brochure-step-content h2 {
-    font-size: clamp(1.45rem, 2.5vw, 1.95rem);
-    line-height: 1.2;
-    letter-spacing: -0.015em;
-    margin-bottom: var(--space-2);
-  }
-
-  .brochure-step-content .step-desc {
-    color: var(--text-muted);
-    font-size: 1rem;
-    line-height: 1.65;
-    margin-bottom: var(--space-3);
-    max-width: 50ch;
-  }
-
-  .step-bullets {
-    list-style: none;
-    display: grid;
-    gap: 0.55rem;
-  }
-
-  .step-bullets li {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.55rem;
-    font-size: 0.93rem;
-    color: #304559;
-    line-height: 1.45;
-  }
-
-  .step-bullets li::before {
-    content: "✓";
-    color: var(--primary);
-    font-weight: 700;
-    flex-shrink: 0;
-    margin-top: 0.06em;
-  }
-
-  .screenshot-wrap {
-    border-radius: var(--radius-xl);
-    overflow: hidden;
-    box-shadow: 0 24px 56px rgba(17, 36, 58, 0.16), 0 4px 12px rgba(17, 36, 58, 0.08);
-    border: 1px solid var(--line);
-  }
-
-  .screenshot-wrap img {
-    display: block;
-    width: 100%;
-    height: auto;
-  }
-
-  .brochure-cta-group {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    margin-top: var(--space-4);
-  }
-
-  @media (max-width: 960px) {
-    .brochure-step-grid {
-      grid-template-columns: 1fr;
-      gap: var(--space-4);
+  <meta name="description" content="Follow the BookMyClass client journey from class discovery to booking confirmation, dashboard management, cancellation, waitlist, and attendance.">
+  <link rel="canonical" href="https://bookmyclass.app/client-experience.html">
+  <meta property="og:title" content="Client Experience | BookMyClass">
+  <meta property="og:description" content="A connected client journey for boutique studio booking, access validation, payment, and account management.">
+  <meta property="og:url" content="https://bookmyclass.app/client-experience.html">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <style>
+    :root {
+      --ink: #102033;
+      --muted: #52657a;
+      --quiet: #6d7d8f;
+      --paper: #fbfdff;
+      --wash: #eef5f8;
+      --surface: #ffffff;
+      --line: #d8e4ec;
+      --line-strong: #b7cad6;
+      --teal: #0b6b6f;
+      --teal-dark: #074f55;
+      --blue: #1c5d85;
+      --gold: #b8832f;
+      --shadow: 0 18px 45px rgba(22, 42, 60, 0.13);
+      --container: 1180px;
     }
 
-    .brochure-step--alt .brochure-step-content {
-      order: 1;
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); background: var(--paper); line-height: 1.6; }
+    img { max-width: 100%; display: block; }
+    figure { margin: 0; }
+    a { color: inherit; text-decoration: none; }
+    a:focus-visible, button:focus-visible { outline: 3px solid rgba(15, 140, 148, 0.48); outline-offset: 3px; }
+    .container { width: min(var(--container), calc(100% - 40px)); margin: 0 auto; }
+
+    .site-header { position: sticky; top: 0; z-index: 10; background: rgba(251, 253, 255, 0.94); border-bottom: 1px solid var(--line); backdrop-filter: blur(14px); }
+    .nav { min-height: 74px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 24px; }
+    .brand { font-weight: 850; letter-spacing: 0.01em; font-size: 1.12rem; }
+    .brand span { color: var(--teal); }
+    .nav-links { display: flex; justify-content: center; gap: 8px; list-style: none; margin: 0; padding: 0; color: var(--muted); font-size: 0.94rem; }
+    .nav-links a { display: inline-flex; min-height: 42px; align-items: center; padding: 0 12px; border-radius: 8px; }
+    .nav-links a:hover, .nav-links a[aria-current="page"] { color: var(--teal-dark); background: #e7f3f4; }
+
+    .button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 8px; border: 1px solid var(--line-strong); font-weight: 750; color: var(--ink); background: #fff; white-space: nowrap; }
+    .button.primary { color: #fff; background: var(--teal); border-color: var(--teal); box-shadow: 0 10px 24px rgba(11, 107, 111, 0.22); }
+    .button:hover { transform: translateY(-1px); }
+    .demo-note { color: #52657a; font-size: 0.91rem; }
+
+    .section { padding: 82px 0; }
+    .section.soft { background: linear-gradient(180deg, #f4f8fa 0%, #edf5f7 100%); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .eyebrow { margin: 0 0 14px; color: var(--teal); font-size: 0.78rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+    h1, h2, h3 { margin: 0; line-height: 1.12; letter-spacing: 0; }
+    h1 { font-size: clamp(2.35rem, 5vw, 4.5rem); max-width: 840px; }
+    h2 { font-size: clamp(1.75rem, 3vw, 2.65rem); max-width: 760px; }
+    h3 { font-size: 1.12rem; }
+    p { margin: 0; }
+    .lead { color: var(--muted); font-size: clamp(1.04rem, 1.5vw, 1.18rem); max-width: 720px; margin-top: 18px; }
+
+    .hero { padding: 68px 0 78px; background: linear-gradient(115deg, #f8fbfc 0%, #eef7f8 58%, #e8f1f5 100%); border-bottom: 1px solid var(--line); }
+    .hero-grid { display: grid; grid-template-columns: minmax(0, 0.82fr) minmax(420px, 1.1fr); gap: clamp(32px, 5vw, 70px); align-items: center; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 28px 0 16px; }
+    .hero-shot, .shot { overflow: hidden; border: 1px solid var(--line-strong); background: #fff; box-shadow: var(--shadow); border-radius: 12px; }
+    .hero-shot { height: 430px; }
+    .hero-shot img, .shot img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+
+    .scenario { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(280px, 0.42fr); gap: 36px; align-items: start; }
+    .scenario-card { border-left: 4px solid var(--gold); padding: 4px 0 4px 22px; color: var(--muted); }
+    .scenario-card strong { display: block; color: var(--ink); margin-bottom: 7px; }
+
+    .journey { display: grid; gap: 42px; }
+    .journey-row { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(420px, 1fr); gap: clamp(26px, 5vw, 64px); align-items: center; }
+    .journey-row.reverse .copy { order: 2; }
+    .journey-row.reverse .media { order: 1; }
+    .copy p { color: var(--muted); margin-top: 12px; }
+    .shot { height: 320px; }
+    .shot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .shot-grid .shot { height: 270px; }
+
+    .callout { margin-top: 18px; padding: 16px 18px; background: #fff9ed; border: 1px solid #ead3a6; border-radius: 8px; color: #594428; font-weight: 700; }
+    .rule-grid { margin-top: 32px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+    .rule { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 18px; min-height: 150px; }
+    .rule p { color: var(--muted); margin-top: 9px; font-size: 0.94rem; }
+    .action-list { margin: 22px 0 0; padding-left: 21px; color: var(--muted); }
+    .action-list li + li { margin-top: 7px; }
+
+    .site-footer { background: #102033; color: #d7e3ea; padding: 48px 0 22px; }
+    .footer-grid { display: grid; grid-template-columns: 1.2fr repeat(3, 0.7fr); gap: 28px; margin-bottom: 34px; }
+    .site-footer h2, .site-footer h3 { color: #fff; font-size: 1rem; margin: 0 0 10px; }
+    .site-footer p, .site-footer a, .site-footer li { color: #b8c8d4; font-size: 0.94rem; }
+    .site-footer ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 7px; }
+    .footer-bottom { border-top: 1px solid rgba(216, 228, 236, 0.18); padding-top: 18px; color: #9eb3c0; font-size: 0.88rem; }
+
+    @media (max-width: 1060px) {
+      .hero-grid, .scenario, .journey-row { grid-template-columns: 1fr; }
+      .journey-row.reverse .copy, .journey-row.reverse .media { order: initial; }
+      .rule-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
-    .brochure-step--alt .brochure-step-visual {
-      order: 2;
+    @media (max-width: 740px) {
+      .site-header { position: static; }
+      .nav { grid-template-columns: 1fr; gap: 10px; padding: 14px 0; }
+      .nav-links { justify-content: flex-start; flex-wrap: wrap; }
+      .nav .button { width: fit-content; }
+      .section { padding: 58px 0; }
+      .hero { padding: 48px 0 58px; }
+      .hero-shot { height: 280px; }
+      .shot, .shot-grid .shot { height: 230px; }
+      .shot-grid, .rule-grid, .footer-grid { grid-template-columns: 1fr; }
+      .container { width: min(var(--container), calc(100% - 28px)); }
     }
 
-    .brochure-step-content .step-desc {
-      max-width: none;
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .button:hover { transform: none; }
     }
-  }
-
-  @media (max-width: 760px) {
-    header {
-      position: static;
-    }
-
-    .nav-wrap {
-      display: flex;
-      flex-wrap: wrap;
-      padding: var(--space-3) 0;
-    }
-
-    .nav-links {
-      width: 100%;
-      flex-wrap: wrap;
-    }
-
-    .footer-wrap {
-      grid-template-columns: 1fr 1fr;
-    }
-  }
-
-  @media (max-width: 520px) {
-    .footer-wrap {
-      grid-template-columns: 1fr;
-    }
-  }
-</style>
+  </style>
 </head>
 <body>
-
-  <header>
-    <div class="container nav-wrap">
-      <a href="index.html" class="brand" aria-label="BookMyClass home">Book<span>MyClass</span></a>
-      <ul class="nav-links" aria-label="Primary navigation">
-        <li><a href="index.html#why">Why it works</a></li>
-        <li><a href="index.html#features">What you get</a></li>
-        <li><a href="index.html#product-demo">Try the App</a></li>
-        <li><a href="index.html#contact">Book a demo</a></li>
+  <header class="site-header">
+    <nav class="container nav" aria-label="Primary navigation">
+      <a class="brand" href="index.html" aria-label="BookMyClass product page">Book<span>MyClass</span></a>
+      <ul class="nav-links">
+        <li><a href="index.html">Product</a></li>
+        <li><a href="client-experience.html" aria-current="page">Client Experience</a></li>
+        <li><a href="studio-operations.html">Studio Operations</a></li>
+        <li><a href="engineering.html">Engineering</a></li>
+        <li><a href="https://demo.bookmyclass.app/">Live Demo</a></li>
       </ul>
-    </div>
+      <a class="button primary" href="https://demo.bookmyclass.app/">Open Demo</a>
+    </nav>
   </header>
 
   <main>
-
-    <section class="brochure-hero">
-      <div class="container">
-        <p class="eyebrow">Client Journey</p>
-        <h1>See the booking experience<br>through your client's eyes</h1>
-        <p class="lead">From discovering the studio to managing bookings from a personal dashboard — every step of the client journey is designed to feel effortless and on-brand.</p>
-        <div class="brochure-hero-actions">
-          <a href="index.html#product-demo" class="btn btn-primary">Try the App</a>
-          <a href="studio-operations.html" class="btn btn-light">Studio Operations →</a>
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <p class="eyebrow">Client Experience</p>
+          <h1>A complete client journey, from discovery to attendance</h1>
+          <p class="lead">Follow how a studio client discovers a class, confirms access or payment, manages the booking, and stays informed.</p>
+          <div class="hero-actions">
+            <a class="button primary" href="https://demo.bookmyclass.app/book-a-class">Open Client Demo</a>
+            <a class="button" href="studio-operations.html">View Studio Operations</a>
+          </div>
+          <p class="demo-note">Demonstration environment using sample data. No real bookings or charges.</p>
         </div>
+        <figure class="hero-shot">
+          <img src="/images/homesite/client-03-class-detail-or-slot-selection.jpg" alt="Client class detail page with session selection and availability" width="1440" height="900">
+        </figure>
       </div>
     </section>
 
-    <!-- Step 1 -->
-    <section class="brochure-step">
-      <div class="container brochure-step-grid">
-        <div class="brochure-step-content">
-          <span class="step-tag">Step 01</span>
-          <h2>Discover the studio</h2>
-          <p class="step-desc">Clients arrive at a clean, welcoming public home page that showcases the studio's brand, available classes, and upcoming schedule. A strong first impression sets the tone for the whole relationship.</p>
-          <ul class="step-bullets">
-            <li>Studio branding and class overview on the landing page</li>
-            <li>Direct path from discovery straight into booking</li>
-            <li>Mobile-friendly layout that works on any device</li>
-          </ul>
+    <section class="section">
+      <div class="container scenario">
+        <div>
+          <p class="eyebrow">Illustrative demo scenario</p>
+          <h2>Emma wants to attend a Tuesday evening Pilates class</h2>
+          <p class="lead">Emma is a fictional sample client. She already owns a five-class pack and wants to confirm her place without contacting the studio manually. The journey below uses the public demo flow and seeded-style sample data rather than a real customer story.</p>
         </div>
-        <div class="brochure-step-visual">
-          <div class="screenshot-wrap">
-            <img src="/images/homesite/client-01-public-home.jpg?v=20260508" alt="Public studio home page showing available classes and studio branding" loading="lazy" width="800" height="500">
+        <aside class="scenario-card">
+          <strong>Scenario boundary</strong>
+          This is a guided way to read the demo screens and the product decisions behind them, not a statement about a real customer.
+        </aside>
+      </div>
+    </section>
+
+    <section class="section soft">
+      <div class="container journey">
+        <div class="journey-row">
+          <div class="copy">
+            <p class="eyebrow">Discover and choose</p>
+            <h2>Public discovery gives clients enough context to make a booking decision</h2>
+            <p>The studio landing page, class catalogue, class detail pages, teacher/session information, schedule, and availability help a client understand what is offered and whether a place is available.</p>
+          </div>
+          <div class="media shot-grid">
+            <figure class="shot"><img src="/images/homesite/client-01-public-home.jpg" alt="Public studio home page in the demo environment" width="1440" height="900"></figure>
+            <figure class="shot"><img src="/images/homesite/client-02-book-a-class.jpg" alt="Class catalogue page showing available classes" width="1440" height="900"></figure>
           </div>
         </div>
-      </div>
-    </section>
 
-    <!-- Step 2 -->
-    <section class="brochure-step brochure-step--alt brochure-step--bg">
-      <div class="container brochure-step-grid">
-        <div class="brochure-step-content">
-          <span class="step-tag">Step 02</span>
-          <h2>Browse classes</h2>
-          <p class="step-desc">A well-organized class browser lets clients explore everything on offer at a glance. Each listing surfaces the details they need to make a decision quickly, without digging through menus.</p>
-          <ul class="step-bullets">
-            <li>Browse by class type, schedule, and instructor</li>
-            <li>Class cards show duration, capacity, and open spots</li>
-            <li>Consistent layout across all class listings</li>
-          </ul>
-        </div>
-        <div class="brochure-step-visual">
-          <div class="screenshot-wrap">
-            <img src="/images/homesite/client-02-book-a-class.jpg?v=20260508" alt="Class browser listing all available sessions with filters" loading="lazy" width="800" height="500">
+        <div class="journey-row reverse">
+          <div class="copy">
+            <p class="eyebrow">Confirm access</p>
+            <h2>Account and access checks happen before the booking is confirmed</h2>
+            <p>Clients sign in or create an account, then the platform presents applicable access options: an eligible membership, a class pack, or Stripe checkout where payment is required.</p>
+            <div class="callout">Access eligibility is validated before a booking is confirmed.</div>
           </div>
+          <figure class="media shot"><img src="/images/homesite/client-05-payment-options.jpg" alt="Booking payment options showing eligible access and checkout choices" width="1440" height="900"></figure>
         </div>
-      </div>
-    </section>
 
-    <!-- Step 3 -->
-    <section class="brochure-step">
-      <div class="container brochure-step-grid">
-        <div class="brochure-step-content">
-          <span class="step-tag">Step 03</span>
-          <h2>Select a class or session</h2>
-          <p class="step-desc">Clients view full class details and choose a specific session time. Clear availability indicators remove the guesswork — clients always know exactly how many spots remain before committing.</p>
-          <ul class="step-bullets">
-            <li>Full class detail view with instructor and session info</li>
-            <li>Real-time availability and remaining spot count</li>
-            <li>One-tap session selection to enter the booking flow</li>
-          </ul>
-        </div>
-        <div class="brochure-step-visual">
-          <div class="screenshot-wrap">
-            <img src="/images/homesite/client-03-class-detail-or-slot-selection.jpg?v=20260508" alt="Class detail page showing session times and available slots" loading="lazy" width="800" height="500">
+        <div class="journey-row">
+          <div class="copy">
+            <p class="eyebrow">Complete the booking</p>
+            <h2>Confirmation connects booking status, payment handoff, and capacity</h2>
+            <p>The booking summary, entitlement use or payment handoff, booking confirmation, capacity update, and booking communication are part of a single client workflow rather than separate admin chores.</p>
           </div>
+          <figure class="media shot"><img src="/images/homesite/client-06-checkout-handoff-or-confirmation.jpg" alt="Checkout handoff or booking confirmation screen" width="1440" height="900"></figure>
         </div>
-      </div>
-    </section>
 
-    <!-- Step 4 -->
-    <section class="brochure-step brochure-step--alt brochure-step--bg">
-      <div class="container brochure-step-grid">
-        <div class="brochure-step-content">
-          <span class="step-tag">Step 04</span>
-          <h2>Sign in or create an account</h2>
-          <p class="step-desc">New clients create an account in seconds. Returning clients sign in and pick up exactly where they left off. The authentication flow is secure, minimal, and stays out of the way of the booking.</p>
-          <ul class="step-bullets">
-            <li>Account creation with email verification</li>
-            <li>Returning client sign-in with session persistence</li>
-            <li>Secure, lightweight authentication that doesn't interrupt the flow</li>
-          </ul>
-        </div>
-        <div class="brochure-step-visual">
-          <div class="screenshot-wrap">
-            <img src="/images/homesite/client-04-client-sign-in.jpg?v=20260508" alt="Client sign-in and account creation screen" loading="lazy" width="800" height="500">
+        <div class="journey-row reverse">
+          <div class="copy">
+            <p class="eyebrow">Manage changes</p>
+            <h2>The dashboard handles routine booking changes after confirmation</h2>
+            <p>Clients can view upcoming bookings and history, manage cancellations where policy allows, join or cancel waitlist entries for collective classes, and review membership, wallet, and loyalty information.</p>
           </div>
+          <figure class="media shot"><img src="/images/homesite/client-07-client-dashboard-bookings.jpg" alt="Client dashboard showing upcoming bookings and account navigation" width="1440" height="900"></figure>
         </div>
-      </div>
-    </section>
 
-    <!-- Step 5 -->
-    <section class="brochure-step">
-      <div class="container brochure-step-grid">
-        <div class="brochure-step-content">
-          <span class="step-tag">Step 05</span>
-          <h2>Choose a payment option</h2>
-          <p class="step-desc">Clients with active memberships or class packs can apply their entitlement directly. Others can purchase a new plan on the spot or pay per session. Every client type finds a natural path forward.</p>
-          <ul class="step-bullets">
-            <li>Apply an existing membership or class pack</li>
-            <li>Purchase a new plan directly in the flow</li>
-            <li>Pay per session via Stripe checkout</li>
-          </ul>
-        </div>
-        <div class="brochure-step-visual">
-          <div class="screenshot-wrap">
-            <img src="/images/homesite/client-05-payment-options.jpg?v=20260508" alt="Payment options screen showing membership application and checkout choices" loading="lazy" width="800" height="500">
+        <div class="journey-row">
+          <div class="copy">
+            <p class="eyebrow">Attend and continue</p>
+            <h2>Attendance and remaining access stay visible after the booking</h2>
+            <p>Supported flows include client self check-in, attendance visibility, remaining access or wallet information, loyalty visibility and reward redemption, and a path back to booking another class.</p>
           </div>
+          <figure class="media shot"><img src="/images/homesite/client-07-client-dashboard-bookings.jpg" alt="Client dashboard used to continue managing bookings and access" width="1440" height="900"></figure>
         </div>
       </div>
     </section>
 
-    <!-- Step 6 -->
-    <section class="brochure-step brochure-step--alt brochure-step--bg">
-      <div class="container brochure-step-grid">
-        <div class="brochure-step-content">
-          <span class="step-tag">Step 06</span>
-          <h2>Confirm booking or complete checkout</h2>
-          <p class="step-desc">Bookings are confirmed with a clear summary before any payment is processed. For paid sessions, Stripe handles checkout securely with a clean, trusted interface clients already recognize.</p>
-          <ul class="step-bullets">
-            <li>Booking summary shown before confirmation</li>
-            <li>Stripe-powered secure checkout for paid sessions</li>
-            <li>Clear confirmation screen with full booking details</li>
-          </ul>
-        </div>
-        <div class="brochure-step-visual">
-          <div class="screenshot-wrap">
-            <img src="/images/homesite/client-06-checkout-handoff-or-confirmation.jpg?v=20260508" alt="Checkout and booking confirmation screen" loading="lazy" width="800" height="500">
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Step 7 -->
-    <section class="brochure-step">
-      <div class="container brochure-step-grid">
-        <div class="brochure-step-content">
-          <span class="step-tag">Step 07</span>
-          <h2>Manage bookings from the dashboard</h2>
-          <p class="step-desc">After booking, clients have a personal dashboard to manage everything in one place. Upcoming sessions, booking history, membership status, and account details are all accessible at any time.</p>
-          <ul class="step-bullets">
-            <li>Upcoming and past bookings at a glance</li>
-            <li>Membership and plan status</li>
-            <li>Profile and account management</li>
-          </ul>
-        </div>
-        <div class="brochure-step-visual">
-          <div class="screenshot-wrap">
-            <img src="/images/homesite/client-07-client-dashboard-bookings.jpg?v=20260508" alt="Client dashboard showing upcoming bookings, membership status, and account information" loading="lazy" width="800" height="500">
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- CTA -->
     <section class="section">
       <div class="container">
-        <div class="cta-wrap">
-          <h2>Ready to see it in action?</h2>
-          <p>Try the live demo and explore the full booking flow, memberships, and client dashboard yourself.</p>
-          <div class="brochure-cta-group">
-            <a href="https://demo.bookmyclass.app" class="btn btn-primary">Try the App</a>
-            <a href="index.html#contact" class="btn btn-secondary">Request a walkthrough</a>
-            <a href="studio-operations.html" class="btn btn-secondary">Studio Operations →</a>
-          </div>
+        <p class="eyebrow">Business-rule summary</p>
+        <h2>Domain rules are visible in the journey without exposing implementation detail</h2>
+        <div class="rule-grid">
+          <article class="rule"><h3>Capacity rule</h3><p>Bookings are tied to sessions with capacity and active waitlist behavior for collective classes.</p></article>
+          <article class="rule"><h3>Eligibility rule</h3><p>A booking must be backed by eligible access, a valid entitlement, or a reconciled payment path.</p></article>
+          <article class="rule"><h3>Cancellation rule</h3><p>Dashboard cancellation evaluates configured policy and can restore credit where supported.</p></article>
+          <article class="rule"><h3>Waitlist rule</h3><p>Clients can join or cancel waitlist entries; promotion is eligibility-aware for active collective classes.</p></article>
+          <article class="rule"><h3>Account verification rule</h3><p>Protected client routes require a verified user session.</p></article>
         </div>
       </div>
     </section>
 
+    <section class="section soft">
+      <div class="container">
+        <p class="eyebrow">Guided demo</p>
+        <h2>Try the client journey in the live sandbox</h2>
+        <p class="lead">The public portions of the demo can be explored without credentials. Authentication-only steps require an approved demo account supplied through the controlled demo process.</p>
+        <ol class="action-list">
+          <li>Browse collective classes.</li>
+          <li>Open a class and select a session.</li>
+          <li>Sign in using an approved demo account, if one has been provided to you.</li>
+          <li>Review available access or payment options.</li>
+          <li>Open the customer dashboard.</li>
+        </ol>
+        <div class="hero-actions">
+          <a class="button primary" href="https://demo.bookmyclass.app/book-a-class">Open Client Demo</a>
+          <a class="button" href="index.html">Back to Product Story</a>
+        </div>
+        <p class="demo-note">Demonstration environment using sample data. No real bookings or charges.</p>
+      </div>
+    </section>
   </main>
 
-  <footer>
-    <div class="container footer-wrap">
-      <div class="footer-brand">
-        <h3>BookMyClass</h3>
-        <p>Simplify the work, so you can focus on what matters. Your people</p>
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <div>
+        <h2>BookMyClass</h2>
+        <p>Studio management software for bookings, memberships, payments, attendance, and operations in a boutique studio context.</p>
+      </div>
+      <div>
+        <h3>Pages</h3>
+        <ul>
+          <li><a href="index.html">Product</a></li>
+          <li><a href="client-experience.html">Client Experience</a></li>
+          <li><a href="studio-operations.html">Studio Operations</a></li>
+          <li><a href="engineering.html">Engineering</a></li>
+          <li><a href="https://demo.bookmyclass.app/">Live Demo</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Gustavo Rangel</h3>
+        <ul>
+          <li><a href="mailto:gustavoenriquerangel@gmail.com">Email</a></li>
+          <li><a href="tel:+32497202993">+32 497 202 993</a></li>
+          <li><a href="https://www.linkedin.com/in/gustavo-enrique-rangel-90a0a11a/" target="_blank" rel="noopener noreferrer">LinkedIn</a></li>
+          <li>Brussels, Belgium</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Demo Status</h3>
+        <p>Demonstration environment using sample data. No real bookings or charges.</p>
       </div>
     </div>
-    <div class="container copyright"><p>&copy; 2026 BookMyClass. All rights reserved.</p></div>
+    <div class="container footer-bottom">&copy; 2026 BookMyClass. All rights reserved.</div>
   </footer>
-
 </body>
 </html>

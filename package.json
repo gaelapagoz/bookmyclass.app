@@ -7,6 +7,8 @@
         "build": "next build",
         "build:e2e": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && npm run build",
         "start": "next start",
+        "homesite:preview": "node scripts/homesite-preview.mjs",
+        "homesite:verify": "node scripts/homesite-verify.mjs",
         "start:e2e": "node scripts/e2e-local-start-server.mjs",
         "lint": "eslint",
         "test": "tsx scripts/test-entry.ts",

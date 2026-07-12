@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Engineering BookMyClass | Technical Case Study</title>
+  <meta name="description" content="Technical case study for BookMyClass: architecture, domain workflows, payments, authentication, asynchronous processing, testing, delivery, and operations.">
+  <link rel="canonical" href="https://bookmyclass.app/engineering.html">
+  <meta property="og:title" content="Engineering BookMyClass">
+  <meta property="og:description" content="How a boutique-studio product became a production-oriented software platform.">
+  <meta property="og:url" content="https://bookmyclass.app/engineering.html">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <style>
+    :root {
+      --ink: #102033;
+      --muted: #52657a;
+      --paper: #fbfdff;
+      --soft: #f2f7f8;
+      --surface: #ffffff;
+      --line: #d8e4ec;
+      --line-strong: #b7cad6;
+      --teal: #0b6b6f;
+      --teal-dark: #074f55;
+      --gold: #9f6f2b;
+      --container: 1200px;
+      --shadow: 0 14px 34px rgba(22, 42, 60, 0.10);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+      line-height: 1.58;
+    }
+    a { color: inherit; text-decoration: none; }
+    a:focus-visible { outline: 3px solid rgba(11, 107, 111, 0.35); outline-offset: 3px; }
+    .container { width: min(var(--container), calc(100% - 40px)); margin: 0 auto; }
+
+    .site-header { position: sticky; top: 0; z-index: 10; background: rgba(251, 253, 255, 0.96); border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
+    .nav { min-height: 68px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 20px; }
+    .brand { font-size: 1.05rem; font-weight: 850; letter-spacing: 0.01em; }
+    .brand span { color: var(--teal); }
+    .nav-links { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px; list-style: none; padding: 0; margin: 0; color: var(--muted); font-size: 0.92rem; }
+    .nav-links a { display: inline-flex; min-height: 38px; align-items: center; padding: 0 10px; border-radius: 7px; }
+    .nav-links a:hover, .nav-links a[aria-current="page"] { color: var(--teal-dark); background: #e7f3f4; }
+    .button { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 16px; border-radius: 7px; border: 1px solid var(--line-strong); background: #fff; font-weight: 760; white-space: nowrap; }
+    .button.primary { color: #fff; background: var(--teal); border-color: var(--teal); }
+
+    .hero { padding: 58px 0 54px; background: linear-gradient(180deg, #f8fbfc 0%, #eef6f7 100%); border-bottom: 1px solid var(--line); }
+    .hero-grid { display: grid; grid-template-columns: minmax(0, 0.66fr) minmax(280px, 0.34fr); gap: 36px; align-items: start; }
+    .eyebrow { margin: 0 0 12px; color: var(--teal); font-size: 0.76rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+    h1, h2, h3 { margin: 0; line-height: 1.1; letter-spacing: 0; }
+    h1 { font-size: clamp(2.25rem, 4vw, 3.5rem); max-width: 760px; }
+    h2 { font-size: clamp(1.55rem, 2.4vw, 2.15rem); max-width: 820px; }
+    h3 { font-size: 1.05rem; }
+    p { margin: 0; }
+    .lead { color: var(--muted); font-size: clamp(1rem, 1.2vw, 1.12rem); margin-top: 16px; max-width: 780px; }
+    .demo-note { color: #52657a; font-size: 0.91rem; margin-top: 18px; }
+
+    .section { padding: 58px 0; }
+    .section.soft { background: var(--soft); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .intro-panel, .card, .decision, .summary-table { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+    .intro-panel { padding: 20px; }
+    .intro-panel p { color: var(--muted); margin-top: 8px; }
+    .grid-2, .grid-3, .grid-4 { display: grid; gap: 14px; margin-top: 24px; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .card { padding: 18px; }
+    .card p { color: var(--muted); margin-top: 8px; font-size: 0.95rem; }
+    .list { margin: 14px 0 0; padding-left: 20px; color: var(--muted); }
+    .list li + li { margin-top: 6px; }
+
+    .diagram { margin-top: 24px; padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: #fff; overflow-x: auto; }
+    .diagram-grid { min-width: 880px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; align-items: stretch; }
+    .diagram-col { display: grid; gap: 10px; }
+    .node { border: 1px solid var(--line-strong); border-radius: 8px; padding: 12px; background: #fbfdff; min-height: 74px; }
+    .node.strong { background: #eaf5f5; border-color: #b8d9dc; }
+    .node h3 { font-size: 0.98rem; }
+    .node p { color: var(--muted); font-size: 0.86rem; margin-top: 5px; }
+    .arrow { display: flex; align-items: center; justify-content: center; color: var(--teal); font-weight: 850; }
+
+    .decision { padding: 18px; border-left: 4px solid var(--teal); }
+    .decision p { color: var(--muted); margin-top: 8px; }
+    .warning { background: #fff9ed; border-color: #ead3a6; }
+    .warning p, .warning li { color: #5d492c; }
+
+    .summary-table { width: 100%; border-collapse: collapse; overflow: hidden; display: table; margin-top: 24px; }
+    .summary-table th, .summary-table td { text-align: left; vertical-align: top; padding: 13px 14px; border-bottom: 1px solid var(--line); }
+    .summary-table th { color: var(--ink); background: #eef6f7; font-size: 0.92rem; }
+    .summary-table td { color: var(--muted); font-size: 0.93rem; }
+
+    .site-footer { background: #102033; color: #d7e3ea; padding: 42px 0 20px; }
+    .footer-grid { display: grid; grid-template-columns: 1.2fr repeat(3, 0.72fr); gap: 24px; margin-bottom: 28px; }
+    .site-footer h2, .site-footer h3 { color: #fff; font-size: 1rem; margin: 0 0 10px; }
+    .site-footer p, .site-footer a, .site-footer li { color: #b8c8d4; font-size: 0.93rem; }
+    .site-footer ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+    .footer-bottom { border-top: 1px solid rgba(216, 228, 236, 0.18); padding-top: 16px; color: #9eb3c0; font-size: 0.86rem; }
+
+    @media (max-width: 980px) {
+      .hero-grid, .grid-2, .grid-3, .grid-4, .footer-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 740px) {
+      .site-header { position: static; }
+      .nav { grid-template-columns: 1fr; gap: 10px; padding: 13px 0; }
+      .nav-links { justify-content: flex-start; }
+      .nav .button { width: fit-content; }
+      .container { width: min(var(--container), calc(100% - 28px)); }
+      .hero { padding: 42px 0 46px; }
+      h1 { font-size: clamp(2.05rem, 9vw, 2.45rem); }
+      .section { padding: 46px 0; }
+      .diagram { padding: 12px; }
+      .diagram-grid { min-width: 0; grid-template-columns: 1fr; }
+      .arrow { min-height: 28px; }
+      .summary-table, .summary-table tbody, .summary-table tr, .summary-table th, .summary-table td { display: block; width: 100%; }
+      .summary-table th { border-bottom: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <nav class="container nav" aria-label="Primary navigation">
+      <a class="brand" href="index.html" aria-label="BookMyClass product page">Book<span>MyClass</span></a>
+      <ul class="nav-links">
+        <li><a href="index.html">Product</a></li>
+        <li><a href="client-experience.html">Client Experience</a></li>
+        <li><a href="studio-operations.html">Studio Operations</a></li>
+        <li><a href="engineering.html" aria-current="page">Engineering</a></li>
+        <li><a href="https://demo.bookmyclass.app/">Live Demo</a></li>
+      </ul>
+      <a class="button primary" href="https://demo.bookmyclass.app/">Open Demo</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <p class="eyebrow">Engineering case study</p>
+          <h1>Engineering BookMyClass</h1>
+          <p class="lead">How a boutique-studio product became a production-oriented software platform. This page describes the technical decisions behind the application, the operational problems they address, and the current boundaries of the system.</p>
+          <p class="demo-note">Demonstration environment using sample data. No real bookings or charges.</p>
+        </div>
+        <aside class="intro-panel">
+          <h2>Scope</h2>
+          <p>Single-studio booking, commerce, customer account, teacher, and administrative workflows implemented as a modular Next.js application with PostgreSQL persistence and external payment, email, and monitoring integrations.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <p class="eyebrow">Engineering overview</p>
+        <h2>Architecture driven by operating workflows</h2>
+        <p class="lead">BookMyClass was not started as a technology exercise. It was built to manage concrete studio operations: session capacity, customer access, payments, booking status, attendance, communication, and administrative exceptions. The engineering approach keeps those decisions close to the domain services while using a deployment model that can be operated and validated without unnecessary distributed-system overhead.</p>
+        <div class="grid-3">
+          <article class="card"><h3>Business problem</h3><p>Studio operations require connected state across booking, payment, entitlement, attendance, and communication workflows.</p></article>
+          <article class="card"><h3>Architecture approach</h3><p>A modular monolith keeps route handling, service boundaries, data access, and external integrations in one deployable application.</p></article>
+          <article class="card"><h3>Operating benefit</h3><p>Release, debugging, and validation remain traceable while domain logic stays centralized and testable.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section soft">
+      <div class="container">
+        <p class="eyebrow">High-level architecture diagram</p>
+        <h2>Public-safe system view</h2>
+        <div class="diagram" aria-label="BookMyClass high-level architecture diagram">
+          <div class="diagram-grid">
+            <div class="diagram-col">
+              <div class="node"><h3>Clients</h3><p>Public booking, account, wallet, membership, attendance.</p></div>
+              <div class="node"><h3>Teachers</h3><p>Assigned sessions and roster-related workflows.</p></div>
+              <div class="node"><h3>Administrators</h3><p>Studio operations, catalogue, users, orders, communication.</p></div>
+            </div>
+            <div class="arrow">to</div>
+            <div class="diagram-col">
+              <div class="node strong"><h3>Cloud edge and Nginx</h3><p>Public routing, static homesite, application proxy.</p></div>
+              <div class="node strong"><h3>Next.js application</h3><p>Public pages, protected interfaces, API routes, server actions.</p></div>
+              <div class="node strong"><h3>Domain services</h3><p>Auth, booking, subscription, cart, admin, email, observability.</p></div>
+            </div>
+            <div class="arrow">with</div>
+            <div class="diagram-col">
+              <div class="node"><h3>Prisma and PostgreSQL</h3><p>Users, sessions, bookings, products, orders, payments, ledgers.</p></div>
+              <div class="node"><h3>Stripe</h3><p>Checkout, billing portal, webhooks, reconciliation inputs.</p></div>
+              <div class="node"><h3>Resend</h3><p>Verification, password reset, lifecycle and automation email.</p></div>
+              <div class="node"><h3>Sentry and monitoring</h3><p>Error tracking, health checks, uptime monitoring, logs.</p></div>
+              <div class="node"><h3>Release and operations</h3><p>Tag promotion, PM2 runtime, scheduled maintenance, backups.</p></div>
+            </div>
+          </div>
+        </div>
+        <p class="lead">The diagram intentionally omits production IP addresses, internal hostnames, database names, secret names, filesystem paths, and internal-only monitoring URLs.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <p class="eyebrow">Application architecture</p>
+        <h2>Modular monolith instead of premature service distribution</h2>
+        <div class="grid-2">
+          <article class="card"><h3>Decision</h3><p>The application is implemented as a Next.js App Router monolith. Route handlers and server actions orchestrate requests, while business rules are grouped under service modules.</p></article>
+          <article class="card"><h3>Trade-off</h3><p>A single deployable application reduces coordination overhead and simplifies debugging. It does not claim multi-tenant or microservice scale; those would require explicit design work.</p></article>
+          <article class="card"><h3>Data access</h3><p>Prisma provides typed access to PostgreSQL. Schema and migration history record the data model for identity, catalogue, booking, commerce, ledgers, learning, support, and marketing.</p></article>
+          <article class="card"><h3>Maintainability</h3><p>Central service boundaries make it easier to test booking, payment, auth, dashboard, admin, cart, and email behavior without duplicating rules in UI components.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section soft">
+      <div class="container">
+        <p class="eyebrow">Domain complexity</p>
+        <h2>Studio operations require more than a calendar</h2>
+        <p class="lead">The product models a booking as part of a wider operational state. Capacity, entitlement eligibility, payment status, cancellation policy, waitlist position, customer account status, and attendance can all affect whether the studio can rely on a booking.</p>
+        <div class="grid-4">
+          <article class="card"><h3>Scheduling</h3><p>Class categories, templates, sessions, teachers, capacity, bookings, waitlist entries, and attendance records.</p></article>
+          <article class="card"><h3>Access</h3><p>Products, prices, entitlement rules, subscriptions, class packs, credit ledgers, wallet, and loyalty state.</p></article>
+          <article class="card"><h3>Operations</h3><p>Admin actions, teacher roster boundaries, inbox, learning content, documents, notes, and audit-related records.</p></article>
+          <article class="card"><h3>Exceptions</h3><p>Capacity limits, missing eligibility, payment completion, cancellation, waitlist promotion, unverified accounts, and failed email outcomes.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <p class="eyebrow">Payments and commerce</p>
+        <h2>Payment completion is reconciled into local business state</h2>
+        <div class="grid-2">
+          <article class="card"><h3>Catalogue source of truth</h3><p>Product + Price drives purchasable offerings. This supports recurring memberships, class packs, store items, gift cards, coupons, subscriptions, and entitlement rules without relying on page-specific assumptions.</p></article>
+          <article class="card"><h3>Checkout flow</h3><p>Stripe Checkout handles payment collection. Local order, payment, booking, subscription, and entitlement state is updated through webhook processing and success-page reconciliation.</p></article>
+          <article class="card"><h3>Idempotency</h3><p>Webhook receipts, unique identifiers, ledger keys, and cart checkout idempotency records reduce repeated processing risk for financial and entitlement workflows.</p></article>
+          <article class="card"><h3>Limitation</h3><p>The public case study describes architecture and behavior only. It does not expose Stripe identifiers, runtime secrets, or provider configuration values.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section soft">
+      <div class="container">
+        <p class="eyebrow">Authentication and security</p>
+        <h2>Access control remains server-side</h2>
+        <div class="grid-3">
+          <article class="card"><h3>Client accounts</h3><p>Credential sign-in, pending registration, email verification, password reset, profile update, password change, and email change verification are implemented server-side.</p></article>
+          <article class="card"><h3>Role boundaries</h3><p>Protected customer routes require verified users. Admin routes require admin sessions. Master Admin operations have additional server-side restrictions.</p></article>
+          <article class="card"><h3>Security-sensitive flows</h3><p>Stripe webhook signature verification, one-time token handling, session invalidation, rate limiting, and Sentry sanitization are part of the current implementation.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <p class="eyebrow">Reliable asynchronous workflows</p>
+        <h2>Asynchronous work is explicit and recoverable where the product needs it</h2>
+        <div class="grid-2">
+          <article class="card"><h3>Webhook processing</h3><p>Stripe events are processed with receipt tracking and reconciliation paths so local state can be updated even when browser redirect timing and webhook timing differ.</p></article>
+          <article class="card"><h3>Email delivery</h3><p>Lifecycle and automation-backed email uses an outbox and dispatcher path. Templates are configurable from admin automations and can be active or paused.</p></article>
+          <article class="card"><h3>Scheduled maintenance</h3><p>Maintenance jobs clean stale webhook receipts, expired booking drafts, cart checkout idempotency records, loyalty expirations, reminders, and reservations.</p></article>
+          <article class="card"><h3>Trade-off</h3><p>No separate queue or worker service is claimed. The current approach fits the single-application architecture and is documented as part of scheduled application maintenance.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section soft">
+      <div class="container">
+        <p class="eyebrow">Testing strategy</p>
+        <h2>Validation is layered by risk</h2>
+        <p class="lead">The repository includes unit, integration, UI, end-to-end, manual screenshot, performance, security, and release-validation workflows. The practical rule is to test close to the changed behavior and broaden coverage when a change crosses service or user-flow boundaries.</p>
+        <div class="grid-4">
+          <article class="card"><h3>Unit and integration</h3><p>Domain services, route behavior, auth, booking, checkout, dashboard, admin actions, and webhook paths.</p></article>
+          <article class="card"><h3>UI and E2E</h3><p>Rendering states, protected routes, teacher/admin boundaries, and selected critical client journeys.</p></article>
+          <article class="card"><h3>Manual evidence</h3><p>Operator-run UAT, smoke, security, performance, and release validation are collected when release scope requires them.</p></article>
+          <article class="card"><h3>Screenshot automation</h3><p>Manual Playwright automation captures client and admin demo surfaces separately from correctness-gating E2E tests.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <p class="eyebrow">Delivery and production operations</p>
+        <h2>Release promotion is controlled and operator-approved</h2>
+        <div class="grid-3">
+          <article class="card"><h3>Runtime</h3><p>The documented production model uses a cloud host, Nginx reverse proxy, PM2 cluster runtime, and Docker-managed PostgreSQL. Public static homesite assets are published separately from the application runtime.</p></article>
+          <article class="card"><h3>Release flow</h3><p>Releases are tag-based. The validated tag is promoted through an operator-approved workflow rather than deploying an unverified revision directly from the main branch.</p></article>
+          <article class="card"><h3>Operations</h3><p>Health checks, Sentry, uptime monitoring, scheduled maintenance, backups, logs, and post-deployment checks support production operation without exposing internal endpoints here.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section soft">
+      <div class="container">
+        <p class="eyebrow">Selected engineering decisions</p>
+        <h2>Decisions connected to product and operational risk</h2>
+        <div class="grid-2">
+          <article class="decision"><h3>Server-side business-rule enforcement</h3><p>Booking, eligibility, payment, admin, and role-sensitive mutations are enforced in route handlers, server actions, and service modules rather than browser-only checks.</p></article>
+          <article class="decision"><h3>Product + Price catalogue model</h3><p>Commercial offerings are modeled as products and prices, which keeps checkout behavior tied to catalogue data rather than to a specific marketing page.</p></article>
+          <article class="decision"><h3>Webhook plus reconciliation</h3><p>Payment completion is handled through provider webhooks with success-page reconciliation as a recovery path for timing gaps.</p></article>
+          <article class="decision"><h3>Idempotency for workflow safety</h3><p>Financial-like operations use receipts, unique keys, and ledger patterns to reduce duplicate processing when events or requests repeat.</p></article>
+          <article class="decision"><h3>Outbox-based email delivery</h3><p>Automation-backed email is queued through an outbox and dispatcher path so delivery state can be tracked and templates can be paused.</p></article>
+          <article class="decision"><h3>Manual release control</h3><p>Tag-based promotion and operator approval keep deployment deliberate, with UAT and production checks applied according to change risk.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <p class="eyebrow">Current boundaries and future evolution</p>
+        <h2>Current state is intentionally separated from future direction</h2>
+        <div class="grid-2">
+          <article class="card warning"><h3>Current state</h3><p>BookMyClass is currently a single-studio application and public demonstration platform. The public demo uses non-production or sample data and should not be read as a live customer environment.</p></article>
+          <article class="card warning"><h3>Boundaries</h3><p>Multi-tenant architecture, broader teacher functionality, no-show automation, and additional operational diagnostics are future-evolution topics unless supported by current implementation evidence.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section soft">
+      <div class="container">
+        <p class="eyebrow">Full technology summary</p>
+        <h2>Technology connected to responsibility</h2>
+        <table class="summary-table">
+          <tr><th>Area</th><th>Technologies and practices</th><th>Purpose</th></tr>
+          <tr><td>Application</td><td>Next.js App Router, React, TypeScript</td><td>Public, protected, admin, teacher, API, and server-action surfaces.</td></tr>
+          <tr><td>Domain services</td><td>Service modules under application library boundaries</td><td>Centralized booking, payment, auth, dashboard, admin, cart, email, and observability behavior.</td></tr>
+          <tr><td>Data</td><td>Prisma, PostgreSQL, migration history</td><td>Typed persistence for identity, catalogue, booking, commerce, ledgers, support, and content.</td></tr>
+          <tr><td>Payments</td><td>Stripe Checkout, billing portal, webhooks, reconciliation</td><td>Payment collection and local settlement of orders, payments, bookings, subscriptions, and entitlements.</td></tr>
+          <tr><td>Email</td><td>Resend, lifecycle templates, automation outbox, dispatcher</td><td>Verification, reset, booking, waitlist, marketing, and support-related communication.</td></tr>
+          <tr><td>Quality</td><td>Vitest, Testing Library, Playwright, manual release validation</td><td>Unit, integration, UI, E2E, screenshot, smoke, security, and performance-oriented evidence.</td></tr>
+          <tr><td>Operations</td><td>Nginx, PM2, Docker-managed PostgreSQL, Sentry, uptime monitoring, health checks, backups</td><td>Application runtime, diagnostics, scheduled maintenance, deployment checks, and recovery readiness.</td></tr>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <div>
+        <h2>BookMyClass</h2>
+        <p>Booking and studio operations application for a Brussels boutique fitness studio context.</p>
+      </div>
+      <div>
+        <h3>Pages</h3>
+        <ul>
+          <li><a href="index.html">Product</a></li>
+          <li><a href="client-experience.html">Client Experience</a></li>
+          <li><a href="studio-operations.html">Studio Operations</a></li>
+          <li><a href="engineering.html">Engineering</a></li>
+          <li><a href="https://demo.bookmyclass.app/">Live Demo</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Gustavo Rangel</h3>
+        <ul>
+          <li><a href="mailto:gustavoenriquerangel@gmail.com">Email</a></li>
+          <li><a href="tel:+32497202993">+32 497 202 993</a></li>
+          <li><a href="https://www.linkedin.com/in/gustavo-enrique-rangel-90a0a11a/" target="_blank" rel="noopener noreferrer">LinkedIn</a></li>
+          <li>Brussels, Belgium</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Demo Status</h3>
+        <p>Demonstration environment using sample data. No real bookings or charges.</p>
+      </div>
+    </div>
+    <div class="container footer-bottom">&copy; 2026 BookMyClass. All rights reserved.</div>
+  </footer>
+</body>
+</html>

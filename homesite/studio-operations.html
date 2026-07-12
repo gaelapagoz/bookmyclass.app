@@ -4,607 +4,324 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Studio Operations | BookMyClass</title>
-  <meta name="description" content="See how studio admins manage classes, memberships, users, learning content, and day-to-day operations from a single control center.">
-<style>
-  :root {
-    --bg: #f4f7fb;
-    --bg-soft: #eef3f9;
-    --surface: #ffffff;
-    --surface-strong: #f8fbff;
-    --text: #122031;
-    --text-muted: #4f6278;
-    --line: #d8e3f0;
-    --line-strong: #bfd2e7;
-    --primary: #0d6e6e;
-    --primary-strong: #0a5252;
-    --accent: #1b9aaa;
-    --shadow: 0 16px 40px rgba(17, 36, 58, 0.12);
-    --shadow-soft: 0 8px 24px rgba(17, 36, 58, 0.08);
-    --radius-xl: 28px;
-    --radius-lg: 20px;
-    --radius-md: 14px;
-    --radius-sm: 10px;
-    --container: 1320px;
-    --space-1: 0.5rem;
-    --space-2: 0.75rem;
-    --space-3: 1rem;
-    --space-4: 1.5rem;
-    --space-5: 2rem;
-    --space-6: 3rem;
-    --space-7: 4rem;
-  }
-
-  * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-
-  body {
-    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    color: var(--text);
-    background: var(--bg);
-    line-height: 1.6;
-  }
-
-  a {
-    color: inherit;
-    text-decoration: none;
-  }
-
-  .container {
-    width: min(var(--container), 92%);
-    margin: 0 auto;
-  }
-
-  .section {
-    padding: var(--space-7) 0;
-  }
-
-  .eyebrow {
-    display: inline-block;
-    font-size: 0.78rem;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--primary);
-    background: rgba(13, 110, 110, 0.12);
-    border: 1px solid rgba(13, 110, 110, 0.18);
-    border-radius: 999px;
-    padding: 0.38rem 0.75rem;
-    margin-bottom: var(--space-3);
-    font-weight: 700;
-  }
-
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 999px;
-    font-weight: 700;
-    padding: 0.86rem 1.35rem;
-    border: 1px solid transparent;
-    transition: all 0.2s ease;
-    white-space: nowrap;
-  }
-
-  .btn-primary {
-    background: linear-gradient(145deg, var(--primary), var(--primary-strong));
-    color: #f8feff;
-    box-shadow: 0 10px 22px rgba(10, 82, 82, 0.28);
-  }
-
-  .btn-primary:hover,
-  .btn-primary:focus-visible {
-    transform: translateY(-1px);
-  }
-
-  .btn-secondary {
-    background: rgba(255, 255, 255, 0.86);
-    border-color: var(--line-strong);
-    color: var(--text);
-  }
-
-  .btn-secondary:hover,
-  .btn-secondary:focus-visible {
-    border-color: var(--accent);
-    color: var(--primary-strong);
-  }
-
-  .btn-light {
-    background: rgba(255, 255, 255, 0.13);
-    border-color: rgba(255, 255, 255, 0.32);
-    color: #f8fbff;
-  }
-
-  .btn-light:hover,
-  .btn-light:focus-visible {
-    background: rgba(255, 255, 255, 0.22);
-  }
-
-  header {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    backdrop-filter: blur(12px);
-    background: rgba(248, 252, 255, 0.84);
-    border-bottom: 1px solid rgba(191, 210, 231, 0.8);
-  }
-
-  .nav-wrap {
-    min-height: 78px;
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    gap: var(--space-3);
-  }
-
-  .brand {
-    font-size: 1.15rem;
-    font-weight: 800;
-    letter-spacing: 0.01em;
-    flex-shrink: 0;
-  }
-
-  .brand span {
-    color: var(--primary);
-  }
-
-  .nav-links {
-    list-style: none;
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    font-size: 0.95rem;
-    color: var(--text-muted);
-  }
-
-  .nav-links [aria-current="page"] {
-    color: var(--primary-strong);
-    font-weight: 700;
-  }
-
-  .nav-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.65rem;
-    flex-shrink: 0;
-  }
-
-  .cta-wrap {
-    background: linear-gradient(150deg, #0f3246 0%, #174f67 100%);
-    border: 1px solid rgba(163, 207, 235, 0.2);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow);
-    padding: clamp(1.4rem, 4vw, 2.8rem);
-    color: #f8f1eb;
-  }
-
-  .cta-wrap h2 {
-    font-size: clamp(1.6rem, 3vw, 2.4rem);
-    line-height: 1.15;
-    margin-bottom: 0.45rem;
-  }
-
-  .cta-wrap p {
-    color: #d2ecff;
-  }
-
-  footer {
-    margin-top: var(--space-7);
-    background: #10212f;
-    color: #d0deea;
-    border-top: 1px solid rgba(145, 174, 201, 0.2);
-  }
-
-  .footer-wrap {
-    padding: var(--space-6) 0 var(--space-4);
-  }
-
-  .footer-brand h3,
-  .footer-links h4 {
-    color: #f4fbff;
-    margin-bottom: 0.55rem;
-  }
-
-  .footer-brand p,
-  .footer-links a {
-    color: #b4c8da;
-  }
-
-  .footer-links ul {
-    list-style: none;
-    display: grid;
-    gap: 0.35rem;
-    font-size: 0.9rem;
-  }
-
-  .copyright {
-    border-top: 1px solid rgba(145, 174, 201, 0.2);
-    padding: var(--space-3) 0;
-    font-size: 0.84rem;
-    color: #9eb6ca;
-  }
-
-  /* === Brochure Page Styles === */
-
-  .brochure-hero {
-    background: linear-gradient(150deg, #0f2236 0%, #132e4a 60%, #1a3d5c 100%);
-    color: #f8fbff;
-    padding: var(--space-7) 0 var(--space-6);
-    border-bottom: 1px solid rgba(163, 207, 235, 0.2);
-  }
-
-  .brochure-hero .eyebrow {
-    color: #9ee4f4;
-    background: rgba(30, 160, 185, 0.22);
-    border-color: rgba(30, 160, 185, 0.35);
-  }
-
-  .brochure-hero h1 {
-    font-size: clamp(2rem, 4.5vw, 3.2rem);
-    line-height: 1.08;
-    letter-spacing: -0.02em;
-    margin-bottom: var(--space-3);
-    color: #f8fbff;
-  }
-
-  .brochure-hero .lead {
-    font-size: 1.1rem;
-    color: #cde8ff;
-    max-width: 62ch;
-    margin-bottom: var(--space-4);
-  }
-
-  .brochure-hero-actions {
-    display: flex;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-  }
-
-  .brochure-step {
-    padding: var(--space-7) 0;
-    border-bottom: 1px solid rgba(191, 210, 231, 0.4);
-  }
-
-  .brochure-step--bg {
-    background: linear-gradient(180deg, #f3f7fb 0%, #edf3fa 100%);
-  }
-
-  .brochure-step-grid {
-    display: grid;
-    grid-template-columns: 1fr 1.15fr;
-    gap: clamp(2rem, 5vw, 4.5rem);
-    align-items: center;
-  }
-
-  .brochure-step--alt .brochure-step-content {
-    order: 2;
-  }
-
-  .brochure-step--alt .brochure-step-visual {
-    order: 1;
-  }
-
-  .step-tag {
-    display: inline-block;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--primary);
-    background: rgba(13, 110, 110, 0.10);
-    border: 1px solid rgba(13, 110, 110, 0.20);
-    border-radius: 999px;
-    padding: 0.32rem 0.8rem;
-    margin-bottom: var(--space-3);
-  }
-
-  .brochure-step-content h2 {
-    font-size: clamp(1.45rem, 2.5vw, 1.95rem);
-    line-height: 1.2;
-    letter-spacing: -0.015em;
-    margin-bottom: var(--space-2);
-  }
-
-  .brochure-step-content .step-desc {
-    color: var(--text-muted);
-    font-size: 1rem;
-    line-height: 1.65;
-    margin-bottom: var(--space-3);
-    max-width: 50ch;
-  }
-
-  .step-bullets {
-    list-style: none;
-    display: grid;
-    gap: 0.55rem;
-  }
-
-  .step-bullets li {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.55rem;
-    font-size: 0.93rem;
-    color: #304559;
-    line-height: 1.45;
-  }
-
-  .step-bullets li::before {
-    content: "✓";
-    color: var(--primary);
-    font-weight: 700;
-    flex-shrink: 0;
-    margin-top: 0.06em;
-  }
-
-  .screenshot-wrap {
-    border-radius: var(--radius-xl);
-    overflow: hidden;
-    box-shadow: 0 24px 56px rgba(17, 36, 58, 0.16), 0 4px 12px rgba(17, 36, 58, 0.08);
-    border: 1px solid var(--line);
-  }
-
-  .screenshot-wrap img {
-    display: block;
-    width: 100%;
-    height: auto;
-  }
-
-  .brochure-cta-group {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    margin-top: var(--space-4);
-  }
-
-  @media (max-width: 960px) {
-    .brochure-step-grid {
-      grid-template-columns: 1fr;
-      gap: var(--space-4);
+  <meta name="description" content="See how BookMyClass supports studio operations across schedules, attendance, memberships, payments, communication, visibility, and role boundaries.">
+  <link rel="canonical" href="https://bookmyclass.app/studio-operations.html">
+  <meta property="og:title" content="Studio Operations | BookMyClass">
+  <meta property="og:description" content="The operational back office behind a boutique studio: schedules, capacity, customers, products, payments, communications, and exceptions.">
+  <meta property="og:url" content="https://bookmyclass.app/studio-operations.html">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <style>
+    :root {
+      --ink: #102033;
+      --muted: #52657a;
+      --quiet: #6d7d8f;
+      --paper: #fbfdff;
+      --surface: #ffffff;
+      --line: #d8e4ec;
+      --line-strong: #b7cad6;
+      --teal: #0b6b6f;
+      --teal-dark: #074f55;
+      --blue: #1c5d85;
+      --gold: #b8832f;
+      --shadow: 0 18px 45px rgba(22, 42, 60, 0.13);
+      --container: 1180px;
     }
 
-    .brochure-step--alt .brochure-step-content {
-      order: 1;
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); background: var(--paper); line-height: 1.6; }
+    img { max-width: 100%; display: block; }
+    figure { margin: 0; }
+    a { color: inherit; text-decoration: none; }
+    a:focus-visible, button:focus-visible { outline: 3px solid rgba(15, 140, 148, 0.48); outline-offset: 3px; }
+    .container { width: min(var(--container), calc(100% - 40px)); margin: 0 auto; }
+
+    .site-header { position: sticky; top: 0; z-index: 10; background: rgba(251, 253, 255, 0.94); border-bottom: 1px solid var(--line); backdrop-filter: blur(14px); }
+    .nav { min-height: 74px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 24px; }
+    .brand { font-weight: 850; letter-spacing: 0.01em; font-size: 1.12rem; }
+    .brand span { color: var(--teal); }
+    .nav-links { display: flex; justify-content: center; gap: 8px; list-style: none; margin: 0; padding: 0; color: var(--muted); font-size: 0.94rem; }
+    .nav-links a { display: inline-flex; min-height: 42px; align-items: center; padding: 0 12px; border-radius: 8px; }
+    .nav-links a:hover, .nav-links a[aria-current="page"] { color: var(--teal-dark); background: #e7f3f4; }
+
+    .button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 8px; border: 1px solid var(--line-strong); font-weight: 750; color: var(--ink); background: #fff; white-space: nowrap; }
+    .button.primary { color: #fff; background: var(--teal); border-color: var(--teal); box-shadow: 0 10px 24px rgba(11, 107, 111, 0.22); }
+    .button:hover { transform: translateY(-1px); }
+    .demo-note { color: #52657a; font-size: 0.91rem; }
+
+    .section { padding: 82px 0; }
+    .section.soft { background: linear-gradient(180deg, #f4f8fa 0%, #edf5f7 100%); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .eyebrow { margin: 0 0 14px; color: var(--teal); font-size: 0.78rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+    h1, h2, h3 { margin: 0; line-height: 1.12; letter-spacing: 0; }
+    h1 { font-size: clamp(2.35rem, 5vw, 4.5rem); max-width: 850px; }
+    h2 { font-size: clamp(1.75rem, 3vw, 2.65rem); max-width: 780px; }
+    h3 { font-size: 1.12rem; }
+    p { margin: 0; }
+    .lead { color: var(--muted); font-size: clamp(1.04rem, 1.5vw, 1.18rem); max-width: 760px; margin-top: 18px; }
+
+    .hero { padding: 68px 0 78px; background: linear-gradient(115deg, #f8fbfc 0%, #eef7f8 58%, #e8f1f5 100%); border-bottom: 1px solid var(--line); }
+    .hero-grid { display: grid; grid-template-columns: minmax(0, 0.82fr) minmax(420px, 1.1fr); gap: clamp(32px, 5vw, 70px); align-items: center; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 28px 0 16px; }
+    .hero-shot, .shot { overflow: hidden; border: 1px solid var(--line-strong); background: #fff; box-shadow: var(--shadow); border-radius: 12px; }
+    .hero-shot { height: 430px; }
+    .hero-shot img, .shot img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+
+    .context-grid { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(280px, 0.48fr); gap: 38px; align-items: start; }
+    .context-panel { border-left: 4px solid var(--gold); padding: 4px 0 4px 22px; color: var(--muted); }
+    .context-panel strong { display: block; color: var(--ink); margin-bottom: 7px; }
+    .plain-list { margin: 14px 0 0; padding-left: 18px; color: var(--muted); }
+    .plain-list li + li { margin-top: 6px; }
+
+    .responsibilities { display: grid; gap: 38px; margin-top: 34px; }
+    .responsibility { display: grid; grid-template-columns: minmax(0, 0.78fr) minmax(430px, 1fr); gap: clamp(24px, 5vw, 58px); align-items: center; }
+    .responsibility.reverse .copy { order: 2; }
+    .responsibility.reverse .media { order: 1; }
+    .copy p { color: var(--muted); margin-top: 12px; }
+    .shot { height: 320px; }
+    .shot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .shot-grid .shot { height: 250px; }
+
+    .exception-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 32px; }
+    .exception { background: #fff9ed; border: 1px solid #ead3a6; border-radius: 8px; padding: 18px; }
+    .exception p { color: #674f2e; margin-top: 9px; font-size: 0.94rem; }
+    .role-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 32px; }
+    .role { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 20px; min-height: 160px; }
+    .role p { color: var(--muted); margin-top: 9px; font-size: 0.94rem; }
+    .action-list { margin: 22px 0 0; padding-left: 21px; color: var(--muted); }
+    .action-list li + li { margin-top: 7px; }
+
+    .site-footer { background: #102033; color: #d7e3ea; padding: 48px 0 22px; }
+    .footer-grid { display: grid; grid-template-columns: 1.2fr repeat(3, 0.7fr); gap: 28px; margin-bottom: 34px; }
+    .site-footer h2, .site-footer h3 { color: #fff; font-size: 1rem; margin: 0 0 10px; }
+    .site-footer p, .site-footer a, .site-footer li { color: #b8c8d4; font-size: 0.94rem; }
+    .site-footer ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 7px; }
+    .footer-bottom { border-top: 1px solid rgba(216, 228, 236, 0.18); padding-top: 18px; color: #9eb3c0; font-size: 0.88rem; }
+
+    @media (max-width: 1060px) {
+      .hero-grid, .context-grid, .responsibility { grid-template-columns: 1fr; }
+      .responsibility.reverse .copy, .responsibility.reverse .media { order: initial; }
+      .exception-grid, .role-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
-    .brochure-step--alt .brochure-step-visual {
-      order: 2;
+    @media (max-width: 740px) {
+      .site-header { position: static; }
+      .nav { grid-template-columns: 1fr; gap: 10px; padding: 14px 0; }
+      .nav-links { justify-content: flex-start; flex-wrap: wrap; }
+      .nav .button { width: fit-content; }
+      .section { padding: 58px 0; }
+      .hero { padding: 48px 0 58px; }
+      .hero-shot { height: 280px; }
+      .shot, .shot-grid .shot { height: 230px; }
+      .shot-grid, .exception-grid, .role-grid, .footer-grid { grid-template-columns: 1fr; }
+      .container { width: min(var(--container), calc(100% - 28px)); }
     }
 
-    .brochure-step-content .step-desc {
-      max-width: none;
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .button:hover { transform: none; }
     }
-  }
-
-  @media (max-width: 760px) {
-    header {
-      position: static;
-    }
-
-    .nav-wrap {
-      display: flex;
-      flex-wrap: wrap;
-      padding: var(--space-3) 0;
-    }
-
-    .nav-links {
-      width: 100%;
-      flex-wrap: wrap;
-    }
-
-    .footer-wrap {
-      grid-template-columns: 1fr 1fr;
-    }
-  }
-
-  @media (max-width: 520px) {
-    .footer-wrap {
-      grid-template-columns: 1fr;
-    }
-  }
-</style>
+  </style>
 </head>
 <body>
-
-  <header>
-    <div class="container nav-wrap">
-      <a href="index.html" class="brand" aria-label="BookMyClass home">Book<span>MyClass</span></a>
-      <ul class="nav-links" aria-label="Primary navigation">
-        <li><a href="index.html#why">Why it works</a></li>
-        <li><a href="index.html#features">What you get</a></li>
-        <li><a href="index.html#product-demo">Try the App</a></li>
-        <li><a href="index.html#contact">Book a demo</a></li>
+  <header class="site-header">
+    <nav class="container nav" aria-label="Primary navigation">
+      <a class="brand" href="index.html" aria-label="BookMyClass product page">Book<span>MyClass</span></a>
+      <ul class="nav-links">
+        <li><a href="index.html">Product</a></li>
+        <li><a href="client-experience.html">Client Experience</a></li>
+        <li><a href="studio-operations.html" aria-current="page">Studio Operations</a></li>
+        <li><a href="engineering.html">Engineering</a></li>
+        <li><a href="https://demo.bookmyclass.app/">Live Demo</a></li>
       </ul>
-    </div>
+      <a class="button primary" href="https://demo.bookmyclass.app/admin">Open Demo</a>
+    </nav>
   </header>
 
   <main>
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <p class="eyebrow">Studio Operations</p>
+          <h1>The operating system behind the studio</h1>
+          <p class="lead">BookMyClass gives studio staff one place to manage schedules, customers, attendance, memberships, payments, communications, and day-to-day exceptions.</p>
+          <div class="hero-actions">
+            <a class="button primary" href="https://demo.bookmyclass.app/admin">Open Admin Demo</a>
+            <a class="button" href="client-experience.html">View Client Experience</a>
+          </div>
+          <p class="demo-note">Demonstration environment using sample data. No real bookings or charges.</p>
+        </div>
+        <figure class="hero-shot">
+          <img src="/images/homesite/admin-02-admin-dashboard.jpg" alt="Admin dashboard showing studio operations overview" width="1440" height="900">
+        </figure>
+      </div>
+    </section>
 
-    <section class="brochure-hero">
+    <section class="section">
+      <div class="container context-grid">
+        <div>
+          <p class="eyebrow">Operational context</p>
+          <h2>Boutique studios run with limited administrative capacity and many moving parts</h2>
+          <p class="lead">Recurring schedules, multiple access models, capacity constraints, customer exceptions, instructor coordination, payment state, and communication state all affect the day. The software needs to support routine work and the exceptions that interrupt it.</p>
+        </div>
+        <aside class="context-panel">
+          <strong>Operational responsibilities</strong>
+          Schedules, sessions, capacity, customers, entitlements, attendance, orders, payments, email automation, support inbox, and role boundaries.
+        </aside>
+      </div>
+    </section>
+
+    <section class="section soft">
       <div class="container">
-        <p class="eyebrow">Admin Journey</p>
-        <h1>See how studio admins run<br>operations from one place</h1>
-        <p class="lead">From secure access and scheduling to memberships, user management, learning content, and marketing — every studio operation runs from a single, organized control center.</p>
-        <div class="brochure-hero-actions">
-          <a href="index.html#product-demo" class="btn btn-primary">Try the App</a>
-          <a href="client-experience.html" class="btn btn-light">← Client Experience</a>
+        <p class="eyebrow">Responsibility areas</p>
+        <h2>How studio work is organized in the product</h2>
+        <div class="responsibilities">
+          <article class="responsibility">
+            <div class="copy">
+              <p class="eyebrow">Schedule and capacity</p>
+              <h3>Classes, sessions, calendar work, and capacity signals stay visible</h3>
+              <p>Admin users manage the class catalogue and sessions, including timing, teacher assignment where active, booking counts, capacity, and active waitlist counts for operational visibility.</p>
+            </div>
+            <figure class="media shot"><img src="/images/homesite/admin-03-admin-schedule-classes.jpg" alt="Admin sessions and schedule management screen" width="1440" height="900"></figure>
+          </article>
+
+          <article class="responsibility reverse">
+            <div class="copy">
+              <p class="eyebrow">Customer and attendance operations</p>
+              <h3>Rosters, customer profiles, and attendance are handled from admin and session surfaces</h3>
+              <p>Supported operations include customer profiles, booking history, attendee rosters, manual attendee add/remove with server-side eligibility validation, client self check-in, and staff attendance finalization.</p>
+            </div>
+            <div class="media shot-grid">
+              <figure class="shot"><img src="/images/homesite/admin-05-admin-users.jpg" alt="Admin user and customer management list" width="1440" height="900"></figure>
+              <figure class="shot"><img src="/images/homesite/admin-03-admin-schedule-classes.jpg" alt="Admin schedule surface used to inspect sessions and attendees" width="1440" height="900"></figure>
+            </div>
+          </article>
+
+          <article class="responsibility">
+            <div class="copy">
+              <p class="eyebrow">Memberships and commercial products</p>
+              <h3>Product + Price is the catalogue source of truth</h3>
+              <p>The admin product and pricing surfaces support memberships, class packs, subscriptions, active or inactive availability, pricing, and customer entitlements or ownership using the current Product + Price model.</p>
+            </div>
+            <figure class="media shot"><img src="/images/homesite/admin-04-admin-products-subscriptions.jpg" alt="Admin products and subscriptions management screen" width="1440" height="900"></figure>
+          </article>
+
+          <article class="responsibility reverse">
+            <div class="copy">
+              <p class="eyebrow">Payments and orders</p>
+              <h3>Stripe checkout is reconciled back into local operational state</h3>
+              <p>Confirmed flows include Stripe checkout, order and payment status, success reconciliation, idempotent webhook handling, purchase history, subscription ownership, and product-level ownership records that staff can reason about.</p>
+            </div>
+            <figure class="media shot"><img src="/images/homesite/client-06-checkout-handoff-or-confirmation.jpg" alt="Checkout handoff or confirmation used in payment flow" width="1440" height="900"></figure>
+          </article>
+
+          <article class="responsibility">
+            <div class="copy">
+              <p class="eyebrow">Communication and support</p>
+              <h3>Email flows and support messages are treated as operational work</h3>
+              <p>Supported surfaces include booking communications, cancellations, waitlist communication, account-security email flows, configurable email automations, admin inbox review, support/contact messages, and delivery outcomes where the current product exposes them.</p>
+            </div>
+            <div class="media shot-grid">
+              <figure class="shot"><img src="/images/homesite/admin-07-admin-marketing-inbox.jpg" alt="Admin marketing and communication surface" width="1440" height="900"></figure>
+              <figure class="shot"><img src="/images/homesite/admin-02-admin-dashboard.jpg" alt="Admin dashboard with operational navigation" width="1440" height="900"></figure>
+            </div>
+          </article>
+
+          <article class="responsibility reverse">
+            <div class="copy">
+              <p class="eyebrow">Operational visibility</p>
+              <h3>Admin screens make current activity easier to inspect</h3>
+              <p>The current product provides visibility into booking activity, attendance, memberships, payment or order status, admin workload, communication state, analytics surfaces, and dashboard summaries where implemented. Planned diagnostics are not presented here as delivered capability.</p>
+            </div>
+            <figure class="media shot"><img src="/images/homesite/admin-02-admin-dashboard.jpg" alt="Admin dashboard with studio activity overview" width="1440" height="900"></figure>
+          </article>
         </div>
       </div>
     </section>
 
-    <!-- Step 1 -->
-    <section class="brochure-step">
-      <div class="container brochure-step-grid">
-        <div class="brochure-step-content">
-          <span class="step-tag">Step 01</span>
-          <h2>Secure admin access</h2>
-          <p class="step-desc">The admin portal is protected by a dedicated, secure login. Role-based access ensures only authorized team members can reach studio controls, keeping operations safe and auditable.</p>
-          <ul class="step-bullets">
-            <li>Separate admin login from the client-facing experience</li>
-            <li>Role-based access for admins and instructors</li>
-            <li>Session security that keeps unauthorized users out</li>
-          </ul>
-        </div>
-        <div class="brochure-step-visual">
-          <div class="screenshot-wrap">
-            <img src="/images/homesite/admin-01-admin-login.jpg?v=20260508" alt="Admin portal login screen" loading="lazy" width="800" height="500">
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Step 2 -->
-    <section class="brochure-step brochure-step--alt brochure-step--bg">
-      <div class="container brochure-step-grid">
-        <div class="brochure-step-content">
-          <span class="step-tag">Step 02</span>
-          <h2>Admin dashboard</h2>
-          <p class="step-desc">A central dashboard gives studio admins a clear, at-a-glance view of upcoming classes, bookings, and key operational activity. The right information is surfaced immediately — no digging required.</p>
-          <ul class="step-bullets">
-            <li>Overview of upcoming classes and recent bookings</li>
-            <li>Quick access to the most common admin tasks</li>
-            <li>Organized layout that scales with your studio's activity</li>
-          </ul>
-        </div>
-        <div class="brochure-step-visual">
-          <div class="screenshot-wrap">
-            <img src="/images/homesite/admin-02-admin-dashboard.jpg?v=20260508" alt="Admin dashboard showing studio overview and key metrics" loading="lazy" width="800" height="500">
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Step 3 -->
-    <section class="brochure-step">
-      <div class="container brochure-step-grid">
-        <div class="brochure-step-content">
-          <span class="step-tag">Step 03</span>
-          <h2>Manage classes and schedules</h2>
-          <p class="step-desc">Create, edit, and publish classes and recurring sessions from a structured schedule manager. Set capacity, assign instructors, configure timing, and manage pricing — all in a single workflow.</p>
-          <ul class="step-bullets">
-            <li>Create and edit classes with full detail control</li>
-            <li>Schedule recurring sessions and manage availability</li>
-            <li>Set per-class pricing, capacity, and instructor assignment</li>
-          </ul>
-        </div>
-        <div class="brochure-step-visual">
-          <div class="screenshot-wrap">
-            <img src="/images/homesite/admin-03-admin-schedule-classes.jpg?v=20260508" alt="Admin class and schedule management interface" loading="lazy" width="800" height="500">
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Step 4 -->
-    <section class="brochure-step brochure-step--alt brochure-step--bg">
-      <div class="container brochure-step-grid">
-        <div class="brochure-step-content">
-          <span class="step-tag">Step 04</span>
-          <h2>Manage products, subscriptions, and entitlements</h2>
-          <p class="step-desc">Configure memberships, class packs, and one-off products with flexible pricing. Entitlements define exactly what each plan unlocks for clients, giving full control over how access is structured.</p>
-          <ul class="step-bullets">
-            <li>Create and manage membership plans and class packs</li>
-            <li>Define entitlements that control class access per plan</li>
-            <li>Flexible pricing structures for different client segments</li>
-          </ul>
-        </div>
-        <div class="brochure-step-visual">
-          <div class="screenshot-wrap">
-            <img src="/images/homesite/admin-04-admin-products-subscriptions.jpg?v=20260508" alt="Admin products and subscriptions management screen" loading="lazy" width="800" height="500">
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Step 5 -->
-    <section class="brochure-step">
-      <div class="container brochure-step-grid">
-        <div class="brochure-step-content">
-          <span class="step-tag">Step 05</span>
-          <h2>Manage users and permissions</h2>
-          <p class="step-desc">View and manage all client accounts, admin users, and instructors from a unified user panel. Update permissions, review booking history, and handle account actions without context-switching between tools.</p>
-          <ul class="step-bullets">
-            <li>Manage clients, admins, and instructors in one place</li>
-            <li>View individual booking history and membership status</li>
-            <li>Update roles, permissions, and account settings</li>
-          </ul>
-        </div>
-        <div class="brochure-step-visual">
-          <div class="screenshot-wrap">
-            <img src="/images/homesite/admin-05-admin-users.jpg?v=20260508" alt="Admin user management panel showing clients and staff" loading="lazy" width="800" height="500">
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Step 6 -->
-    <section class="brochure-step brochure-step--alt brochure-step--bg">
-      <div class="container brochure-step-grid">
-        <div class="brochure-step-content">
-          <span class="step-tag">Step 06</span>
-          <h2>Manage learning content</h2>
-          <p class="step-desc">Publish and organize online learning content for clients. Set up courses, modules, and structured learning paths to extend the studio's value beyond in-person classes and build a richer client relationship.</p>
-          <ul class="step-bullets">
-            <li>Create and publish online courses and modules</li>
-            <li>Organize content into structured learning paths</li>
-            <li>Control access by membership tier or entitlement</li>
-          </ul>
-        </div>
-        <div class="brochure-step-visual">
-          <div class="screenshot-wrap">
-            <img src="/images/homesite/admin-06-admin-learning-content.jpg?v=20260508" alt="Admin learning content management showing courses and modules" loading="lazy" width="800" height="500">
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Step 7 -->
-    <section class="brochure-step">
-      <div class="container brochure-step-grid">
-        <div class="brochure-step-content">
-          <span class="step-tag">Step 07</span>
-          <h2>Marketing, inbox, and support operations</h2>
-          <p class="step-desc">Run targeted marketing campaigns, manage client communications, handle support, and maintain studio documents — all from the same admin workspace. Operations that used to require multiple tools are consolidated into one.</p>
-          <ul class="step-bullets">
-            <li>Create and send targeted marketing campaigns</li>
-            <li>Manage client inbox and support conversations</li>
-            <li>Maintain studio documents and operational records</li>
-          </ul>
-        </div>
-        <div class="brochure-step-visual">
-          <div class="screenshot-wrap">
-            <img src="/images/homesite/admin-07-admin-marketing-inbox.jpg?v=20260508" alt="Admin marketing campaigns and inbox management interface" loading="lazy" width="800" height="500">
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- CTA -->
     <section class="section">
       <div class="container">
-        <div class="cta-wrap">
-          <h2>Ready to see it in action?</h2>
-          <p>Try the live demo and explore the admin control center, booking flow, and client experience yourself.</p>
-          <div class="brochure-cta-group">
-            <a href="https://demo.bookmyclass.app" class="btn btn-primary">Try the App</a>
-            <a href="index.html#contact" class="btn btn-secondary">Request a walkthrough</a>
-            <a href="client-experience.html" class="btn btn-secondary">← Client Experience</a>
-          </div>
+        <p class="eyebrow">Exception handling</p>
+        <h2>Operational software has to handle non-happy paths</h2>
+        <div class="exception-grid">
+          <article class="exception"><h3>Class reaches capacity</h3><p>Capacity and waitlist behavior protect overbooking for supported collective classes.</p></article>
+          <article class="exception"><h3>Client lacks access</h3><p>Booking and manual add flows require eligible credit, qualifying subscription, or payment.</p></article>
+          <article class="exception"><h3>Cancellation occurs</h3><p>Cancellation policy controls booking changes and credit restoration where supported.</p></article>
+          <article class="exception"><h3>Client joins waitlist</h3><p>Join/cancel and eligibility-aware promotion are active for collective classes.</p></article>
+          <article class="exception"><h3>Payment needs reconciliation</h3><p>Webhook and success-page reconciliation update order, payment, booking, and entitlement state.</p></article>
+          <article class="exception"><h3>Admin manually adds attendee</h3><p>Server-side checks still enforce eligibility before the attendee is added.</p></article>
+          <article class="exception"><h3>Email outcome changes</h3><p>Marketing and automation delivery failures are represented as explicit failed outcomes.</p></article>
+          <article class="exception"><h3>Account is unverified</h3><p>Protected customer routes require verified account status.</p></article>
         </div>
       </div>
     </section>
 
+    <section class="section soft">
+      <div class="container">
+        <p class="eyebrow">Roles and boundaries</p>
+        <h2>Current roles are explicit, with server-side access checks</h2>
+        <div class="role-grid">
+          <article class="role"><h3>Client</h3><p>Books classes, manages dashboard, membership, wallet, profile, security, orders, cancellation, waitlist, and supported attendance interactions.</p></article>
+          <article class="role"><h3>Teacher</h3><p>Teacher routes and own-session roster management exist, but teacher capability is narrower than admin capability.</p></article>
+          <article class="role"><h3>Admin</h3><p>Accesses the private admin area for operational work through server-side admin session guards and service-backed actions.</p></article>
+          <article class="role"><h3>Master Admin</h3><p>Privileged role assignment and management is protected server-side; ordinary admin access does not imply full role-management power.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <p class="eyebrow">Guided admin demo</p>
+        <h2>Explore how the studio is operated</h2>
+        <p class="lead">Public visitors can open the admin sign-in surface. Authenticated admin exploration requires an approved demo account supplied through the controlled demo process.</p>
+        <ol class="action-list">
+          <li>Open the admin dashboard.</li>
+          <li>Review the class and session schedule.</li>
+          <li>Inspect attendees and capacity.</li>
+          <li>Review customers and memberships.</li>
+          <li>Review products, subscriptions, orders, or communications.</li>
+        </ol>
+        <div class="hero-actions">
+          <a class="button primary" href="https://demo.bookmyclass.app/admin">Open Admin Demo</a>
+          <a class="button" href="client-experience.html">View Client Experience</a>
+        </div>
+        <p class="demo-note">Demonstration environment using sample data. No real bookings or charges.</p>
+      </div>
+    </section>
   </main>
 
-  <footer>
-    <div class="container footer-wrap">
-      <div class="footer-brand">
-        <h3>BookMyClass</h3>
-        <p>Simplify the work, so you can focus on what matters. Your people</p>
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <div>
+        <h2>BookMyClass</h2>
+        <p>Studio management software for bookings, memberships, payments, attendance, and operations in a boutique studio context.</p>
+      </div>
+      <div>
+        <h3>Pages</h3>
+        <ul>
+          <li><a href="index.html">Product</a></li>
+          <li><a href="client-experience.html">Client Experience</a></li>
+          <li><a href="studio-operations.html">Studio Operations</a></li>
+          <li><a href="engineering.html">Engineering</a></li>
+          <li><a href="https://demo.bookmyclass.app/">Live Demo</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Gustavo Rangel</h3>
+        <ul>
+          <li><a href="mailto:gustavoenriquerangel@gmail.com">Email</a></li>
+          <li><a href="tel:+32497202993">+32 497 202 993</a></li>
+          <li><a href="https://www.linkedin.com/in/gustavo-enrique-rangel-90a0a11a/" target="_blank" rel="noopener noreferrer">LinkedIn</a></li>
+          <li>Brussels, Belgium</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Demo Status</h3>
+        <p>Demonstration environment using sample data. No real bookings or charges.</p>
       </div>
     </div>
-    <div class="container copyright"><p>&copy; 2026 BookMyClass. All rights reserved.</p></div>
+    <div class="container footer-bottom">&copy; 2026 BookMyClass. All rights reserved.</div>
   </footer>
-
 </body>
 </html>
