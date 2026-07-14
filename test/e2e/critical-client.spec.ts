@@ -266,11 +266,11 @@ test.describe("critical client flows", () => {
     await page.goto("/dashboard/bookings");
     const waitlistCard = page.getByTestId(/dashboard-waitlist-/).first();
     await expect(waitlistCard).toBeVisible();
-    await expect(waitlistCard).toContainText("WAITLIST");
+    await expect(waitlistCard).toContainText("On waitlist");
     await expect(page.getByText(/position/i)).toHaveCount(0);
 
-    await waitlistCard.getByRole("button", { name: "Cancel waitlist" }).click();
-    await expect(page.getByText("Waitlist entry cancelled.")).toBeVisible();
+    await waitlistCard.getByRole("button", { name: "Leave waitlist" }).click();
+    await expect(page.getByText("Waitlist place cancelled.")).toBeVisible();
   });
 
   // @covers customer-dashboard-check-in

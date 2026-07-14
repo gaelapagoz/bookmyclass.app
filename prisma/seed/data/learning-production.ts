@@ -3,7 +3,7 @@
  * Three programs, six videos per program, with route-safe human-readable course types.
  */
 
-export const PROD_LEARNING_VIDEO_URL = "https://www.youtube.com/watch?v=ZdfJcN-yBIE";
+export const PROD_LEARNING_VIDEO_URL = "https://www.youtube.com/watch?v=UIcNgvCGMo0";
 
 export const PROD_LEARNING_IMAGE_FITNESS = "/uploads/learning/course_1_fitness.jpg";
 export const PROD_LEARNING_IMAGE_YOGA = "/uploads/learning/course_2_yoga.jpg";

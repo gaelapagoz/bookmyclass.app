@@ -566,7 +566,7 @@ async function main() {
       description1: "Step-by-step mobility class",
       description2: "Focus on deterministic fixtures",
       description3: "Stable for e2e",
-      videoPromo: "https://example.test/e2e-promo",
+      videoPromo: "https://www.youtube.com/watch?v=UIcNgvCGMo0",
       picture1: "/uploads/learning/online-yoga-image-1.jpg",
       picture2: "/uploads/learning/backbend-image-1.jpg",
       picture3: "/uploads/learning/backbend-image-3.jpg",
@@ -583,7 +583,7 @@ async function main() {
       categoryType: "Beginner",
       categoryLevel: "1",
       thumbnail: "/uploads/learning/01-how-to-use-this-course.jpg",
-      videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      videoUrl: "https://www.youtube.com/watch?v=UIcNgvCGMo0",
       priority: 1,
     },
   });

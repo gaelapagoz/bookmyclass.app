@@ -32,6 +32,17 @@ export async function verifyTestEmail(page: Page, email: string) {
   expect(payload.verified).toBe(true);
 }
 
+export async function preparePublicSignupForTest(page: Page, email: string) {
+  const endpoint = "/api/test/e2e/auth/prepare-signup";
+  const response = await page.request.post(endpoint, {
+    headers: testHeaders(),
+    data: { email },
+  });
+  await assertOk(response, endpoint);
+  const payload = (await response.json()) as { prepared?: boolean };
+  expect(payload.prepared).toBe(true);
+}
+
 export async function completeStripeCheckoutForTest(request: APIRequestContext, checkoutSessionId: string) {
   const endpoint = "/api/test/e2e/stripe/complete";
   const response = await request.post("/api/test/e2e/stripe/complete", {

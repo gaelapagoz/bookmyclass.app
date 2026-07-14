@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { preparePublicSignupForTest } from "./e2e-api";
 
 export async function signInClient(page: Page, input: { email: string; password: string }) {
   await page.goto("/sign-in");
@@ -81,6 +82,7 @@ export async function signUpPublicUser(page: Page, input: {
   email: string;
   password: string;
 }) {
+  await preparePublicSignupForTest(page, input.email);
   await page.goto("/sign-up");
   await page.getByLabel("First name").fill(input.firstName);
   await page.getByLabel("Last name").fill(input.lastName);
