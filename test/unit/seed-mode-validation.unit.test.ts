@@ -126,7 +126,7 @@ describe("production learning catalogue data", () => {
   });
 
   it("uses the canonical video URL for all videos", () => {
-    expect(PROD_LEARNING_VIDEO_URL).toBe("https://www.youtube.com/watch?v=ZdfJcN-yBIE");
+    expect(PROD_LEARNING_VIDEO_URL).toBe("https://www.youtube.com/watch?v=UIcNgvCGMo0");
     for (const course of PRODUCTION_LEARNING_COURSES) {
       expect(course.videoUrl).toBe(PROD_LEARNING_VIDEO_URL);
     }
