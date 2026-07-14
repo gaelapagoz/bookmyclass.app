@@ -18,7 +18,7 @@ The executable matrix lives in `qa/e2e-coverage-matrix.json`.
 Each item has:
 
 - stable `id`
-- `area`: `public`, `customer`, `admin`, `teacher`, or `cross`
+- `area`: `public`, `customer`, `admin`, `teacher`, `cross`, or `store`
 - `risk`: `critical`, `high`, `medium`, or `low`
 - `description`
 
@@ -80,6 +80,14 @@ Coverage tags are parsed from `test/e2e/**/*.spec.ts` by `scripts/e2e-report-cov
 - Cancellation policy enforcement.
 - Password reset security flow.
 - Health endpoint readiness.
+
+### Store
+
+- Store page renders active gift-card and merchandise products.
+- Store product images render from canonical uploaded media paths.
+- Gift-card purchase through Stripe checkout and full-wallet checkout.
+- Gift-card issuance email delivery.
+- Wallet balance breakdown and gift-card code redemption outcomes.
 
 ## Current Partial Coverage
 

@@ -251,8 +251,8 @@ test.describe("Store page", () => {
     }
   });
 
-  // @store @covers store-product-image-direct-upload
-  test("renders uploaded product images directly with matching bytes @store", async ({ page }) => {
+  // @store @covers store-product-image-canonical-media
+  test("renders uploaded product images through canonical media paths with matching bytes @store", async ({ page }) => {
     const { product, mediaAsset, absolutePath, imageBytes } = await createMerchandiseProductWithImage(2_200);
 
     try {

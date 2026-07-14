@@ -98,6 +98,7 @@
     { "id": "cross-health-endpoint", "area": "cross", "risk": "high", "description": "Health endpoint reports runtime and database readiness." },
 
     { "id": "store-page-renders-products", "area": "store", "risk": "high", "description": "/store page renders active gift-card and merchandise products with pickup wording and section headers." },
+    { "id": "store-product-image-canonical-media", "area": "store", "risk": "high", "description": "/store renders product images from canonical uploaded media paths and serves the stored image bytes without Next image rewriting." },
     { "id": "store-gift-card-purchase-flow", "area": "store", "risk": "critical", "description": "Gift-card purchase from /store through Stripe checkout to success page; GiftCardCode issued (status=ISSUED), issuance email sent to purchaser. Wallet NOT credited at purchase." },
     { "id": "store-full-wallet-gift-card-purchase-flow", "area": "store", "risk": "critical", "description": "Gift-card purchase paid fully by wallet balance; GiftCardCode issued without Stripe redirect." },
     { "id": "store-wallet-balance-breakdown", "area": "store", "risk": "high", "description": "Dashboard wallet page shows correct settled, available, and reserved balance when a reservation is active." },
