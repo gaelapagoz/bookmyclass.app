@@ -32,6 +32,30 @@ function formatDateTime(iso: string, timeZone: string) {
   }).format(new Date(iso));
 }
 
+function formatBookingStatus(status: string) {
+  switch (status) {
+    case "CONFIRMED":
+      return "Confirmed";
+    case "CANCELLED":
+      return "Cancelled";
+    case "WAITLIST":
+      return "On waitlist";
+    case "PENDING":
+      return "Pending";
+    case "COMPLETED":
+      return "Completed";
+    case "NO_SHOW":
+      return "No-show";
+    case "EXPIRED":
+      return "Expired";
+    default:
+      return status
+        .toLowerCase()
+        .replaceAll("_", " ")
+        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+}
+
 function renderBookingCard(booking: DashboardBookingItem, showCancel: boolean, timeZone: string) {
   return (
     <li
@@ -41,7 +65,7 @@ function renderBookingCard(booking: DashboardBookingItem, showCancel: boolean, t
     >
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <p className="font-medium text-[#6f2b2b]">{booking.serviceTitle}</p>
-        <p className="text-xs uppercase tracking-wide text-[#8a5959]">{booking.status}</p>
+        <p className="text-xs uppercase tracking-wide text-[#8a5959]">{formatBookingStatus(booking.status)}</p>
       </div>
       <p className="mt-1 text-sm text-[#5f4040]">{formatDateTime(booking.startsAt, timeZone)}</p>
       {booking.location ? <p className="text-sm text-[#5f4040]">{booking.location}</p> : null}
@@ -104,7 +128,7 @@ function renderWaitlistCard(entry: DashboardWaitlistItem, timeZone: string) {
     >
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <p className="font-medium text-[#6f2b2b]">{entry.serviceTitle}</p>
-        <p className="text-xs uppercase tracking-wide text-[#8a5959]">WAITLIST</p>
+        <p className="text-xs uppercase tracking-wide text-[#8a5959]">On waitlist</p>
       </div>
       <p className="mt-1 text-sm text-[#5f4040]">{formatDateTime(entry.startsAt, timeZone)}</p>
       {entry.location ? <p className="text-sm text-[#5f4040]">{entry.location}</p> : null}
@@ -115,7 +139,7 @@ function renderWaitlistCard(entry: DashboardWaitlistItem, timeZone: string) {
           data-testid={`dashboard-waitlist-cancel-${entry.waitlistEntryId}`}
           className="rounded-md border border-[#7b2d2d] px-3 py-1 text-sm text-[#7b2d2d]"
         >
-          Cancel waitlist
+          Leave waitlist
         </button>
       </form>
     </li>
@@ -274,7 +298,7 @@ function getMessage(params: {
   }
 
   if (params.waitlist_cancelled === "1") {
-    return { type: "success" as const, text: "Waitlist entry cancelled." };
+    return { type: "success" as const, text: "Waitlist place cancelled." };
   }
 
   if (params.checked_in === "1") {

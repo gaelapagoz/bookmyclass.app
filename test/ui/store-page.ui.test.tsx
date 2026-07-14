@@ -119,7 +119,9 @@ describe("Store page", () => {
 
     render(await StorePage());
 
-    expect(screen.getByAltText("Studio Tote Bag product image")).toBeInTheDocument();
+    const image = screen.getByAltText("Studio Tote Bag product image");
+    expect(image).toBeInTheDocument();
+    expect(image).toHaveAttribute("src", "/uploads/products/studio-tote.png");
   });
 
   it("renders safe placeholder when product has no image", async () => {

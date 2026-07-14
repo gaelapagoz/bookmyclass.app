@@ -1,13 +1,19 @@
 import "./helpers/setup-env";
 
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import {
   PriceType,
   ProductType,
+  Role,
   StripeSyncStatus,
+  UserActivationStatus,
 } from "@prisma/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getSeededStoreImageRenderPathForSlug,
   STORE_PICKUP_WORDING,
   listStoreCatalogReadModels,
   validateGiftCardPriceForCheckoutExposure,
@@ -16,6 +22,7 @@ import { prisma } from "./helpers/db";
 import { resetDb } from "./helpers/reset-db";
 
 const originalStripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const tempUploadDirs: string[] = [];
 
 // ---------------------------------------------------------------------------
 // Helpers — create store products using the canonical seed-data slugs/keys.
@@ -99,6 +106,20 @@ async function createTestMerchandiseProduct(overrides: {
   return product;
 }
 
+async function createTestAdminUser() {
+  return prisma.user.create({
+    data: {
+      name: "Store Media Admin",
+      email: `store.media.admin.${Date.now()}@example.test`,
+      role: Role.ADMIN,
+      activationStatus: UserActivationStatus.ACTIVE,
+      emailVerified: new Date(),
+      isActive: true,
+    },
+    select: { id: true },
+  });
+}
+
 // ---------------------------------------------------------------------------
 
 describe("store catalog service", () => {
@@ -108,6 +129,7 @@ describe("store catalog service", () => {
 
   afterEach(() => {
     process.env.STRIPE_SECRET_KEY = originalStripeSecretKey;
+    vi.unstubAllEnvs();
   });
 
   it("reads DB-backed store products only — no hard-coded defaults", async () => {
@@ -205,6 +227,45 @@ describe("store catalog service", () => {
     expect(productIds).not.toContain(noPriceProduct.id);
   });
 
+  it("uses canonical seeded images for seeded store slugs even when DB image relation is stale", async () => {
+    const uploadsDir = await mkdtemp(path.join(os.tmpdir(), "bookmyclass-store-catalog-"));
+    tempUploadDirs.push(uploadsDir);
+    vi.stubEnv("UPLOADS_DIR", uploadsDir);
+    vi.stubEnv("PUBLIC_UPLOADS_BASE_PATH", "/uploads");
+
+    await mkdir(path.join(uploadsDir, "products"), { recursive: true });
+    await writeFile(path.join(uploadsDir, "products", "store-gift-card-100-eur.jpg"), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+    await writeFile(path.join(uploadsDir, "products", "old-bottle.jpg"), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+
+    const admin = await createTestAdminUser();
+    const staleAsset = await prisma.mediaAsset.create({
+      data: {
+        path: "/uploads/products/old-bottle.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: 4,
+        originalFilename: "old-bottle.jpg",
+        storageFilename: "old-bottle.jpg",
+        uploadedById: admin.id,
+      },
+      select: { id: true },
+    });
+    await createTestGiftCardProduct({
+      slug: "store-gift-card-100-eur",
+      lookupKey: "store-gift-card-100-eur-once-v1",
+      stripePriceId: "price_test_gc100",
+      stripeSyncStatus: StripeSyncStatus.SYNCED,
+    });
+    await prisma.product.update({
+      where: { slug: "store-gift-card-100-eur" },
+      data: { imageAssetId: staleAsset.id },
+    });
+
+    const readModels = await listStoreCatalogReadModels();
+    expect(readModels.find((product) => product.slug === "store-gift-card-100-eur")?.imageAsset?.path).toBe(
+      getSeededStoreImageRenderPathForSlug("store-gift-card-100-eur"),
+    );
+  });
+
   it("requires synced checkout-ready Stripe prices for admin gift-card exposure", () => {
     const base = {
       productType: ProductType.GIFT_CARD,
@@ -260,5 +321,10 @@ describe("store catalog service", () => {
       code: "STRIPE_NOT_READY",
     });
   });
+});
+
+afterEach(async () => {
+  await Promise.all(tempUploadDirs.map((dir) => rm(dir, { recursive: true, force: true })));
+  tempUploadDirs.length = 0;
 });
 

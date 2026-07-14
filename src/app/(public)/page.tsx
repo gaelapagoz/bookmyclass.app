@@ -13,7 +13,7 @@ const serviceCards = [
   {
     icon: "●",
     title: "Collective Classes",
-    description: "Small group yoga and pilates sessions in Brussels",
+    description: "Small group yoga, Pilates and functional training",
   },
   {
     icon: "◐",
@@ -99,7 +99,7 @@ export default async function HomePage({
         <div className={`relative mx-auto flex w-full max-w-6xl items-center px-6 py-20 md:px-10 ${heroMinHeightClassName}`}>
           <div className="max-w-2xl">
             <p className="mb-4 inline-flex rounded-full border border-[#e7d7cc]/70 bg-[#f5ece5]/20 px-4 py-1 text-xs tracking-[0.2em] text-[#f7efe8]">
-              Brussels
+              {siteConfig.descriptor}
             </p>
             <h1
               className={`${headingClassName("lg")} ${serifHeadingClassName} text-[#fffaf6]`}
@@ -271,25 +271,14 @@ export default async function HomePage({
 
       <section className="mx-auto w-full max-w-6xl px-6 pb-24 md:px-10">
         <h2 className={`${headingClassName("md")} ${serifHeadingClassName}`}>
-          Visit the Studio
+          Contact the Studio
         </h2>
         <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
           <article className="rounded-3xl border border-[#eadfd7] bg-[#fffdfa] p-8">
             <p className="text-sm leading-relaxed text-[#6f605b]">
-              Avenue de Tervueren, Merode
-              <br />
-              Brussels, Belgium
+              Questions about classes, memberships, private sessions or the demo environment can be sent to the studio inbox.
             </p>
             <p className="mt-4 text-sm text-[#6f605b]">{siteConfig.contactEmail}</p>
-            <div className="mt-6 overflow-hidden rounded-2xl border border-[#eadfd7]">
-              <iframe
-                title="Yoga Pilates Fitness Studio map"
-                src="https://www.google.com/maps?q=Brussels&output=embed"
-                className="h-64 w-full border-0"
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-              />
-            </div>
           </article>
 
           <form action={submitContactAction} className="rounded-3xl border border-[#eadfd7] bg-[#fffdfa] p-8">

@@ -9,7 +9,7 @@ function getGroup(key: string): AdminNavGroupItem | undefined {
 }
 
 describe("adminNavConfig - Store navigation structure", () => {
-  it("Catalog group contains one Store entry", () => {
+  it("Catalog group contains one Store Products entry", () => {
     const catalog = getGroup("catalog");
     expect(catalog).toBeDefined();
 
@@ -18,7 +18,7 @@ describe("adminNavConfig - Store navigation structure", () => {
     expect(storeEntries).toHaveLength(1);
     expect(storeEntries[0]).toMatchObject({
       href: "/admin/store",
-      label: "Store",
+      label: "Store Products",
       matchPrefixes: ["/admin/store/merchandise", "/admin/store/gift-cards"],
     });
   });
@@ -57,12 +57,32 @@ describe("adminNavConfig - Store navigation structure", () => {
     expect(hrefs).toContain("/admin/gift-cards");
   });
 
-  it("Catalog group still contains Booking Services, Plans, and Loyalty Points", () => {
+  it("Catalog group contains Classes and Memberships & Packs only once", () => {
     const catalog = getGroup("catalog");
     expect(catalog).toBeDefined();
-    const hrefs = catalog!.children.map((child) => child.href);
-    expect(hrefs).toContain("/admin/classes");
-    expect(hrefs).toContain("/admin/plans");
-    expect(hrefs).toContain("/admin/catalog/loyalty");
+    expect(catalog!.children.map((child) => [child.href, child.label])).toEqual([
+      ["/admin/classes", "Classes"],
+      ["/admin/plans", "Memberships & Packs"],
+      ["/admin/store", "Store Products"],
+    ]);
+  });
+
+  it("Communications group preserves inbox badge under Client Messages", () => {
+    const communications = getGroup("communications");
+    expect(communications).toBeDefined();
+    expect(communications!.children[0]).toMatchObject({
+      href: "/admin/inbox",
+      label: "Client Messages",
+      badgeKey: "inboxUnread",
+    });
+  });
+
+  it("Content group maps website and video library routes", () => {
+    const content = getGroup("content");
+    expect(content).toBeDefined();
+    expect(content!.children.map((child) => [child.href, child.label])).toEqual([
+      ["/admin/manage-site", "Website Content"],
+      ["/admin/online-learning", "Video Library"],
+    ]);
   });
 });

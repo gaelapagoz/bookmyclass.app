@@ -1,4 +1,5 @@
-﻿import Link from "next/link";
+import Link from "next/link";
+import { siteConfig } from "@/lib/site-config";
 
 type TeacherSidebarProps = {
   onSignOutAction?: (formData: FormData) => Promise<void>;
@@ -6,17 +7,17 @@ type TeacherSidebarProps = {
 
 const teacherNavItems = [
   { href: "/teacher", label: "Dashboard" },
-  { href: "/teacher/sessions", label: "Sessions" },
-  { href: "/teacher/profile", label: "Profile" },
-  { href: "/kiosk", label: "Launch Kiosk", isKiosk: true },
+  { href: "/teacher/sessions", label: "My Schedule" },
+  { href: "/teacher/profile", label: "My Profile" },
+  { href: "/kiosk", label: "Check-in Kiosk", isKiosk: true },
 ] as const;
 
 export default function TeacherSidebar({ onSignOutAction }: TeacherSidebarProps) {
   return (
     <aside className="w-full border-r border-[#223046] bg-[#13263a] text-[#f4eee8] md:w-64">
       <div className="border-b border-[#223046] px-5 py-5">
-        <p className="text-xs uppercase tracking-[0.2em] text-[#d9c8be]">Yoga Pilates Fitness Studio</p>
-        <h2 className="mt-1 text-lg font-semibold">Teacher</h2>
+        <p className="text-xs uppercase tracking-[0.2em] text-[#d9c8be]">{siteConfig.brandName}</p>
+        <h2 className="mt-1 text-lg font-semibold">Teacher Workspace</h2>
       </div>
 
       <nav className="p-3">

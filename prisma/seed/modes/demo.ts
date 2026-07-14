@@ -6,10 +6,10 @@
  *
  * Creates:
  *   - 5 staff users (master-admin, admin, 3 teachers)
- *   - 100 deterministic test clients (@bookmyclass.app)
+ *   - 24 deterministic Studio Aster clients (@bookmyclass.app)
  *   - 6 products (same catalog slugs as dev/perf)
  *   - 6 class templates with 6 months of sessions (3 slots/week/template)
- *   - 3 learning programmes with 20 courses each
+ *   - 3 learning programmes with 6 courses each
  *   - Pre-populated bookings for the next 120 days
  *   - Marketing campaign history (records only — no emails sent)
  */
@@ -43,7 +43,13 @@ import {
 import { hash } from "bcryptjs";
 import prisma from "../../../src/lib/db";
 import { assertLearningImagePath } from "../../../src/lib/learning/image-paths";
-import { AGENDA_SCHEDULE } from "../data/schedule";
+import {
+  DEMO_CLIENTS,
+  DEMO_CLIENT_COUNT,
+  DEMO_TEACHERS,
+  DEMO_WEEKLY_SCHEDULE,
+  assertDemoScheduleAgreement,
+} from "../data/demo-studio";
 import { STORE_CATALOG_PRODUCT_COUNT, STORE_CATALOG_PRODUCTS } from "../data/store-catalog";
 import { SEEDED_USER_PASSWORD } from "../seed-credentials";
 import {
@@ -61,8 +67,8 @@ import { createSeededRng } from "../utils/deterministic-random";
 import {
   buildSeedMediaPlan,
   buildStoreSeedAssetFilename,
+  overwriteSeedMediaAsset,
   readSeedFileSizeBytes,
-  syncSeedMediaAsset,
   syncSeedMediaPath,
   toCanonicalSeedImagePath,
   verifySeededMediaReferences,
@@ -70,23 +76,22 @@ import {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const PROD_CLIENT_COUNT = 100;
+const PROD_CLIENT_COUNT = DEMO_CLIENT_COUNT;
 const PROD_FUTURE_WEEKS = 26; // ≈ 6 months of sessions
 const PROD_BOOKING_DAYS = 120; // pre-populate bookings this far ahead
 const PROD_RANDOM_SEED = 20260420;
-const PROD_SESSION_CAPACITY = 15;
 
 const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9_]+$/;
 
 type CatalogStripePriceEnvSpec = { productName: string; lookupKey: string; envVarName: string };
 
 const PURCHASABLE_CATALOG_STRIPE_PRICE_ENV_SPECS: CatalogStripePriceEnvSpec[] = [
-  { productName: "Collective Class Drop-In", lookupKey: "collective-drop-in-eur-once-v1", envVarName: "STRIPE_PRICE_ID_COLLECTIVE_DROP_IN" },
-  { productName: "5-Ticket Collective Classes", lookupKey: "qa-collective-5-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_COLLECTIVE_5_PACK" },
-  { productName: "10-Ticket Collective Classes", lookupKey: "collective-10-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_COLLECTIVE_10_PACK" },
-  { productName: "Monthly Recurrent Collective Subscription", lookupKey: "monthly-unlimited-collective-eur-monthly-v1", envVarName: "STRIPE_PRICE_ID_MONTHLY_UNLIMITED_COLLECTIVE" },
-  { productName: "5-Ticket Private Classes", lookupKey: "qa-private-5-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_PRIVATE_5_PACK" },
-  { productName: "10-Ticket Private Classes", lookupKey: "qa-private-10-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_PRIVATE_10_PACK" },
+  { productName: "Drop-in Class", lookupKey: "collective-drop-in-eur-once-v1", envVarName: "STRIPE_PRICE_ID_COLLECTIVE_DROP_IN" },
+  { productName: "5-Class Pack", lookupKey: "qa-collective-5-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_COLLECTIVE_5_PACK" },
+  { productName: "10-Class Pack", lookupKey: "collective-10-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_COLLECTIVE_10_PACK" },
+  { productName: "Unlimited Monthly Membership", lookupKey: "monthly-unlimited-collective-eur-monthly-v1", envVarName: "STRIPE_PRICE_ID_MONTHLY_UNLIMITED_COLLECTIVE" },
+  { productName: "5 Private Sessions", lookupKey: "qa-private-5-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_PRIVATE_5_PACK" },
+  { productName: "10 Private Sessions", lookupKey: "qa-private-10-pack-eur-once-v1", envVarName: "STRIPE_PRICE_ID_PRIVATE_10_PACK" },
   ...STORE_CATALOG_PRODUCTS.map((product) => ({
     productName: product.name,
     lookupKey: product.price.lookupKey,
@@ -228,40 +233,40 @@ async function seedProductionUsers() {
     });
   };
 
-  const masterAdmin = await upsertStaffUser({ email: "master@bookmyclass.app", firstName: "Master", lastName: "Admin", role: Role.MASTER_ADMIN, lastLoginAt: new Date("2026-04-01T08:00:00.000Z") });
-  const admin = await upsertStaffUser({ email: "admin@bookmyclass.app", firstName: "Studio", lastName: "Admin", role: Role.ADMIN, lastLoginAt: new Date("2026-04-01T09:00:00.000Z") });
-  const ana = await upsertStaffUser({ email: "ana@bookmyclass.app", firstName: "Ana", lastName: "Ionescu", role: Role.TEACHER, image: SEEDED_TEACHER_IMAGES.ana, phone: "+32000000001", bio: "Ana leads classes with a clear and progressive approach to technique, breath, and confidence in movement.", specialties: ["Yoga", "Pilates"], certifications: ["RYT-200"], hireDate: new Date("2023-09-01T00:00:00.000Z"), lastLoginAt: new Date("2026-04-01T07:30:00.000Z") });
-  const elena = await upsertStaffUser({ email: "elena@bookmyclass.app", firstName: "Elena", lastName: "Moreau", role: Role.TEACHER, image: SEEDED_TEACHER_IMAGES.elena, phone: "+32000000003", bio: "Elena brings a calm, precise teaching style focused on alignment, strength, and confidence in movement.", specialties: ["Pilates", "Mobility"], certifications: ["Comprehensive Pilates"], hireDate: new Date("2024-02-15T00:00:00.000Z"), lastLoginAt: new Date("2026-04-01T10:00:00.000Z") });
-  const sofia = await upsertStaffUser({ email: "sofia@bookmyclass.app", firstName: "Sofia", lastName: "Van den Berg", role: Role.TEACHER, image: SEEDED_TEACHER_IMAGES.sofia, phone: "+32000000004", bio: "Sofia teaches flowing classes with a warm and supportive approach.", specialties: ["Yoga", "Stretch"], certifications: ["RYT-500"], hireDate: new Date("2024-05-01T00:00:00.000Z"), lastLoginAt: new Date("2026-04-01T08:45:00.000Z") });
+  const masterAdmin = await upsertStaffUser({ email: "master@bookmyclass.app", firstName: "Studio", lastName: "Owner", role: Role.MASTER_ADMIN, lastLoginAt: new Date("2026-04-01T08:00:00.000Z") });
+  const admin = await upsertStaffUser({ email: "admin@bookmyclass.app", firstName: "Studio", lastName: "Manager", role: Role.ADMIN, lastLoginAt: new Date("2026-04-01T09:00:00.000Z") });
+  const ana = await upsertStaffUser({ email: DEMO_TEACHERS.ana.email, firstName: DEMO_TEACHERS.ana.firstName, lastName: DEMO_TEACHERS.ana.lastName, role: Role.TEACHER, image: SEEDED_TEACHER_IMAGES.ana, phone: DEMO_TEACHERS.ana.phone, bio: DEMO_TEACHERS.ana.bio, specialties: [...DEMO_TEACHERS.ana.specialties], certifications: [...DEMO_TEACHERS.ana.certifications], hireDate: new Date("2023-09-01T00:00:00.000Z"), lastLoginAt: new Date("2026-04-01T07:30:00.000Z") });
+  const elena = await upsertStaffUser({ email: DEMO_TEACHERS.elena.email, firstName: DEMO_TEACHERS.elena.firstName, lastName: DEMO_TEACHERS.elena.lastName, role: Role.TEACHER, image: SEEDED_TEACHER_IMAGES.elena, phone: DEMO_TEACHERS.elena.phone, bio: DEMO_TEACHERS.elena.bio, specialties: [...DEMO_TEACHERS.elena.specialties], certifications: [...DEMO_TEACHERS.elena.certifications], hireDate: new Date("2024-02-15T00:00:00.000Z"), lastLoginAt: new Date("2026-04-01T10:00:00.000Z") });
+  const sofia = await upsertStaffUser({ email: DEMO_TEACHERS.sofia.email, firstName: DEMO_TEACHERS.sofia.firstName, lastName: DEMO_TEACHERS.sofia.lastName, role: Role.TEACHER, image: SEEDED_TEACHER_IMAGES.sofia, phone: DEMO_TEACHERS.sofia.phone, bio: DEMO_TEACHERS.sofia.bio, specialties: [...DEMO_TEACHERS.sofia.specialties], certifications: [...DEMO_TEACHERS.sofia.certifications], hireDate: new Date("2024-05-01T00:00:00.000Z"), lastLoginAt: new Date("2026-04-01T08:45:00.000Z") });
 
-  // 100 deterministic clients — upsert by email
+  // Deterministic Studio Aster clients — upsert by email.
   const testClients: Array<{ id: string; email: string; name: string }> = [];
-  for (let index = 0; index < PROD_CLIENT_COUNT; index += 1) {
-    const clientNumber = String(index + 1).padStart(3, "0");
-    const email = `prod-client-${clientNumber}@bookmyclass.app`;
-    const name = `Test Client ${clientNumber}`;
+  for (let index = 0; index < DEMO_CLIENTS.length; index += 1) {
+    const [localPart, firstName, lastName, phone, notes] = DEMO_CLIENTS[index]!;
+    const email = `${localPart}@bookmyclass.app`;
+    const name = `${firstName} ${lastName}`;
     const verifiedAt = new Date(sharedEmailVerifiedAt);
     verifiedAt.setUTCDate(verifiedAt.getUTCDate() + (index % 14));
     const created = await prisma.user.upsert({
       where: { email },
       update: {
-        name, firstName: "Test", lastName: `Client ${clientNumber}`,
+        name, firstName, lastName,
         role: Role.CLIENT, passwordHash: sharedPasswordHash,
         emailVerified: verifiedAt, emailVerifiedAt: verifiedAt,
         isActive: true, isInactive: false,
       },
       create: {
-        name, firstName: "Test", lastName: `Client ${clientNumber}`,
+        name, firstName, lastName,
         email, role: Role.CLIENT, passwordHash: sharedPasswordHash,
         emailVerified: verifiedAt, emailVerifiedAt: verifiedAt,
         isActive: true, isInactive: false,
-        clientProfile: { create: { phone: `+3203${clientNumber.padStart(8, "0")}`, notes: "Production launch test client." } },
+        clientProfile: { create: { phone, notes: notes || null } },
       },
     });
     testClients.push({ id: created.id, email, name });
   }
 
-  console.info(`[seed:demo] Users seeded: master-admin, admin, 3 teachers, ${PROD_CLIENT_COUNT} test clients.`);
+  console.info(`[seed:demo] Users seeded: master-admin, admin, 3 teachers, ${PROD_CLIENT_COUNT} Studio Aster clients.`);
   return { masterAdmin, admin, teachers: { ana, elena, sofia }, clients: testClients };
 }
 
@@ -305,28 +310,28 @@ async function upsertEntitlementRule(input: { productId: string; entitlementType
 }
 
 async function seedProductionCatalog(stripePriceIdByLookupKey: Record<string, string>) {
-  const collectiveDropIn = await upsertProduct({ slug: "collective-drop-in", name: "Collective Class Drop-In", description: "Single booking access for collective yoga, pilates and functional classes.", productType: ProductType.DROP_IN_CLASS, sortOrder: 10 });
-  await upsertPrice({ productId: collectiveDropIn.id, lookupKey: "collective-drop-in-eur-once-v1", stripePriceId: stripePriceIdByLookupKey["collective-drop-in-eur-once-v1"], name: "Collective Drop-In - One Time", priceType: PriceType.ONE_TIME, currencyCode: "EUR", unitAmountMinor: 2200 });
+  const collectiveDropIn = await upsertProduct({ slug: "collective-drop-in", name: "Drop-in Class", description: "One credit for a single group class. Valid for 30 days from purchase.", productType: ProductType.DROP_IN_CLASS, sortOrder: 10 });
+  await upsertPrice({ productId: collectiveDropIn.id, lookupKey: "collective-drop-in-eur-once-v1", stripePriceId: stripePriceIdByLookupKey["collective-drop-in-eur-once-v1"], name: "Drop-in Class", priceType: PriceType.ONE_TIME, currencyCode: "EUR", unitAmountMinor: 2200 });
   await upsertEntitlementRule({ productId: collectiveDropIn.id, entitlementType: EntitlementType.SINGLE_USE, entitlementScope: EntitlementScope.COLLECTIVE_CLASSES, quantity: 1, validForDays: 30 });
 
-  const collectiveFivePack = await upsertProduct({ slug: "collective-5-class-pack", name: "5-Ticket Collective Classes", description: "Five class credits for collective classes.", productType: ProductType.CLASS_PACK, sortOrder: 20 });
-  await upsertPrice({ productId: collectiveFivePack.id, lookupKey: "qa-collective-5-pack-eur-once-v1", stripePriceId: stripePriceIdByLookupKey["qa-collective-5-pack-eur-once-v1"], name: "5-Class Pack - One Time", priceType: PriceType.ONE_TIME, currencyCode: "EUR", unitAmountMinor: 9500 });
+  const collectiveFivePack = await upsertProduct({ slug: "collective-5-class-pack", name: "5-Class Pack", description: "Five credits for group classes. Valid for 90 days from purchase.", productType: ProductType.CLASS_PACK, sortOrder: 20 });
+  await upsertPrice({ productId: collectiveFivePack.id, lookupKey: "qa-collective-5-pack-eur-once-v1", stripePriceId: stripePriceIdByLookupKey["qa-collective-5-pack-eur-once-v1"], name: "5-Class Pack", priceType: PriceType.ONE_TIME, currencyCode: "EUR", unitAmountMinor: 9500 });
   await upsertEntitlementRule({ productId: collectiveFivePack.id, entitlementType: EntitlementType.CREDIT_PACK, entitlementScope: EntitlementScope.COLLECTIVE_CLASSES, quantity: 5, validForDays: 90 });
 
-  const collectiveTenPack = await upsertProduct({ slug: "collective-10-class-pack", name: "10-Ticket Collective Classes", description: "Ten class credits for collective classes.", productType: ProductType.CLASS_PACK, sortOrder: 30 });
-  await upsertPrice({ productId: collectiveTenPack.id, lookupKey: "collective-10-pack-eur-once-v1", stripePriceId: stripePriceIdByLookupKey["collective-10-pack-eur-once-v1"], name: "10-Class Pack - One Time", priceType: PriceType.ONE_TIME, currencyCode: "EUR", unitAmountMinor: 17900 });
+  const collectiveTenPack = await upsertProduct({ slug: "collective-10-class-pack", name: "10-Class Pack", description: "Ten credits for group classes. Valid for 180 days from purchase.", productType: ProductType.CLASS_PACK, sortOrder: 30 });
+  await upsertPrice({ productId: collectiveTenPack.id, lookupKey: "collective-10-pack-eur-once-v1", stripePriceId: stripePriceIdByLookupKey["collective-10-pack-eur-once-v1"], name: "10-Class Pack", priceType: PriceType.ONE_TIME, currencyCode: "EUR", unitAmountMinor: 17900 });
   await upsertEntitlementRule({ productId: collectiveTenPack.id, entitlementType: EntitlementType.CREDIT_PACK, entitlementScope: EntitlementScope.COLLECTIVE_CLASSES, quantity: 10, validForDays: 180 });
 
-  const collectiveMonthly = await upsertProduct({ slug: "monthly-unlimited-collective", name: "Monthly Recurrent Collective Subscription", description: "Recurring monthly subscription for collective classes.", productType: ProductType.UNLIMITED_MEMBERSHIP, sortOrder: 40 });
-  await upsertPrice({ productId: collectiveMonthly.id, lookupKey: "monthly-unlimited-collective-eur-monthly-v1", stripePriceId: stripePriceIdByLookupKey["monthly-unlimited-collective-eur-monthly-v1"], name: "Monthly Unlimited Collective - Monthly", priceType: PriceType.RECURRING, currencyCode: "EUR", unitAmountMinor: 12900, billingInterval: BillingInterval.MONTH, billingIntervalCount: 1 });
+  const collectiveMonthly = await upsertProduct({ slug: "monthly-unlimited-collective", name: "Unlimited Monthly Membership", description: "Recurring monthly access to eligible group classes.", productType: ProductType.UNLIMITED_MEMBERSHIP, sortOrder: 40 });
+  await upsertPrice({ productId: collectiveMonthly.id, lookupKey: "monthly-unlimited-collective-eur-monthly-v1", stripePriceId: stripePriceIdByLookupKey["monthly-unlimited-collective-eur-monthly-v1"], name: "Unlimited Monthly Membership", priceType: PriceType.RECURRING, currencyCode: "EUR", unitAmountMinor: 12900, billingInterval: BillingInterval.MONTH, billingIntervalCount: 1 });
   await upsertEntitlementRule({ productId: collectiveMonthly.id, entitlementType: EntitlementType.UNLIMITED_ACCESS, entitlementScope: EntitlementScope.COLLECTIVE_CLASSES, validForDays: 30 });
 
-  const privateFivePack = await upsertProduct({ slug: "private-5-class-pack", name: "5-Ticket Private Classes", description: "Five private class credits.", productType: ProductType.PRIVATE_PACK, sortOrder: 50 });
-  await upsertPrice({ productId: privateFivePack.id, lookupKey: "qa-private-5-pack-eur-once-v1", stripePriceId: stripePriceIdByLookupKey["qa-private-5-pack-eur-once-v1"], name: "5-Private Sessions - One Time", priceType: PriceType.ONE_TIME, currencyCode: "EUR", unitAmountMinor: 32000 });
+  const privateFivePack = await upsertProduct({ slug: "private-5-class-pack", name: "5 Private Sessions", description: "Five credits for private sessions. Valid for 180 days from purchase.", productType: ProductType.PRIVATE_PACK, sortOrder: 50 });
+  await upsertPrice({ productId: privateFivePack.id, lookupKey: "qa-private-5-pack-eur-once-v1", stripePriceId: stripePriceIdByLookupKey["qa-private-5-pack-eur-once-v1"], name: "5 Private Sessions", priceType: PriceType.ONE_TIME, currencyCode: "EUR", unitAmountMinor: 32000 });
   await upsertEntitlementRule({ productId: privateFivePack.id, entitlementType: EntitlementType.CREDIT_PACK, entitlementScope: EntitlementScope.PRIVATE_CLASSES, quantity: 5, validForDays: 180 });
 
-  const privateTenPack = await upsertProduct({ slug: "private-10-class-pack", name: "10-Ticket Private Classes", description: "Ten private class credits.", productType: ProductType.PRIVATE_PACK, sortOrder: 60 });
-  await upsertPrice({ productId: privateTenPack.id, lookupKey: "qa-private-10-pack-eur-once-v1", stripePriceId: stripePriceIdByLookupKey["qa-private-10-pack-eur-once-v1"], name: "10-Private Sessions - One Time", priceType: PriceType.ONE_TIME, currencyCode: "EUR", unitAmountMinor: 60000 });
+  const privateTenPack = await upsertProduct({ slug: "private-10-class-pack", name: "10 Private Sessions", description: "Ten credits for private sessions. Valid for 240 days from purchase.", productType: ProductType.PRIVATE_PACK, sortOrder: 60 });
+  await upsertPrice({ productId: privateTenPack.id, lookupKey: "qa-private-10-pack-eur-once-v1", stripePriceId: stripePriceIdByLookupKey["qa-private-10-pack-eur-once-v1"], name: "10 Private Sessions", priceType: PriceType.ONE_TIME, currencyCode: "EUR", unitAmountMinor: 60000 });
   await upsertEntitlementRule({ productId: privateTenPack.id, entitlementType: EntitlementType.CREDIT_PACK, entitlementScope: EntitlementScope.PRIVATE_CLASSES, quantity: 10, validForDays: 240 });
 
   console.info("[seed:demo] Catalog seeded (6 products).");
@@ -345,7 +350,6 @@ async function seedProductionStoreCatalog(stripePriceIdByLookupKey: Record<strin
   }
 
   let copiedCount = 0;
-  let existingCount = 0;
   for (const item of STORE_CATALOG_PRODUCTS) {
     const product = await upsertProduct({
       slug: item.slug,
@@ -370,9 +374,8 @@ async function seedProductionStoreCatalog(stripePriceIdByLookupKey: Record<strin
       sourceFolder: "products",
       sourceFilename: item.seedImageSourceFilename,
     });
-    const syncResult = await syncSeedMediaAsset(mediaPlan);
-    if (syncResult === "copied") copiedCount += 1;
-    else existingCount += 1;
+    await overwriteSeedMediaAsset(mediaPlan);
+    copiedCount += 1;
 
     const sizeBytes = await readSeedFileSizeBytes(mediaPlan.destinationAbsolutePath);
     const mediaAsset = await prisma.mediaAsset.upsert({
@@ -399,7 +402,7 @@ async function seedProductionStoreCatalog(stripePriceIdByLookupKey: Record<strin
     });
   }
   console.info(
-    `[seed:demo] Store catalog seeded: ${STORE_CATALOG_PRODUCTS.length} products (gift cards + merchandise, pickup-only). mediaCopied=${copiedCount}, mediaExisting=${existingCount}.`,
+    `[seed:demo] Store catalog seeded: ${STORE_CATALOG_PRODUCTS.length} products (gift cards + merchandise, pickup-only). mediaRefreshed=${copiedCount}.`,
   );
 }
 
@@ -421,7 +424,7 @@ async function upsertClassType(input: { slug: string; categoryId: string; name: 
   });
 }
 
-async function upsertClassTemplate(input: { slug: string; classTypeId: string; defaultTeacherId: string; title: string; description: string; location: string; defaultCapacity: number; defaultDurationMinutes: number }) {
+async function upsertClassTemplate(input: { slug: string; classTypeId: string; defaultTeacherId: string; title: string; description?: string | null; location?: string | null; defaultCapacity: number; defaultDurationMinutes: number }) {
   return prisma.classTemplate.upsert({
     where: { slug: input.slug },
     update: { classTypeId: input.classTypeId, defaultTeacherId: input.defaultTeacherId, title: input.title, description: input.description, location: input.location, defaultCapacity: input.defaultCapacity, defaultDurationMinutes: input.defaultDurationMinutes, isActive: true, isPublished: true },
@@ -429,7 +432,7 @@ async function upsertClassTemplate(input: { slug: string; classTypeId: string; d
   });
 }
 
-async function upsertStudioSession(input: { classTemplateId: string; classTypeId: string; teacherId: string; title: string; description?: string; location?: string; startsAt: Date; endsAt: Date; capacity: number }) {
+async function upsertStudioSession(input: { classTemplateId: string; classTypeId: string; teacherId: string; title: string; description?: string; location?: string | null; startsAt: Date; endsAt: Date; capacity: number }) {
   return prisma.studioSession.upsert({
     where: { classTemplateId_startsAt: { classTemplateId: input.classTemplateId, startsAt: input.startsAt } },
     update: { classTypeId: input.classTypeId, teacherId: input.teacherId, title: input.title, description: input.description, location: input.location, endsAt: input.endsAt, capacity: input.capacity, status: StudioSessionStatus.SCHEDULED, cancelledAt: null, cancelledReason: null, cancelledById: null, isPublished: true },
@@ -455,36 +458,33 @@ async function seedProductionScheduleAndBookings(input: {
   const rng = createSeededRng(PROD_RANDOM_SEED + 97);
   const { teachers, clients } = input;
 
-  const yogaCategory = await upsertClassCategory({ slug: "yoga-collective-classes", name: "Yoga Collective Classes", description: "Dynamic and restorative yoga classes for collective groups.", sortOrder: 10 });
-  const pilatesCategory = await upsertClassCategory({ slug: "pilates-collective-classes", name: "Pilates Collective Classes", description: "Mat and reformer-inspired pilates sessions in small groups.", sortOrder: 20 });
-  const fitnessCategory = await upsertClassCategory({ slug: "fitness-functional", name: "Fitness & Functional", description: "Strength, mobility, and conditioning sessions.", sortOrder: 30 });
-  const privateCategory = await upsertClassCategory({ slug: "private-reformer-coach", name: "Private Reformer Coach", description: "Private reformer coaching and technique refinement.", sortOrder: 40 });
+  const yogaCategory = await upsertClassCategory({ slug: "yoga", name: "Yoga", description: "Vinyasa and Rocket Yoga classes.", sortOrder: 10 });
+  const pilatesCategory = await upsertClassCategory({ slug: "pilates", name: "Pilates", description: "Mat Pilates, stretching and private reformer sessions.", sortOrder: 20 });
+  const fitnessCategory = await upsertClassCategory({ slug: "fitness", name: "Fitness", description: "Small-group functional strength and conditioning.", sortOrder: 30 });
+  const privateCategory = await upsertClassCategory({ slug: "private-sessions", name: "Private sessions", description: "Individual reformer sessions by appointment.", sortOrder: 40 });
 
-  const vinyasaYoga = await upsertClassType({ slug: "vinyasa-yoga", categoryId: yogaCategory.id, name: "Vinyasa Yoga", description: "Breath-led flowing yoga for strength and mobility.", imageUrl: SEEDED_CLASS_IMAGES.vinyasaYoga, defaultDurationMinutes: 30, defaultCapacity: PROD_SESSION_CAPACITY, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 10 });
-  const rocketYoga = await upsertClassType({ slug: "rocket-yoga", categoryId: yogaCategory.id, name: "Rocket Yoga", description: "High-energy yoga sequencing with progressive options.", imageUrl: SEEDED_CLASS_IMAGES.rocketYoga, defaultDurationMinutes: 30, defaultCapacity: PROD_SESSION_CAPACITY, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 20 });
-  const hathaYoga = await upsertClassType({ slug: "hatha-yoga", categoryId: yogaCategory.id, name: "Hatha Yoga", description: "Slower paced foundational yoga and alignment practice.", imageUrl: SEEDED_CLASS_IMAGES.hathaYoga, defaultDurationMinutes: 30, defaultCapacity: PROD_SESSION_CAPACITY, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 30 });
-  const matPilates = await upsertClassType({ slug: "mat-pilates", categoryId: pilatesCategory.id, name: "Mat Pilates", description: "Core-driven pilates session suitable for all levels.", imageUrl: SEEDED_CLASS_IMAGES.matPilates, defaultDurationMinutes: 30, defaultCapacity: PROD_SESSION_CAPACITY, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 10 });
-  const reformerFoundations = await upsertClassType({ slug: "reformer-foundations", categoryId: pilatesCategory.id, name: "Reformer Foundations", description: "Small group reformer fundamentals for technique and control.", imageUrl: SEEDED_CLASS_IMAGES.reformerFoundations, defaultDurationMinutes: 30, defaultCapacity: PROD_SESSION_CAPACITY, pricingMode: ServicePricingMode.PLAN_ONLY, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 20 });
-  const functionalStrength = await upsertClassType({ slug: "functional-strength", categoryId: fitnessCategory.id, name: "Functional Strength", description: "Strength and conditioning with athletic movement patterns.", imageUrl: SEEDED_CLASS_IMAGES.functionalStrength, defaultDurationMinutes: 30, defaultCapacity: PROD_SESSION_CAPACITY, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 10 });
-  const privateReformerCoaching = await upsertClassType({ slug: "private-reformer-coaching", categoryId: privateCategory.id, name: "Private Reformer Coaching", description: "Private 1:1 or duo coaching on the reformer.", imageUrl: SEEDED_CLASS_IMAGES.privateReformerCoaching, defaultDurationMinutes: 30, defaultCapacity: 1, pricingMode: ServicePricingMode.PLAN_ONLY, serviceScope: EntitlementScope.PRIVATE_CLASSES, sortOrder: 10 });
+  const vinyasaYoga = await upsertClassType({ slug: "vinyasa-yoga", categoryId: yogaCategory.id, name: "Vinyasa Yoga", description: "A flowing yoga class combining standing sequences, balance, strength and floor work. Options are provided for different experience levels.", imageUrl: SEEDED_CLASS_IMAGES.vinyasaYoga, defaultDurationMinutes: 60, defaultCapacity: 10, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 10 });
+  const rocketYoga = await upsertClassType({ slug: "rocket-yoga", categoryId: yogaCategory.id, name: "Rocket Yoga", description: "A faster-paced sequence with repeated transitions, balance work and optional inversion preparation. Previous yoga experience is recommended.", imageUrl: SEEDED_CLASS_IMAGES.rocketYoga, defaultDurationMinutes: 60, defaultCapacity: 10, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 20 });
+  const matPilates = await upsertClassType({ slug: "mat-pilates", categoryId: pilatesCategory.id, name: "Mat Pilates", description: "A mat-based class focused on core control, posture, hip stability and coordinated movement.", imageUrl: SEEDED_CLASS_IMAGES.matPilates, defaultDurationMinutes: 55, defaultCapacity: 10, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 10 });
+  const pilatesStretching = await upsertClassType({ slug: "pilates-and-stretching", categoryId: pilatesCategory.id, name: "Pilates & Stretching", description: "Controlled Pilates exercises followed by longer mobility and stretching work for the hips, spine and shoulders.", imageUrl: SEEDED_CLASS_IMAGES.reformerFoundations, defaultDurationMinutes: 60, defaultCapacity: 10, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 20 });
+  const functionalTraining = await upsertClassType({ slug: "functional-training", categoryId: fitnessCategory.id, name: "Functional Training", description: "Small-group strength and conditioning using bodyweight, dumbbells, kettlebells and simple movement circuits.", imageUrl: SEEDED_CLASS_IMAGES.functionalStrength, defaultDurationMinutes: 45, defaultCapacity: 8, pricingMode: ServicePricingMode.SINGLE_OR_PLAN, serviceScope: EntitlementScope.COLLECTIVE_CLASSES, sortOrder: 10 });
+  const privateReformer = await upsertClassType({ slug: "private-reformer", categoryId: privateCategory.id, name: "Private Reformer", description: "An individual reformer session adapted to the client's experience, movement goals and current training needs.", imageUrl: SEEDED_CLASS_IMAGES.privateReformerCoaching, defaultDurationMinutes: 50, defaultCapacity: 1, pricingMode: ServicePricingMode.PLAN_ONLY, serviceScope: EntitlementScope.PRIVATE_CLASSES, sortOrder: 10 });
 
-  const vinyasaTemplate = await upsertClassTemplate({ slug: "vinyasa-flow-brussels", classTypeId: vinyasaYoga.id, defaultTeacherId: teachers.anaId, title: "Vinyasa Flow Brussels", description: "A full-spectrum vinyasa class with warm-up, flow and cooldown.", location: "Ixelles Studio A", defaultCapacity: PROD_SESSION_CAPACITY, defaultDurationMinutes: 30 });
-  const rocketTemplate = await upsertClassTemplate({ slug: "rocket-yoga-power-sequence", classTypeId: rocketYoga.id, defaultTeacherId: teachers.sofiaId, title: "Rocket Yoga Power Sequence", description: "Progressive rocket yoga with core and inversion prep.", location: "Ixelles Studio B", defaultCapacity: PROD_SESSION_CAPACITY, defaultDurationMinutes: 30 });
-  const hathaTemplate = await upsertClassTemplate({ slug: "hatha-reset-weekend", classTypeId: hathaYoga.id, defaultTeacherId: teachers.anaId, title: "Hatha Reset Weekend", description: "Grounding hatha class focused on breath and posture quality.", location: "Ixelles Studio A", defaultCapacity: PROD_SESSION_CAPACITY, defaultDurationMinutes: 30 });
-  const matPilatesTemplate = await upsertClassTemplate({ slug: "mat-pilates-core-lab", classTypeId: matPilates.id, defaultTeacherId: teachers.elenaId, title: "Mat Pilates Core Lab", description: "Core and glute-focused mat pilates with progression options.", location: "Etterbeek Studio C", defaultCapacity: PROD_SESSION_CAPACITY, defaultDurationMinutes: 30 });
-  const reformerTemplate = await upsertClassTemplate({ slug: "reformer-foundations-small-group", classTypeId: reformerFoundations.id, defaultTeacherId: teachers.elenaId, title: "Reformer Foundations Small Group", description: "Technique-first reformer foundations for beginners.", location: "Ixelles Reformer Room", defaultCapacity: PROD_SESSION_CAPACITY, defaultDurationMinutes: 30 });
-  const functionalTemplate = await upsertClassTemplate({ slug: "functional-strength-express", classTypeId: functionalStrength.id, defaultTeacherId: teachers.sofiaId, title: "Functional Strength Express", description: "High-focus functional strength class with mobility warm-up.", location: "Etterbeek Performance Room", defaultCapacity: PROD_SESSION_CAPACITY, defaultDurationMinutes: 30 });
-  await upsertClassTemplate({ slug: "private-reformer-coaching-slot", classTypeId: privateReformerCoaching.id, defaultTeacherId: teachers.anaId, title: "Private Reformer Coaching", description: "Private coaching slot tailored to goals and mobility.", location: "Ixelles Private Studio", defaultCapacity: 1, defaultDurationMinutes: 30 });
+  const vinyasaTemplate = await upsertClassTemplate({ slug: "vinyasa-yoga", classTypeId: vinyasaYoga.id, defaultTeacherId: teachers.anaId, title: "Vinyasa Yoga", description: vinyasaYoga.description, location: null, defaultCapacity: 10, defaultDurationMinutes: 60 });
+  const rocketTemplate = await upsertClassTemplate({ slug: "rocket-yoga", classTypeId: rocketYoga.id, defaultTeacherId: teachers.anaId, title: "Rocket Yoga", description: rocketYoga.description, location: null, defaultCapacity: 10, defaultDurationMinutes: 60 });
+  const matPilatesTemplate = await upsertClassTemplate({ slug: "mat-pilates", classTypeId: matPilates.id, defaultTeacherId: teachers.elenaId, title: "Mat Pilates", description: matPilates.description, location: null, defaultCapacity: 10, defaultDurationMinutes: 55 });
+  const pilatesStretchingTemplate = await upsertClassTemplate({ slug: "pilates-and-stretching", classTypeId: pilatesStretching.id, defaultTeacherId: teachers.elenaId, title: "Pilates & Stretching", description: pilatesStretching.description, location: null, defaultCapacity: 10, defaultDurationMinutes: 60 });
+  const functionalTrainingTemplate = await upsertClassTemplate({ slug: "functional-training", classTypeId: functionalTraining.id, defaultTeacherId: teachers.sofiaId, title: "Functional Training", description: functionalTraining.description, location: null, defaultCapacity: 8, defaultDurationMinutes: 45 });
+  await upsertClassTemplate({ slug: "private-reformer", classTypeId: privateReformer.id, defaultTeacherId: teachers.elenaId, title: "Private Reformer", description: privateReformer.description, location: null, defaultCapacity: 1, defaultDurationMinutes: 50 });
 
-  // 3 fixed weekly slots per template covering 6 months forward
+  // Fixed weekly public timetable covering 6 months forward.
   type SessionSpec = { weekday: Weekday; time: string };
-  const templateSchedules: Array<{ template: { id: string; title: string; description: string | null; location: string | null }; classTypeId: string; teacherId: string; slots: SessionSpec[] }> = [
-    { template: vinyasaTemplate, classTypeId: vinyasaYoga.id, teacherId: teachers.anaId, slots: [{ weekday: Weekday.MONDAY, time: "07:00" }, { weekday: Weekday.WEDNESDAY, time: "07:00" }, { weekday: Weekday.FRIDAY, time: "19:30" }] },
-    { template: rocketTemplate, classTypeId: rocketYoga.id, teacherId: teachers.sofiaId, slots: [{ weekday: Weekday.TUESDAY, time: "09:00" }, { weekday: Weekday.WEDNESDAY, time: "19:30" }, { weekday: Weekday.SATURDAY, time: "09:00" }] },
-    { template: hathaTemplate, classTypeId: hathaYoga.id, teacherId: teachers.anaId, slots: [{ weekday: Weekday.MONDAY, time: "12:00" }, { weekday: Weekday.FRIDAY, time: "07:00" }, { weekday: Weekday.SUNDAY, time: "09:30" }] },
-    { template: matPilatesTemplate, classTypeId: matPilates.id, teacherId: teachers.elenaId, slots: [{ weekday: Weekday.MONDAY, time: "09:00" }, { weekday: Weekday.THURSDAY, time: "18:00" }, { weekday: Weekday.FRIDAY, time: "12:00" }] },
-    { template: reformerTemplate, classTypeId: reformerFoundations.id, teacherId: teachers.elenaId, slots: [{ weekday: Weekday.TUESDAY, time: "18:00" }, { weekday: Weekday.THURSDAY, time: "09:00" }, { weekday: Weekday.SATURDAY, time: "10:30" }] },
-    { template: functionalTemplate, classTypeId: functionalStrength.id, teacherId: teachers.sofiaId, slots: [{ weekday: Weekday.MONDAY, time: "18:00" }, { weekday: Weekday.WEDNESDAY, time: "12:00" }, { weekday: Weekday.THURSDAY, time: "19:30" }] },
+  const templateSchedules: Array<{ template: { id: string; title: string; description: string | null; location: string | null; defaultDurationMinutes: number; defaultCapacity: number }; classTypeId: string; teacherId: string; slots: SessionSpec[] }> = [
+    { template: functionalTrainingTemplate, classTypeId: functionalTraining.id, teacherId: teachers.sofiaId, slots: [{ weekday: Weekday.MONDAY, time: "18:00" }] },
+    { template: vinyasaTemplate, classTypeId: vinyasaYoga.id, teacherId: teachers.anaId, slots: [{ weekday: Weekday.MONDAY, time: "19:00" }, { weekday: Weekday.TUESDAY, time: "19:15" }, { weekday: Weekday.SATURDAY, time: "11:00" }] },
+    { template: matPilatesTemplate, classTypeId: matPilates.id, teacherId: teachers.elenaId, slots: [{ weekday: Weekday.TUESDAY, time: "18:00" }, { weekday: Weekday.THURSDAY, time: "18:00" }] },
+    { template: pilatesStretchingTemplate, classTypeId: pilatesStretching.id, teacherId: teachers.elenaId, slots: [{ weekday: Weekday.WEDNESDAY, time: "18:30" }, { weekday: Weekday.THURSDAY, time: "19:15" }] },
+    { template: rocketTemplate, classTypeId: rocketYoga.id, teacherId: teachers.anaId, slots: [{ weekday: Weekday.SATURDAY, time: "09:30" }] },
   ];
 
   type ProdSessionSeed = { id: string; startsAt: Date; capacity: number; classTypeId: string; inBookingWindow: boolean };
@@ -495,10 +495,10 @@ async function seedProductionScheduleAndBookings(input: {
     for (const slot of entry.slots) {
       const occurrences = nextOccurrencesInWindow({ weekday: slot.weekday, time: slot.time, windowStart: seedDayUtc, windowEnd: sessionWindowEndUtc });
       for (const startsAt of occurrences) {
-        const session = await upsertStudioSession({ classTemplateId: entry.template.id, classTypeId: entry.classTypeId, teacherId: entry.teacherId, title: entry.template.title, description: entry.template.description ?? undefined, location: entry.template.location ?? undefined, startsAt, endsAt: new Date(startsAt.getTime() + 30 * 60 * 1000), capacity: PROD_SESSION_CAPACITY });
+        const session = await upsertStudioSession({ classTemplateId: entry.template.id, classTypeId: entry.classTypeId, teacherId: entry.teacherId, title: entry.template.title, description: entry.template.description ?? undefined, location: null, startsAt, endsAt: new Date(startsAt.getTime() + entry.template.defaultDurationMinutes * 60 * 1000), capacity: entry.template.defaultCapacity });
         totalSessionsGenerated += 1;
         if (startsAt <= bookingWindowEndUtc) {
-          bookableSessions.push({ id: session.id, startsAt, capacity: PROD_SESSION_CAPACITY, classTypeId: entry.classTypeId, inBookingWindow: true });
+          bookableSessions.push({ id: session.id, startsAt, capacity: entry.template.defaultCapacity, classTypeId: entry.classTypeId, inBookingWindow: true });
         }
       }
     }
@@ -529,20 +529,30 @@ async function seedProductionScheduleAndBookings(input: {
     // Skip if client already has an active entitlement for this product to stay idempotent
     const existing = await prisma.clientEntitlement.findFirst({ where: { clientId: client.id, productId, status: ClientEntitlementStatus.ACTIVE } });
     if (existing) {
+      const consumed = isMonthly
+        ? 0
+        : (await prisma.creditLedgerEntry.aggregate({
+          where: {
+            clientId: client.id,
+            entitlementId: existing.id,
+            entryType: CreditLedgerEntryType.CONSUME,
+          },
+          _sum: { amount: true },
+        }))._sum.amount ?? 0;
       entitlementByClientId.set(client.id, {
         id: existing.id,
         orderId: existing.orderId!,
         priceId,
         unlimitedAccess: isMonthly,
-        creditsRemaining: isMonthly ? Infinity : 10,
+        creditsRemaining: isMonthly ? Infinity : Math.max(0, 10 + consumed),
         activatedAt: existing.activatedAt ?? purchasedAt,
         expiresAt: existing.expiresAt,
       });
       continue;
     }
 
-    const productNameSnapshot = isMonthly ? "Monthly Recurrent Collective Subscription" : "10-Ticket Collective Classes";
-    const priceNameSnapshot = isMonthly ? "Monthly Unlimited Collective - Monthly" : "10-Class Pack - One Time";
+    const productNameSnapshot = isMonthly ? "Unlimited Monthly Membership" : "10-Class Pack";
+    const priceNameSnapshot = isMonthly ? "Unlimited Monthly Membership" : "10-Class Pack";
     const order = await prisma.order.create({ data: { clientId: client.id, subtotalAmountMinor: unitAmountMinor, discountAmountMinor: 0, totalAmountMinor: unitAmountMinor, currencyCode, status: OrderStatus.PAID, placedAt: purchasedAt, notes: isMonthly ? "seed-prod-monthly-subscription" : "seed-prod-collective-10-pack" } });
     await prisma.orderItem.create({ data: { orderId: order.id, productId, priceId, quantity: 1, productNameSnapshot, priceNameSnapshot, unitAmountMinor, lineSubtotalAmountMinor: unitAmountMinor, lineDiscountAmountMinor: 0, lineTotalAmountMinor: unitAmountMinor, currencyCode } });
     await prisma.payment.create({ data: { orderId: order.id, status: PaymentStatus.SUCCEEDED, method: PaymentMethod.CARD, provider: PaymentProvider.STRIPE, providerReference: `seed-prod-payment-${order.id}`, stripeCheckoutSessionId: `cs_prod_seed_${order.id.slice(0, 16)}`, stripeCustomerId: `cus_prod_${client.id.slice(0, 12)}`, stripeCheckoutMode: isMonthly ? StripeCheckoutMode.SUBSCRIPTION : StripeCheckoutMode.PAYMENT, amountMinor: unitAmountMinor, currencyCode, authorizedAt: purchasedAt, capturedAt: purchasedAt, createdAt: purchasedAt } });
@@ -569,16 +579,30 @@ async function seedProductionScheduleAndBookings(input: {
   console.info(`[seed:demo] Entitlements seeded: 50 clients with 10-pack, 50 clients with monthly subscription.`);
 
   // Pre-populate bookings for sessions within booking window (~40% occupancy)
-  const bookedPairs = new Set<string>();
   let bookingsCreated = 0;
   let clientIndex = 0;
   const bookingWindowSessions = bookableSessions.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+  const existingBookings = await prisma.booking.findMany({
+    where: {
+      studioSessionId: { in: bookingWindowSessions.map((session) => session.id) },
+      clientId: { not: null },
+    },
+    select: { clientId: true, studioSessionId: true },
+  });
+  const bookedPairs = new Set(existingBookings.map((booking) => `${booking.clientId}::${booking.studioSessionId}`));
+  const existingBookingCountBySessionId = new Map<string, number>();
+  for (const booking of existingBookings) {
+    existingBookingCountBySessionId.set(
+      booking.studioSessionId,
+      (existingBookingCountBySessionId.get(booking.studioSessionId) ?? 0) + 1,
+    );
+  }
 
   for (const session of bookingWindowSessions) {
     const daysAhead = Math.floor((session.startsAt.getTime() - seedDayUtc.getTime()) / (1000 * 60 * 60 * 24));
     // Near-term sessions: ~50% occupancy; further sessions: ~25%
     const targetOccupancy = daysAhead <= 30 ? rng.int(5, 9) : rng.int(2, 5);
-    let createdForSession = 0;
+    let createdForSession = existingBookingCountBySessionId.get(session.id) ?? 0;
     let guard = 0;
 
     while (createdForSession < targetOccupancy && guard < clients.length * 2) {
@@ -624,6 +648,7 @@ async function seedProductionLearning() {
 
   const programs = [FITNESS_PROGRAM, YOGA_PROGRAM, PILATES_PROGRAM];
   const allCourses = [...FITNESS_COURSES, ...YOGA_COURSES, ...PILATES_COURSES];
+  const courseLegacyIds = allCourses.map((course) => course.legacyId);
 
   for (const program of programs) {
     await prisma.learningProgram.upsert({
@@ -641,6 +666,15 @@ async function seedProductionLearning() {
     });
   }
 
+  await prisma.learningCourse.deleteMany({
+    where: {
+      legacyId: {
+        startsWith: "prod-",
+        notIn: courseLegacyIds,
+      },
+    },
+  });
+
   console.info(`[seed:demo] Learning seeded: ${programs.length} programmes, ${allCourses.length} courses.`);
   return { programCount: programs.length, courseCount: allCourses.length };
 }
@@ -648,15 +682,16 @@ async function seedProductionLearning() {
 // ─── Agenda schedule ──────────────────────────────────────────────────────────
 
 async function seedAgendaSchedule() {
-  for (let index = 0; index < AGENDA_SCHEDULE.length; index += 1) {
-    const entry = AGENDA_SCHEDULE[index]!;
+  assertDemoScheduleAgreement();
+  for (let index = 0; index < DEMO_WEEKLY_SCHEDULE.length; index += 1) {
+    const entry = DEMO_WEEKLY_SCHEDULE[index]!;
     await prisma.siteWeeklyScheduleEntry.upsert({
       where: { id: `seed-schedule-${entry.dayOfWeek}-${index}` },
-      update: { dayOfWeek: entry.dayOfWeek, startTime: entry.startTime, endTime: entry.endTime, label: entry.label, displayOrder: entry.displayOrder, isActive: true },
-      create: { id: `seed-schedule-${entry.dayOfWeek}-${index}`, dayOfWeek: entry.dayOfWeek, startTime: entry.startTime, endTime: entry.endTime, label: entry.label, displayOrder: entry.displayOrder, isActive: true },
+      update: { dayOfWeek: entry.dayOfWeek, startTime: entry.startTime, endTime: entry.endTime, label: entry.label, displayOrder: index + 1, isActive: true },
+      create: { id: `seed-schedule-${entry.dayOfWeek}-${index}`, dayOfWeek: entry.dayOfWeek, startTime: entry.startTime, endTime: entry.endTime, label: entry.label, displayOrder: index + 1, isActive: true },
     });
   }
-  console.info(`[seed:demo] Agenda schedule seeded: ${AGENDA_SCHEDULE.length} entries.`);
+  console.info(`[seed:demo] Agenda schedule seeded: ${DEMO_WEEKLY_SCHEDULE.length} entries.`);
 }
 
 // ─── Marketing history ────────────────────────────────────────────────────────
@@ -674,16 +709,16 @@ async function seedProductionMarketingHistory(input: { createdById: string }) {
   const launchSentAt = new Date("2026-04-01T10:00:00.000Z");
   await prisma.marketingCampaign.upsert({
     where: { id: "prod-seed-marketing-launch" },
-    update: { name: "BookMyClass is live!", status: MarketingCampaignStatus.SENT, categoryId: launchCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "BookMyClass is now live — book your first class", previewText: "Reserve your spot in our opening schedule.", fromName: "BookMyClass Studio", fromEmail: "hello@bookmyclass.app", replyTo: "support@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "We're live!" }, { type: "paragraph", text: "Your membership is ready. Book your first class today." }, { type: "button", text: "View schedule", url: "https://bookmyclass.app/book-a-class" }] }, htmlSnapshot: "<html><body><h2>We're live!</h2><p>Your membership is ready. Book your first class today.</p></body></html>", sentAt: launchSentAt, createdById: input.createdById },
-    create: { id: "prod-seed-marketing-launch", name: "BookMyClass is live!", status: MarketingCampaignStatus.SENT, categoryId: launchCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "BookMyClass is now live — book your first class", previewText: "Reserve your spot in our opening schedule.", fromName: "BookMyClass Studio", fromEmail: "hello@bookmyclass.app", replyTo: "support@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "We're live!" }, { type: "paragraph", text: "Your membership is ready. Book your first class today." }, { type: "button", text: "View schedule", url: "https://bookmyclass.app/book-a-class" }] }, htmlSnapshot: "<html><body><h2>We're live!</h2><p>Your membership is ready. Book your first class today.</p></body></html>", sentAt: launchSentAt, createdById: input.createdById },
+    update: { name: "Summer Schedule Update", status: MarketingCampaignStatus.SENT, categoryId: launchCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "Studio Aster summer schedule update", previewText: "Small changes to evening classes and Saturday yoga.", fromName: "Studio Aster", fromEmail: "hello@bookmyclass.app", replyTo: "hello@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "Summer Schedule Update" }, { type: "paragraph", text: "The weekly timetable now includes Thursday Pilates & Stretching and Saturday morning Rocket Yoga." }, { type: "button", text: "View schedule", url: "https://demo.bookmyclass.app/book-a-class" }] }, htmlSnapshot: "<html><body><h2>Summer Schedule Update</h2><p>The weekly timetable now includes Thursday Pilates & Stretching and Saturday morning Rocket Yoga.</p></body></html>", sentAt: launchSentAt, createdById: input.createdById },
+    create: { id: "prod-seed-marketing-launch", name: "Summer Schedule Update", status: MarketingCampaignStatus.SENT, categoryId: launchCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "Studio Aster summer schedule update", previewText: "Small changes to evening classes and Saturday yoga.", fromName: "Studio Aster", fromEmail: "hello@bookmyclass.app", replyTo: "hello@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "Summer Schedule Update" }, { type: "paragraph", text: "The weekly timetable now includes Thursday Pilates & Stretching and Saturday morning Rocket Yoga." }, { type: "button", text: "View schedule", url: "https://demo.bookmyclass.app/book-a-class" }] }, htmlSnapshot: "<html><body><h2>Summer Schedule Update</h2><p>The weekly timetable now includes Thursday Pilates & Stretching and Saturday morning Rocket Yoga.</p></body></html>", sentAt: launchSentAt, createdById: input.createdById },
   });
 
   const sampleRecipients = [
-    { id: "prod-seed-mkt-rec-01", email: "prod-client-001@bookmyclass.app", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-04-01T10:01:00.000Z"), deliveredAt: new Date("2026-04-01T10:01:18.000Z"), openedAt: new Date("2026-04-01T10:15:00.000Z"), clickedAt: new Date("2026-04-01T10:17:00.000Z") },
-    { id: "prod-seed-mkt-rec-02", email: "prod-client-002@bookmyclass.app", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-04-01T10:01:00.000Z"), deliveredAt: new Date("2026-04-01T10:01:20.000Z"), openedAt: null, clickedAt: null },
-    { id: "prod-seed-mkt-rec-03", email: "prod-client-003@bookmyclass.app", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-04-01T10:01:00.000Z"), deliveredAt: new Date("2026-04-01T10:01:22.000Z"), openedAt: new Date("2026-04-01T11:00:00.000Z"), clickedAt: null },
-    { id: "prod-seed-mkt-rec-04", email: "prod-client-004@bookmyclass.app", status: MarketingRecipientStatus.BOUNCED, sentAt: new Date("2026-04-01T10:01:00.000Z"), deliveredAt: null, openedAt: null, clickedAt: null },
-    { id: "prod-seed-mkt-rec-05", email: "prod-client-005@bookmyclass.app", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-04-01T10:01:00.000Z"), deliveredAt: new Date("2026-04-01T10:01:25.000Z"), openedAt: new Date("2026-04-01T14:20:00.000Z"), clickedAt: new Date("2026-04-01T14:22:00.000Z") },
+    { id: "prod-seed-mkt-rec-01", email: "emma.desmet@bookmyclass.app", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-04-01T10:01:00.000Z"), deliveredAt: new Date("2026-04-01T10:01:18.000Z"), openedAt: new Date("2026-04-01T10:15:00.000Z"), clickedAt: new Date("2026-04-01T10:17:00.000Z") },
+    { id: "prod-seed-mkt-rec-02", email: "laura.martin@bookmyclass.app", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-04-01T10:01:00.000Z"), deliveredAt: new Date("2026-04-01T10:01:20.000Z"), openedAt: null, clickedAt: null },
+    { id: "prod-seed-mkt-rec-03", email: "camille.dubois@bookmyclass.app", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-04-01T10:01:00.000Z"), deliveredAt: new Date("2026-04-01T10:01:22.000Z"), openedAt: new Date("2026-04-01T11:00:00.000Z"), clickedAt: null },
+    { id: "prod-seed-mkt-rec-04", email: "sofia.janssens@bookmyclass.app", status: MarketingRecipientStatus.BOUNCED, sentAt: new Date("2026-04-01T10:01:00.000Z"), deliveredAt: null, openedAt: null, clickedAt: null },
+    { id: "prod-seed-mkt-rec-05", email: "marta.kovacs@bookmyclass.app", status: MarketingRecipientStatus.DELIVERED, sentAt: new Date("2026-04-01T10:01:00.000Z"), deliveredAt: new Date("2026-04-01T10:01:25.000Z"), openedAt: new Date("2026-04-01T14:20:00.000Z"), clickedAt: new Date("2026-04-01T14:22:00.000Z") },
   ];
 
   for (const rec of sampleRecipients) {
@@ -697,8 +732,8 @@ async function seedProductionMarketingHistory(input: { createdById: string }) {
   // Draft newsletter ready to send
   await prisma.marketingCampaign.upsert({
     where: { id: "prod-seed-marketing-newsletter-draft" },
-    update: { name: "May Studio Newsletter", status: MarketingCampaignStatus.DRAFT, categoryId: newsCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "What's new at BookMyClass this month", previewText: "New classes, instructor spotlights, and member milestones.", fromName: "BookMyClass Studio", fromEmail: "hello@bookmyclass.app", replyTo: "support@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "May Studio Update" }, { type: "paragraph", text: "Here is what's happening in the studio this month." }] }, htmlSnapshot: null, sentAt: null, createdById: input.createdById },
-    create: { id: "prod-seed-marketing-newsletter-draft", name: "May Studio Newsletter", status: MarketingCampaignStatus.DRAFT, categoryId: newsCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "What's new at BookMyClass this month", previewText: "New classes, instructor spotlights, and member milestones.", fromName: "BookMyClass Studio", fromEmail: "hello@bookmyclass.app", replyTo: "support@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "May Studio Update" }, { type: "paragraph", text: "Here is what's happening in the studio this month." }] }, createdById: input.createdById },
+    update: { name: "New Thursday Pilates & Stretching", status: MarketingCampaignStatus.DRAFT, categoryId: newsCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "New Thursday Pilates & Stretching", previewText: "A second evening Pilates & Stretching class is now on the demo timetable.", fromName: "Studio Aster", fromEmail: "hello@bookmyclass.app", replyTo: "hello@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "New Thursday Pilates & Stretching" }, { type: "paragraph", text: "The Thursday evening schedule now includes Mat Pilates and Pilates & Stretching." }] }, htmlSnapshot: null, sentAt: null, createdById: input.createdById },
+    create: { id: "prod-seed-marketing-newsletter-draft", name: "New Thursday Pilates & Stretching", status: MarketingCampaignStatus.DRAFT, categoryId: newsCategory.id, audienceType: MarketingAudienceType.ALL_USERS, manualAudienceJson: { emails: [], userIds: [] }, subject: "New Thursday Pilates & Stretching", previewText: "A second evening Pilates & Stretching class is now on the demo timetable.", fromName: "Studio Aster", fromEmail: "hello@bookmyclass.app", replyTo: "hello@bookmyclass.app", contentJson: { blocks: [{ type: "heading", text: "New Thursday Pilates & Stretching" }, { type: "paragraph", text: "The Thursday evening schedule now includes Mat Pilates and Pilates & Stretching." }] }, createdById: input.createdById },
   });
 
   console.info("[seed:demo] Marketing history seeded (1 sent campaign, 5 recipients, 1 draft).");
@@ -816,6 +851,7 @@ export async function runDemoSeed(): Promise<void> {
 
   console.info(`[seed:demo] Completed: clients=${PROD_CLIENT_COUNT}, sessions=${schedulingSummary.totalSessionsGenerated}, bookings=${schedulingSummary.bookingsCreated}, programmes=${learningSummary.programCount}, courses=${learningSummary.courseCount}.`);
 }
+
 
 
 

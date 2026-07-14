@@ -79,7 +79,7 @@ describe("teacher pages", () => {
 
     render(await TeacherSessionsPage());
 
-    expect(screen.getByRole("heading", { name: "My Sessions" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "My Schedule" })).toBeInTheDocument();
     // Calendar renders: "Time" header, day headers, and hour labels
     expect(screen.getByText("Time")).toBeInTheDocument();
     // Check that calendar structure is present
@@ -155,9 +155,9 @@ describe("teacher pages", () => {
 
     expect(screen.getByTestId("teacher-session-roster")).toBeInTheDocument();
     expect(screen.getByText("Client One")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add client" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Remove client" })).toBeInTheDocument();
-    expect(screen.getByText(/Attendance: CHECKED_IN/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Participant" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove Participant" })).toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.textContent === "Attendance: Checked In")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mark attended" })).toBeInTheDocument();
   });
 

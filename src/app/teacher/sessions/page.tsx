@@ -96,7 +96,7 @@ export default async function TeacherSessionsPage({
     return (
       <section className="space-y-4">
         <header>
-          <h1 className="text-2xl font-semibold text-[#1f2735]">My Sessions</h1>
+          <h1 className="text-2xl font-semibold text-[#1f2735]">My Schedule</h1>
           <p className="mt-1 text-sm text-[#4b5a72]">
             Only sessions assigned to you are visible here.
           </p>
@@ -150,7 +150,7 @@ export default async function TeacherSessionsPage({
   } catch {
     return (
       <section className="rounded-xl border border-[#d3dbe5] bg-white p-6">
-        <h1 className="text-2xl font-semibold text-[#1f2735]">My Sessions</h1>
+        <h1 className="text-2xl font-semibold text-[#1f2735]">My Schedule</h1>
         <p className="mt-2 text-sm text-[#7b2d2d]">
           Unable to load sessions right now.
         </p>

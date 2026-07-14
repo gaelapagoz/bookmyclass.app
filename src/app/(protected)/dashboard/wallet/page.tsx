@@ -49,10 +49,10 @@ function ledgerEntrySign(entryType: GiftCardLedgerEntryType): "+" | "-" | "" {
 
 function loyaltyEntryLabel(entryType: string): string {
   switch (entryType) {
-    case "EARN": return "Spend earning";
-    case "MANUAL_GRANT": return "Manual grant";
-    case "REDEEM": return "Reward redemption";
-    case "REVERSAL": return "Financial reversal";
+    case "EARN": return "Points Earned";
+    case "MANUAL_GRANT": return "Points Adjustment";
+    case "REDEEM": return "Reward Used";
+    case "REVERSAL": return "Reversed";
     case "EXPIRE": return "Expiration";
     default: return entryType;
   }
@@ -113,21 +113,21 @@ export default async function DashboardWalletPage() {
           <div className="mt-5 space-y-6">
             <div className="grid gap-4 sm:grid-cols-3">
               <article className="rounded-xl border border-[#d8cec6] bg-[#fffdfb] p-4">
-                <p className="text-xs uppercase tracking-wide text-[#8a5959]">Settled Balance</p>
+                <p className="text-xs uppercase tracking-wide text-[#8a5959]">Gift Card Balance</p>
                 <p className="mt-2 text-2xl font-semibold text-[#6f2b2b]" data-testid="settled-balance">
                   {formatAmount(wallet.balanceMinor, wallet.currencyCode)}
                 </p>
               </article>
 
               <article className="rounded-xl border border-[#d8cec6] bg-[#fffdfb] p-4">
-                <p className="text-xs uppercase tracking-wide text-[#8a5959]">Available</p>
+                <p className="text-xs uppercase tracking-wide text-[#8a5959]">Available to Spend</p>
                 <p className="mt-2 text-2xl font-semibold text-[#6f2b2b]" data-testid="available-balance">
                   {formatAmount(wallet.availableBalanceMinor, wallet.currencyCode)}
                 </p>
               </article>
 
               <article className="rounded-xl border border-[#d8cec6] bg-[#fffdfb] p-4">
-                <p className="text-xs uppercase tracking-wide text-[#8a5959]">Reserved</p>
+                <p className="text-xs uppercase tracking-wide text-[#8a5959]">Pending Checkout</p>
                 <p className="mt-2 text-2xl font-semibold text-[#6f2b2b]" data-testid="reserved-balance">
                   {formatAmount(wallet.reservedAmountMinor, wallet.currencyCode)}
                 </p>
@@ -216,7 +216,7 @@ export default async function DashboardWalletPage() {
           </article>
 
           <article className="rounded-xl border border-[#d8cec6] bg-[#fffdfb] p-4">
-            <p className="text-xs uppercase tracking-wide text-[#8a5959]">Loyalty Credit</p>
+            <p className="text-xs uppercase tracking-wide text-[#8a5959]">Studio Credit</p>
             <p className="mt-2 text-2xl font-semibold text-[#6f2b2b]">
               {formatAmount(loyaltyCredit.availableBalanceMinor, loyaltyCurrencyCode)}
             </p>

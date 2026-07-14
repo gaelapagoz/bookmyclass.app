@@ -50,6 +50,24 @@ export type StoreCatalogReadModel = StoreCatalogProduct & {
   checkoutPrices: StoreCatalogPrice[];
 };
 
+const SEEDED_STORE_IMAGE_FILENAME_BY_SLUG: Readonly<Record<string, string>> = {
+  "store-gift-card-25-eur": "store-gift-card-25-eur.jpg",
+  "store-gift-card-50-eur": "store-gift-card-50-eur.jpg",
+  "store-gift-card-100-eur": "store-gift-card-100-eur.jpg",
+  "store-merch-yoga-mat": "store-merch-yoga-mat.jpg",
+  "store-merch-resistance-bands": "store-merch-resistance-bands.jpg",
+  "store-merch-studio-tote": "store-merch-studio-tote.jpg",
+};
+
+export function getSeededStoreImagePathForSlug(slug: string): string | null {
+  const filename = SEEDED_STORE_IMAGE_FILENAME_BY_SLUG[slug];
+  return filename ? `/uploads/products/${filename}` : null;
+}
+
+export function getSeededStoreImageRenderPathForSlug(slug: string): string | null {
+  return getSeededStoreImagePathForSlug(slug);
+}
+
 export type GiftCardPriceValidationResult =
   | { ok: true }
   | { ok: false; code: string; message: string };
@@ -206,7 +224,7 @@ export async function listStoreCatalogReadModels(): Promise<StoreCatalogReadMode
       slug: product.slug,
       description: product.description,
       productType: product.productType,
-      imageAsset: await getRenderableStoreImageAsset(product.imageAsset),
+      imageAsset: await getStoreCatalogImageAsset(product.slug, product.imageAsset),
       prices: product.prices,
       checkoutPrices,
       fulfillmentLabel,
@@ -244,4 +262,26 @@ async function getRenderableStoreImageAsset<T extends { path: string }>(asset: T
 
   const renderState = await getCanonicalMediaRenderState(asset.path, { allowedFolders: ["products"] });
   return renderState.src ? asset : null;
+}
+
+async function getStoreCatalogImageAsset(
+  slug: string,
+  asset: StoreCatalogProduct["imageAsset"],
+): Promise<StoreCatalogProduct["imageAsset"]> {
+  const seededPath = getSeededStoreImagePathForSlug(slug);
+  if (seededPath) {
+    const seededRenderState = await getCanonicalMediaRenderState(seededPath, { allowedFolders: ["products"] });
+    if (seededRenderState.src) {
+      const seededRenderPath = getSeededStoreImageRenderPathForSlug(slug) ?? seededPath;
+      return {
+        id: `seeded:${slug}`,
+        path: seededRenderPath,
+        mimeType: "image/jpeg",
+        sizeBytes: 0,
+        originalFilename: seededPath.split("/").at(-1) ?? "seeded-store-product.jpg",
+      };
+    }
+  }
+
+  return getRenderableStoreImageAsset(asset);
 }

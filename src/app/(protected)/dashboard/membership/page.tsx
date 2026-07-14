@@ -8,13 +8,20 @@ function formatDate(iso: string) {
   }).format(new Date(iso));
 }
 
+function formatReadableStatus(status: string) {
+  return status
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 export default async function DashboardMembershipPage() {
   const session = await requireAuth();
   const data = await getDashboardMembershipData(session.user.id);
 
   return (
     <section>
-      <h1 className="text-3xl font-semibold text-[#6f2b2b]">Membership & Credits</h1>
+      <h1 className="text-3xl font-semibold text-[#6f2b2b]">Memberships & Packs</h1>
       <p className="mt-2 text-sm text-[#7f5a5a]">Track active packs, usable credits, and recurring memberships.</p>
       {data.canManageStripeBilling ? <div className="mt-4"><ManageBillingButton /></div> : null}
 
@@ -25,7 +32,7 @@ export default async function DashboardMembershipPage() {
             <>
               <p className="mt-2 font-medium text-[#5f4040]">{data.activeSubscription.productName}</p>
               <p className="text-sm text-[#5f4040]">
-                Status: {data.activeSubscription.status}
+                Status: {formatReadableStatus(data.activeSubscription.status)}
               </p>
               <p className="text-sm text-[#5f4040]">
                 Period: {formatDate(data.activeSubscription.currentPeriodStart)} -{" "}
@@ -42,7 +49,7 @@ export default async function DashboardMembershipPage() {
           <p className="mt-2 text-3xl font-semibold text-[#6f2b2b]">{data.usableCredits}</p>
           <p className="mt-1 text-xs text-[#7f5a5a]">Calculated across all active packs.</p>
           <p className="mt-1 text-xs text-[#7f5a5a]">
-            Credits are used from the earliest-expiring pack first.
+            Your next booking uses the eligible class pack that expires first.
           </p>
         </article>
       </div>
@@ -57,7 +64,7 @@ export default async function DashboardMembershipPage() {
               <li key={pack.entitlementId} className="rounded-md border border-[#ebe1d8] px-3 py-2 text-sm">
                 <p className="font-medium text-[#6f2b2b]">{pack.productName}</p>
                 <p className="text-[#5f4040]">Remaining credits: {pack.remainingCredits}</p>
-                <p className="text-[#5f4040]">Status: {pack.status}</p>
+                <p className="text-[#5f4040]">Status: {formatReadableStatus(pack.status)}</p>
                 <p className="text-[#5f4040]">
                   Expires: {pack.expiresAt ? formatDate(pack.expiresAt) : "No expiry"}
                 </p>
@@ -82,8 +89,7 @@ export default async function DashboardMembershipPage() {
                 className="rounded-md border border-[#ebe1d8] px-3 py-2 text-sm"
               >
                 <p className="font-medium text-[#6f2b2b]">{subscription.productName}</p>
-                <p className="text-[#5f4040]">Status: {subscription.status}</p>
-                <p className="text-[#5f4040]">Provider: {subscription.provider}</p>
+                <p className="text-[#5f4040]">Status: {formatReadableStatus(subscription.status)}</p>
                 {subscription.cancelAtPeriodEnd ? (
                   <p className="text-[#5f4040]">
                     Cancels at period end: {formatDate(subscription.currentPeriodEnd)}

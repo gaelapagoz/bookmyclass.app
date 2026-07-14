@@ -39,7 +39,7 @@ describe("teacher sessions calendar page", () => {
       }),
     );
 
-    expect(screen.getByRole("heading", { name: "My Sessions" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "My Schedule" })).toBeInTheDocument();
     expect(
       screen.getByText("Only sessions assigned to you are visible here."),
     ).toBeInTheDocument();

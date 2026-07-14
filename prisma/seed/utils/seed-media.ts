@@ -96,6 +96,11 @@ export async function syncSeedMediaAsset(plan: SeedMediaPlan): Promise<"copied" 
   }
 }
 
+export async function overwriteSeedMediaAsset(plan: SeedMediaPlan): Promise<void> {
+  await mkdir(path.dirname(plan.destinationAbsolutePath), { recursive: true });
+  await copyFile(plan.sourceAbsolutePath, plan.destinationAbsolutePath);
+}
+
 export async function syncSeedMediaPath(
   publicPathInput: string,
   options: {

@@ -10,6 +10,7 @@ import {
 } from "../../prisma/seed/config";
 import {
   MIN_COURSES_PER_PROGRAM,
+  MAX_COURSES_PER_PROGRAM,
   PILATES_COURSES,
   PILATES_PROGRAM,
   PROD_LEARNING_VIDEO_URL,
@@ -109,7 +110,7 @@ describe("deterministic RNG", () => {
 });
 
 describe("production learning catalogue data", () => {
-  it("has 3 programs and at least 20 courses per program", () => {
+  it("has 3 programs and up to 6 courses per program", () => {
     expect(PRODUCTION_LEARNING_PROGRAMS).toHaveLength(3);
 
     const courseCountByCategory = new Map<string, number>();
@@ -120,6 +121,7 @@ describe("production learning catalogue data", () => {
     for (const program of PRODUCTION_LEARNING_PROGRAMS) {
       const count = courseCountByCategory.get(program.courseType) ?? 0;
       expect(count).toBeGreaterThanOrEqual(MIN_COURSES_PER_PROGRAM);
+      expect(count).toBeLessThanOrEqual(MAX_COURSES_PER_PROGRAM);
     }
   });
 
@@ -130,11 +132,20 @@ describe("production learning catalogue data", () => {
     }
   });
 
-  it("has 60 total courses across all 3 programs", () => {
-    expect(FITNESS_COURSES).toHaveLength(20);
-    expect(YOGA_COURSES).toHaveLength(20);
-    expect(PILATES_COURSES).toHaveLength(20);
-    expect(PRODUCTION_LEARNING_COURSES).toHaveLength(60);
+  it("has 18 total courses across all 3 programs", () => {
+    expect(FITNESS_COURSES).toHaveLength(6);
+    expect(YOGA_COURSES).toHaveLength(6);
+    expect(PILATES_COURSES).toHaveLength(6);
+    expect(PRODUCTION_LEARNING_COURSES).toHaveLength(18);
+  });
+
+  it("uses human-readable program labels instead of prod route labels", () => {
+    expect(PRODUCTION_LEARNING_PROGRAMS.map((program) => program.courseType)).toEqual([
+      "Functional Training",
+      "Yoga",
+      "Pilates",
+    ]);
+    expect(PRODUCTION_LEARNING_PROGRAMS.map((program) => program.courseType).some((label) => label.startsWith("prod-"))).toBe(false);
   });
 
   it("all program courseTypes are distinct", () => {

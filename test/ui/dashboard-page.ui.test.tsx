@@ -87,10 +87,10 @@ describe("DashboardPage", () => {
     expect(screen.getByText("Client Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Upcoming Booking")).toBeInTheDocument();
     expect(screen.getByText("Active Membership")).toBeInTheDocument();
-    expect(screen.getByText("Credits Left")).toBeInTheDocument();
+    expect(screen.getByText("Class Credits")).toBeInTheDocument();
     expect(screen.getByText("Points Balance")).toBeInTheDocument();
-    expect(screen.getByText("Recent Loyalty Activity")).toBeInTheDocument();
-    expect(screen.getByText("Purchase reward earned")).toBeInTheDocument();
+    expect(screen.getByText("Recent Rewards Activity")).toBeInTheDocument();
+    expect(screen.getByText("Points Earned")).toBeInTheDocument();
     expect(screen.getByText("+32 pts")).toBeInTheDocument();
   });
 });

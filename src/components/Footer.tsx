@@ -1,6 +1,5 @@
 ﻿"use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { siteConfig } from "@/lib/site-config";
 
@@ -96,7 +95,7 @@ export default function Footer() {
                   href="/about/faq"
                   className="text-base underline underline-offset-4 transition hover:opacity-80 md:text-lg"
                 >
-                  Frequent Ask Questions
+                  FAQ
                 </Link>                                  
               </div>
           </div>
@@ -116,15 +115,6 @@ export default function Footer() {
               ))}
             </div>
           </div>
-
-          <Image
-            src="/images/yoga-logo.png"
-            alt="Yoga Alliance Trainer Pro badge"
-            width={128}
-            height={128}
-            className="h-24 w-24 rounded-full border-4 border-black object-cover md:h-32 md:w-32"
-            priority
-          />
         </div>
 
         <p className="mt-10 text-center text-sm md:text-base">&copy; 2026 by {siteConfig.brandName}</p>

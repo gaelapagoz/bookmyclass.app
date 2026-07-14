@@ -27,11 +27,11 @@ function formatDate(iso: string) {
 function loyaltyEntryLabel(entryType: string) {
   switch (entryType) {
     case "EARN":
-      return "Purchase reward earned";
+      return "Points Earned";
     case "MANUAL_GRANT":
-      return "Manual grant received";
+      return "Points Adjustment";
     case "REVERSAL":
-      return "Points reversed";
+      return "Reversed";
     case "EXPIRE":
       return "Points expired";
     default:
@@ -96,14 +96,13 @@ export default async function DashboardPage() {
         </article>
 
         <article className="rounded-xl border border-[#d8cec6] bg-white p-4">
-          <p className="text-xs uppercase tracking-wide text-[#8a5959]">Credits Left</p>
+          <p className="text-xs uppercase tracking-wide text-[#8a5959]">Class Credits</p>
           <p className="mt-2 text-2xl font-semibold text-[#6f2b2b]">{data.creditsLeft}</p>
         </article>
 
         <article className="rounded-xl border border-[#d8cec6] bg-white p-4">
           <p className="text-xs uppercase tracking-wide text-[#8a5959]">Points Balance</p>
           <p className="mt-2 text-2xl font-semibold text-[#6f2b2b]">{formatPoints(loyalty.balancePoints)}</p>
-          <p className="mt-1 text-sm text-[#5f4040]">Read-only loyalty balance</p>
         </article>
       </div>
 
@@ -138,7 +137,7 @@ export default async function DashboardPage() {
         </section>
 
         <section className="rounded-xl border border-[#d8cec6] bg-white p-4">
-          <h2 className="text-lg font-semibold text-[#6f2b2b]">Recent Loyalty Activity</h2>
+          <h2 className="text-lg font-semibold text-[#6f2b2b]">Recent Rewards Activity</h2>
           {loyaltyHistory.length === 0 ? (
             <p className="mt-3 text-sm text-[#5f4040]">No loyalty activity yet.</p>
           ) : (

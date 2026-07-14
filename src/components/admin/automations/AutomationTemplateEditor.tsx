@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 
 import { renderMarketingPreviewHtml } from "@/lib/marketing/marketing-renderer";
+import { siteConfig } from "@/lib/site-config";
 
 type Block =
   | { type: "heading"; contentHtml: string; textColor?: string }
@@ -305,7 +306,7 @@ export default function AutomationTemplateEditor({
 
           <div className="rounded-xl border border-[#d3dbe5] p-4" style={{ backgroundColor: emailBackgroundColor }}>
             <div className="mx-auto rounded-xl border border-[#e2e8f0] bg-white" style={{ maxWidth: `${contentWidth}px` }}>
-              <div className="border-b border-[#e2e8f0] px-4 py-3 text-center text-2xl font-semibold">Yoga Pilates Fitness Studio</div>
+              <div className="border-b border-[#e2e8f0] px-4 py-3 text-center text-2xl font-semibold">{siteConfig.brandName}</div>
               <div className="p-4" dangerouslySetInnerHTML={{ __html: previewHtml }} />
               <div className="border-t border-[#e2e8f0] p-4 text-center text-xs text-[#64748b]">Footer</div>
             </div>

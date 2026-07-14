@@ -103,7 +103,7 @@ describe("/admin entry flow", () => {
     render(await AdminEntryPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText("Admin Portal")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Yoga Pilates Fitness Studio" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Studio Aster" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign In to Admin" })).toBeInTheDocument();
   });
 

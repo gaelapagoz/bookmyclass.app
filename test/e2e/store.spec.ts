@@ -13,8 +13,11 @@ import {
   UserCreatedVia,
 } from "@prisma/client";
 import { createHash } from "node:crypto";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { hash } from "bcryptjs";
 import prisma from "../../src/lib/db";
+import { resolveUploadsConfig } from "../../src/lib/media/upload-config";
 import { signInClient } from "./support/auth";
 import { E2E_PASSWORD } from "./support/constants";
 import {
@@ -22,6 +25,10 @@ import {
   getCapturedEmailsForTest,
   clearCapturedEmailsForTest,
 } from "./support/e2e-api";
+
+test.afterAll(async () => {
+  await prisma.$disconnect();
+});
 
 const password = E2E_PASSWORD;
 const E2E_GIFT_CARD_CODE = "AABBCCDD-EEFF0011-22334455-66778899";
@@ -115,6 +122,63 @@ async function createMerchandiseProduct(amountMinor: number) {
   return { product, price };
 }
 
+async function createMerchandiseProductWithImage(amountMinor: number) {
+  const admin = await prisma.user.findFirst({ where: { role: Role.ADMIN, isActive: true } });
+  if (!admin) throw new Error("E2E store image fixture requires an active admin user.");
+
+  const { uploadsDir, publicUploadsBasePath } = resolveUploadsConfig();
+  const imageBytes = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR4nGNkaPjPgASYGFABqXwANUwCGYEJE74AAAAASUVORK5CYII=",
+    "base64",
+  );
+  const storageFilename = `${unique("store-e2e-product-image")}.png`;
+  const productUploadsDir = path.join(uploadsDir, "products");
+  const absolutePath = path.join(productUploadsDir, storageFilename);
+  await mkdir(productUploadsDir, { recursive: true });
+  await writeFile(absolutePath, imageBytes);
+
+  const mediaAsset = await prisma.mediaAsset.create({
+    data: {
+      path: `${publicUploadsBasePath}/products/${storageFilename}`,
+      mimeType: "image/png",
+      sizeBytes: imageBytes.length,
+      originalFilename: storageFilename,
+      storageFilename,
+      uploadedById: admin.id,
+    },
+  });
+
+  const slug = unique("store-e2e-merch-image");
+  const product = await prisma.product.create({
+    data: {
+      name: "Studio Image Fixture Tote",
+      slug,
+      productType: ProductType.MERCHANDISE,
+      description: "Pickup at studio.",
+      isActive: true,
+      isArchived: false,
+      sortOrder: 905,
+      imageAssetId: mediaAsset.id,
+    },
+  });
+  const price = await prisma.price.create({
+    data: {
+      productId: product.id,
+      name: "Studio Image Fixture Tote",
+      lookupKey: `${slug}-price`,
+      priceType: PriceType.ONE_TIME,
+      currencyCode: "EUR",
+      unitAmountMinor: amountMinor,
+      stripePriceId: `price_e2e_${slug}`,
+      stripeSyncStatus: StripeSyncStatus.SYNCED,
+      isActive: true,
+      isArchived: false,
+    },
+  });
+
+  return { product, price, mediaAsset, absolutePath, imageBytes };
+}
+
 async function seedWalletWithBalance(clientId: string, balanceMinor: number) {
   return prisma.giftCardWallet.create({
     data: {
@@ -184,6 +248,38 @@ test.describe("Store page", () => {
     } finally {
       await prisma.price.deleteMany({ where: { productId: { in: [gcProduct.id, merchProduct.id] } } });
       await prisma.product.deleteMany({ where: { id: { in: [gcProduct.id, merchProduct.id] } } });
+    }
+  });
+
+  // @store @covers store-product-image-direct-upload
+  test("renders uploaded product images directly with matching bytes @store", async ({ page }) => {
+    const { product, mediaAsset, absolutePath, imageBytes } = await createMerchandiseProductWithImage(2_200);
+
+    try {
+      await page.goto("/store");
+      const productCard = page.getByRole("listitem").filter({ hasText: product.name });
+      await expect(productCard).toBeVisible();
+
+      const image = productCard.getByRole("img", { name: `${product.name} product image` });
+      await expect(image).toBeVisible();
+      await expect(image).toHaveAttribute("src", mediaAsset.path);
+
+      const src = await image.getAttribute("src");
+      expect(src).toBe(mediaAsset.path);
+      expect(src).not.toContain("/_next/image");
+
+      const response = await page.request.get(mediaAsset.path);
+      expect(response.ok()).toBe(true);
+      expect(response.headers()["content-type"]).toContain("image/png");
+      const servedBytes = await response.body();
+      expect(createHash("sha256").update(servedBytes).digest("hex")).toBe(
+        createHash("sha256").update(imageBytes).digest("hex"),
+      );
+    } finally {
+      await prisma.price.deleteMany({ where: { productId: product.id } });
+      await prisma.product.delete({ where: { id: product.id } });
+      await prisma.mediaAsset.delete({ where: { id: mediaAsset.id } });
+      await rm(absolutePath, { force: true });
     }
   });
 });

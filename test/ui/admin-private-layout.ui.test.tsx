@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { redirectMock } = vi.hoisted(() => ({
@@ -137,20 +137,25 @@ describe("/admin private layout", () => {
     expect(within(main).queryByRole("button", { name: "Logout" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Dashboard" })).toHaveClass("bg-[#1d3652]");
-    expect(screen.getByRole("button", { name: "Users+" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Inbox" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Booking+" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "People+" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Schedule+" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sales+" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Catalog+" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Marketing+" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Online Learning" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Manage Site" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Automations" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Communications+" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Content+" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Communications+" }));
+    expect(screen.getByRole("link", { name: "Client Messages" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Email Automations" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Content+" }));
+    expect(screen.getByRole("link", { name: "Video Library" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Website Content" })).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "Manage Site" }).compareDocumentPosition(screen.getByRole("link", { name: "Automations" })),
+      screen.getByRole("link", { name: "Email Automations" }).compareDocumentPosition(screen.getByRole("link", { name: "Website Content" })),
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(
-      screen.getByRole("link", { name: "Automations" }).compareDocumentPosition(screen.getByRole("link", { name: "Launch Kiosk" })),
+      screen.getByRole("link", { name: "Website Content" }).compareDocumentPosition(screen.getByRole("link", { name: "Check-in Kiosk" })),
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByText("Admin Content")).toBeInTheDocument();
     expect(screen.queryByText("Book a Class")).not.toBeInTheDocument();
@@ -173,8 +178,8 @@ describe("/admin private layout", () => {
       }),
     );
 
-    expect(screen.getByRole("button", { name: "Users-" })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("link", { name: "Admins" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "People-" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: "Staff" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Teachers" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Clients" })).toBeInTheDocument();
   });
@@ -198,8 +203,8 @@ describe("/admin private layout", () => {
 
     expect(screen.getByRole("button", { name: "Sales-" })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("link", { name: "Orders" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Subscriptions" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Loyalty Points" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Memberships" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Rewards" })).toBeInTheDocument();
   });
 
   it("auto-expands booking group for calendar deep links", async () => {
@@ -219,9 +224,9 @@ describe("/admin private layout", () => {
       }),
     );
 
-    expect(screen.getByRole("button", { name: "Booking-" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Schedule-" })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("link", { name: "Calendar" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Booking List" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Bookings" })).toBeInTheDocument();
   });
 
   it("hides inbox unread badge when unread count is 0", async () => {
@@ -245,6 +250,7 @@ describe("/admin private layout", () => {
   });
 
   it("shows inbox unread badge when unread count is greater than 0", async () => {
+    vi.mocked(usePathname).mockReturnValue("/admin/inbox");
     vi.mocked(getUnreadClientMessagesCount).mockResolvedValue(3);
     vi.mocked(auth).mockResolvedValue({
       user: {

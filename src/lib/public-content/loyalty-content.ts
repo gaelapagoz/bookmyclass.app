@@ -28,13 +28,13 @@ export const loyaltyHowItWorksPageContent = {
       title: "3. Track points from your dashboard",
       detail: "Separate from gift cards",
       body:
-        "You can already view your current points balance and recent loyalty activity from your dashboard and wallet pages. Redemption is not part of this first public rollout yet.",
+        "You can view your current points balance, recent loyalty activity and available rewards from your dashboard and wallet pages.",
     },
   ] as LoyaltyHowItWorksStep[],
   highlights: [
     "Loyalty points are separate from gift cards and wallet balances.",
     "Only eligible settled purchases count toward earning.",
-    "Your recent loyalty activity appears in the client dashboard overview.",
+    "Reward redemption can convert points into studio credit for eligible one-time checkout.",
   ],
   support: `Questions about loyalty visibility or your points history? Contact ${siteConfig.contactEmail}.`,
 } as const;

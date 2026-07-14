@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { adminNavConfig, type AdminNavGroupItem, type AdminNavLinkItem } from "@/lib/navigation/admin-nav";
+import { siteConfig } from "@/lib/site-config";
 
 type AdminSidebarProps = {
   unreadInboxCount?: number;
@@ -54,7 +55,7 @@ export default function AdminSidebar({ unreadInboxCount = 0, onSignOutAction }: 
   return (
     <aside className="w-full border-r border-[#223046] bg-[#0f1f31] text-[#f4eee8] md:w-64">
       <div className="border-b border-[#223046] px-5 py-5">
-        <p className="text-xs uppercase tracking-[0.2em] text-[#d9c8be]">Yoga Pilates Fitness Studio</p>
+        <p className="text-xs uppercase tracking-[0.2em] text-[#d9c8be]">{siteConfig.brandName}</p>
         <h2 className="mt-1 text-lg font-semibold">Admin</h2>
       </div>
 
@@ -122,7 +123,12 @@ export default function AdminSidebar({ unreadInboxCount = 0, onSignOutAction }: 
                                 : "text-[#d9c8be] hover:bg-[#1b2f47] hover:text-[#f4eee8]"
                             }`}
                           >
-                            {child.label}
+                            <span>{child.label}</span>
+                            {child.badgeKey === "inboxUnread" && unreadInboxCount > 0 ? (
+                              <span className="ml-2 rounded-full bg-[#d56a6a] px-2 py-0.5 text-xs font-semibold text-white" aria-label={`Inbox unread ${unreadInboxCount}`}>
+                                {unreadInboxCount}
+                              </span>
+                            ) : null}
                           </Link>
                         </li>
                       );
@@ -137,7 +143,7 @@ export default function AdminSidebar({ unreadInboxCount = 0, onSignOutAction }: 
               href="/kiosk"
               className="block rounded-md border border-[#8a5959] bg-[#0f1f2d] px-3 py-2 text-sm text-[#f4eee8] transition-colors hover:bg-[#1b2f47]"
             >
-              Launch Kiosk
+              Check-in Kiosk
             </Link>
           </li>
           {onSignOutAction ? (

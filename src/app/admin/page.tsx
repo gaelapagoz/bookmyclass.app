@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { AuthError } from "next-auth";
@@ -13,6 +12,7 @@ import { isInvalidCredentialsAuthError } from "@/lib/auth/auth-error-utils";
 import { getSafeCallbackPath } from "@/lib/auth/safe-callback-url";
 import { getClientIpFromHeaders } from "@/lib/security/rate-limit";
 import { assertSameOriginServerAction } from "@/lib/security/same-origin";
+import { siteConfig } from "@/lib/site-config";
 
 type SearchParams = Promise<{
   callbackUrl?: string;
@@ -151,16 +151,8 @@ export default async function AdminEntryPage({ searchParams }: { searchParams: S
     <main className="flex min-h-screen items-center justify-center bg-[#f2ede7] px-4 py-10 text-[#4f2a2a]">
       <div className="w-full max-w-md rounded-2xl border border-[#d8cec6] bg-white p-6 shadow-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <Image
-            src="/images/logo.png"
-            alt="Yoga Pilates Fitness Studio logo"
-            width={96}
-            height={96}
-            className="h-24 w-24 rounded-full object-cover"
-            priority
-          />
           <p className="mt-4 text-xs uppercase tracking-[0.18em] text-[#8a5959]">Admin Portal</p>
-          <h1 className="mt-1 text-2xl font-semibold text-[#6f2b2b]">Yoga Pilates Fitness Studio</h1>
+          <h1 className="mt-1 text-2xl font-semibold text-[#6f2b2b]">{siteConfig.brandName}</h1>
         </div>
 
         {isNonStaffUser ? (

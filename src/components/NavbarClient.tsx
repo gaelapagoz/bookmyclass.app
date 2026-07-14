@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -114,17 +113,9 @@ export default function NavbarClient({ isAuthenticated, onSignOutAction }: Navba
               setOpenMobileDisclosureId(null);
             }}
           >
-            <Image
-              src="/images/logo.png"
-              alt="Yoga Pilates Fitness Studio logo"
-              width={56}
-              height={56}
-              className="h-36 w-36 rounded-full object-cover"
-              priority
-            />
             <div className="flex flex-col">
               <span className="text-lg font-medium tracking-wide text-[#6f2b2b] sm:text-2xl">{siteConfig.brandName}</span>
-              <span className="text-xs tracking-wide text-[#8a5959] sm:text-sm">Brussels Yoga, Pilates & Fitness</span>
+              <span className="text-xs tracking-wide text-[#8a5959] sm:text-sm">{siteConfig.descriptor}</span>
             </div>
           </Link>
 

@@ -1207,10 +1207,10 @@ export async function sendAutomationTemplateTestEmail(input: z.input<typeof test
 
 function buildTemplateSamplePayload(_templateKey: string): Record<string, string> {
   return {
-    "website.name": "Yoga Pilates Fitness Studio",
-    "website.url": "https://bookmyclass.app",
-    "website.logoUrl": "https://bookmyclass.app/logo.png",
-    "website.address": "27 Calle de la Luz, Madrid",
+    "website.name": "Studio Aster",
+    "website.url": "https://demo.bookmyclass.app",
+    "website.logoUrl": "https://demo.bookmyclass.app/logo.png",
+    "website.address": "",
     "contact.name.first": "Alex",
     "contact.name.last": "Taylor",
     "contact.email": "alex@example.com",

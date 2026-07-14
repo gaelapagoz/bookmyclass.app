@@ -25,7 +25,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pat
     const bytes = await readFile(absolutePath);
     return new NextResponse(bytes, {
       headers: {
-        "Cache-Control": "public, max-age=31536000, immutable",
+        "Cache-Control": "public, max-age=0, must-revalidate",
         "Content-Type": contentType,
       },
     });

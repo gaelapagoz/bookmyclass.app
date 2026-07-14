@@ -106,7 +106,7 @@ describe("dashboard wallet page", () => {
     expect(screen.getByText("Redeem gift card form")).toBeVisible();
     expect(screen.getByText("Redeem loyalty reward form")).toBeVisible();
     expect(screen.getByText("Current Points")).toBeVisible();
-    expect(screen.getByText("Loyalty Credit")).toBeVisible();
+    expect(screen.getByText("Studio Credit")).toBeVisible();
     expect(screen.getByText("Loyalty History")).toBeVisible();
   });
 

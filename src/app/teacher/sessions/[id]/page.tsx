@@ -13,6 +13,14 @@ import { getTeacherSessionRosterData } from "@/lib/teacher/teacher-service";
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ error?: string; success?: string }>;
 
+function formatDisplayStatus(status: string | null): string {
+  if (!status) return "Not marked";
+  return status
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 export default async function TeacherSessionRosterPage({
   params,
   searchParams,
@@ -67,7 +75,7 @@ export default async function TeacherSessionRosterPage({
 
       <section className="space-y-4 rounded-xl border border-[#d3dbe5] bg-white p-5" data-testid="teacher-session-roster">
         <header>
-          <h2 className="text-lg font-semibold text-[#1f2735]">Class Roster</h2>
+          <h2 className="text-lg font-semibold text-[#1f2735]">Participants</h2>
           <p className="text-sm text-[#4a5b73]">You can manage clients only for this assigned session.</p>
         </header>
 
@@ -84,7 +92,7 @@ export default async function TeacherSessionRosterPage({
                     <p className="text-sm font-semibold text-[#1f2735]">{attendee.clientName}</p>
                     <p className="text-xs text-[#4a5b73]">{attendee.clientEmail}</p>
                     <p className="mt-1 text-xs text-[#1f2735]">
-                      Attendance: {attendee.attendanceStatus ?? "NOT_MARKED"}
+                      Attendance: {formatDisplayStatus(attendee.attendanceStatus)}
                     </p>
                     {attendee.attendanceStatus ? (
                       <p className="text-xs text-[#4a5b73]">
@@ -93,7 +101,7 @@ export default async function TeacherSessionRosterPage({
                       </p>
                     ) : null}
                   </div>
-                  <p className="text-xs text-[#4a5b73]">Status: {attendee.status}</p>
+                  <p className="text-xs text-[#4a5b73]">Status: {formatDisplayStatus(attendee.status)}</p>
                 </div>
                 <StaffAttendanceControls
                   bookingId={attendee.bookingId}
@@ -107,7 +115,7 @@ export default async function TeacherSessionRosterPage({
                     <input name="note" maxLength={400} className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2" />
                   </label>
                   <button type="submit" className="rounded-md border border-[#ba3f3f] px-3 py-2 text-xs text-[#ba3f3f]">
-                    Remove client
+                    Remove Participant
                   </button>
                 </form>
               </li>
@@ -118,7 +126,7 @@ export default async function TeacherSessionRosterPage({
         )}
 
         <form action={addTeacherSessionAttendeeAction.bind(null, sessionRecord.id)} className="space-y-2 rounded-md border border-[#d3dbe5] p-3">
-          <h3 className="text-sm font-semibold text-[#1f2735]">Add client</h3>
+          <h3 className="text-sm font-semibold text-[#1f2735]">Add Participant</h3>
           <label className="block text-sm text-[#334155]">
             Client
             <select name="clientId" required className="mt-1 w-full rounded-md border border-[#d3dbe5] px-3 py-2">
@@ -140,7 +148,7 @@ export default async function TeacherSessionRosterPage({
             />
           </label>
           <button type="submit" className="rounded-md bg-[#1d3652] px-4 py-2 text-sm text-white">
-            Add client
+            Add Participant
           </button>
         </form>
       </section>

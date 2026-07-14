@@ -16,16 +16,16 @@ describe("DashboardNav", () => {
 
     expect(screen.getByRole("link", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "My Bookings" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "My Memberships / Plans" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "My Purchases" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Memberships & Packs" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Purchases" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "My Wallet" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "My Profile" })).toBeInTheDocument();
 
     expect(screen.queryByRole("link", { name: "Change Password" })).not.toBeInTheDocument();
   });
 
-  it("links My Purchases to /dashboard/orders", () => {
+  it("links Purchases to /dashboard/orders", () => {
     render(<DashboardNav />);
-    expect(screen.getByRole("link", { name: "My Purchases" })).toHaveAttribute("href", "/dashboard/orders");
+    expect(screen.getByRole("link", { name: "Purchases" })).toHaveAttribute("href", "/dashboard/orders");
   });
 });
