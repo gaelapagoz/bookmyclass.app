@@ -88,12 +88,13 @@ async function purchaseRecurringSubscriptionForClient(
 test.describe("critical client flows", () => {
   test.describe.configure({ mode: "serial" });
 
-  const signupEmail = `e2e.signup.${Date.now()}@bookmyclass.app`;
+  let signupEmail = "";
 
   // @covers customer-sign-up
   // @covers customer-verify-email
   // @covers customer-sign-in
-  test("sign up + verify email + first login", async ({ page }) => {
+  test("sign up + verify email + first login", async ({ page }, testInfo) => {
+    signupEmail = `e2e.signup.${Date.now()}.${testInfo.retry}@bookmyclass.app`;
     await signUpPublicUser(page, {
       firstName: "E2E",
       lastName: "Signup",
@@ -184,7 +185,7 @@ test.describe("critical client flows", () => {
     await page.context().clearCookies();
     await signInClient(page, { email: dashboardMembershipEmail, password: E2E_PASSWORD });
     await page.goto("/dashboard/membership");
-    await expect(page.getByRole("heading", { name: "Membership & Credits" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Memberships & Packs" })).toBeVisible();
     await expect(page.getByText("No recurring subscriptions found.")).toHaveCount(0);
     await expect(page.getByText(/Status:\s*ACTIVE/i).first()).toBeVisible();
 

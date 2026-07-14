@@ -33,7 +33,7 @@ test.describe("teacher flow", () => {
     await expect(page.getByRole("heading", { name: "Teacher Dashboard" })).toBeVisible();
 
     await page.goto("/teacher/sessions");
-    await expect(page.getByRole("heading", { name: "My Sessions" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "My Schedule" })).toBeVisible();
 
     // Seeded sessions are created 72h/96h ahead; if they spill into next week, move forward once.
     const sessionLink = page.getByRole("link", { name: /E2E Flow Class - E2E Session/ }).first();
@@ -49,7 +49,7 @@ test.describe("teacher flow", () => {
       .getAttribute("value");
     expect(clientOptionValue).toBeTruthy();
     await page.getByRole("combobox", { name: "Client" }).selectOption(clientOptionValue as string);
-    await page.getByRole("button", { name: "Add client" }).click();
+    await page.getByRole("button", { name: "Add Participant" }).click();
 
     await expect(page.getByText("E2E Client Credits").first()).toBeVisible({ timeout: 20_000 });
   });
@@ -73,7 +73,7 @@ test.describe("teacher flow", () => {
       .getAttribute("value");
     expect(clientOptionValue).toBeTruthy();
     await page.getByRole("combobox", { name: "Client" }).selectOption(clientOptionValue as string);
-    await page.getByRole("button", { name: "Add client" }).click();
+    await page.getByRole("button", { name: "Add Participant" }).click();
 
     await expect(page.getByText("You can only add clients with eligible credit or qualifying subscription.")).toBeVisible();
     await expect(page.getByText("Attendee added.")).toHaveCount(0);
@@ -180,7 +180,7 @@ test.describe("teacher flow", () => {
 
     await page.goto(`/teacher/sessions/${encodeURIComponent(unassignedSessionId)}`);
     await expect(page).toHaveURL(/\/teacher\/sessions\?error=/);
-    await expect(page.getByRole("heading", { name: "My Sessions" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "My Schedule" })).toBeVisible();
   });
 
   // @covers teacher-waitlist-count-readonly

@@ -17,7 +17,6 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { hash } from "bcryptjs";
 import prisma from "../../src/lib/db";
-import { resolveUploadsConfig } from "../../src/lib/media/upload-config";
 import { signInClient } from "./support/auth";
 import { E2E_PASSWORD } from "./support/constants";
 import {
@@ -39,6 +38,13 @@ function unique(prefix: string) {
 
 function hashGiftCardCode(code: string): string {
   return createHash("sha256").update(code).digest("hex");
+}
+
+function resolveE2EUploadsConfig() {
+  return {
+    uploadsDir: path.resolve(process.env.UPLOADS_DIR?.trim() || path.join(".local", "e2e-uploads")),
+    publicUploadsBasePath: process.env.PUBLIC_UPLOADS_BASE_PATH?.trim() || "/uploads",
+  };
 }
 
 async function createVerifiedClient() {
@@ -126,7 +132,7 @@ async function createMerchandiseProductWithImage(amountMinor: number) {
   const admin = await prisma.user.findFirst({ where: { role: Role.ADMIN, isActive: true } });
   if (!admin) throw new Error("E2E store image fixture requires an active admin user.");
 
-  const { uploadsDir, publicUploadsBasePath } = resolveUploadsConfig();
+  const { uploadsDir, publicUploadsBasePath } = resolveE2EUploadsConfig();
   const imageBytes = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR4nGNkaPjPgASYGFABqXwANUwCGYEJE74AAAAASUVORK5CYII=",
     "base64",

@@ -118,14 +118,17 @@ test("critical admin CRUD flows", async ({ page }) => {
 test("admin list pages load with stable headings", async ({ page }) => {
   await signInAdmin(page, SEEDED_ADMIN);
 
+  await page.getByRole("button", { name: "Communications" }).click();
+  await page.getByRole("button", { name: "Content" }).click();
+
   const navLinks = page.locator("[data-testid='admin-nav-list'] a");
   const navOrder = await navLinks.evaluateAll((nodes) => nodes.map((node) => node.textContent?.trim() ?? ""));
-  const manageSiteIndex = navOrder.indexOf("Manage Site");
-  const automationsIndex = navOrder.indexOf("Automations");
-  const launchKioskIndex = navOrder.indexOf("Launch Kiosk");
-  expect(manageSiteIndex).toBeGreaterThan(-1);
-  expect(automationsIndex).toBeGreaterThan(manageSiteIndex);
-  expect(launchKioskIndex).toBeGreaterThan(automationsIndex);
+  const emailAutomationsIndex = navOrder.indexOf("Email Automations");
+  const websiteContentIndex = navOrder.indexOf("Website Content");
+  const checkInKioskIndex = navOrder.indexOf("Check-in Kiosk");
+  expect(emailAutomationsIndex).toBeGreaterThan(-1);
+  expect(websiteContentIndex).toBeGreaterThan(emailAutomationsIndex);
+  expect(checkInKioskIndex).toBeGreaterThan(websiteContentIndex);
 
   await page.goto("/admin/bookings");
   await expect(page.getByRole("heading", { name: "Booking List" })).toBeVisible();
