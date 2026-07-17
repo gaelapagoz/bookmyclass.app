@@ -13,6 +13,7 @@ import {
   MAX_COURSES_PER_PROGRAM,
   PILATES_COURSES,
   PILATES_PROGRAM,
+  PROD_LEARNING_COURSE_THUMBNAILS,
   PROD_LEARNING_VIDEO_URL,
   PRODUCTION_LEARNING_COURSES,
   PRODUCTION_LEARNING_PROGRAMS,
@@ -126,9 +127,12 @@ describe("production learning catalogue data", () => {
   });
 
   it("uses the canonical video URL for all videos", () => {
-    expect(PROD_LEARNING_VIDEO_URL).toBe("https://www.youtube.com/watch?v=UIcNgvCGMo0");
+    expect(PROD_LEARNING_VIDEO_URL).toBe("https://www.youtube.com/watch?v=UIcNgvCGMo0&t=1s");
     for (const course of PRODUCTION_LEARNING_COURSES) {
       expect(course.videoUrl).toBe(PROD_LEARNING_VIDEO_URL);
+    }
+    for (const program of PRODUCTION_LEARNING_PROGRAMS) {
+      expect(program.videoPromo).toBe(PROD_LEARNING_VIDEO_URL);
     }
   });
 
@@ -182,11 +186,50 @@ describe("production learning catalogue data", () => {
 });
 
 describe("production learning image paths", () => {
-  it("all course thumbnails match /uploads/learning/*.jpg pattern", () => {
+  const expectedCourseThumbnailsByLegacyId = new Map(
+    Object.entries(PROD_LEARNING_COURSE_THUMBNAILS),
+  );
+
+  function getSeedMediaFilename(publicPath: string): string {
+    return path.posix.basename(publicPath);
+  }
+
+  async function listFilesRecursive(root: string): Promise<string[]> {
+    const entries = await readdir(root, { withFileTypes: true });
+    const files = await Promise.all(
+      entries.map(async (entry) => {
+        const fullPath = path.join(root, entry.name);
+        if (entry.isDirectory()) {
+          return listFilesRecursive(fullPath);
+        }
+        return [fullPath];
+      }),
+    );
+    return files.flat();
+  }
+
+  function getReferencedLearningSeedFilenames(): string[] {
+    const referencedPaths = new Set<string>();
+
+    for (const program of PRODUCTION_LEARNING_PROGRAMS) {
+      referencedPaths.add(program.picture1);
+      referencedPaths.add(program.picture2);
+      referencedPaths.add(program.picture3);
+    }
     for (const course of PRODUCTION_LEARNING_COURSES) {
-      if (course.thumbnail) {
-        expect(isLearningImagePath(course.thumbnail)).toBe(true);
-      }
+      referencedPaths.add(course.thumbnail);
+    }
+
+    return [...referencedPaths].map(getSeedMediaFilename).sort();
+  }
+
+  it("all course thumbnails are unique canonical /uploads/learning/*.jpg paths", () => {
+    const thumbnails = PRODUCTION_LEARNING_COURSES.map((course) => course.thumbnail);
+    expect(new Set(thumbnails).size).toBe(PRODUCTION_LEARNING_COURSES.length);
+
+    for (const course of PRODUCTION_LEARNING_COURSES) {
+      expect(isLearningImagePath(course.thumbnail)).toBe(true);
+      expect(course.thumbnail).toMatch(/^\/uploads\/learning\/[a-z0-9-]+\.jpg$/);
     }
   });
 
@@ -204,8 +247,17 @@ describe("production learning image paths", () => {
     expect(PILATES_PROGRAM.picture1).toContain("pilates");
   });
 
-  it("staging/demo learning seed folders are minimized to canonical 3 course images", async () => {
-    const expected = ["course_1_fitness.jpg", "course_2_yoga.jpg", "course_3_pilates.jpg"];
+  it("maps every course legacy ID to its expected unique thumbnail", () => {
+    expect(expectedCourseThumbnailsByLegacyId.size).toBe(18);
+
+    for (const course of PRODUCTION_LEARNING_COURSES) {
+      expect(course.thumbnail).toBe(expectedCourseThumbnailsByLegacyId.get(course.legacyId));
+      expect(course.thumbnail.endsWith(".png")).toBe(false);
+    }
+  });
+
+  it("demo and staging learning folders contain every referenced seed JPEG", async () => {
+    const expected = getReferencedLearningSeedFilenames();
     const stagingLearningDir = path.resolve(process.cwd(), "prisma", "seed-data", "staging-images", "learning");
     const demoLearningDir = path.resolve(process.cwd(), "prisma", "seed-data", "demo-images", "learning");
     const stagingFiles = (await readdir(stagingLearningDir)).sort();
@@ -213,6 +265,13 @@ describe("production learning image paths", () => {
 
     expect(stagingFiles).toEqual(expected);
     expect(demoFiles).toEqual(expected);
+    expect(expected.every((filename) => filename.endsWith(".jpg"))).toBe(true);
+  });
+
+  it("does not leave PNG files in the roadmap video-thumbnail source folders", async () => {
+    const sourceRoot = path.resolve(process.cwd(), ".roadmap", "video-thumbnail");
+    const files = await listFilesRecursive(sourceRoot);
+    expect(files.filter((file) => path.extname(file).toLowerCase() === ".png")).toEqual([]);
   });
 });
 

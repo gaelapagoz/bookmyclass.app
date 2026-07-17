@@ -38,6 +38,7 @@ import { hash } from "bcryptjs";
 import prisma from "../src/lib/db";
 import { ensureAllExpectedAutomationTemplatesHaveStatus } from "../src/lib/email/email-automation-admin-service";
 import { upsertLoyaltyProgramSettings } from "../src/lib/loyalty/loyalty-program-service";
+import { PROD_LEARNING_VIDEO_URL } from "../prisma/seed/data/learning-production";
 import { runDevelopmentSeed } from "../prisma/seed/modes/development";
 import {
   SEEDED_CANONICAL_EMAILS,
@@ -566,7 +567,7 @@ async function main() {
       description1: "Step-by-step mobility class",
       description2: "Focus on deterministic fixtures",
       description3: "Stable for e2e",
-      videoPromo: "https://www.youtube.com/watch?v=UIcNgvCGMo0",
+      videoPromo: PROD_LEARNING_VIDEO_URL,
       picture1: "/uploads/learning/online-yoga-image-1.jpg",
       picture2: "/uploads/learning/backbend-image-1.jpg",
       picture3: "/uploads/learning/backbend-image-3.jpg",
@@ -583,7 +584,7 @@ async function main() {
       categoryType: "Beginner",
       categoryLevel: "1",
       thumbnail: "/uploads/learning/01-how-to-use-this-course.jpg",
-      videoUrl: "https://www.youtube.com/watch?v=UIcNgvCGMo0",
+      videoUrl: PROD_LEARNING_VIDEO_URL,
       priority: 1,
     },
   });

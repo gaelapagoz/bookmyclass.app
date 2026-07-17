@@ -55,9 +55,6 @@ import { SEEDED_USER_PASSWORD } from "../seed-credentials";
 import {
   PILATES_COURSES,
   PILATES_PROGRAM,
-  PROD_LEARNING_IMAGE_FITNESS,
-  PROD_LEARNING_IMAGE_PILATES,
-  PROD_LEARNING_IMAGE_YOGA,
   FITNESS_COURSES,
   FITNESS_PROGRAM,
   YOGA_COURSES,
@@ -641,14 +638,19 @@ async function seedProductionScheduleAndBookings(input: {
 // ─── Learning ─────────────────────────────────────────────────────────────────
 
 async function seedProductionLearning() {
-  // Validate image paths at seed time (assertLearningImagePath validates format, not disk)
-  assertLearningImagePath(toCanonicalSeedImagePath(PROD_LEARNING_IMAGE_FITNESS), "prod fitness image");
-  assertLearningImagePath(toCanonicalSeedImagePath(PROD_LEARNING_IMAGE_YOGA), "prod yoga image");
-  assertLearningImagePath(toCanonicalSeedImagePath(PROD_LEARNING_IMAGE_PILATES), "prod pilates image");
-
   const programs = [FITNESS_PROGRAM, YOGA_PROGRAM, PILATES_PROGRAM];
   const allCourses = [...FITNESS_COURSES, ...YOGA_COURSES, ...PILATES_COURSES];
   const courseLegacyIds = allCourses.map((course) => course.legacyId);
+
+  // Validate image paths at seed time (assertLearningImagePath validates format, not disk).
+  for (const program of programs) {
+    assertLearningImagePath(toCanonicalSeedImagePath(program.picture1), `${program.legacyId} picture1`);
+    assertLearningImagePath(toCanonicalSeedImagePath(program.picture2), `${program.legacyId} picture2`);
+    assertLearningImagePath(toCanonicalSeedImagePath(program.picture3), `${program.legacyId} picture3`);
+  }
+  for (const course of allCourses) {
+    assertLearningImagePath(toCanonicalSeedImagePath(course.thumbnail), `${course.legacyId} thumbnail`);
+  }
 
   for (const program of programs) {
     await prisma.learningProgram.upsert({

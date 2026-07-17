@@ -35,9 +35,6 @@ import {
   FITNESS_PROGRAM,
   PILATES_COURSES,
   PILATES_PROGRAM,
-  PROD_LEARNING_IMAGE_FITNESS,
-  PROD_LEARNING_IMAGE_PILATES,
-  PROD_LEARNING_IMAGE_YOGA,
   YOGA_COURSES,
   YOGA_PROGRAM,
 } from "../data/learning-production";
@@ -567,12 +564,17 @@ async function seedAgendaSchedule() {
 }
 
 async function seedProductionLearningForStaging(): Promise<{ programCount: number; courseCount: number }> {
-  assertLearningImagePath(toCanonicalSeedImagePath(PROD_LEARNING_IMAGE_FITNESS), "staging prod fitness image");
-  assertLearningImagePath(toCanonicalSeedImagePath(PROD_LEARNING_IMAGE_YOGA), "staging prod yoga image");
-  assertLearningImagePath(toCanonicalSeedImagePath(PROD_LEARNING_IMAGE_PILATES), "staging prod pilates image");
-
   const programs = [FITNESS_PROGRAM, YOGA_PROGRAM, PILATES_PROGRAM];
   const allCourses = [...FITNESS_COURSES, ...YOGA_COURSES, ...PILATES_COURSES];
+
+  for (const program of programs) {
+    assertLearningImagePath(toCanonicalSeedImagePath(program.picture1), `${program.legacyId} picture1`);
+    assertLearningImagePath(toCanonicalSeedImagePath(program.picture2), `${program.legacyId} picture2`);
+    assertLearningImagePath(toCanonicalSeedImagePath(program.picture3), `${program.legacyId} picture3`);
+  }
+  for (const course of allCourses) {
+    assertLearningImagePath(toCanonicalSeedImagePath(course.thumbnail), `${course.legacyId} thumbnail`);
+  }
 
   for (const program of programs) {
     await prisma.learningProgram.upsert({
