@@ -216,7 +216,7 @@ export default async function DashboardWalletPage() {
           </article>
 
           <article className="rounded-xl border border-[#d8cec6] bg-[#fffdfb] p-4">
-            <p className="text-xs uppercase tracking-wide text-[#8a5959]">Studio Credit</p>
+            <p className="text-xs uppercase tracking-wide text-[#8a5959]">Loyalty Credit</p>
             <p className="mt-2 text-2xl font-semibold text-[#6f2b2b]">
               {formatAmount(loyaltyCredit.availableBalanceMinor, loyaltyCurrencyCode)}
             </p>

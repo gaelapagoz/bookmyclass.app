@@ -106,8 +106,12 @@ describe("dashboard wallet page", () => {
     expect(screen.getByText("Redeem gift card form")).toBeVisible();
     expect(screen.getByText("Redeem loyalty reward form")).toBeVisible();
     expect(screen.getByText("Current Points")).toBeVisible();
-    expect(screen.getByText("Studio Credit")).toBeVisible();
+    expect(screen.getByText("Expiring Soon")).toBeVisible();
+    expect(screen.getByText("Next Expiration")).toBeVisible();
+    expect(screen.getByText("Loyalty Credit")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Redeem points" })).toBeVisible();
     expect(screen.getByText("Loyalty History")).toBeVisible();
+    expect(screen.queryByText("The loyalty program is temporarily unavailable.")).not.toBeInTheDocument();
   });
 
   it("renders empty gift-card state without hiding loyalty visibility", async () => {
@@ -116,5 +120,12 @@ describe("dashboard wallet page", () => {
     expect(screen.getByText("You have no gift card wallet balance yet.")).toBeVisible();
     expect(screen.queryByText("No scheduled expiry")).not.toBeInTheDocument();
     expect(screen.getByText("Lifetime earned: 120 points")).toBeVisible();
+  });
+
+  it("propagates loyalty read failures instead of rendering a degraded placeholder", async () => {
+    const loyaltyReadError = new Error("No loyalty program exists for this currency.");
+    mocks.listActiveLoyaltyRewards.mockRejectedValue(loyaltyReadError);
+
+    await expect(DashboardWalletPage()).rejects.toBe(loyaltyReadError);
   });
 });

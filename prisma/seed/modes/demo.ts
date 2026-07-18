@@ -44,6 +44,10 @@ import { hash } from "bcryptjs";
 import prisma from "../../../src/lib/db";
 import { assertLearningImagePath } from "../../../src/lib/learning/image-paths";
 import {
+  upsertLoyaltyProgramSettings,
+  upsertLoyaltyRewardDefinition,
+} from "../../../src/lib/loyalty/loyalty-program-service";
+import {
   DEMO_CLIENTS,
   DEMO_CLIENT_COUNT,
   DEMO_TEACHERS,
@@ -77,6 +81,15 @@ const PROD_CLIENT_COUNT = DEMO_CLIENT_COUNT;
 const PROD_FUTURE_WEEKS = 26; // ≈ 6 months of sessions
 const PROD_BOOKING_DAYS = 120; // pre-populate bookings this far ahead
 const PROD_RANDOM_SEED = 20260420;
+const DEFAULT_LOYALTY_CURRENCY_CODE = "EUR";
+const DEFAULT_LOYALTY_EARNING_POINTS = 10;
+const DEFAULT_LOYALTY_EARNING_AMOUNT_MINOR = 500;
+const DEFAULT_LOYALTY_POINTS_EXPIRE_AFTER_DAYS = 180;
+const DEFAULT_LOYALTY_EXPIRATION_REMINDER_DAYS = 30;
+const DEFAULT_LOYALTY_MAX_MANUAL_GRANT_POINTS = 500;
+const DEFAULT_LOYALTY_REWARD_NAME = "5 EURO Reward";
+const DEFAULT_LOYALTY_REWARD_POINTS_REQUIRED = 500;
+const DEFAULT_LOYALTY_REWARD_AMOUNT_MINOR = 500;
 
 const STRIPE_PRICE_ID_PATTERN = /^price_[A-Za-z0-9_]+$/;
 
@@ -404,6 +417,66 @@ async function seedProductionStoreCatalog(stripePriceIdByLookupKey: Record<strin
 }
 
 // ─── Class schedule helpers ───────────────────────────────────────────────────
+
+export async function seedProductionLoyaltyProgram(): Promise<{
+  eligibleProductCount: number;
+  rewardDefinitionId: string;
+}> {
+  const eligibleProducts = await prisma.product.findMany({
+    where: {
+      isActive: true,
+      isArchived: false,
+      prices: {
+        some: {
+          currencyCode: DEFAULT_LOYALTY_CURRENCY_CODE,
+          priceType: PriceType.ONE_TIME,
+          isActive: true,
+          isArchived: false,
+        },
+      },
+    },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
+    select: { id: true },
+  });
+
+  const program = await upsertLoyaltyProgramSettings({
+    currencyCode: DEFAULT_LOYALTY_CURRENCY_CODE,
+    isActive: true,
+    earningPoints: DEFAULT_LOYALTY_EARNING_POINTS,
+    earningAmountMinor: DEFAULT_LOYALTY_EARNING_AMOUNT_MINOR,
+    pointsExpireAfterDays: DEFAULT_LOYALTY_POINTS_EXPIRE_AFTER_DAYS,
+    expirationReminderDays: DEFAULT_LOYALTY_EXPIRATION_REMINDER_DAYS,
+    maxManualGrantPoints: DEFAULT_LOYALTY_MAX_MANUAL_GRANT_POINTS,
+    eligibleProductIds: eligibleProducts.map((product) => product.id),
+  });
+
+  const existingReward = await prisma.loyaltyRewardDefinition.findFirst({
+    where: {
+      programId: program.id,
+      name: DEFAULT_LOYALTY_REWARD_NAME,
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true },
+  });
+
+  const reward = await upsertLoyaltyRewardDefinition({
+    programId: program.id,
+    rewardDefinitionId: existingReward?.id,
+    name: DEFAULT_LOYALTY_REWARD_NAME,
+    pointsRequired: DEFAULT_LOYALTY_REWARD_POINTS_REQUIRED,
+    amountMinor: DEFAULT_LOYALTY_REWARD_AMOUNT_MINOR,
+    isActive: true,
+  });
+
+  console.info(
+    `[seed:demo] Loyalty seeded: program=${program.currencyCode}, eligibleProducts=${eligibleProducts.length}, reward="${reward.name}".`,
+  );
+
+  return {
+    eligibleProductCount: eligibleProducts.length,
+    rewardDefinitionId: reward.id,
+  };
+}
 
 async function upsertClassCategory(input: { slug: string; name: string; description: string; sortOrder: number }) {
   return prisma.classCategory.upsert({
@@ -743,7 +816,71 @@ async function seedProductionMarketingHistory(input: { createdById: string }) {
 
 // ─── Verification ─────────────────────────────────────────────────────────────
 
-async function verifyProductionSeed(expected: { programCount: number; courseCount: number; totalSessionsGenerated: number; bookableSessionCount: number; bookingsCreated: number }) {
+export async function verifyDemoLoyaltyContract(): Promise<{
+  programCount: number;
+  eligibleProductCount: number;
+  rewardCount: number;
+}> {
+  const programs = await prisma.loyaltyProgram.findMany({
+    where: {
+      currencyCode: DEFAULT_LOYALTY_CURRENCY_CODE,
+      isActive: true,
+    },
+    include: {
+      eligibleProducts: {
+        where: { isActive: true },
+        select: { id: true },
+      },
+      rewardDefinitions: {
+        where: {
+          name: DEFAULT_LOYALTY_REWARD_NAME,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          pointsRequired: true,
+          amountMinor: true,
+        },
+      },
+    },
+  });
+
+  if (programs.length !== 1) {
+    throw new Error(
+      `Production seed verification: expected exactly one active ${DEFAULT_LOYALTY_CURRENCY_CODE} loyalty program, got ${programs.length}.`,
+    );
+  }
+
+  const program = programs[0]!;
+  if (program.eligibleProducts.length === 0) {
+    throw new Error("Production seed verification: loyalty contract has no active eligible products.");
+  }
+
+  const rewards = program.rewardDefinitions;
+  if (rewards.length !== 1) {
+    throw new Error(
+      `Production seed verification: expected one active ${DEFAULT_LOYALTY_REWARD_NAME} loyalty reward, got ${rewards.length}.`,
+    );
+  }
+
+  const reward = rewards[0]!;
+  if (
+    reward.pointsRequired !== DEFAULT_LOYALTY_REWARD_POINTS_REQUIRED
+    || reward.amountMinor !== DEFAULT_LOYALTY_REWARD_AMOUNT_MINOR
+  ) {
+    throw new Error(
+      `Production seed verification: ${DEFAULT_LOYALTY_REWARD_NAME} loyalty reward is invalid; expected points=${DEFAULT_LOYALTY_REWARD_POINTS_REQUIRED}, amountMinor=${DEFAULT_LOYALTY_REWARD_AMOUNT_MINOR}, got points=${reward.pointsRequired}, amountMinor=${reward.amountMinor}.`,
+    );
+  }
+
+  return {
+    programCount: programs.length,
+    eligibleProductCount: program.eligibleProducts.length,
+    rewardCount: rewards.length,
+  };
+}
+
+export async function verifyProductionSeed(expected: { programCount: number; courseCount: number; totalSessionsGenerated: number; bookableSessionCount: number; bookingsCreated: number }) {
   const [totalClients, totalAdmins, totalTeachers, totalProducts, programCount, courseCount, scheduleCount] = await prisma.$transaction([
     prisma.user.count({ where: { role: Role.CLIENT, email: { endsWith: "@bookmyclass.app" } } }),
     prisma.user.count({ where: { role: { in: [Role.ADMIN, Role.MASTER_ADMIN] }, email: { endsWith: "@bookmyclass.app" } } }),
@@ -764,10 +901,13 @@ async function verifyProductionSeed(expected: { programCount: number; courseCoun
   if (scheduleCount === 0) throw new Error("Production seed verification: no agenda schedule entries found.");
   if (expected.totalSessionsGenerated === 0) throw new Error("Production seed verification: no sessions were generated.");
 
-  const confirmedBookings = await prisma.booking.count({ where: { status: BookingStatus.CONFIRMED } });
+  const [confirmedBookings, loyaltyCounts] = await Promise.all([
+    prisma.booking.count({ where: { status: BookingStatus.CONFIRMED } }),
+    verifyDemoLoyaltyContract(),
+  ]);
   if (confirmedBookings === 0) throw new Error("Production seed verification: no confirmed bookings were created.");
 
-  console.info(`[seed:demo] Verification passed. clients=${totalClients}, admins=${totalAdmins}, teachers=${totalTeachers}, products=${totalProducts}, programmes=${programCount}, courses=${courseCount}, sessions=${expected.totalSessionsGenerated}, bookableSessions=${expected.bookableSessionCount}, bookings=${expected.bookingsCreated}, scheduleEntries=${scheduleCount}.`);
+  console.info(`[seed:demo] Verification passed. clients=${totalClients}, admins=${totalAdmins}, teachers=${totalTeachers}, products=${totalProducts}, programmes=${programCount}, courses=${courseCount}, sessions=${expected.totalSessionsGenerated}, bookableSessions=${expected.bookableSessionCount}, bookings=${expected.bookingsCreated}, scheduleEntries=${scheduleCount}, loyaltyPrograms=${loyaltyCounts.programCount}, loyaltyEligibleProducts=${loyaltyCounts.eligibleProductCount}, loyaltyRewards=${loyaltyCounts.rewardCount}.`);
 }
 
 async function syncSeedMediaFilesFromDatabase(): Promise<{ copiedCount: number; existingCount: number }> {
@@ -819,6 +959,7 @@ export async function runDemoSeed(): Promise<void> {
   await seedBookingPolicy();
   const { collectiveTenPack, collectiveMonthly } = await seedProductionCatalog(stripePriceIdByLookupKey);
   await seedProductionStoreCatalog(stripePriceIdByLookupKey);
+  const loyaltySummary = await seedProductionLoyaltyProgram();
 
   // Resolve price and entitlement rule IDs needed for booking seeding
   const tenPackPrice = await prisma.price.findUnique({ where: { lookupKey: "collective-10-pack-eur-once-v1" } });
@@ -851,7 +992,7 @@ export async function runDemoSeed(): Promise<void> {
   console.info(`[seed:demo] Seeded media verified: ${seededMediaPathCount} canonical /uploads paths.`);
   await verifyProductionSeed({ ...learningSummary, ...schedulingSummary });
 
-  console.info(`[seed:demo] Completed: clients=${PROD_CLIENT_COUNT}, sessions=${schedulingSummary.totalSessionsGenerated}, bookings=${schedulingSummary.bookingsCreated}, programmes=${learningSummary.programCount}, courses=${learningSummary.courseCount}.`);
+  console.info(`[seed:demo] Completed: clients=${PROD_CLIENT_COUNT}, sessions=${schedulingSummary.totalSessionsGenerated}, bookings=${schedulingSummary.bookingsCreated}, programmes=${learningSummary.programCount}, courses=${learningSummary.courseCount}, loyaltyEligibleProducts=${loyaltySummary.eligibleProductCount}, loyaltyRewardId=${loyaltySummary.rewardDefinitionId}.`);
 }
 
 

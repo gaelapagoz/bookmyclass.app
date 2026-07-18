@@ -36,6 +36,10 @@ import {
   reserveLoyaltyCreditValue,
 } from "../../src/lib/loyalty/loyalty-redemption-service";
 import { getClientLoyaltySummary, listClientLoyaltyHistory } from "../../src/lib/loyalty/loyalty-read-service";
+import {
+  seedProductionLoyaltyProgram,
+  verifyDemoLoyaltyContract,
+} from "../../prisma/seed/modes/demo";
 import { resetDb } from "./helpers/reset-db";
 
 async function createVerifiedClient() {
@@ -781,5 +785,74 @@ describe("loyalty core services", () => {
         rewardDefinitionId: reward.id,
       }),
     ).rejects.toMatchObject({ code: "LOYALTY_REWARD_NOT_FOUND" });
+  });
+
+  it("demo loyalty seed is rerunnable without duplicate programs, eligible products, or rewards", async () => {
+    await createCatalogProduct({
+      namePrefix: "Demo Loyalty Mat",
+      productType: ProductType.MERCHANDISE,
+      unitAmountMinor: 5_000,
+    });
+    await createCatalogProduct({
+      namePrefix: "Demo Loyalty Pack",
+      productType: ProductType.CLASS_PACK,
+      unitAmountMinor: 9_500,
+    });
+
+    const first = await seedProductionLoyaltyProgram();
+    const second = await seedProductionLoyaltyProgram();
+    const [programCount, eligibleProductCount, rewardCount] = await Promise.all([
+      prisma.loyaltyProgram.count({ where: { currencyCode: "EUR" } }),
+      prisma.loyaltyEligibleProduct.count(),
+      prisma.loyaltyRewardDefinition.count({ where: { name: "5 EURO Reward" } }),
+    ]);
+    const verification = await verifyDemoLoyaltyContract();
+
+    expect(second.rewardDefinitionId).toBe(first.rewardDefinitionId);
+    expect(programCount).toBe(1);
+    expect(eligibleProductCount).toBe(2);
+    expect(rewardCount).toBe(1);
+    expect(verification).toEqual({
+      programCount: 1,
+      eligibleProductCount: 2,
+      rewardCount: 1,
+    });
+  });
+
+  it("demo loyalty verification fails when the active EUR program is absent", async () => {
+    await expect(verifyDemoLoyaltyContract()).rejects.toThrow(
+      /expected exactly one active EUR loyalty program/i,
+    );
+  });
+
+  it("demo loyalty verification fails when the deterministic reward is absent", async () => {
+    await createCatalogProduct({
+      namePrefix: "Demo Missing Reward Mat",
+      productType: ProductType.MERCHANDISE,
+      unitAmountMinor: 5_000,
+    });
+    await seedProductionLoyaltyProgram();
+    await prisma.loyaltyRewardDefinition.deleteMany({ where: { name: "5 EURO Reward" } });
+
+    await expect(verifyDemoLoyaltyContract()).rejects.toThrow(
+      /expected one active 5 EURO Reward loyalty reward/i,
+    );
+  });
+
+  it("demo loyalty verification fails when the deterministic reward value is invalid", async () => {
+    await createCatalogProduct({
+      namePrefix: "Demo Invalid Reward Mat",
+      productType: ProductType.MERCHANDISE,
+      unitAmountMinor: 5_000,
+    });
+    await seedProductionLoyaltyProgram();
+    await prisma.loyaltyRewardDefinition.updateMany({
+      where: { name: "5 EURO Reward" },
+      data: { pointsRequired: 450 },
+    });
+
+    await expect(verifyDemoLoyaltyContract()).rejects.toThrow(
+      /5 EURO Reward loyalty reward is invalid/i,
+    );
   });
 });

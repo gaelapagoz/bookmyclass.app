@@ -116,6 +116,11 @@ Seeded credential policy:
 - Deterministic seeded users in `development`, `staging`, `demo`, and `production` use password `Book4Ever!`.
 - This does not apply to real human production accounts.
 
+Demo dataset loyalty contract:
+- `demo` seed mode is upsert-only and includes one active EUR loyalty program.
+- The demo EUR loyalty program allowlists active one-time products and creates the active `5 EURO Reward` reward.
+- Targeted repair is `npm run db:loyalty:demo-contract`; run it only after backup verification and operator approval.
+
 ### Optional repository/environment variables
 
 - `UAT_APP_DIR` (defaults to script value when unset)

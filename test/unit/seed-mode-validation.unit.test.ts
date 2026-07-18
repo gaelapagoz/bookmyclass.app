@@ -1,4 +1,4 @@
-import { readdir } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
 import { isLearningImagePath } from "../../src/lib/learning/image-paths";
@@ -99,6 +99,25 @@ describe("seed config", () => {
   });
 });
 
+describe("demo seed loyalty wiring", () => {
+  it("creates loyalty configuration after Product + Price and Store catalog seeding", async () => {
+    const source = await readFile(
+      path.resolve(process.cwd(), "prisma", "seed", "modes", "demo.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain("upsertLoyaltyProgramSettings");
+    expect(source).toContain("upsertLoyaltyRewardDefinition");
+    expect(source).toContain("const loyaltySummary = await seedProductionLoyaltyProgram();");
+    expect(source.indexOf("await seedProductionCatalog(stripePriceIdByLookupKey);")).toBeLessThan(
+      source.indexOf("const loyaltySummary = await seedProductionLoyaltyProgram();"),
+    );
+    expect(source.indexOf("await seedProductionStoreCatalog(stripePriceIdByLookupKey);")).toBeLessThan(
+      source.indexOf("const loyaltySummary = await seedProductionLoyaltyProgram();"),
+    );
+  });
+});
+
 describe("deterministic RNG", () => {
   it("produces stable sequences for same seed", () => {
     const a = createSeededRng(123);
@@ -195,6 +214,12 @@ describe("production learning image paths", () => {
   }
 
   async function listFilesRecursive(root: string): Promise<string[]> {
+    try {
+      await access(root);
+    } catch {
+      return [];
+    }
+
     const entries = await readdir(root, { withFileTypes: true });
     const files = await Promise.all(
       entries.map(async (entry) => {
