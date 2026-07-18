@@ -44,6 +44,7 @@ BUILD_TIMEOUT_SECONDS="${BUILD_TIMEOUT_SECONDS:-900}"
 NPM_PRUNE_TIMEOUT_SECONDS="${NPM_PRUNE_TIMEOUT_SECONDS:-300}"
 PM2_TIMEOUT_SECONDS="${PM2_TIMEOUT_SECONDS:-120}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-120}"
+REMOTE_DEPLOY_TIMEOUT_SECONDS="${REMOTE_DEPLOY_TIMEOUT_SECONDS:-1500}"
 PRISMA_RESET_TIMEOUT_SECONDS="${PRISMA_RESET_TIMEOUT_SECONDS:-300}"
 SEED_PROD_TIMEOUT_SECONDS="${SEED_PROD_TIMEOUT_SECONDS:-600}"
 SEED_STAGING_TIMEOUT_SECONDS="${SEED_STAGING_TIMEOUT_SECONDS:-600}"
@@ -84,8 +85,11 @@ remote_script="${remote_dir}/deploy.sh"
 remote_start="${remote_dir}/start.sh"
 remote_log="${remote_dir}/deploy.log"
 remote_status="${remote_dir}/exit-code"
+remote_pid="${remote_dir}/pid"
+remote_process_lib="${remote_dir}/deploy-process-control.sh"
 
 ssh "$ssh_target" "mkdir -p '$remote_dir'"
+ssh "$ssh_target" "cat > '$remote_process_lib'" < scripts/lib/deploy-process-control.sh
 
 ssh "$ssh_target" "cat > '$remote_script'" <<'REMOTE_SCRIPT'
 #!/usr/bin/env bash
@@ -119,11 +123,21 @@ SEED_STAGING_TIMEOUT_SECONDS="${25:-600}"
 SEED_UAT_K6_TIMEOUT_SECONDS="${26:-600}"
 CONFIRM_TARGET="${27:-}"
 SEED_STAGING_E2E_TIMEOUT_SECONDS="${28:-300}"
+REMOTE_PROCESS_CONTROL_SH="${29:?}"
 
 LOCK_FILE="/tmp/bookmyclass-deploy.lock"
 DEPLOY_FAILED=0
+DEPLOY_START_TIME_UTC="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+BUILD_DIAGNOSTIC_PID=""
+
+# shellcheck disable=SC1090
+. "$REMOTE_PROCESS_CONTROL_SH"
 
 log_step() { echo; echo "==> $*"; }
+
+run_with_timeout() {
+  deploy_run_with_timeout "$@"
+}
 
 cleanup_children() {
   local pids=()
@@ -143,6 +157,7 @@ on_exit() {
   if [[ "$exit_code" -ne 0 ]]; then
     DEPLOY_FAILED=1
   fi
+  deploy_stop_runtime_diagnostics "$BUILD_DIAGNOSTIC_PID"
   cleanup_children
   if [[ "$DEPLOY_FAILED" -eq 1 ]]; then
     echo "[deploy] failed; PM2 runtime left untouched by cleanup"
@@ -151,24 +166,6 @@ on_exit() {
 }
 
 trap on_exit EXIT INT TERM
-
-run_with_timeout() {
-  local timeout_seconds="$1"
-  local label="$2"
-  shift 2
-
-  log_step "$label"
-  echo "[cmd] $*"
-  if ! timeout --foreground "${timeout_seconds}s" "$@"; then
-    local rc="$?"
-    if [[ "$rc" -eq 124 ]]; then
-      echo "[FAIL][timeout] ${label} exceeded ${timeout_seconds}s" >&2
-    else
-      echo "[FAIL][command] ${label} exited with status ${rc}" >&2
-    fi
-    return "$rc"
-  fi
-}
 
 curl_probe() {
   local url="$1"
@@ -268,6 +265,16 @@ print_pre_diagnostics() {
   pm2 status || true
 }
 
+print_memory_preflight() {
+  log_step "memory and swap preflight"
+  free -h || true
+  swapon --show || true
+
+  if [[ -z "$(swapon --show --noheadings 2>/dev/null || true)" ]]; then
+    echo "::warning::No swap is configured on this host. Hetzner staging/prod-demo hosts should have at least 4 GiB swap before live-host builds are considered reliable."
+  fi
+}
+
 clean_git_worktree_for_exact_tag() {
   log_step "sanitize git worktree before exact tag checkout"
   git status --short || true
@@ -288,6 +295,7 @@ fi
 echo "[lock] acquired $LOCK_FILE"
 
 print_pre_diagnostics
+print_memory_preflight
 
 run_with_timeout 120 "fetch exact release refs" git fetch --all --tags --prune --force
 clean_git_worktree_for_exact_tag
@@ -314,7 +322,17 @@ npm ls vitest --depth=0 || true
 
 run_with_timeout "$PRISMA_GENERATE_TIMEOUT_SECONDS" "generate prisma client" npx prisma generate
 run_with_timeout "$PRISMA_MIGRATE_TIMEOUT_SECONDS" "apply prisma migrations" npx prisma migrate deploy
-run_with_timeout "$BUILD_TIMEOUT_SECONDS" "build next application" npm run build
+
+deploy_start_runtime_diagnostics "build next application" "${BUILD_DIAGNOSTIC_INTERVAL_SECONDS:-60}"
+BUILD_DIAGNOSTIC_PID="$DEPLOY_RUNTIME_DIAGNOSTICS_PID"
+build_rc=0
+run_with_timeout "$BUILD_TIMEOUT_SECONDS" "build next application" npm run build || build_rc="$?"
+deploy_stop_runtime_diagnostics "$BUILD_DIAGNOSTIC_PID"
+BUILD_DIAGNOSTIC_PID=""
+if [[ "$build_rc" -ne 0 ]]; then
+  deploy_collect_failure_evidence "build next application" "$DEPLOY_START_TIME_UTC"
+  exit "$build_rc"
+fi
 
 if [[ "$RESET_STAGING_DB" == "1" ]]; then
   guard_destructive_staging_seed
@@ -370,19 +388,27 @@ done
 [[ "$public_ok" -eq 1 ]] || { echo "[FAIL] public health check failed" >&2; exit 3; }
 REMOTE_SCRIPT
 
-ssh "$ssh_target" "chmod 700 '$remote_script'"
+ssh "$ssh_target" "chmod 700 '$remote_script' '$remote_process_lib'"
 ssh "$ssh_target" "cat > '$remote_start'" <<'REMOTE_START'
 #!/usr/bin/env bash
 set -euo pipefail
-REMOTE_SCRIPT="$1"; REMOTE_LOG="$2"; REMOTE_STATUS="$3"; shift 3
-( set +e; "$REMOTE_SCRIPT" "$@" >"$REMOTE_LOG" 2>&1; printf "%s\n" "$?" >"$REMOTE_STATUS" ) </dev/null >/dev/null 2>&1 &
+REMOTE_SCRIPT="$1"; REMOTE_LOG="$2"; REMOTE_STATUS="$3"; REMOTE_PID="$4"; shift 4
+(
+  set +e
+  setsid bash -c 'pid_file="$1"; shift; printf "%s\n" "$$" > "$pid_file"; exec "$@"' _ "$REMOTE_PID" "$REMOTE_SCRIPT" "$@" >"$REMOTE_LOG" 2>&1
+  printf "%s\n" "$?" >"$REMOTE_STATUS"
+) </dev/null >/dev/null 2>&1 &
 REMOTE_START
 ssh "$ssh_target" "chmod 700 '$remote_start'"
-ssh "$ssh_target" "'$remote_start' '$remote_script' '$remote_log' '$remote_status' '$TARGET_ENV' '$RELEASE_TAG' '$APP_DIR' '$APP_NAME' '$HOMESITE_PUBLISH_DIR' '$BASE_URL' '$LOCAL_HEALTH_URL' '$HEALTH_ATTEMPTS' '$HEALTH_DELAY_SECONDS' '$EXPECTED_SHA' '$HOMESITE_BASE_URL' '$PUBLISH_HOMESITE' '$NPM_CI_TIMEOUT_SECONDS' '$PRISMA_GENERATE_TIMEOUT_SECONDS' '$PRISMA_MIGRATE_TIMEOUT_SECONDS' '$BUILD_TIMEOUT_SECONDS' '$NPM_PRUNE_TIMEOUT_SECONDS' '$PM2_TIMEOUT_SECONDS' '$HEALTH_TIMEOUT_SECONDS' '$RESET_STAGING_DB' '$CONFIRM_DESTRUCTIVE_STAGING_SEED' '$CONFIRM_PRODUCTION_SEED' '$PRISMA_RESET_TIMEOUT_SECONDS' '$SEED_PROD_TIMEOUT_SECONDS' '$SEED_STAGING_TIMEOUT_SECONDS' '$SEED_UAT_K6_TIMEOUT_SECONDS' '$CONFIRM_TARGET' '$SEED_STAGING_E2E_TIMEOUT_SECONDS'"
+ssh "$ssh_target" "'$remote_start' '$remote_script' '$remote_log' '$remote_status' '$remote_pid' '$TARGET_ENV' '$RELEASE_TAG' '$APP_DIR' '$APP_NAME' '$HOMESITE_PUBLISH_DIR' '$BASE_URL' '$LOCAL_HEALTH_URL' '$HEALTH_ATTEMPTS' '$HEALTH_DELAY_SECONDS' '$EXPECTED_SHA' '$HOMESITE_BASE_URL' '$PUBLISH_HOMESITE' '$NPM_CI_TIMEOUT_SECONDS' '$PRISMA_GENERATE_TIMEOUT_SECONDS' '$PRISMA_MIGRATE_TIMEOUT_SECONDS' '$BUILD_TIMEOUT_SECONDS' '$NPM_PRUNE_TIMEOUT_SECONDS' '$PM2_TIMEOUT_SECONDS' '$HEALTH_TIMEOUT_SECONDS' '$RESET_STAGING_DB' '$CONFIRM_DESTRUCTIVE_STAGING_SEED' '$CONFIRM_PRODUCTION_SEED' '$PRISMA_RESET_TIMEOUT_SECONDS' '$SEED_PROD_TIMEOUT_SECONDS' '$SEED_STAGING_TIMEOUT_SECONDS' '$SEED_UAT_K6_TIMEOUT_SECONDS' '$CONFIRM_TARGET' '$SEED_STAGING_E2E_TIMEOUT_SECONDS' '$remote_process_lib'"
 
 last_lines=0
 remote_exit=""
-for poll in {1..240}; do
+max_remote_wait_seconds="$REMOTE_DEPLOY_TIMEOUT_SECONDS"
+max_remote_polls=$(((max_remote_wait_seconds + 4) / 5))
+echo "max_remote_wait_seconds=$max_remote_wait_seconds" | tee -a "$evidence_dir/deploy.log"
+
+for poll in $(seq 1 "$max_remote_polls"); do
   current_lines="$(ssh "$ssh_target" "if [[ -f '$remote_log' ]]; then wc -l < '$remote_log'; else echo 0; fi" 2>/dev/null || echo 0)"
   current_lines="$(printf '%s' "$current_lines" | tr -d '[:space:]')"
   if [[ "${current_lines:-0}" -gt "$last_lines" ]]; then
@@ -397,8 +423,28 @@ for poll in {1..240}; do
 done
 
 if [[ -z "$remote_exit" ]]; then
-  echo "[FAIL] Remote deploy timeout." | tee -a "$evidence_dir/deploy.log" >&2
-  remote_exit=124
+  remote_exit="$(ssh "$ssh_target" "if [[ -f '$remote_status' ]]; then cat '$remote_status'; fi" 2>/dev/null || true)"
+  remote_exit="$(printf '%s' "$remote_exit" | tr -d '[:space:]')"
+fi
+
+if [[ -z "$remote_exit" ]]; then
+  echo "[FAIL] Remote deploy timeout after ${max_remote_wait_seconds}s." | tee -a "$evidence_dir/deploy.log" >&2
+  remote_group_pid="$(ssh "$ssh_target" "if [[ -f '$remote_pid' ]]; then cat '$remote_pid'; fi" 2>/dev/null || true)"
+  remote_group_pid="$(printf '%s' "$remote_group_pid" | tr -d '[:space:]')"
+  if [[ -n "$remote_group_pid" ]]; then
+    echo "[cleanup] terminating remote deploy process group ${remote_group_pid}" | tee -a "$evidence_dir/deploy.log"
+    ssh "$ssh_target" "kill -TERM -- '-$remote_group_pid' 2>/dev/null || true" 2>/dev/null || true
+    sleep 30
+    ssh "$ssh_target" "kill -KILL -- '-$remote_group_pid' 2>/dev/null || true" 2>/dev/null || true
+  fi
+  for final_poll in {1..6}; do
+    remote_exit="$(ssh "$ssh_target" "if [[ -f '$remote_status' ]]; then cat '$remote_status'; fi" 2>/dev/null || true)"
+    remote_exit="$(printf '%s' "$remote_exit" | tr -d '[:space:]')"
+    [[ -n "$remote_exit" ]] && break
+    sleep 5
+  done
+  ssh "$ssh_target" "ps -eo pid,ppid,pgid,stat,%cpu,%mem,rss,etime,cmd --sort=-rss | head -n 80; if [[ -f '$remote_log' ]]; then tail -n 200 '$remote_log'; fi" 2>/dev/null | tee -a "$evidence_dir/deploy.log" || true
+  remote_exit="${remote_exit:-124}"
 fi
 
 echo "remote_exit_code=$remote_exit" | tee "$evidence_dir/exit-code.txt"

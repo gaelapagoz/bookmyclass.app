@@ -10,6 +10,7 @@ If a setup/runbook file conflicts with this file, treat this file as authoritati
 |---|---|---|---|
 | Production host/IP or hostname | `bookmyclass-prod` / `46.62.208.152` | Verified live | Confirmed from live host inspection on April 18, 2026. |
 | Production topology | Single app host + separate monitor host (`bookmyclass-monitor`) | Verified live | App runtime and nginx on production host; Uptime Kuma runs on monitor host. |
+| Production/demo host memory profile | Approximately 3.7 GiB RAM observed with no swap during the July 18, 2026 staging incident | Needs remediation | Keep at least 4 GiB swap configured on Hetzner app hosts before live-host builds are considered reliable. Deployment scripts warn when swap is absent but do not create swap automatically. |
 | PM2 app name | `bookmyclass-app` | Confirmed from deployment docs | Consistent across PM2/monitoring guides. |
 | PM2 runtime/process mode | Cluster mode with 2 workers on production (2 vCPU) | Verified live | Keep one app name (`bookmyclass-app`) with 2 online workers. |
 | Database container name | `bookmyclass-app-postgres` | Verified live | Confirmed via `docker ps` on production host. |
@@ -148,4 +149,41 @@ Use this source order when current implementation work conflicts with older docs
 Rule:
 - Never deploy directly to production from main
 - Staging destructive reset/seed is staging-only and must be guarded; production reset/seed remains prohibited.
+
+## Remote Deployment Failure Handling
+
+The current staging/production script still builds on the live Hetzner
+application host. This is operationally fragile because the host also runs two
+PM2 workers, PostgreSQL, Docker, nginx, and cloudflared.
+
+Current script limits:
+- Remote `npm run build` is bounded to 15 minutes (`BUILD_TIMEOUT_SECONDS=900`).
+- Timed commands use GNU `timeout --signal=TERM --kill-after=30s` so a stuck
+  build receives TERM first and then a forced kill after 30 seconds.
+- The GitHub-side remote deployment watcher is bounded to approximately
+  25 minutes (`REMOTE_DEPLOY_TIMEOUT_SECONDS=1500`) so it can observe build
+  timeout cleanup and remote exit-status propagation without waiting 40 minutes
+  or longer for a stuck build.
+
+On remote build failure or timeout:
+- The deployment exits immediately with the real command/timeout exit code.
+- Staging destructive reset and seed commands are not executed.
+- Dependency pruning is not executed.
+- PM2 is not reloaded, so the currently running application remains untouched.
+- Failure evidence is captured without dumping environment secrets:
+  `date -u`, `free -h`, `swapon --show`, `uptime`, highest-RSS process list
+  with PID/PPID/PGID, remaining deploy/build process matches, and kernel logs
+  since deployment start with memory-pressure signals surfaced separately.
+
+The July 18, 2026 staging incident has two distinct causes/risk areas:
+- Confirmed wrapper defects: timeout exit-code handling and remote cleanup/
+  evidence behavior needed hardening.
+- Unresolved underlying server freeze: the same tag passed GitHub tag sanity,
+  while the Hetzner build stalled at `Running TypeScript ...` on a host with
+  approximately 3.7 GiB RAM and no observed swap.
+
+Long-term recommendation:
+- Stop building on the live server. Prefer deploying a CI-built immutable
+  artifact or Docker image, then run only migration, health, and PM2/runtime
+  switch steps on the Hetzner host.
 
