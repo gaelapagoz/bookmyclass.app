@@ -43,6 +43,7 @@ import {
 import { hash } from "bcryptjs";
 import prisma from "../../../src/lib/db";
 import { assertLearningImagePath } from "../../../src/lib/learning/image-paths";
+import { ensureAllExpectedAutomationTemplatesExist } from "../../../src/lib/email/email-automation-admin-service";
 import {
   upsertLoyaltyProgramSettings,
   upsertLoyaltyRewardDefinition,
@@ -86,7 +87,6 @@ const DEFAULT_LOYALTY_EARNING_POINTS = 10;
 const DEFAULT_LOYALTY_EARNING_AMOUNT_MINOR = 500;
 const DEFAULT_LOYALTY_POINTS_EXPIRE_AFTER_DAYS = 180;
 const DEFAULT_LOYALTY_EXPIRATION_REMINDER_DAYS = 30;
-const DEFAULT_LOYALTY_MAX_MANUAL_GRANT_POINTS = 500;
 const DEFAULT_LOYALTY_REWARD_NAME = "5 EURO Reward";
 const DEFAULT_LOYALTY_REWARD_POINTS_REQUIRED = 500;
 const DEFAULT_LOYALTY_REWARD_AMOUNT_MINOR = 500;
@@ -446,7 +446,6 @@ export async function seedProductionLoyaltyProgram(): Promise<{
     earningAmountMinor: DEFAULT_LOYALTY_EARNING_AMOUNT_MINOR,
     pointsExpireAfterDays: DEFAULT_LOYALTY_POINTS_EXPIRE_AFTER_DAYS,
     expirationReminderDays: DEFAULT_LOYALTY_EXPIRATION_REMINDER_DAYS,
-    maxManualGrantPoints: DEFAULT_LOYALTY_MAX_MANUAL_GRANT_POINTS,
     eligibleProductIds: eligibleProducts.map((product) => product.id),
   });
 
@@ -984,6 +983,7 @@ export async function runDemoSeed(): Promise<void> {
   const learningSummary = await seedProductionLearning();
   await seedAgendaSchedule();
   await seedProductionMarketingHistory({ createdById: admin.id });
+  await ensureAllExpectedAutomationTemplatesExist();
   const mediaSyncSummary = await syncSeedMediaFilesFromDatabase();
   console.info(
     `[seed:demo] Seed media sync: copied=${mediaSyncSummary.copiedCount}, existing=${mediaSyncSummary.existingCount}.`,

@@ -1,4 +1,4 @@
-﻿import { expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { signInAdmin } from "./support/auth";
 import { SEEDED_ADMIN } from "./support/constants";
 
@@ -27,11 +27,11 @@ test("online learning navigation flow", async ({ page }) => {
 test("marketing campaign active flow", async ({ page }) => {
   await signInAdmin(page, SEEDED_ADMIN);
 
-  await page.goto("/admin/marketing/campaigns/e2e-marketing-campaign/confirm");
+  await page.goto("/admin/campaigns/e2e-marketing-campaign/confirm");
   await expect(page.getByRole("heading", { name: "Confirm Campaign" })).toBeVisible();
 
   await page.getByRole("button", { name: "Send campaign" }).click();
-  await expect.poll(() => page.url()).toMatch(/\/admin\/marketing\/campaigns\/e2e-marketing-campaign\/(sent|confirm\?.*error=)/);
+  await expect.poll(() => page.url()).toMatch(/\/admin\/campaigns\/e2e-marketing-campaign\/(sent|confirm\?.*error=)/);
 
   const finalUrl = page.url();
   if (finalUrl.includes("/sent")) {

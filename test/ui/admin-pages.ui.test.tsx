@@ -120,7 +120,7 @@ import AdminOnlineLearningPage from "../../src/app/admin/(private)/online-learni
 import AdminInboxPage from "../../src/app/admin/(private)/inbox/page";
 import AdminManageSitePage from "../../src/app/admin/(private)/manage-site/page";
 import AdminAutomationsPage from "../../src/app/admin/(private)/automations/page";
-import AdminMarketingSegmentsPage from "../../src/app/admin/(private)/marketing/segments/page";
+import AdminMarketingSegmentsPage from "../../src/app/admin/(private)/segments/page";
 describe("Admin pages branching", () => {
   beforeEach(() => {
     vi.clearAllMocks();    vi.mocked(getDashboardTrendData).mockResolvedValue([]);

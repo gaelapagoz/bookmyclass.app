@@ -65,7 +65,6 @@ const DEFAULT_LOYALTY_EARNING_POINTS = 10;
 const DEFAULT_LOYALTY_EARNING_AMOUNT_MINOR = 500;
 const DEFAULT_LOYALTY_POINTS_EXPIRE_AFTER_DAYS = 180;
 const DEFAULT_LOYALTY_EXPIRATION_REMINDER_DAYS = 30;
-const DEFAULT_LOYALTY_MAX_MANUAL_GRANT_POINTS = 500;
 
 function ensureE2EDatabaseUrl() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -177,7 +176,6 @@ async function seedLoyaltyProgram() {
     earningAmountMinor: DEFAULT_LOYALTY_EARNING_AMOUNT_MINOR,
     pointsExpireAfterDays: DEFAULT_LOYALTY_POINTS_EXPIRE_AFTER_DAYS,
     expirationReminderDays: DEFAULT_LOYALTY_EXPIRATION_REMINDER_DAYS,
-    maxManualGrantPoints: DEFAULT_LOYALTY_MAX_MANUAL_GRANT_POINTS,
     eligibleProductIds: eligibleProducts.map((product) => product.id),
   });
 

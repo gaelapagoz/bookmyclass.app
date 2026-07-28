@@ -49,7 +49,7 @@ test.describe("admin flow screenshots", () => {
 
   test("07 admin marketing and inbox", async ({ page }) => {
     await signInAsAdmin(page);
-    await page.goto("/admin/marketing/campaigns");
+    await page.goto("/admin/campaigns");
     await page.waitForLoadState("networkidle");
     await capture(page, "admin-07-admin-marketing-inbox.png");
   });

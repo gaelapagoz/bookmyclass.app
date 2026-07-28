@@ -103,13 +103,16 @@ export default async function AdminLoyaltySalesPage({ searchParams }: { searchPa
     <section className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-[#1f2735]">Loyalty Points</h1>
+          <h1 className="text-2xl font-semibold text-[#1f2735]">Loyalty Activity</h1>
           <p className="mt-1 text-sm text-[#4b5a72]">
-            Client balances, recent loyalty activity, and audited manual grants.
+            Monitor client balances, point activity, expirations, and manual adjustments.
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Link href="/admin/loyalty" className="rounded-md border border-[#cbd5e1] bg-white px-3 py-2 text-sm font-medium text-[#1f2735]">
+            Configure loyalty
+          </Link>
           {data.programs.length > 0 ? data.programs.map((program) => (
             <Link
               key={program.id}
@@ -246,7 +249,7 @@ export default async function AdminLoyaltySalesPage({ searchParams }: { searchPa
               <div>
                 <h2 className="text-lg font-semibold text-[#1f2735]">Manual grant</h2>
                 <p className="mt-1 text-sm text-[#4b5a72]">
-                  Positive grants only. Actor, reason, and audit metadata are recorded automatically.
+                  Grant loyalty points directly to a client. The administrator, reason, amount, and timestamp are recorded for auditing.
                 </p>
               </div>
               <AdminLoyaltyManualGrantModal
@@ -264,7 +267,7 @@ export default async function AdminLoyaltySalesPage({ searchParams }: { searchPa
               <div>
                 <h2 className="text-lg font-semibold text-[#1f2735]">Selected client</h2>
                 <p className="mt-1 text-sm text-[#4b5a72]">
-                  Read-only loyalty summary and history for the selected client.
+                  Loyalty summary and history for the selected client.
                 </p>
               </div>
             </div>

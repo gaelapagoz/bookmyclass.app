@@ -191,7 +191,8 @@ Other action-based earning remains deferred.
 ### 8.5 Manual grant policy
 - Only `ADMIN` and `MASTER_ADMIN` may create manual loyalty point grants.
 - Manual grants require an actor, reason, timestamp, and audit metadata.
-- Manual grant amounts must be upper-bounded by server-side validation before write.
+- Manual grants must be positive whole-number amounts; authorized admin roles are not constrained by a business-configured maximum.
+- Manual grants remain fully audited with actor, role, reason, amount, timestamp, idempotency key, and immutable ledger entry.
 - Negative manual point adjustments are not part of the first admin UX and require separate approved reconciliation behavior before implementation.
 
 ### 8.6 Combined wallet rule

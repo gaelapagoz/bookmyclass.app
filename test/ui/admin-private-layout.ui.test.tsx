@@ -204,7 +204,7 @@ describe("/admin private layout", () => {
     expect(screen.getByRole("button", { name: "Sales-" })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("link", { name: "Orders" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Memberships" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Rewards" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Loyalty Activity" })).toBeInTheDocument();
   });
 
   it("auto-expands booking group for calendar deep links", async () => {

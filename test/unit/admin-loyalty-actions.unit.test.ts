@@ -88,7 +88,6 @@ describe("admin loyalty actions", () => {
         earningAmountDisplay: "1.00",
         pointsExpireAfterDays: "180",
         expirationReminderDays: "30",
-        maxManualGrantPoints: "5000",
         eligibleProductIds: ["product-1"],
       })),
     ).rejects.toThrow("CSRF_INVALID_ORIGIN");
@@ -106,13 +105,12 @@ describe("admin loyalty actions", () => {
         earningAmountDisplay: "5.00",
         pointsExpireAfterDays: "180",
         expirationReminderDays: "30",
-        maxManualGrantPoints: "5000",
         eligibleProductIds: ["product-1"],
         clientId: "client-1",
         query: "client@example.test",
         page: "2",
       })),
-    ).rejects.toThrow("NEXT_REDIRECT:/admin/catalog/loyalty?currencyCode=EUR&success=Loyalty+program+updated.");
+    ).rejects.toThrow("NEXT_REDIRECT:/admin/loyalty?currencyCode=EUR&success=Loyalty+program+updated.");
 
     expect(mocks.upsertLoyaltyProgramSettingsByAdmin).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -123,22 +121,32 @@ describe("admin loyalty actions", () => {
         eligibleProductIds: ["product-1"],
       }),
     );
+    expect(mocks.upsertLoyaltyProgramSettingsByAdmin.mock.calls[0][0]).not.toHaveProperty("maxManualGrantPoints");
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/sales/loyalty");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/catalog/loyalty");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/loyalty");
   });
 
-  it("maps manual grant limit failures to the loyalty page banner", async () => {
-    mocks.grantManualLoyaltyPointsByAdmin.mockRejectedValueOnce(new Error("Manual loyalty grant exceeds the configured maximum."));
+  it("allows manual grants above the former stored value", async () => {
+    mocks.grantManualLoyaltyPointsByAdmin.mockResolvedValueOnce({
+      outcome: "created",
+      entry: { id: "entry-1" },
+    });
 
     await expect(
       grantLoyaltyPointsAction(makeForm({
         currencyCode: "EUR",
         clientEmail: "client@example.test",
         amountPoints: "9000",
-        reason: "Exceeded configured maximum for testing.",
+        reason: "Audited administrative adjustment after a support review.",
         grantRequestKey: "grant-123",
       })),
-    ).rejects.toThrow("NEXT_REDIRECT:/admin/sales/loyalty?currencyCode=EUR&error=Manual+grant+exceeds+the+configured+maximum.");
+    ).rejects.toThrow("NEXT_REDIRECT:/admin/sales/loyalty?currencyCode=EUR&success=Loyalty+points+granted.");
+
+    expect(mocks.grantManualLoyaltyPointsByAdmin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amountPoints: 9000,
+      }),
+    );
   });
 
   it("uses a deterministic idempotency key for manual grants", async () => {
@@ -175,7 +183,7 @@ describe("admin loyalty actions", () => {
         pointsRequired: "1000",
         amountDisplay: "10.00",
       })),
-    ).rejects.toThrow("NEXT_REDIRECT:/admin/catalog/loyalty?currencyCode=EUR&success=Loyalty+reward+updated.");
+    ).rejects.toThrow("NEXT_REDIRECT:/admin/loyalty?currencyCode=EUR&success=Loyalty+reward+updated.");
 
     expect(mocks.saveLoyaltyRewardDefinitionByAdmin).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -195,7 +203,7 @@ describe("admin loyalty actions", () => {
         rewardDefinitionId: "reward-1",
         currencyCode: "EUR",
       })),
-    ).rejects.toThrow("NEXT_REDIRECT:/admin/catalog/loyalty?currencyCode=EUR&success=Loyalty+reward+archived.");
+    ).rejects.toThrow("NEXT_REDIRECT:/admin/loyalty?currencyCode=EUR&success=Loyalty+reward+archived.");
 
     expect(mocks.archiveLoyaltyRewardDefinitionByAdmin).toHaveBeenCalledWith({
       actorUserId: "admin-1",

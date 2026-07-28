@@ -20,8 +20,8 @@ import {
   getMarketingCampaignListPageData,
   getMarketingSentCampaignSummaryById,
 } from "@/lib/marketing/marketing-service";
-import AdminMarketingCampaignSummaryPage from "../../src/app/admin/(private)/marketing/campaigns/[id]/summary/page";
-import AdminMarketingCampaignsPage from "../../src/app/admin/(private)/marketing/campaigns/page";
+import AdminMarketingCampaignSummaryPage from "../../src/app/admin/(private)/campaigns/[id]/summary/page";
+import AdminMarketingCampaignsPage from "../../src/app/admin/(private)/campaigns/page";
 
 describe("admin marketing campaigns page", () => {
   beforeEach(() => {
@@ -79,15 +79,15 @@ describe("admin marketing campaigns page", () => {
     expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Continue" })).toHaveAttribute(
       "href",
-      "/admin/marketing/campaigns/new?campaignId=camp-draft",
+      "/admin/campaigns/new?campaignId=camp-draft",
     );
     expect(screen.getByRole("link", { name: "Summary" })).toHaveAttribute(
       "href",
-      "/admin/marketing/campaigns/camp-sent/summary",
+      "/admin/campaigns/camp-sent/summary",
     );
     expect(screen.getByText("Total campaigns")).toBeInTheDocument();
     expect(screen.getByText("Avg recipients per sent campaign")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "+ Create campaign" })).toHaveAttribute("href", "/admin/marketing/campaigns/new");
+    expect(screen.getByRole("link", { name: "+ Create campaign" })).toHaveAttribute("href", "/admin/campaigns/new");
     expect(screen.queryByRole("columnheader", { name: "Open rate" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Click rate" })).not.toBeInTheDocument();
   });
@@ -175,6 +175,6 @@ describe("admin marketing campaigns page", () => {
       params: Promise.resolve({ id: "camp-draft" }),
     });
 
-    expect(redirectMock).toHaveBeenCalledWith("/admin/marketing/campaigns/new?campaignId=camp-draft");
+    expect(redirectMock).toHaveBeenCalledWith("/admin/campaigns/new?campaignId=camp-draft");
   });
 });

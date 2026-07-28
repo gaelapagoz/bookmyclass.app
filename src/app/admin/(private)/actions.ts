@@ -1034,7 +1034,7 @@ function buildMarketingFlowReviewHref(input: {
     query.set("error", input.error);
   }
 
-  return `/admin/marketing/campaigns/${input.campaignId}/review${query.toString() ? `?${query.toString()}` : ""}`;
+  return `/admin/campaigns/${input.campaignId}/review${query.toString() ? `?${query.toString()}` : ""}`;
 }
 
 export async function createClassAction(formData: FormData) {
@@ -2309,7 +2309,7 @@ export async function saveMarketingCampaignFlowDraftAction(formData: FormData) {
     if (rawPreviewText) {
       query.set("previewText", rawPreviewText);
     }
-    redirectWithError(`/admin/marketing/campaigns/new${query.toString() ? `?${query.toString()}` : ""}`, getStep1ValidationErrorMessage(parsed.error));
+    redirectWithError(`/admin/campaigns/new${query.toString() ? `?${query.toString()}` : ""}`, getStep1ValidationErrorMessage(parsed.error));
   }
 
   const {
@@ -2387,7 +2387,7 @@ export async function saveMarketingCampaignFlowDraftAction(formData: FormData) {
       throw new Error("MARKETING_CAMPAIGN_NOT_FOUND");
     }
 
-    redirect(`/admin/marketing/campaigns/${persistedDraft.id}/target`);
+    redirect(`/admin/campaigns/${persistedDraft.id}/target`);
   } catch (error) {
     if (isRedirectException(error)) {
       throw error;
@@ -2397,7 +2397,7 @@ export async function saveMarketingCampaignFlowDraftAction(formData: FormData) {
     fallback.set("campaignName", parsed.data.campaignName);
     fallback.set("subject", parsed.data.subject);
     fallback.set("previewText", parsed.data.previewText);
-    redirectWithError(`/admin/marketing/campaigns/new?${fallback.toString()}`, getMarketingActionErrorMessage(error));
+    redirectWithError(`/admin/campaigns/new?${fallback.toString()}`, getMarketingActionErrorMessage(error));
   }
 }
 
@@ -2405,7 +2405,7 @@ export async function generateMarketingCampaignFlowDraftAction(formData: FormDat
   await assertAdminAccess();
   const campaignId = String(formData.get("campaignId") ?? "").trim();
   redirectWithError(
-    campaignId ? `/admin/marketing/campaigns/new?campaignId=${encodeURIComponent(campaignId)}` : "/admin/marketing/campaigns/new",
+    campaignId ? `/admin/campaigns/new?campaignId=${encodeURIComponent(campaignId)}` : "/admin/campaigns/new",
     "AI draft generation is disabled.",
   );
 }
@@ -2423,14 +2423,14 @@ export async function saveMarketingCampaignFlowContentAction(formData: FormData)
   });
 
   if (!parsed.success) {
-    redirectWithError(`/admin/marketing/campaigns/${encodeURIComponent(campaignId)}/target`, "Please complete campaign email content.");
+    redirectWithError(`/admin/campaigns/${encodeURIComponent(campaignId)}/target`, "Please complete campaign email content.");
   }
 
   let normalizedContentJson: ReturnType<typeof normalizeMarketingContentJson>;
   try {
     normalizedContentJson = normalizeMarketingContentJson(JSON.parse(parsed.data.contentJson));
   } catch {
-    redirectWithError(`/admin/marketing/campaigns/${encodeURIComponent(campaignId)}/target`, "Campaign content blocks are invalid.");
+    redirectWithError(`/admin/campaigns/${encodeURIComponent(campaignId)}/target`, "Campaign content blocks are invalid.");
   }
 
   const { updateMarketingCampaignFlowDraft } = await import("@/lib/marketing/marketing-service");
@@ -2443,21 +2443,21 @@ export async function saveMarketingCampaignFlowContentAction(formData: FormData)
       currentStep: intent === "save" ? "STEP_2" : "STEP_3",
     });
     if (!updatedDraft) {
-      redirectWithError(`/admin/marketing/campaigns/${parsed.data.campaignId}/target`, "Campaign not found.");
+      redirectWithError(`/admin/campaigns/${parsed.data.campaignId}/target`, "Campaign not found.");
     }
   } catch (error) {
     if (isRedirectException(error)) {
       throw error;
     }
     Sentry.captureException(error);
-    redirectWithError(`/admin/marketing/campaigns/${parsed.data.campaignId}/target`, getMarketingActionErrorMessage(error));
+    redirectWithError(`/admin/campaigns/${parsed.data.campaignId}/target`, getMarketingActionErrorMessage(error));
   }
 
   if (intent === "save") {
-    redirect(`/admin/marketing/campaigns/${parsed.data.campaignId}/target?success=${encodeURIComponent("Draft saved.")}`);
+    redirect(`/admin/campaigns/${parsed.data.campaignId}/target?success=${encodeURIComponent("Draft saved.")}`);
   }
 
-  redirect(`/admin/marketing/campaigns/${parsed.data.campaignId}/review`);
+  redirect(`/admin/campaigns/${parsed.data.campaignId}/review`);
 }
 
 export async function sendMarketingCampaignFlowTestEmailAction(formData: FormData) {
@@ -2469,7 +2469,7 @@ export async function sendMarketingCampaignFlowTestEmailAction(formData: FormDat
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
 
   if (!campaignId) {
-    redirectWithError("/admin/marketing/campaigns", "Save the campaign draft before sending a test email.");
+    redirectWithError("/admin/campaigns", "Save the campaign draft before sending a test email.");
   }
 
   const parsed = marketingCampaignTestSchema.safeParse({
@@ -2520,7 +2520,7 @@ export async function saveMarketingCampaignFlowParametersAction(formData: FormDa
   });
 
   if (!parsed.success) {
-    redirectWithError("/admin/marketing/campaigns", "Please complete campaign parameters.");
+    redirectWithError("/admin/campaigns", "Please complete campaign parameters.");
   }
 
   const segmentIds = toStringArrayFromEntries(formData.getAll("segments"));
@@ -2552,7 +2552,7 @@ export async function saveMarketingCampaignFlowParametersAction(formData: FormDa
     segmentIds.forEach((segmentId) => query.append("segments", segmentId));
     query.set("page", String(safePage));
     redirectWithError(
-      `/admin/marketing/campaigns/${parsed.data.campaignId}/target${query.toString() ? `?${query.toString()}` : ""}`,
+      `/admin/campaigns/${parsed.data.campaignId}/target${query.toString() ? `?${query.toString()}` : ""}`,
       getMarketingActionErrorMessage(error),
     );
   }
@@ -2561,7 +2561,7 @@ export async function saveMarketingCampaignFlowParametersAction(formData: FormDa
   resolvedSelectedSegmentIds.forEach((segmentId) => query.append("segments", segmentId));
   query.set("page", String(safePage));
   redirect(
-    `/admin/marketing/campaigns/${parsed.data.campaignId}/review${query.toString() ? `?${query.toString()}` : ""}`,
+    `/admin/campaigns/${parsed.data.campaignId}/review${query.toString() ? `?${query.toString()}` : ""}`,
   );
 }
 
@@ -2569,7 +2569,7 @@ export async function moveMarketingCampaignFlowToConfirmAction(formData: FormDat
   await assertAdminAccess();
   const campaignId = String(formData.get("campaignId") ?? "").trim();
   if (!campaignId) {
-    redirectWithError("/admin/marketing/campaigns", "Campaign not found.");
+    redirectWithError("/admin/campaigns", "Campaign not found.");
   }
 
   const segmentIds = toStringArrayFromEntries(formData.getAll("segments"));
@@ -2581,20 +2581,20 @@ export async function moveMarketingCampaignFlowToConfirmAction(formData: FormDat
     await updateMarketingCampaignFlowDraft(campaignId, { currentStep: "STEP_4" });
   } catch (error) {
     Sentry.captureException(error);
-    redirectWithError(`/admin/marketing/campaigns/${campaignId}/review`, getMarketingActionErrorMessage(error));
+    redirectWithError(`/admin/campaigns/${campaignId}/review`, getMarketingActionErrorMessage(error));
   }
 
   const query = new URLSearchParams();
   segmentIds.forEach((segmentId) => query.append("segments", segmentId));
   query.set("page", String(safePage));
-  redirect(`/admin/marketing/campaigns/${campaignId}/confirm${query.toString() ? `?${query.toString()}` : ""}`);
+  redirect(`/admin/campaigns/${campaignId}/confirm${query.toString() ? `?${query.toString()}` : ""}`);
 }
 
 export async function markMarketingCampaignFlowSentAction(formData: FormData) {
   await assertAdminAccess();
   const campaignId = String(formData.get("campaignId") ?? "").trim();
   if (!campaignId) {
-    redirectWithError("/admin/marketing/campaigns", "Campaign not found.");
+    redirectWithError("/admin/campaigns", "Campaign not found.");
   }
 
   const segmentIds = toStringArrayFromEntries(formData.getAll("segments"));
@@ -2610,7 +2610,7 @@ export async function markMarketingCampaignFlowSentAction(formData: FormData) {
     segmentIds.forEach((segmentId) => query.append("segments", segmentId));
     query.set("page", String(safePage));
     redirectWithError(
-      `/admin/marketing/campaigns/${campaignId}/confirm${query.toString() ? `?${query.toString()}` : ""}`,
+      `/admin/campaigns/${campaignId}/confirm${query.toString() ? `?${query.toString()}` : ""}`,
       getMarketingActionErrorMessage(error),
     );
   }
@@ -2618,13 +2618,13 @@ export async function markMarketingCampaignFlowSentAction(formData: FormData) {
   const query = new URLSearchParams();
   segmentIds.forEach((segmentId) => query.append("segments", segmentId));
   query.set("page", String(safePage));
-  redirect(`/admin/marketing/campaigns/${campaignId}/sent${query.toString() ? `?${query.toString()}` : ""}`);
+  redirect(`/admin/campaigns/${campaignId}/sent${query.toString() ? `?${query.toString()}` : ""}`);
 }
 
 export async function duplicateMarketingCampaignAction(formData: FormData) {
   const session = await assertAdminAccess();
   const campaignId = String(formData.get("campaignId") ?? "").trim();
-  const returnTo = "/admin/marketing/campaigns";
+  const returnTo = "/admin/campaigns";
   const { duplicateMarketingCampaign } = await import("@/lib/marketing/marketing-service");
 
   const parsed = z.object({ campaignId: z.string().min(1) }).safeParse({ campaignId });
@@ -2635,7 +2635,7 @@ export async function duplicateMarketingCampaignAction(formData: FormData) {
   try {
     const duplicated = await duplicateMarketingCampaign(parsed.data.campaignId, session.user.id);
     redirect(
-      `/admin/marketing/campaigns/new?campaignId=${duplicated.id}&success=${encodeURIComponent("Campaign duplicated.")}`,
+      `/admin/campaigns/new?campaignId=${duplicated.id}&success=${encodeURIComponent("Campaign duplicated.")}`,
     );
   } catch (error) {
     Sentry.captureException(error);
@@ -2646,7 +2646,7 @@ export async function duplicateMarketingCampaignAction(formData: FormData) {
 export async function deleteMarketingCampaignDraftAction(formData: FormData) {
   await assertAdminAccess();
   const campaignId = String(formData.get("campaignId") ?? "").trim();
-  const returnTo = "/admin/marketing/campaigns";
+  const returnTo = "/admin/campaigns";
   const { deleteMarketingCampaignDraft } = await import("@/lib/marketing/marketing-service");
 
   const parsed = z.object({ campaignId: z.string().min(1) }).safeParse({ campaignId });
@@ -2713,7 +2713,7 @@ export async function updateMarketingCategoryAction(formData: FormData) {
 
 export async function createMarketingSegmentAction(formData: FormData) {
   await assertAdminAccess();
-  const returnTo = "/admin/marketing/segments";
+  const returnTo = "/admin/segments";
   const { createMarketingSegment } = await import("@/lib/marketing/marketing-service");
 
   const parsed = marketingSegmentCreateSchema.safeParse({
@@ -2736,7 +2736,7 @@ export async function createMarketingSegmentAction(formData: FormData) {
 
 export async function updateMarketingSegmentAction(formData: FormData) {
   await assertAdminAccess();
-  const returnTo = "/admin/marketing/segments";
+  const returnTo = "/admin/segments";
   const { updateMarketingSegment } = await import("@/lib/marketing/marketing-service");
 
   const parsed = marketingSegmentUpdateSchema.safeParse({

@@ -35,7 +35,6 @@ const programSettingsSchema = z.object({
   earningAmountMinor: z.number().int().positive(),
   pointsExpireAfterDays: z.number().int().positive(),
   expirationReminderDays: z.number().int().positive().nullable(),
-  maxManualGrantPoints: z.number().int().positive(),
   eligibleProductIds: z.array(z.string().trim().min(1)).max(250),
 });
 
@@ -105,7 +104,6 @@ export async function upsertLoyaltyProgramSettingsByAdmin(input: {
   earningAmountMinor: number;
   pointsExpireAfterDays: number;
   expirationReminderDays: number | null;
-  maxManualGrantPoints: number;
   eligibleProductIds: string[];
 }) {
   const parsed = programSettingsSchema.parse(input);
@@ -134,7 +132,6 @@ export async function upsertLoyaltyProgramSettingsByAdmin(input: {
               earningAmountMinor: before.earningAmountMinor,
               pointsExpireAfterDays: before.pointsExpireAfterDays,
               expirationReminderDays: before.expirationReminderDays,
-              maxManualGrantPoints: before.maxManualGrantPoints,
               eligibleProductIds: before.eligibleProducts.map((entry) => entry.productId),
             }
           : null,
@@ -144,7 +141,6 @@ export async function upsertLoyaltyProgramSettingsByAdmin(input: {
           earningAmountMinor: program.earningAmountMinor,
           pointsExpireAfterDays: program.pointsExpireAfterDays,
           expirationReminderDays: program.expirationReminderDays,
-          maxManualGrantPoints: program.maxManualGrantPoints,
           eligibleProductIds: program.eligibleProducts.map((entry) => entry.productId),
         },
       },

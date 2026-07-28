@@ -513,6 +513,25 @@ describe("email-automation-admin-service", () => {
   });
 
   describe("draft automation activation", () => {
+    it("creates missing expected automations as active without reactivating existing paused templates", async () => {
+      await ensureExpectedAutomationTemplateExists("booking.class-booked");
+      const created = await prisma.emailTemplate.findUnique({
+        where: { templateKey: "booking.class-booked" },
+      });
+
+      const paused = await createTemplate({
+        templateKey: "booking.class-reminder",
+        isActive: false,
+      });
+      await ensureExpectedAutomationTemplateExists("booking.class-reminder");
+      const preserved = await prisma.emailTemplate.findUnique({
+        where: { id: paused.id },
+      });
+
+      expect(created?.isActive).toBe(true);
+      expect(preserved?.isActive).toBe(false);
+    });
+
     it("creates and activates an expected draft automation on first activation", async () => {
       await setAutomationTemplateStatus({
         templateKey: "booking.welcome",
@@ -541,7 +560,7 @@ describe("email-automation-admin-service", () => {
         orderBy: { templateKey: "asc" },
       });
 
-      expect(updatedCount).toBe(2);
+      expect(updatedCount).toBe(0);
       expect(templates).toHaveLength(2);
       expect(templates.every((template) => template.isActive)).toBe(true);
     });

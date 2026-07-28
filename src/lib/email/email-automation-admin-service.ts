@@ -777,7 +777,7 @@ export async function ensureExpectedAutomationTemplateExists(templateKey: string
       description: expected.whenDescription,
       subjectTemplate: defaultSubject,
       contentSchemaVersion: 1,
-      isActive: false,
+      isActive: true,
       bodyTemplateJson: defaultBody,
     },
   });

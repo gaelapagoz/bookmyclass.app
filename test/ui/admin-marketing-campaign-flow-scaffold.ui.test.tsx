@@ -90,11 +90,11 @@ import {
   resolveMarketingCampaignFlowRecipients,
 } from "@/lib/marketing/marketing-service";
 
-import AdminMarketingCampaignCreatePage from "../../src/app/admin/(private)/marketing/campaigns/new/page";
-import AdminMarketingCampaignTargetPage from "../../src/app/admin/(private)/marketing/campaigns/[id]/target/page";
-import AdminMarketingCampaignConfirmPage from "../../src/app/admin/(private)/marketing/campaigns/[id]/confirm/page";
-import AdminMarketingCampaignReviewPage from "../../src/app/admin/(private)/marketing/campaigns/[id]/review/page";
-import AdminMarketingCampaignSentPage from "../../src/app/admin/(private)/marketing/campaigns/[id]/sent/page";
+import AdminMarketingCampaignCreatePage from "../../src/app/admin/(private)/campaigns/new/page";
+import AdminMarketingCampaignTargetPage from "../../src/app/admin/(private)/campaigns/[id]/target/page";
+import AdminMarketingCampaignConfirmPage from "../../src/app/admin/(private)/campaigns/[id]/confirm/page";
+import AdminMarketingCampaignReviewPage from "../../src/app/admin/(private)/campaigns/[id]/review/page";
+import AdminMarketingCampaignSentPage from "../../src/app/admin/(private)/campaigns/[id]/sent/page";
 
 describe("admin marketing campaign flow scaffold", () => {
   beforeEach(() => {
@@ -122,7 +122,7 @@ describe("admin marketing campaign flow scaffold", () => {
     expect(screen.getByDisplayValue("Reset your routine this spring")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Fresh classes and offers for this month")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save draft" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/admin/marketing/campaigns/draft/target");
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/admin/campaigns/draft/target");
     expect(screen.getByDisplayValue("Studio Team")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Generate draft" })).not.toBeInTheDocument();
     expect(screen.queryByText("AI usage estimate")).not.toBeInTheDocument();
@@ -280,7 +280,7 @@ describe("admin marketing campaign flow scaffold", () => {
     expect(screen.getByText("Campaign sent successfully")).toBeInTheDocument();
     expect(screen.getByText("Summary")).toBeInTheDocument();
     expect(screen.getByText("Recipients sent")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Go to campaigns" })).toHaveAttribute("href", "/admin/marketing/campaigns");
+    expect(screen.getByRole("link", { name: "Go to campaigns" })).toHaveAttribute("href", "/admin/campaigns");
   });
 
   it("shows Step 3 test-send success feedback", async () => {

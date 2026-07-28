@@ -29,7 +29,7 @@ export default async function AdminMarketingCampaignTargetPage({
       <CampaignFlowLayout
         title="Edit Email"
         description="Step 2 of 4: design the email your recipients will see."
-        topBackHref="/admin/marketing/campaigns"
+        topBackHref="/admin/campaigns"
         controls={<section className="rounded-xl border border-[#d3dbe5] bg-white p-5 text-sm text-[#7b2d2d]">Campaign draft not found.</section>}
         preview={<div />}
       />
@@ -71,7 +71,7 @@ export default async function AdminMarketingCampaignTargetPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Link href={`/admin/marketing/campaigns/new?campaignId=${id}`} className="rounded border border-[#d3dbe5] bg-white px-4 py-2 text-sm text-[#1f2735]">Back</Link>
+          <Link href={`/admin/campaigns/new?campaignId=${id}`} className="rounded border border-[#d3dbe5] bg-white px-4 py-2 text-sm text-[#1f2735]">Back</Link>
           <button type="submit" form="marketing-step-2-form" name="intent" value="next" className="rounded-md bg-[#1d3652] px-4 py-2 text-sm font-semibold text-white">Next</button>
           <button type="submit" form="marketing-step-2-form" name="intent" value="save" className="rounded-md border border-[#d3dbe5] bg-white px-4 py-2 text-sm text-[#1f2735]">Save draft</button>
         </div>

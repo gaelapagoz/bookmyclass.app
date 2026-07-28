@@ -76,7 +76,8 @@ Evidence label legend used in this file:
   - Server actions for classes/sessions/plans/users/subscriptions/learning/marketing/inbox/agenda.
   - Admin calendar session cards show active waitlist counts for operational visibility (read-only).
   - Admin session detail supports manual attendee add/remove with server-side eligibility enforcement (eligible credit or qualifying subscription required).
-- Admin sidebar includes an `Automations` page at `/admin/automations`; operational email automations are configurable from UI and controlled by `EmailTemplate.isActive` (`Active` vs `Paused`).
+- Admin sidebar includes operational configuration links for Coupons (`/admin/coupons`), Loyalty Program (`/admin/loyalty`), Marketing Campaigns (`/admin/campaigns`), Marketing Segments (`/admin/segments`), and Email Automations (`/admin/automations`).
+- Operational email automations are configurable from UI and controlled by `EmailTemplate.isActive` (`Active` vs `Paused`).
   - Evidence status: Confirmed from repo (`src/app/admin/(private)/actions.ts`, `src/lib/admin/admin-catalog-service.ts`, `src/lib/navigation/admin-nav.ts`, `src/app/admin/(private)/automations/page.tsx`, `src/lib/marketing/*`).
 - Authentication/account flows:
   - Credentials auth, pending registration + verification, verification resend, password reset, profile update, password change, email change verification.
@@ -490,7 +491,8 @@ Evidence label legend used in this file:
   - Practically required for auth sessions: `AUTH_SECRET`.
   - Required for Stripe flows: `APP_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
 - Required for live provider email delivery in production: `RESEND_API_KEY`, `EMAIL_FROM`.
-- Primary staging/UAT automation control is Admin -> Automations status (`EmailTemplate.isActive`), with staging/UAT seed modes paused by default.
+- Primary staging/UAT automation control is Admin -> Automations status (`EmailTemplate.isActive`). Newly provisioned canonical automation templates are active by default, and administrators can pause individual automations afterward.
+- Normal runtime reconciliation and production-safe upsert seeds preserve existing automation Active/Paused choices.
 - Non-production runtimes also suppress real provider email delivery by default unless `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1`; this remains a secondary safety-net for direct send paths outside Automations.
 - Required for homesite contact-form email delivery: `CONTACT_FORM_TO_EMAIL`.
   - Test/e2e runtimes can use deterministic provider bypass (`NODE_ENV=test` or `E2E_TEST_MODE=1`) and do not require real Resend delivery configuration.

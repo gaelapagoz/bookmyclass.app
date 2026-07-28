@@ -1,4 +1,5 @@
 import { CouponRedemptionStatus, Role } from "@prisma/client";
+import Link from "next/link";
 
 import AdminListControls from "@/components/admin/AdminListControls";
 import AdminPagination from "@/components/admin/AdminPagination";
@@ -96,22 +97,27 @@ export default async function AdminCouponSalesPage({ searchParams }: { searchPar
     <section className="space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-[#1f2735]">Sales: Coupons</h1>
+          <h1 className="text-2xl font-semibold text-[#1f2735]">Coupon Redemptions</h1>
           <p className="mt-1 text-sm text-[#4b5a72]">
-            Read-only coupon redemption history. Gift Card wallet history remains under Sales &gt; Gift Cards.
+            Track coupon redemptions, discounts applied, and related orders.
           </p>
         </div>
 
-        <AdminListControls
-          basePath="/admin/sales/coupons"
-          filterName="status"
-          filterValue={data.status}
-          filterOptions={STATUS_OPTIONS}
-          searchName="q"
-          searchValue={data.query}
-          searchPlaceholder="Search coupon, client, or email"
-          searchAriaLabel="Search coupon usage"
-        />
+        <div className="flex flex-wrap items-start justify-end gap-2">
+          <Link href="/admin/coupons" className="rounded-md border border-[#cbd5e1] bg-white px-3 py-2 text-sm font-medium text-[#1f2735]">
+            Manage coupons
+          </Link>
+          <AdminListControls
+            basePath="/admin/sales/coupons"
+            filterName="status"
+            filterValue={data.status}
+            filterOptions={STATUS_OPTIONS}
+            searchName="q"
+            searchValue={data.query}
+            searchPlaceholder="Search coupon, client, or email"
+            searchAriaLabel="Search coupon usage"
+          />
+        </div>
       </header>
 
       {data.items.length === 0 ? (

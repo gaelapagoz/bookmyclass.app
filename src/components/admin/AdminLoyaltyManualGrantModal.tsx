@@ -57,7 +57,7 @@ export default function AdminLoyaltyManualGrantModal({
               <div>
                 <h2 className="text-2xl font-semibold text-[#1f2735]">Manual grant</h2>
                 <p className="mt-1 text-sm text-[#4b5a72]">
-                  Positive grants only. Actor, reason, and audit metadata are recorded automatically.
+                  Grant loyalty points directly to a client. The administrator, reason, amount, and timestamp are recorded for auditing.
                 </p>
               </div>
               <button

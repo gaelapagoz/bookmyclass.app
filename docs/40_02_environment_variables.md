@@ -25,7 +25,8 @@ Purpose: define environment-variable expectations by runtime context using repos
   - `EMAIL_FROM`
   - `MARKETING_TRACKING_SECRET`
 - Primary operator control for automation-backed email is Admin -> Automations status (`EmailTemplate.isActive`).
-- Staging/UAT seed modes pause all canonical automation templates by default.
+- Newly provisioned canonical automation templates are active by default, including clean development, staging/performance, and E2E seeds.
+- Administrators can pause individual automations afterward; normal runtime reconciliation and production-safe upsert seeds preserve existing Active/Paused choices.
 - Real provider delivery is enabled by default only in production.
 - Non-production runtime defaults to suppressed/captured email delivery unless:
   - `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION=1`
@@ -33,7 +34,7 @@ Purpose: define environment-variable expectations by runtime context using repos
   - `CONTACT_FORM_TO_EMAIL`
   - Expected configured value: `gaelapagoz@gmail.com`
 - In production, sender policy is enforced in code: sender must use verified `@bookmyclass.app` domain when provider delivery is used.
-- `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION` is a secondary safety-net override for direct send paths outside Automations, not the primary staging/UAT control.
+- `ALLOW_REAL_EMAILS_IN_NON_PRODUCTION` is a secondary safety-net override for provider delivery in non-production, especially direct send paths outside Automations.
 - Localhost real-delivery checklist:
   - `APP_URL=http://localhost:3000`
   - `EMAIL_FROM` set to a sender accepted by the configured Resend account

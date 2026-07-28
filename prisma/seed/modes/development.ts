@@ -93,7 +93,6 @@ const DEFAULT_LOYALTY_EARNING_POINTS = 10;
 const DEFAULT_LOYALTY_EARNING_AMOUNT_MINOR = 500;
 const DEFAULT_LOYALTY_POINTS_EXPIRE_AFTER_DAYS = 180;
 const DEFAULT_LOYALTY_EXPIRATION_REMINDER_DAYS = 30;
-const DEFAULT_LOYALTY_MAX_MANUAL_GRANT_POINTS = 500;
 
 type CatalogStripePriceEnvSpec = { productName: string; lookupKey: string; envVarName: string };
 
@@ -653,7 +652,6 @@ async function seedLoyaltyProgram() {
     earningAmountMinor: DEFAULT_LOYALTY_EARNING_AMOUNT_MINOR,
     pointsExpireAfterDays: DEFAULT_LOYALTY_POINTS_EXPIRE_AFTER_DAYS,
     expirationReminderDays: DEFAULT_LOYALTY_EXPIRATION_REMINDER_DAYS,
-    maxManualGrantPoints: DEFAULT_LOYALTY_MAX_MANUAL_GRANT_POINTS,
     eligibleProductIds: eligibleProducts.map((product) => product.id),
   });
 
@@ -1321,7 +1319,7 @@ export async function runDevelopmentSeed(): Promise<void> {
   );
   const seededMediaPathCount = await verifySeededMediaReferences(prisma);
   console.info(`[seed:dev] Seeded media verified: ${seededMediaPathCount} canonical /uploads paths.`);
-  await ensureAllExpectedAutomationTemplatesHaveStatus(false);
+  await ensureAllExpectedAutomationTemplatesHaveStatus(true);
   await verifyCleanSeed(users.client.email, schedulingSummary);
 
   console.info(

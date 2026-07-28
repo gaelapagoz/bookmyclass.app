@@ -262,7 +262,8 @@ HAVING COUNT(*) > 1;
 - Failed, expired, and unpaid checkout paths create no loyalty award.
 
 ### Loyalty admin permission boundaries
-- `ADMIN` and `MASTER_ADMIN` may grant positive manual points with required reason and audit metadata.
+- `ADMIN` and `MASTER_ADMIN` may grant positive whole-number manual points with required reason and audit metadata.
+- Authorized manual loyalty grants are not capped by a business-configured maximum; the administrator, role, reason, amount, timestamp, and immutable ledger entry remain auditable.
 - `ADMIN` and `MASTER_ADMIN` own loyalty program configuration and reward definition changes.
 - Negative loyalty adjustments are not part of the first admin UX unless a separate guarded reconciliation path is explicitly approved.
 - Client-facing loyalty history and wallet views are read models only and must enforce verified active client ownership server-side.

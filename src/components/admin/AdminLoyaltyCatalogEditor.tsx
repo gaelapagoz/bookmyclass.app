@@ -16,7 +16,6 @@ type LoyaltyCatalogEditorProps = {
   earningPoints: number;
   eligibleProductIds: string[];
   expirationReminderDays: number;
-  maxManualGrantPoints: number;
   pointsExpireAfterDays: number;
   programId: string;
   rewards: LoyaltyRewardDefinition[];
@@ -68,7 +67,6 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
   const [earningAmountDisplay, setEarningAmountDisplay] = useState(props.earningAmountDisplay);
   const [pointsExpireAfterDays, setPointsExpireAfterDays] = useState(String(props.pointsExpireAfterDays));
   const [expirationReminderDays, setExpirationReminderDays] = useState(String(props.expirationReminderDays));
-  const [maxManualGrantPoints, setMaxManualGrantPoints] = useState(String(props.maxManualGrantPoints));
   const [rewardName, setRewardName] = useState("");
   const [rewardPointsRequired, setRewardPointsRequired] = useState("");
   const [rewardAmountDisplay, setRewardAmountDisplay] = useState("");
@@ -87,7 +85,6 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
         <input type="hidden" name="earningAmountDisplay" value={earningAmountDisplay} />
         <input type="hidden" name="pointsExpireAfterDays" value={pointsExpireAfterDays} />
         <input type="hidden" name="expirationReminderDays" value={expirationReminderDays} />
-        <input type="hidden" name="maxManualGrantPoints" value={maxManualGrantPoints} />
         {props.eligibleProductIds.map((productId) => (
           <input key={productId} type="hidden" name="eligibleProductIds" value={productId} />
         ))}
@@ -97,7 +94,6 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
       earningAmountDisplay,
       earningPoints,
       expirationReminderDays,
-      maxManualGrantPoints,
       pointsExpireAfterDays,
       props.currencyCode,
       props.eligibleProductIds,
@@ -187,10 +183,6 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
         </div>
 
         <div className="space-y-4 px-5 py-5">
-          <p className="text-sm text-[#4b5a72]">
-            Manual grant ceiling: {maxManualGrantPoints} points.
-          </p>
-
           {activeRewards.length > 0 ? (
             <div className="space-y-3">
               {activeRewards.map((reward) => (
@@ -294,17 +286,6 @@ export default function AdminLoyaltyCatalogEditor(props: LoyaltyCatalogEditorPro
                 min={1}
                 value={expirationReminderDays}
                 onChange={(event) => setExpirationReminderDays(event.currentTarget.value)}
-                className="w-full rounded-md border border-[#cbd5e1] px-3 py-2"
-              />
-            </div>
-            <div className="space-y-1 text-sm text-[#334155]">
-              <label htmlFor="max-manual-grant-points" className="font-medium">Max manual grant points</label>
-              <input
-                id="max-manual-grant-points"
-                type="number"
-                min={1}
-                value={maxManualGrantPoints}
-                onChange={(event) => setMaxManualGrantPoints(event.currentTarget.value)}
                 className="w-full rounded-md border border-[#cbd5e1] px-3 py-2"
               />
             </div>

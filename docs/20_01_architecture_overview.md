@@ -22,16 +22,17 @@ Purpose: describe the current application architecture from repository evidence.
 - Subscription checkout + billing portal.
 - Store customer flows for merchandise and gift cards.
 - Online learning catalog/admin surfaces are present in the current application footprint.
-- Admin operations for catalog, sessions, users, subscriptions, learning, marketing, inbox, store-adjacent catalog, and related commerce management.
-- Admin-only `Automations` placeholder page exists at `/admin/automations` (informational only, no configuration engine).
+- Admin operations for catalog, sessions, users, subscriptions, learning, marketing, inbox, store-adjacent catalog, loyalty, coupons, automations, and related commerce management.
+- Canonical Admin configuration routes include `/admin/coupons`, `/admin/loyalty`, `/admin/campaigns`, `/admin/segments`, and `/admin/automations`; legacy nested marketing/loyalty URLs redirect to these canonical routes.
+- Admin-only `Automations` configuration exists at `/admin/automations` and controls `EmailTemplate.isActive`.
 - Manual session roster operations remain service-enforced: admin can add/remove attendees and may use an audited no-credit override; teacher can manage only assigned sessions and remains eligibility-only.
 
 ## Not Fully Active / Not Yet Introduced
 - No-show runtime operations remain modeled but not fully confirmed as active end-to-end.
 - Teacher workflow coverage/enforcement is not fully confirmed across all operational routes.
-- Loyalty points are not yet an active runtime capability at the time of this document update; the loyalty roadmap and scaffolds define the target state but not current production reality.
-- The approved loyalty target keeps mutation ownership in future `src/lib/loyalty/*` services, with checkout, webhook, cart, dashboard, and admin layers limited to orchestration and read models.
-- Any future combined wallet UI is read-model only; loyalty and gift-card mutation invariants remain separate.
+- Loyalty spend earning, reward redemption, loyalty credit, expiration, and audited admin manual grants are active runtime capabilities.
+- Loyalty mutation ownership stays in `src/lib/loyalty/*` services, with checkout, webhook, cart, dashboard, and admin layers limited to orchestration and read models.
+- Combined wallet UI is read-model only; loyalty and gift-card mutation invariants remain separate.
 
 ## Canonical References
 - `docs/00_01_system_baseline.md`

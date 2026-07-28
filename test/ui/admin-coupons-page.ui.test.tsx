@@ -41,6 +41,10 @@ describe("admin coupons page", () => {
     render(await AdminCouponsPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByRole("heading", { name: "Coupons" })).toBeVisible();
+    expect(
+      screen.getByText("Create and manage discount codes, eligibility rules, validity periods, and redemption limits."),
+    ).toBeVisible();
+    expect(screen.getByRole("link", { name: "View redemptions" })).toHaveAttribute("href", "/admin/sales/coupons");
     expect(screen.getByRole("link", { name: "Create coupon" })).toHaveAttribute("href", "/admin/coupons/new");
     expect(screen.queryByText("Catalog: Coupons")).not.toBeInTheDocument();
     expect(screen.queryByText("Create, edit, activate, deactivate, and archive in-app coupons.")).not.toBeInTheDocument();

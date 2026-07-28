@@ -172,13 +172,13 @@ describe("marketing flow step 1 actions", () => {
     formData.set("campaignName", "Campaign");
 
     await expect(saveMarketingCampaignFlowDraftAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/marketing/campaigns/new?campaignName=Campaign&error=Subject%20is%20required.",
+      "NEXT_REDIRECT:/admin/campaigns/new?campaignName=Campaign&error=Subject%20is%20required.",
     );
   });
 
   it("save action persists metadata and redirects to step 2", async () => {
     await expect(saveMarketingCampaignFlowDraftAction(buildStep1FormData())).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/marketing/campaigns/campaign-1/target",
+      "NEXT_REDIRECT:/admin/campaigns/campaign-1/target",
     );
 
     expect(updateMarketingCampaignFlowDraft).toHaveBeenCalledWith(
@@ -197,7 +197,7 @@ describe("marketing flow step 1 actions", () => {
     formData.set("fromEmail", "bad-email");
 
     await expect(saveMarketingCampaignFlowDraftAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/marketing/campaigns/new?campaignName=Campaign&subject=Subject&previewText=Preview&error=From%20email%20is%20required.",
+      "NEXT_REDIRECT:/admin/campaigns/new?campaignName=Campaign&subject=Subject&previewText=Preview&error=From%20email%20is%20required.",
     );
   });
 
@@ -206,7 +206,7 @@ describe("marketing flow step 1 actions", () => {
     formData.set("campaignId", "campaign-1");
 
     await expect(generateMarketingCampaignFlowDraftAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/marketing/campaigns/new?campaignId=campaign-1&error=AI%20draft%20generation%20is%20disabled.",
+      "NEXT_REDIRECT:/admin/campaigns/new?campaignId=campaign-1&error=AI%20draft%20generation%20is%20disabled.",
     );
   });
 
@@ -214,7 +214,7 @@ describe("marketing flow step 1 actions", () => {
     const formData = buildStep2FormData();
     formData.set("intent", "save");
     await expect(saveMarketingCampaignFlowContentAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/marketing/campaigns/campaign-1/target?success=Draft%20saved.",
+      "NEXT_REDIRECT:/admin/campaigns/campaign-1/target?success=Draft%20saved.",
     );
     expect(updateMarketingCampaignFlowDraft).toHaveBeenCalledWith(
       "campaign-1",
@@ -226,7 +226,7 @@ describe("marketing flow step 1 actions", () => {
     const formData = buildStep2FormData();
     formData.set("intent", "next");
     await expect(saveMarketingCampaignFlowContentAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/marketing/campaigns/campaign-1/review",
+      "NEXT_REDIRECT:/admin/campaigns/campaign-1/review",
     );
     expect(updateMarketingCampaignFlowDraft).toHaveBeenCalledWith(
       "campaign-1",
@@ -238,7 +238,7 @@ describe("marketing flow step 1 actions", () => {
     const formData = buildStep2FormData();
     formData.set("contentJson", "{bad-json");
     await expect(saveMarketingCampaignFlowContentAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/marketing/campaigns/campaign-1/target?error=Campaign%20content%20blocks%20are%20invalid.",
+      "NEXT_REDIRECT:/admin/campaigns/campaign-1/target?error=Campaign%20content%20blocks%20are%20invalid.",
     );
   });
 
@@ -246,7 +246,7 @@ describe("marketing flow step 1 actions", () => {
     vi.mocked(updateMarketingCampaignFlowDraft).mockResolvedValueOnce(null as never);
     const formData = buildStep2FormData();
     await expect(saveMarketingCampaignFlowContentAction(formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/marketing/campaigns/campaign-1/target?error=Campaign%20not%20found.",
+      "NEXT_REDIRECT:/admin/campaigns/campaign-1/target?error=Campaign%20not%20found.",
     );
   });
 });

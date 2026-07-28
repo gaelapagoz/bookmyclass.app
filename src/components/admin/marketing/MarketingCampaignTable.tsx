@@ -21,9 +21,9 @@ function toStatusLabel(status: MarketingCampaignStatus): string {
 
 function getActionHref(row: CampaignRow): string {
   if (row.status === MarketingCampaignStatus.SENT) {
-    return `/admin/marketing/campaigns/${row.id}/summary`;
+    return `/admin/campaigns/${row.id}/summary`;
   }
-  return `/admin/marketing/campaigns/new?campaignId=${row.id}`;
+  return `/admin/campaigns/new?campaignId=${row.id}`;
 }
 
 function getActionLabel(row: CampaignRow): string {

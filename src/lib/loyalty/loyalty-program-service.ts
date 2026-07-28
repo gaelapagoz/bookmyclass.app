@@ -10,7 +10,6 @@ const loyaltyProgramSettingsSchema = z.object({
   earningAmountMinor: z.number().int().positive(),
   pointsExpireAfterDays: z.number().int().positive(),
   expirationReminderDays: z.number().int().positive().nullable(),
-  maxManualGrantPoints: z.number().int().positive(),
   eligibleProductIds: z.array(z.string().trim().min(1)).max(250),
 }).superRefine((input, ctx) => {
   if (input.isActive && input.eligibleProductIds.length === 0) {
@@ -79,7 +78,6 @@ export type LoyaltyProgramSummary = Pick<
   | "earningAmountMinor"
   | "pointsExpireAfterDays"
   | "expirationReminderDays"
-  | "maxManualGrantPoints"
 >;
 
 type LoyaltyProgramDbClient = Prisma.TransactionClient | typeof prisma;
@@ -91,7 +89,6 @@ export type UpsertLoyaltyProgramSettingsInput = {
   earningAmountMinor: number;
   pointsExpireAfterDays: number;
   expirationReminderDays: number | null;
-  maxManualGrantPoints: number;
   eligibleProductIds: string[];
   prismaClient?: LoyaltyProgramDbClient;
 };
@@ -269,7 +266,6 @@ export async function listLoyaltyPrograms(
         earningAmountMinor: true,
         pointsExpireAfterDays: true,
         expirationReminderDays: true,
-        maxManualGrantPoints: true,
       },
     });
   } catch (error) {
@@ -372,7 +368,6 @@ export async function upsertLoyaltyProgramSettings(
         earningAmountMinor: normalized.earningAmountMinor,
         pointsExpireAfterDays: normalized.pointsExpireAfterDays,
         expirationReminderDays: normalized.expirationReminderDays,
-        maxManualGrantPoints: normalized.maxManualGrantPoints,
       },
     });
 
@@ -418,7 +413,7 @@ export async function upsertLoyaltyProgramSettings(
         earningAmountMinor: normalized.earningAmountMinor,
         pointsExpireAfterDays: normalized.pointsExpireAfterDays,
         expirationReminderDays: normalized.expirationReminderDays,
-        maxManualGrantPoints: normalized.maxManualGrantPoints,
+        maxManualGrantPoints: 5000,
         eligibleProducts: {
           create: normalized.eligibleProductIds.map((productId) => ({
             productId,

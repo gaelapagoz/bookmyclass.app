@@ -7,12 +7,23 @@ function readRepoFile(relativePath: string): string {
 }
 
 describe("email automation seed wiring", () => {
-  it("pauses expected automations in staging and development seeds", () => {
+  it("activates expected automations in staging and development seeds", () => {
     const stagingSeed = readRepoFile("prisma/seed/modes/staging.ts");
     const developmentSeed = readRepoFile("prisma/seed/modes/development.ts");
 
-    expect(stagingSeed).toContain("ensureAllExpectedAutomationTemplatesHaveStatus(false)");
-    expect(developmentSeed).toContain("ensureAllExpectedAutomationTemplatesHaveStatus(false)");
+    expect(stagingSeed).toContain("ensureAllExpectedAutomationTemplatesHaveStatus(true)");
+    expect(developmentSeed).toContain("ensureAllExpectedAutomationTemplatesHaveStatus(true)");
+    expect(stagingSeed).not.toContain("ensureAllExpectedAutomationTemplatesHaveStatus(false)");
+    expect(developmentSeed).not.toContain("ensureAllExpectedAutomationTemplatesHaveStatus(false)");
+  });
+
+  it("uses upsert-only active defaults for demo and standalone provisioning", () => {
+    const demoSeed = readRepoFile("prisma/seed/modes/demo.ts");
+    const provisionScript = readRepoFile("scripts/provision-email-templates.ts");
+
+    expect(demoSeed).toContain("ensureAllExpectedAutomationTemplatesExist()");
+    expect(provisionScript).toContain("ensureAllExpectedAutomationTemplatesExist()");
+    expect(provisionScript).toContain("existing statuses were preserved");
   });
 
   it("clears persisted automation templates before reseeding", () => {

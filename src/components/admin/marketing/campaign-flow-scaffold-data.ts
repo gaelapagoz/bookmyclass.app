@@ -10,5 +10,5 @@ export function buildCampaignFlowScaffoldHref(
     params.set("page", String(page));
   }
   const query = params.toString();
-  return `/admin/marketing/campaigns/${campaignId}/${step}${query ? `?${query}` : ""}`;
+  return `/admin/campaigns/${campaignId}/${step}${query ? `?${query}` : ""}`;
 }

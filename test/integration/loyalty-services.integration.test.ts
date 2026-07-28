@@ -85,6 +85,17 @@ async function createAdmin() {
   });
 }
 
+async function createMasterAdmin() {
+  const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return prisma.user.create({
+    data: {
+      name: `Loyalty Master Admin ${unique}`,
+      email: `loyalty-master-admin-${unique}@example.test`,
+      role: Role.MASTER_ADMIN,
+    },
+  });
+}
+
 async function createCatalogProduct(input: {
   namePrefix: string;
   productType: ProductType;
@@ -222,7 +233,6 @@ describe("loyalty core services", () => {
       earningAmountMinor: 100,
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
-      maxManualGrantPoints: 5_000,
       eligibleProductIds: [eligible.product.id],
     });
     const reward = await saveLoyaltyRewardDefinitionByAdmin({
@@ -295,7 +305,6 @@ describe("loyalty core services", () => {
       earningAmountMinor: 100,
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
-      maxManualGrantPoints: 5_000,
       eligibleProductIds: [eligible.product.id],
     });
 
@@ -375,7 +384,6 @@ describe("loyalty core services", () => {
       earningAmountMinor: 100,
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
-      maxManualGrantPoints: 5_000,
       eligibleProductIds: [eligible.product.id],
     });
 
@@ -454,7 +462,6 @@ describe("loyalty core services", () => {
       earningAmountMinor: 100,
       pointsExpireAfterDays: 90,
       expirationReminderDays: 14,
-      maxManualGrantPoints: 2_000,
       eligibleProductIds: [eligible.product.id],
     });
 
@@ -462,7 +469,7 @@ describe("loyalty core services", () => {
       actorUserId: admin.id,
       clientId: client.id,
       currencyCode: "USD",
-      amountPoints: 120,
+      amountPoints: 2_500,
       reason: "Recovered USD loyalty points for cross-currency setup.",
       idempotencyKey: "loyalty:manual-grant:usd",
     });
@@ -485,10 +492,62 @@ describe("loyalty core services", () => {
     });
 
     expect(grant.outcome).toBe("created");
+    expect(grant.entry.amountPoints).toBe(2_500);
+    expect(grant.entry.createdBy?.role).toBe(Role.ADMIN);
     expect(summary.program?.currencyCode).toBe("USD");
-    expect(summary.balancePoints).toBe(120);
+    expect(summary.balancePoints).toBe(2_500);
     expect(history[0]?.currencyCode).toBe("USD");
-    expect(adminList.items[0]?.balancePoints).toBe(120);
+    expect(adminList.items[0]?.balancePoints).toBe(2_500);
+  });
+
+  it("allows master admins to grant above the legacy stored manual-grant value", async () => {
+    const admin = await createAdmin();
+    const masterAdmin = await createMasterAdmin();
+    const client = await createVerifiedClient();
+    const eligible = await createCatalogProduct({
+      namePrefix: "Master Admin Eligible Mat",
+      productType: ProductType.MERCHANDISE,
+      unitAmountMinor: 4_000,
+    });
+
+    await upsertLoyaltyProgramSettingsByAdmin({
+      actorUserId: admin.id,
+      currencyCode: "EUR",
+      isActive: true,
+      earningPoints: 1,
+      earningAmountMinor: 100,
+      pointsExpireAfterDays: 90,
+      expirationReminderDays: 14,
+      eligibleProductIds: [eligible.product.id],
+    });
+
+    const grant = await grantManualLoyaltyPointsByAdmin({
+      actorUserId: masterAdmin.id,
+      clientId: client.id,
+      currencyCode: "EUR",
+      amountPoints: 50_000,
+      reason: "Audited migration adjustment approved by the studio owner.",
+      idempotencyKey: "loyalty:manual-grant:master-admin-high-value",
+    });
+
+    const auditLog = await prisma.auditLog.findFirst({
+      where: {
+        actionType: "LOYALTY_MANUAL_GRANT",
+        entityId: grant.entry.id,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    expect(grant.outcome).toBe("created");
+    expect(grant.entry.amountPoints).toBe(50_000);
+    expect(grant.entry.createdBy?.role).toBe(Role.MASTER_ADMIN);
+    expect(grant.entry.reason).toBe("Audited migration adjustment approved by the studio owner.");
+    expect(grant.entry.expiresAt).toEqual(new Date(grant.entry.happenedAt.getTime() + 90 * 24 * 60 * 60 * 1000));
+    expect(auditLog?.metadata).toEqual(expect.objectContaining({
+      actorRole: Role.MASTER_ADMIN,
+      amountPoints: 50_000,
+      reason: "Audited migration adjustment approved by the studio owner.",
+    }));
   });
 
   it("enforces verified client ownership for client-facing loyalty reads", async () => {
@@ -510,7 +569,6 @@ describe("loyalty core services", () => {
       earningAmountMinor: 100,
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
-      maxManualGrantPoints: 5_000,
       eligibleProductIds: [eligible.product.id],
     });
 
@@ -567,7 +625,6 @@ describe("loyalty core services", () => {
       earningAmountMinor: 100,
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
-      maxManualGrantPoints: 5_000,
       eligibleProductIds: [eligible.product.id],
     });
 
@@ -612,7 +669,6 @@ describe("loyalty core services", () => {
       earningAmountMinor: 100,
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
-      maxManualGrantPoints: 5_000,
       eligibleProductIds: [eligible.product.id],
     });
     const reward = await saveLoyaltyRewardDefinitionByAdmin({
@@ -745,7 +801,6 @@ describe("loyalty core services", () => {
       earningAmountMinor: 100,
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
-      maxManualGrantPoints: 5_000,
       eligibleProductIds: [eligible.product.id],
     });
     const programTwo = await upsertLoyaltyProgramSettingsByAdmin({
@@ -756,7 +811,6 @@ describe("loyalty core services", () => {
       earningAmountMinor: 100,
       pointsExpireAfterDays: 180,
       expirationReminderDays: 30,
-      maxManualGrantPoints: 5_000,
       eligibleProductIds: [],
     });
     const reward = await saveLoyaltyRewardDefinitionByAdmin({

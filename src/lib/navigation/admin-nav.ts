@@ -46,8 +46,8 @@ export const adminNavConfig: AdminNavItem[] = [
       { type: "link", href: "/admin/orders", label: "Orders" },
       { type: "link", href: "/admin/subscriptions", label: "Memberships" },
       { type: "link", href: "/admin/gift-cards", label: "Gift Cards" },
-      { type: "link", href: "/admin/sales/coupons", label: "Discounts" },
-      { type: "link", href: "/admin/sales/loyalty", label: "Rewards" },
+      { type: "link", href: "/admin/sales/coupons", label: "Coupon Redemptions" },
+      { type: "link", href: "/admin/sales/loyalty", label: "Loyalty Activity" },
     ],
   },
   {
@@ -63,6 +63,8 @@ export const adminNavConfig: AdminNavItem[] = [
         label: "Store Products",
         matchPrefixes: ["/admin/store/merchandise", "/admin/store/gift-cards"],
       },
+      { type: "link", href: "/admin/coupons", label: "Coupons" },
+      { type: "link", href: "/admin/loyalty", label: "Loyalty Program" },
     ],
   },
   {
@@ -72,8 +74,8 @@ export const adminNavConfig: AdminNavItem[] = [
     children: [
       { type: "link", href: "/admin/inbox", label: "Client Messages", badgeKey: "inboxUnread" },
       { type: "link", href: "/admin/automations", label: "Email Automations" },
-      { type: "link", href: "/admin/marketing/campaigns", label: "Campaigns" },
-      { type: "link", href: "/admin/marketing/segments", label: "Audiences" },
+      { type: "link", href: "/admin/campaigns", label: "Marketing Campaigns" },
+      { type: "link", href: "/admin/segments", label: "Marketing Segments" },
     ],
   },
   {

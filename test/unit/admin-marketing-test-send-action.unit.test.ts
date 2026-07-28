@@ -115,7 +115,7 @@ describe("sendMarketingCampaignFlowTestEmailAction", () => {
 
   it("redirects with validation error for invalid email", async () => {
     await expect(sendMarketingCampaignFlowTestEmailAction(buildFormData({ toEmail: "invalid" }))).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/marketing/campaigns/camp-1/review?segments=seg-a&segments=seg-b&page=2&testEmail=invalid&error=Enter%20a%20valid%20test%20email%20address.",
+      "NEXT_REDIRECT:/admin/campaigns/camp-1/review?segments=seg-a&segments=seg-b&page=2&testEmail=invalid&error=Enter%20a%20valid%20test%20email%20address.",
     );
 
     expect(sendMarketingCampaignFlowTestEmail).not.toHaveBeenCalled();
@@ -125,7 +125,7 @@ describe("sendMarketingCampaignFlowTestEmailAction", () => {
     vi.mocked(sendMarketingCampaignFlowTestEmail).mockResolvedValue(undefined);
 
     await expect(sendMarketingCampaignFlowTestEmailAction(buildFormData())).rejects.toThrow(
-      "NEXT_REDIRECT:/admin/marketing/campaigns/camp-1/review?segments=seg-a&segments=seg-b&page=2&testEmail=tester%40example.test&success=Test+email+sent.",
+      "NEXT_REDIRECT:/admin/campaigns/camp-1/review?segments=seg-a&segments=seg-b&page=2&testEmail=tester%40example.test&success=Test+email+sent.",
     );
 
     expect(sendMarketingCampaignFlowTestEmail).toHaveBeenCalledWith({

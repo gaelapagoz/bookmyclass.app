@@ -125,18 +125,27 @@ describe("admin loyalty sales page", () => {
   it("renders admin loyalty overview, clients, and selected client history", async () => {
     render(await AdminLoyaltySalesPage({ searchParams: Promise.resolve({ clientId: "client-1" }) }));
 
-    expect(screen.getByRole("heading", { name: "Loyalty Points" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Loyalty Activity" })).toBeVisible();
+    expect(screen.getByText("Monitor client balances, point activity, expirations, and manual adjustments.")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Configure loyalty" })).toHaveAttribute("href", "/admin/loyalty");
     expect(screen.getByRole("heading", { name: "Client balances" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Manual grant" })).toBeVisible();
+    expect(screen.getAllByText(
+      "Grant loyalty points directly to a client. The administrator, reason, amount, and timestamp are recorded for auditing.",
+    )).toHaveLength(1);
     expect(screen.getByRole("heading", { name: "Selected client" })).toBeVisible();
     expect(screen.getAllByText("Client One")).toHaveLength(2);
     expect(screen.getByText("Launch goodwill grant.")).toBeVisible();
     expect(screen.getByText("Total number of clients")).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Manage Program" })).not.toBeInTheDocument();
     expect(screen.queryByText("Status")).not.toBeInTheDocument();
+    expect(screen.queryByText(/grant ceiling|configured maximum|read-only/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Give points" }));
     expect(screen.getByRole("dialog", { name: "Manual grant" })).toBeVisible();
+    expect(screen.getAllByText(
+      "Grant loyalty points directly to a client. The administrator, reason, amount, and timestamp are recorded for auditing.",
+    )).toHaveLength(2);
     expect(screen.getByLabelText("Client email")).toHaveValue("client@example.test");
   });
 

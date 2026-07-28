@@ -21,7 +21,6 @@ const loyaltyProgramActionSchema = z.object({
   earningAmountDisplay: z.string().trim().min(1),
   pointsExpireAfterDays: z.coerce.number().int().positive(),
   expirationReminderDays: z.string().trim().optional(),
-  maxManualGrantPoints: z.coerce.number().int().positive(),
   eligibleProductIds: z.array(z.string().trim().min(1)).max(250),
   clientId: z.string().trim().optional(),
   query: z.string().trim().optional(),
@@ -121,7 +120,7 @@ function buildCatalogLoyaltyPageHref(input: {
     params.set("success", input.success);
   }
 
-  return `/admin/catalog/loyalty?${params.toString()}`;
+  return `/admin/loyalty?${params.toString()}`;
 }
 
 function getErrorCode(error: unknown): string {
@@ -170,9 +169,6 @@ function mapManualGrantActionError(error: unknown) {
     case "LOYALTY_MANUAL_GRANT_INVALID":
       return "Manual grant details are invalid.";
     default:
-      if (error instanceof Error && error.message.includes("configured maximum")) {
-        return "Manual grant exceeds the configured maximum.";
-      }
       return "Unable to grant loyalty points right now.";
   }
 }
@@ -191,7 +187,6 @@ export async function saveLoyaltyProgramAction(formData: FormData) {
     earningAmountDisplay: String(formData.get("earningAmountDisplay") ?? ""),
     pointsExpireAfterDays: formData.get("pointsExpireAfterDays"),
     expirationReminderDays: String(formData.get("expirationReminderDays") ?? ""),
-    maxManualGrantPoints: formData.get("maxManualGrantPoints"),
     rewardName: String(formData.get("rewardName") ?? "").trim() || undefined,
     rewardPointsRequired: formData.get("rewardPointsRequired") || undefined,
     rewardAmountDisplay: String(formData.get("rewardAmountDisplay") ?? "").trim() || undefined,
@@ -225,7 +220,6 @@ export async function saveLoyaltyProgramAction(formData: FormData) {
       earningAmountMinor,
       pointsExpireAfterDays: parsed.data.pointsExpireAfterDays,
       expirationReminderDays,
-      maxManualGrantPoints: parsed.data.maxManualGrantPoints,
       eligibleProductIds: parsed.data.eligibleProductIds,
     });
   } catch (error) {
@@ -236,7 +230,7 @@ export async function saveLoyaltyProgramAction(formData: FormData) {
   }
 
   revalidatePath("/admin/sales/loyalty");
-  revalidatePath("/admin/catalog/loyalty");
+  revalidatePath("/admin/loyalty");
   redirect(buildCatalogLoyaltyPageHref({
     currencyCode: parsed.data.currencyCode,
     success: "Loyalty program updated.",
@@ -285,7 +279,7 @@ export async function saveLoyaltyRewardAction(formData: FormData) {
     }));
   }
 
-  revalidatePath("/admin/catalog/loyalty");
+  revalidatePath("/admin/loyalty");
   revalidatePath("/admin/sales/loyalty");
   redirect(buildCatalogLoyaltyPageHref({
     currencyCode: parsed.data.currencyCode,
@@ -319,7 +313,7 @@ export async function archiveLoyaltyRewardAction(formData: FormData) {
     }));
   }
 
-  revalidatePath("/admin/catalog/loyalty");
+  revalidatePath("/admin/loyalty");
   revalidatePath("/admin/sales/loyalty");
   redirect(buildCatalogLoyaltyPageHref({
     currencyCode,
@@ -387,7 +381,7 @@ export async function grantLoyaltyPointsAction(formData: FormData) {
   }
 
   revalidatePath("/admin/sales/loyalty");
-  revalidatePath("/admin/catalog/loyalty");
+  revalidatePath("/admin/loyalty");
   redirect(buildSalesLoyaltyPageHref({
     currencyCode: parsed.data.currencyCode,
     query: parsed.data.query,

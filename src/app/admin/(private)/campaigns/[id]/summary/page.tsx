@@ -21,11 +21,11 @@ export default async function AdminMarketingCampaignSummaryPage({ params }: { pa
   const summary = await getMarketingSentCampaignSummaryById(id);
 
   if (!summary) {
-    redirect("/admin/marketing/campaigns");
+    redirect("/admin/campaigns");
   }
 
   if (summary.status !== "SENT") {
-    redirect(`/admin/marketing/campaigns/new?campaignId=${summary.campaignId}`);
+    redirect(`/admin/campaigns/new?campaignId=${summary.campaignId}`);
   }
 
   const selectedSegmentsLabel = summary.selectedSegmentNames.length
@@ -35,8 +35,8 @@ export default async function AdminMarketingCampaignSummaryPage({ params }: { pa
   return (
     <CampaignFlowLayout
       title="Campaign Summary"
-      description="Read-only post-send campaign summary."
-      topBackHref="/admin/marketing/campaigns"
+      description="Post-send campaign summary."
+      topBackHref="/admin/campaigns"
       controls={
         <section className="space-y-4 rounded-xl border border-[#d3dbe5] bg-white p-5">
           <section className="rounded-md border border-[#e2e8f0] bg-[#f8fbff] p-4">

@@ -530,13 +530,6 @@ export async function grantManualLoyaltyPoints(input: {
     await resolveEligibleClient(tx, parsed.clientId);
 
     const program = await getActiveLoyaltyProgram(input.currencyCode, tx);
-    if (parsed.amountPoints > program.maxManualGrantPoints) {
-      throw new LoyaltyPointsServiceError(
-        "LOYALTY_ELIGIBLE_AMOUNT_INVALID",
-        "Manual loyalty grant exceeds the configured maximum.",
-        { maxManualGrantPoints: program.maxManualGrantPoints },
-      );
-    }
 
     const happenedAt = parsed.happenedAt ?? new Date();
     const entry = await tx.loyaltyPointsLedgerEntry.create({

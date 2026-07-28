@@ -3,6 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import { CouponRedemptionStatus, Role } from "@prisma/client";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -16,6 +17,14 @@ vi.mock("@/lib/auth/require-auth", () => ({
 
 vi.mock("@/lib/coupons/coupon-admin-service", () => ({
   listAdminCouponUsageHistory: mocks.listAdminCouponUsageHistory,
+}));
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, className }: { href: string; children: ReactNode; className?: string }) => (
+    <a href={href} className={className}>
+      {children}
+    </a>
+  ),
 }));
 
 import AdminCouponSalesPage from "../../src/app/admin/(private)/sales/coupons/page";
@@ -53,9 +62,12 @@ describe("admin coupon sales page", () => {
   it("renders empty coupon usage history state", async () => {
     render(await AdminCouponSalesPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByRole("heading", { name: "Sales: Coupons" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Coupon Redemptions" })).toBeVisible();
+    expect(screen.getByText("Track coupon redemptions, discounts applied, and related orders.")).toBeVisible();
+    expect(screen.queryByText(/Read-only coupon redemption history/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Gift Card wallet history remains under Sales/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage coupons" })).toHaveAttribute("href", "/admin/coupons");
     expect(screen.getByText("No coupon usage found.")).toBeVisible();
-    expect(screen.getByText(/Gift Card wallet history remains under Sales/)).toBeVisible();
   });
 
   it("passes search and status filters to the coupon usage service", async () => {

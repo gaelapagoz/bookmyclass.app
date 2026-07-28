@@ -3,6 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { Role } from "@prisma/client";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -24,7 +25,15 @@ vi.mock("../../src/app/admin/(private)/sales/loyalty/actions", () => ({
   archiveLoyaltyRewardAction: vi.fn(),
 }));
 
-import AdminCatalogLoyaltyPage from "../../src/app/admin/(private)/catalog/loyalty/page";
+vi.mock("next/link", () => ({
+  default: ({ href, children, className }: { href: string; children: ReactNode; className?: string }) => (
+    <a href={href} className={className}>
+      {children}
+    </a>
+  ),
+}));
+
+import AdminCatalogLoyaltyPage from "../../src/app/admin/(private)/loyalty/page";
 
 function makeOverview() {
   return {
@@ -90,14 +99,21 @@ describe("admin loyalty catalog page", () => {
   });
 
   it("renders loyalty settings under catalog with modal-based editing", async () => {
-    render(await AdminCatalogLoyaltyPage({ searchParams: Promise.resolve({}) }));
+    const { container } = render(await AdminCatalogLoyaltyPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByRole("heading", { name: "Catalog: Loyalty Points" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Loyalty Program" })).toBeVisible();
+    expect(
+      screen.getByText("Configure how clients earn points, when points expire, and which rewards are available."),
+    ).toBeVisible();
+    expect(screen.getByRole("link", { name: "View activity" })).toHaveAttribute("href", "/admin/sales/loyalty");
     expect(screen.getByRole("heading", { name: "Points" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Rewards" })).toBeVisible();
     expect(screen.getByText(/eligible non-recurring catalog products/i)).toBeVisible();
     expect(screen.getByText("5 EURO Reward")).toBeVisible();
     expect(screen.queryByText("Stage 1 Scope Lock")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Manual grant ceiling/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Max manual grant points/i)).not.toBeInTheDocument();
+    expect(container.querySelector('input[name="maxManualGrantPoints"]')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0] as HTMLElement);
     expect(screen.getByRole("dialog", { name: "Edit purchase earning" })).toBeVisible();

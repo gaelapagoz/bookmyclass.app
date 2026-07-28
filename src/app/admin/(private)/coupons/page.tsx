@@ -65,11 +65,21 @@ export default async function AdminCouponsPage({
 
   return (
     <section className="space-y-4">
-      <header className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold text-[#1f2735]">Coupons</h1>
-        <Link href="/admin/coupons/new" className="rounded-md bg-[#1d3652] px-3 py-2 text-sm text-white">
-          Create coupon
-        </Link>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-[#1f2735]">Coupons</h1>
+          <p className="mt-1 text-sm text-[#4b5a72]">
+            Create and manage discount codes, eligibility rules, validity periods, and redemption limits.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/admin/sales/coupons" className="rounded-md border border-[#cbd5e1] bg-white px-3 py-2 text-sm font-medium text-[#1f2735]">
+            View redemptions
+          </Link>
+          <Link href="/admin/coupons/new" className="rounded-md bg-[#1d3652] px-3 py-2 text-sm text-white">
+            Create coupon
+          </Link>
+        </div>
       </header>
 
       {sp.success ? (

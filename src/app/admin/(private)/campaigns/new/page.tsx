@@ -53,7 +53,7 @@ export default async function AdminMarketingCampaignCreatePage({ searchParams }:
     id: segment.id,
     name: segment.name,
   }));
-  const nextHref = draft ? `/admin/marketing/campaigns/${draft.id}/target` : undefined;
+  const nextHref = draft ? `/admin/campaigns/${draft.id}/target` : undefined;
   const selectedCount = resolution?.totalRecipients ?? 0;
 
   async function submit(formData: FormData) {
@@ -144,7 +144,7 @@ export default async function AdminMarketingCampaignCreatePage({ searchParams }:
                 return (
                   <li key={segment.id}>
                     <Link
-                      href={`/admin/marketing/campaigns/new?${qs.toString()}`}
+                      href={`/admin/campaigns/new?${qs.toString()}`}
                       className={`inline-flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm ${isSelected ? "border-[#1d3652] bg-[#e9f1fb] text-[#1d3652]" : "border-[#d3dbe5] bg-white text-[#1f2735]"}`}
                     >
                       <span>{segment.name}</span>

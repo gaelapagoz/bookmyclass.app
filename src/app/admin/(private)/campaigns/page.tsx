@@ -55,7 +55,7 @@ function buildPageHref(page: number, filter: MarketingCampaignPageFilter, query:
   if (query) {
     search.set("q", query);
   }
-  return `/admin/marketing/campaigns?${search.toString()}`;
+  return `/admin/campaigns?${search.toString()}`;
 }
 
 function formatDate(value: Date | null): string | null {
@@ -98,7 +98,7 @@ export default async function AdminMarketingCampaignsPage({ searchParams }: { se
           <h1 className="text-2xl font-semibold text-[#1f2735]">Marketing Campaigns</h1>
           <p className="mt-1 text-sm text-[#4b5a72]">Manage draft and sent campaigns for marketing communications.</p>
         </div>
-        <Link href="/admin/marketing/campaigns/new" className="rounded-md bg-[#1d3652] px-4 py-2 text-sm font-semibold text-white">
+        <Link href="/admin/campaigns/new" className="rounded-md bg-[#1d3652] px-4 py-2 text-sm font-semibold text-white">
           + Create campaign
         </Link>
       </header>
@@ -131,7 +131,7 @@ export default async function AdminMarketingCampaignsPage({ searchParams }: { se
       </section>
 
       <AdminListControls
-        basePath="/admin/marketing/campaigns"
+        basePath="/admin/campaigns"
         filterName="status"
         filterValue={list.filter}
         filterOptions={FILTER_OPTIONS}
